@@ -72,7 +72,7 @@
 
     <div class="col-12">
         <label for="{{ $idPrefix }}-description" class="form-label">
-            Description <span class="text-muted-soft fw-normal">(optional)</span>
+            {{ $mode === 'create' ? 'Note' : 'Description' }} <span class="text-muted-soft fw-normal">(optional)</span>
         </label>
         <textarea name="description" id="{{ $idPrefix }}-description" rows="3" class="form-control @error('description', $idPrefix) is-invalid @enderror">{{ $showOld ? old('description') : '' }}</textarea>
         @error('description', $idPrefix)
