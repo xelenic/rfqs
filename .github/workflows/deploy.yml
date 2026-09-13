@@ -1,0 +1,140 @@
+name: Deploy
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch: {}
+
+concurrency:
+    group: deploy-production
+    cancel-in-progress: false
+
+env:
+    PHP_VERSION: '8.4'
+    NODE_VERSION: '22'
+
+jobs:
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ env.PHP_VERSION }}
+                  extensions: mbstring, dom, fileinfo, mysql, sqlite3, pdo_sqlite, pdo_mysql
+                  coverage: none
+
+            - name: Copy .env
+              run: cp .env.example .env
+
+            - name: Install Composer dependencies
+              run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+            - name: Generate app key
+              run: php artisan key:generate
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: npm
+
+            - name: Install npm dependencies
+              run: npm ci
+
+            - name: Build frontend assets
+              run: npm run build
+
+            - name: Check code style (Pint)
+              run: vendor/bin/pint --test
+
+            - name: Run tests
+              run: php artisan test --compact
+
+    deploy:
+        name: Deploy
+        needs: test
+        runs-on: ubuntu-latest
+        if: github.ref == 'refs/heads/main'
+        environment: production
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ env.PHP_VERSION }}
+                  extensions: mbstring, dom, fileinfo, mysql, pdo_mysql
+                  coverage: none
+
+            - name: Install Composer dependencies (production)
+              run: composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: npm
+
+            - name: Install npm dependencies
+              run: npm ci
+
+            - name: Build frontend assets
+              run: npm run build
+
+            - name: Enable maintenance mode
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.DEPLOY_SSH_HOST }}
+                  username: ${{ secrets.DEPLOY_SSH_USERNAME }}
+                  password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+                  port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+                  script: |
+                      cd ${{ secrets.DEPLOY_PATH }}
+                      php artisan down --retry=60 || true
+
+            - name: Install sshpass
+              run: sudo apt-get update && sudo apt-get install -y sshpass
+
+            - name: Sync files to server
+              env:
+                  SSHPASS: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+              run: |
+                  sshpass -e rsync -avzr --delete \
+                      -e "ssh -o StrictHostKeyChecking=no -p ${{ secrets.DEPLOY_SSH_PORT || 22 }}" \
+                      --exclude='.git/' \
+                      --exclude='.github/' \
+                      --exclude='.env' \
+                      --exclude='.env.example' \
+                      --exclude='node_modules/' \
+                      --exclude='tests/' \
+                      --exclude='storage/' \
+                      --exclude='public/storage' \
+                      --exclude='.claude/' \
+                      --exclude='.junie/' \
+                      --exclude='.mcp.json' \
+                      ./ "${{ secrets.DEPLOY_SSH_USERNAME }}@${{ secrets.DEPLOY_SSH_HOST }}:${{ secrets.DEPLOY_PATH }}"
+
+            - name: Run post-deploy commands
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.DEPLOY_SSH_HOST }}
+                  username: ${{ secrets.DEPLOY_SSH_USERNAME }}
+                  password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+                  port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+                  script: |
+                      cd ${{ secrets.DEPLOY_PATH }}
+                      mkdir -p storage/framework/{cache,sessions,views,testing} storage/logs storage/app/public bootstrap/cache
+                      php artisan migrate --force
+                      php artisan config:cache
+                      php artisan route:cache
+                      php artisan view:cache
+                      php artisan event:cache
+                      php artisan storage:link || true
+                      php artisan queue:restart
+                      php artisan up
