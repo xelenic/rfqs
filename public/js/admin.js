@@ -54,6 +54,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Assign Sourcing modal's per-person workload button — it lives inside
+    // a <label for="..."> associated with that card's checkbox, so without
+    // this, clicking it would *also* toggle the checkbox: the label's
+    // native behavior forwards any click it doesn't see prevented to its
+    // control. preventDefault() alone is what suppresses that (checked
+    // once the whole dispatch finishes, regardless of phase timing) — no
+    // stopPropagation() here, since that would risk blocking Bootstrap's
+    // own collapse data-api handler from ever seeing this same click.
+    document.querySelectorAll('.js-role-pick-stats-btn').forEach(function (button) {
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+        });
+    });
+
     // Populate the shared "Edit user" modal from the clicked row's data-* attributes.
     document.querySelectorAll('.js-edit-user').forEach(function (button) {
         button.addEventListener('click', function () {

@@ -6,6 +6,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -38,5 +39,19 @@ class User extends Authenticatable
     public function assignedRfqs(): BelongsToMany
     {
         return $this->belongsToMany(Rfq::class)->withTimestamps();
+    }
+
+    /**
+     * Adds pending_rfqs_count/completed_rfqs_count to each user — their own
+     * Sourcing workload, split by whether they've completed their part yet.
+     * Used by the Assign Sourcing modal so whoever's assigning can see who's
+     * already stretched thin. See Rfq::completeSourcingPartFor().
+     */
+    public function scopeWithSourcingWorkloadCounts(Builder $query): void
+    {
+        $query->withCount([
+            'assignedRfqs as pending_rfqs_count' => fn (Builder $q) => $q->whereNull('rfq_user.completed_at'),
+            'assignedRfqs as completed_rfqs_count' => fn (Builder $q) => $q->whereNotNull('rfq_user.completed_at'),
+        ]);
     }
 }

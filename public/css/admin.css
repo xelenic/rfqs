@@ -685,6 +685,55 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-primary);
 }
 
+.role-pick-stats-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 1.6rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--rfq-text-muted);
+  font-size: 0.78rem;
+  line-height: 1;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+}
+
+.role-pick-stats-btn:hover {
+  color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+}
+
+.role-pick-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--rfq-border);
+}
+
+.role-pick-stat {
+  font-size: 0.68rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.role-pick-stat-pending {
+  color: #b45309;
+}
+
+.role-pick-stat-completed {
+  color: #15803d;
+}
+
 .assignee-cluster {
   display: inline-flex;
   align-items: center;

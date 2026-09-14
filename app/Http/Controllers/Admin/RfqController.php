@@ -140,7 +140,7 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToReturns' => $scopedToReturns,
             'scopedToDataEntry' => $scopedToDataEntry,
             'scopedToUnassigned' => $scopedToUnassigned,
-            'sourcingUsers' => User::role('Sourcing')->orderBy('name')->get(),
+            'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
             'operationsUsers' => User::role('Operations')->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
@@ -159,7 +159,7 @@ class RfqController extends Controller implements HasMiddleware
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
-            'sourcingUsers' => User::role('Sourcing')->orderBy('name')->get(),
+            'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
             'operationsUsers' => User::role('Operations')->orderBy('name')->get(),
         ]);
     }

@@ -40,8 +40,23 @@
                                     <input type="checkbox" class="role-pick-input" name="users[]"
                                            id="assign-user-{{ $sourcingUser->id }}" value="{{ $sourcingUser->id }}">
                                     <span class="role-pick-check"><i class="bi bi-check-circle-fill"></i></span>
+                                    {{-- Stops here rather than toggling the checkbox — see
+                                         .js-role-pick-stats-btn in admin.js. --}}
+                                    <button type="button" class="role-pick-stats-btn js-role-pick-stats-btn"
+                                            data-bs-toggle="collapse" data-bs-target="#assign-stats-{{ $sourcingUser->id }}"
+                                            title="{{ $sourcingUser->name }}'s workload" aria-label="{{ $sourcingUser->name }}'s workload">
+                                        <i class="bi bi-bar-chart-line"></i>
+                                    </button>
                                     <span class="role-pick-name">{{ $sourcingUser->name }}</span>
                                     <span class="role-pick-desc">{{ $sourcingUser->email }}</span>
+                                    <div class="role-pick-stats collapse" id="assign-stats-{{ $sourcingUser->id }}">
+                                        <span class="role-pick-stat role-pick-stat-pending">
+                                            <i class="bi bi-hourglass-split"></i> {{ $sourcingUser->pending_rfqs_count }} pending
+                                        </span>
+                                        <span class="role-pick-stat role-pick-stat-completed">
+                                            <i class="bi bi-check-circle"></i> {{ $sourcingUser->completed_rfqs_count }} completed
+                                        </span>
+                                    </div>
                                 </label>
                             @endforeach
                         </div>
