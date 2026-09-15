@@ -38,7 +38,7 @@
                         // $bySourcingRfqs), since a split RFQ can hand off
                         // more than one assignee's part to Data Entry.
                         $pendingBadgeCount = match (true) {
-                            auth()->user()->hasRole('Operations') => \App\Models\Rfq::where('status', 'Pending')
+                            auth()->user()->hasRole('Senior Operations') => \App\Models\Rfq::where('status', 'Pending')
                                 ->doesntHave('assignees')
                                 ->count(),
                             auth()->user()->hasRole('Sourcing') => \App\Models\Rfq::where('status', 'Pending')
@@ -48,23 +48,32 @@
                                 ->whereNotNull('completed_at')
                                 ->whereNull('data_entry_completed_at')
                                 ->count(),
+                            auth()->user()->hasRole('Head of Business Development') => \App\Models\Rfq::where('stage', 'head_of_bd_review')->count(),
+                            auth()->user()->hasRole('GM Assistant') => \App\Models\Rfq::where('stage', 'gm_assistant')->count(),
+                            auth()->user()->hasRole('General Manager') => \App\Models\Rfq::where('stage', 'gm_review')->count(),
                             default => 0,
                         };
                         $pendingBadgeTitle = match (true) {
-                            auth()->user()->hasRole('Operations') => "{$pendingBadgeCount} not yet assigned to Sourcing",
+                            auth()->user()->hasRole('Senior Operations') => "{$pendingBadgeCount} not yet assigned to Sourcing",
                             auth()->user()->hasRole('Sourcing') => "{$pendingBadgeCount} not marked complete",
                             auth()->user()->hasRole('Data Entry') => "{$pendingBadgeCount} not marked complete",
+                            auth()->user()->hasRole('Head of Business Development') => "{$pendingBadgeCount} awaiting your review",
+                            auth()->user()->hasRole('GM Assistant') => "{$pendingBadgeCount} awaiting client details",
+                            auth()->user()->hasRole('General Manager') => "{$pendingBadgeCount} awaiting your approval",
                             default => '',
                         };
                     @endphp
                     <div class="sidebar-section-title">Requests</div>
-                    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('status') === 'Pending' && request('view') !== 'returns' ? 'active' : '' }}">
+                    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('status') === 'Pending' && ! in_array(request('view'), ['returns', 'review', 'closing'], true) ? 'active' : '' }}">
                         <i class="bi bi-hourglass-split"></i>
                         <span class="nav-link-label">
                             {{ match (true) {
                                 auth()->user()->hasRole('Sourcing') => 'My Pending RFQs',
                                 auth()->user()->hasRole('Data Entry') => 'Ready for Data Entry',
-                                auth()->user()->hasRole('Operations') => 'Unassigned RFQs',
+                                auth()->user()->hasRole('Senior Operations') => 'Unassigned RFQs',
+                                auth()->user()->hasRole('Head of Business Development') => 'Review',
+                                auth()->user()->hasRole('GM Assistant') => 'Review',
+                                auth()->user()->hasRole('General Manager') => 'Review',
                                 default => 'Pending RFQs',
                             } }}
                         </span>
@@ -77,8 +86,18 @@
                             <i class="bi bi-arrow-counterclockwise"></i> Returns
                         </a>
                     @endif
+                    @if (auth()->user()->hasRole('Senior Operations'))
+                        <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'review' ? 'active' : '' }}">
+                            <i class="bi bi-clipboard2-check"></i> Review
+                        </a>
+                    @endif
+                    @if (auth()->user()->hasRole('Business Development'))
+                        <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'closing']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'closing' ? 'active' : '' }}">
+                            <i class="bi bi-flag"></i> Ready to Close
+                        </a>
+                    @endif
                     <a href="{{ route('admin.rfqs.index', ['status' => 'Completed']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('status') === 'Completed' ? 'active' : '' }}">
-                        <i class="bi bi-check2-circle"></i> Completed RFQs
+                        <i class="bi bi-check2-circle"></i> Closed RFQs
                     </a>
                 @endcan
 

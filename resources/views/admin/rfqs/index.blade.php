@@ -1,11 +1,16 @@
 @php
     $pageTitle = match (true) {
         $scopedToReturns => 'Returns',
+        $scopedToSeniorOpsReview => 'Review',
         $statusFilter === 'Pending' && $scopedToMe => 'My Pending RFQs',
         $statusFilter === 'Pending' && $scopedToDataEntry => 'Ready for Data Entry',
         $statusFilter === 'Pending' && $scopedToUnassigned => 'Unassigned RFQs',
+        $statusFilter === 'Pending' && $scopedToHeadOfBdReview => 'Review',
+        $statusFilter === 'Pending' && $scopedToGmAssistant => 'Review',
+        $statusFilter === 'Pending' && $scopedToGmReview => 'Review',
+        $statusFilter === 'Pending' && $scopedToBdClosing => 'Ready to Close',
         $statusFilter === 'Pending' => 'Pending RFQs',
-        $statusFilter === 'Completed' => 'Completed RFQs',
+        $statusFilter === 'Completed' => 'Closed RFQs',
         default => 'RFQs',
     };
 
@@ -22,7 +27,7 @@
     // Operations doesn't need a separate "Assign Operations" picker — when
     // they assign Sourcing, they're implicitly recorded as the one routing
     // it (see RfqController::assign()), so just the one button is shown.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Operations');
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Senior Operations');
 @endphp
 
 @extends('layouts.app')
@@ -163,6 +168,290 @@
                             <tr>
                                 <td colspan="6" class="text-center text-muted-soft py-4">
                                     Nothing's been returned to you — you're all caught up.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToSeniorOpsReview)
+            {{-- Senior Operations' second review — every assignee's split
+                 is both Sourcing- and Data-Entry-complete; approving here
+                 escalates the RFQ on to Head of Business Development. See
+                 RfqController::index() ($scopedToSeniorOpsReview) and
+                 Rfq::completeSeniorOpsReview(). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Data Entry Completed</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($seniorOpsReviewRfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td>{{ $rfq->rfq_number }}</td>
+                                <td>{{ $rfq->subject }}</td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">
+                                    {{ $rfq->data_entry_completed_at?->format('M d, Y g:i A') ?? '—' }}
+                                    @if ($rfq->dataEntryCompletedBy)
+                                        <div class="text-muted-soft small">by {{ $rfq->dataEntryCompletedBy->name }}</div>
+                                    @endif
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <form action="{{ route('admin.rfqs.complete-senior-ops-review', $rfq) }}" method="POST" class="d-inline"
+                                          data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-check2-circle"></i> Approve
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's waiting on your review right now.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            @if ($seniorOpsReviewRfqs->hasPages())
+                <div class="card-footer bg-white">
+                    {{ $seniorOpsReviewRfqs->links() }}
+                </div>
+            @endif
+        @elseif ($scopedToHeadOfBdReview)
+            {{-- Head of Business Development's approval queue — RFQs
+                 Senior Operations has approved. Approving here escalates on
+                 to GM Assistant; rejecting sends it back to an earlier
+                 stage with a reason. See RfqController::index()
+                 ($scopedToHeadOfBdReview), Rfq::approveByHeadOfBd() /
+                 rejectToStage(). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Reviewed by Senior Operations</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td>{{ $rfq->rfq_number }}</td>
+                                <td>{{ $rfq->subject }}</td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">
+                                    {{ $rfq->senior_ops_reviewed_at?->format('M d, Y g:i A') ?? '—' }}
+                                    @if ($rfq->seniorOpsReviewedBy)
+                                        <div class="text-muted-soft small">by {{ $rfq->seniorOpsReviewedBy->name }}</div>
+                                    @endif
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <form action="{{ route('admin.rfqs.approve-head-of-bd', $rfq) }}" method="POST" class="d-inline"
+                                          data-confirm="Approve this RFQ? It moves on to GM Assistant.">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-check2-circle"></i> Approve
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                            data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                            data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
+                                            data-rfq-id="{{ $rfq->id }}">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's waiting on your review right now.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToGmAssistant)
+            {{-- GM Assistant's queue — RFQs Head of Business Development
+                 has approved, waiting on client details and payment terms
+                 before forwarding to the General Manager. See
+                 RfqController::index() ($scopedToGmAssistant),
+                 Rfq::recordGmAssistantDetails(). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Approved by Head of BD</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td>{{ $rfq->rfq_number }}</td>
+                                <td>{{ $rfq->subject }}</td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">
+                                    {{ $rfq->head_of_bd_approved_at?->format('M d, Y g:i A') ?? '—' }}
+                                    @if ($rfq->headOfBdApprovedBy)
+                                        <div class="text-muted-soft small">by {{ $rfq->headOfBdApprovedBy->name }}</div>
+                                    @endif
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-primary js-gm-assistant-rfq"
+                                            data-bs-toggle="modal" data-bs-target="#gmAssistantModal"
+                                            data-action="{{ route('admin.rfqs.gm-assistant-details', $rfq) }}"
+                                            data-rfq-id="{{ $rfq->id }}">
+                                        <i class="bi bi-pencil-square"></i> Add Details
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's waiting on you right now.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToGmReview)
+            {{-- General Manager's final approval queue — RFQs GM Assistant
+                 has finished adding client details/payment terms to. See
+                 RfqController::index() ($scopedToGmReview),
+                 Rfq::approveByGm(). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Details Added</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td>{{ $rfq->rfq_number }}</td>
+                                <td>{{ $rfq->subject }}</td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">
+                                    {{ $rfq->gm_assistant_completed_at?->format('M d, Y g:i A') ?? '—' }}
+                                    @if ($rfq->gmAssistantCompletedBy)
+                                        <div class="text-muted-soft small">by {{ $rfq->gmAssistantCompletedBy->name }}</div>
+                                    @endif
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <form action="{{ route('admin.rfqs.approve-gm', $rfq) }}" method="POST" class="d-inline"
+                                          data-confirm="Approve this RFQ? It moves on to Business Development to close.">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-check2-circle"></i> Approve
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's waiting on your approval right now.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToBdClosing)
+            {{-- Business Development's closing queue — RFQs the General
+                 Manager has approved, ready to send to the client and
+                 formally close out. See RfqController::index()
+                 ($scopedToBdClosing), Rfq::closeOut(). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Approved by GM</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td>{{ $rfq->rfq_number }}</td>
+                                <td>{{ $rfq->subject }}</td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">
+                                    {{ $rfq->gm_approved_at?->format('M d, Y g:i A') ?? '—' }}
+                                    @if ($rfq->gmApprovedBy)
+                                        <div class="text-muted-soft small">by {{ $rfq->gmApprovedBy->name }}</div>
+                                    @endif
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <form action="{{ route('admin.rfqs.close', $rfq) }}" method="POST" class="d-inline"
+                                          data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="bi bi-flag"></i> Close
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's ready to close right now.
                                 </td>
                             </tr>
                         @endforelse
@@ -374,7 +663,7 @@
              paginator scoped inside their own tab-pane (above) — a shared
              one down here would show $rfqs's page links even while a
              different paginator's tab is the active one. --}}
-        @if (! $scopedToDataEntry && ! $scopedToUnassigned && $rfqs->hasPages())
+        @if (! $scopedToDataEntry && ! $scopedToUnassigned && ! $scopedToSeniorOpsReview && $rfqs->hasPages())
             <div class="card-footer bg-white">
                 {{ $rfqs->links() }}
             </div>
@@ -409,6 +698,12 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter])
+    @if ($scopedToHeadOfBdReview)
+        @include('admin.rfqs._reject_modal')
+    @endif
+    @if ($scopedToGmAssistant)
+        @include('admin.rfqs._gm_assistant_modal')
+    @endif
 
     @if ($errors->create->any() || $errors->edit->any())
         @push('scripts')
@@ -417,6 +712,40 @@
                     var modalId = @json(old('rfq_id') ? 'editRfqModal' : 'createRfqModal');
                     var modalEl = document.getElementById(modalId);
                     if (modalEl) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
+
+    {{-- A failed reject submission — reopen the modal with its action
+         pointed back at the same RFQ (the form's action is set by JS per
+         row, so there's nothing server-side to fall back on otherwise). --}}
+    @if ($errors->reject->any() && old('reject_rfq_id'))
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById('rejectRfqModal');
+                    var form = document.getElementById('rejectRfqForm');
+                    if (modalEl && form) {
+                        form.action = @json(route('admin.rfqs.reject-head-of-bd', ['rfq' => old('reject_rfq_id')]));
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
+
+    {{-- Same idea, for a failed GM Assistant details submission. --}}
+    @if ($errors->gm_assistant->any() && old('gm_assistant_rfq_id'))
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById('gmAssistantModal');
+                    var form = document.getElementById('gmAssistantForm');
+                    if (modalEl && form) {
+                        form.action = @json(route('admin.rfqs.gm-assistant-details', ['rfq' => old('gm_assistant_rfq_id')]));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

@@ -167,6 +167,32 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Head of Business Development's Reject modal — one shared modal,
+    // populated per-row with which RFQ it's actually rejecting.
+    document.querySelectorAll('.js-reject-rfq').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('rejectRfqForm');
+            if (!form) return;
+
+            form.action = button.dataset.action;
+            var rfqIdField = form.querySelector('[name="reject_rfq_id"]');
+            if (rfqIdField) rfqIdField.value = button.dataset.rfqId || '';
+        });
+    });
+
+    // GM Assistant's Client Details / Payment Terms modal — same
+    // shared-modal-populated-per-row pattern as the Reject modal above.
+    document.querySelectorAll('.js-gm-assistant-rfq').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('gmAssistantForm');
+            if (!form) return;
+
+            form.action = button.dataset.action;
+            var rfqIdField = form.querySelector('[name="gm_assistant_rfq_id"]');
+            if (rfqIdField) rfqIdField.value = button.dataset.rfqId || '';
+        });
+    });
+
     // "By Sourcing" rows (Ready for Data Entry) — clicking anywhere on the
     // row opens that RFQ's quick-detail modal (subject, description,
     // Sourcing team, comments grouped by who wrote them). Our own listener

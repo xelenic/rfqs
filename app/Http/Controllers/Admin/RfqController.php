@@ -19,7 +19,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveHeadOfBd', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'close']),
             new Middleware('permission:rfqs.delete', only: ['destroy']),
         ];
     }
@@ -52,11 +52,46 @@ class RfqController extends Controller implements HasMiddleware
         // Sourcing aren't theirs to act on yet.
         $scopedToDataEntry = $status === 'Pending' && $request->user()->hasRole('Data Entry');
 
+        // Senior Operations' second review — RFQs where every assignee's
+        // split is both Sourcing- and Data-Entry-complete, waiting on
+        // approval before escalating to Head of Business Development. A
+        // second lens on Senior Operations' own Pending status, alongside
+        // "Unassigned" below — mutually exclusive via ?view=review, same
+        // pattern as Sourcing's "Returns".
+        $scopedToSeniorOpsReview = $status === 'Pending' && $request->user()->hasRole('Senior Operations') && $request->query('view') === 'review';
+
         // Operations' Pending list is just their actionable backlog — RFQs
         // nobody's assigned to Sourcing yet — not every Pending RFQ in the
         // company regardless of stage. Matches the red count badge in the
         // sidebar (layouts/app.blade.php).
-        $scopedToUnassigned = $status === 'Pending' && $request->user()->hasRole('Operations');
+        $scopedToUnassigned = $status === 'Pending' && $request->user()->hasRole('Senior Operations') && ! $scopedToSeniorOpsReview;
+
+        // Head of Business Development's Pending list — RFQs Senior
+        // Operations has approved, waiting on their own approve/reject
+        // decision. Unlike Senior Operations (which also has "Unassigned"),
+        // this is Head of BD's only queue, so it's their whole Pending page
+        // rather than a ?view= toggle.
+        $scopedToHeadOfBdReview = $status === 'Pending' && $request->user()->hasRole('Head of Business Development');
+
+        // GM Assistant's Pending list — RFQs Head of Business Development
+        // has approved, waiting on client details and payment terms before
+        // forwarding to the General Manager. Their only queue, same as
+        // Head of Business Development above.
+        $scopedToGmAssistant = $status === 'Pending' && $request->user()->hasRole('GM Assistant');
+
+        // General Manager's Pending list — RFQs GM Assistant has finished
+        // adding client details/payment terms to, waiting on final
+        // executive approval. Their only queue, same as Head of Business
+        // Development/GM Assistant above.
+        $scopedToGmReview = $status === 'Pending' && $request->user()->hasRole('General Manager');
+
+        // Business Development's own reference — RFQs the General Manager
+        // has approved, ready for BD to send to the client and formally
+        // close out. BD also sees the full company-wide Pending list by
+        // default (they may be tracking RFQs at any stage), so this is a
+        // second lens via ?view=closing, same pattern as Sourcing's
+        // "Returns" and Senior Operations' "Review".
+        $scopedToBdClosing = $status === 'Pending' && $request->user()->hasRole('Business Development') && $request->query('view') === 'closing';
 
         $search = $request->string('search')->trim()->toString();
 
@@ -72,7 +107,7 @@ class RfqController extends Controller implements HasMiddleware
         };
 
         $rfqs = Rfq::query()
-            ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
+            ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy'])
             // The quick-detail modal (Data Entry's "By Sourcing" list and
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
@@ -91,6 +126,10 @@ class RfqController extends Controller implements HasMiddleware
             })
             ->when($scopedToDataEntry, fn ($query) => $query->whereNotNull('sourcing_completed_at'))
             ->when($scopedToUnassigned, fn ($query) => $query->doesntHave('assignees'))
+            ->when($scopedToHeadOfBdReview, fn ($query) => $query->where('stage', 'head_of_bd_review'))
+            ->when($scopedToGmAssistant, fn ($query) => $query->where('stage', 'gm_assistant'))
+            ->when($scopedToGmReview, fn ($query) => $query->where('stage', 'gm_review'))
+            ->when($scopedToBdClosing, fn ($query) => $query->where('stage', 'bd_closing'))
             ->latest()
             ->paginate(10)
             ->withQueryString();
@@ -128,20 +167,36 @@ class RfqController extends Controller implements HasMiddleware
                 ->withQueryString()
             : null;
 
+        $seniorOpsReviewRfqs = $scopedToSeniorOpsReview
+            ? Rfq::query()
+                ->with(['assignees', 'creator', 'operationsAssignee', 'dataEntryCompletedBy'])
+                ->where('stage', 'senior_ops_review')
+                ->tap($applyCommonFilters)
+                ->latest()
+                ->paginate(10, ['*'], 'review_page')
+                ->withQueryString()
+            : null;
+
         return view('admin.rfqs.index', [
             'rfqs' => $rfqs,
             'bySourcingRfqs' => $bySourcingRfqs,
             'assignedRfqs' => $assignedRfqs,
+            'seniorOpsReviewRfqs' => $seniorOpsReviewRfqs,
             'search' => $search,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'scopedToMe' => $scopedToMe,
             'scopedToReturns' => $scopedToReturns,
+            'scopedToSeniorOpsReview' => $scopedToSeniorOpsReview,
             'scopedToDataEntry' => $scopedToDataEntry,
             'scopedToUnassigned' => $scopedToUnassigned,
+            'scopedToHeadOfBdReview' => $scopedToHeadOfBdReview,
+            'scopedToGmAssistant' => $scopedToGmAssistant,
+            'scopedToGmReview' => $scopedToGmReview,
+            'scopedToBdClosing' => $scopedToBdClosing,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
-            'operationsUsers' => User::role('Operations')->orderBy('name')->get(),
+            'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
     }
@@ -160,7 +215,7 @@ class RfqController extends Controller implements HasMiddleware
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
-            'operationsUsers' => User::role('Operations')->orderBy('name')->get(),
+            'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
         ]);
     }
 
@@ -229,7 +284,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $rfq->assignees()->sync($userIds);
 
-        if ($request->user()->hasRole('Operations') && ! $rfq->operations_assigned_by) {
+        if ($request->user()->hasRole('Senior Operations') && ! $rfq->operations_assigned_by) {
             $rfq->update([
                 'operations_assigned_by' => $request->user()->id,
                 'operations_assigned_at' => now(),
@@ -256,7 +311,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $operationsUserId = $validated['operations_user'] ?? null;
         $isValidOperationsUser = $operationsUserId
-            && User::role('Operations')->whereKey($operationsUserId)->exists();
+            && User::role('Senior Operations')->whereKey($operationsUserId)->exists();
 
         $rfq->update([
             'operations_assigned_by' => $isValidOperationsUser ? $operationsUserId : null,
@@ -349,6 +404,127 @@ class RfqController extends Controller implements HasMiddleware
         $rfq->completeDataEntryPartFor($assignee, $request->user());
 
         return redirect()->back()->with('status', "Marked {$assignee->name}'s part complete.");
+    }
+
+    /**
+     * Senior Operations' second review — every assignee's split is both
+     * Sourcing- and Data-Entry-complete; approving here escalates the RFQ
+     * on to Head of Business Development. See Rfq::completeSeniorOpsReview().
+     */
+    public function completeSeniorOpsReview(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            403,
+            'Only Senior Operations can approve this review.'
+        );
+        abort_unless($rfq->stage === 'senior_ops_review', 422, 'This RFQ is not awaiting Senior Operations review.');
+
+        $rfq->completeSeniorOpsReview($request->user());
+
+        return redirect()->back()->with('status', 'Approved — escalated to Head of Business Development.');
+    }
+
+    /**
+     * Head of Business Development approves — escalates the RFQ on to GM
+     * Assistant. See Rfq::approveByHeadOfBd().
+     */
+    public function approveHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Head of Business Development', 'Admin']),
+            403,
+            'Only Head of Business Development can approve here.'
+        );
+        abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+
+        $rfq->approveByHeadOfBd($request->user());
+
+        return redirect()->back()->with('status', 'Approved — escalated to GM Assistant.');
+    }
+
+    /**
+     * Head of Business Development rejects — sends the RFQ back to an
+     * earlier stage (Sourcing, Data Entry, or Senior Operations' own
+     * review) with a reason. See Rfq::rejectToStage().
+     */
+    public function rejectHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Head of Business Development', 'Admin']),
+            403,
+            'Only Head of Business Development can reject here.'
+        );
+        abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+
+        $validated = $request->validateWithBag('reject', [
+            'target_stage' => ['required', 'in:'.implode(',', Rfq::REJECT_TARGET_STAGES)],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user());
+
+        return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
+    }
+
+    /**
+     * GM Assistant records this RFQ's client details and payment terms and
+     * forwards it on to the General Manager. See
+     * Rfq::recordGmAssistantDetails().
+     */
+    public function submitGmAssistantDetails(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['GM Assistant', 'Admin']),
+            403,
+            'Only GM Assistant can add these details.'
+        );
+        abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not awaiting GM Assistant details.');
+
+        $validated = $request->validateWithBag('gm_assistant', [
+            'client_details' => ['required', 'string', 'max:2000'],
+            'payment_terms' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $rfq->recordGmAssistantDetails($request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
+
+        return redirect()->back()->with('status', 'Forwarded to General Manager.');
+    }
+
+    /**
+     * General Manager gives final approval — the RFQ is now ready for
+     * Business Development to close out. See Rfq::approveByGm().
+     */
+    public function approveGm(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['General Manager', 'Admin']),
+            403,
+            'Only the General Manager can give final approval.'
+        );
+        abort_unless($rfq->stage === 'gm_review', 422, 'This RFQ is not awaiting General Manager approval.');
+
+        $rfq->approveByGm($request->user());
+
+        return redirect()->back()->with('status', 'Approved — ready for Business Development to close.');
+    }
+
+    /**
+     * Business Development formally closes this RFQ out — the true end of
+     * the lifecycle. See Rfq::closeOut().
+     */
+    public function close(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Business Development', 'Admin']),
+            403,
+            'Only Business Development can close an RFQ.'
+        );
+        abort_unless($rfq->stage === 'bd_closing', 422, 'This RFQ is not ready to close.');
+
+        $rfq->closeOut($request->user());
+
+        return redirect()->back()->with('status', 'RFQ closed.');
     }
 
     /**

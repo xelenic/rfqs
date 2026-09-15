@@ -20,10 +20,21 @@
         'sourcing_returned' => ['bi-arrow-counterclockwise', 'danger', 'Returned to Sourcing'],
         'sourcing_handoff' => ['bi-clipboard-check', 'info', 'Handed off to Data Entry'],
         'data_entry_part_completed' => ['bi-check2-circle', 'success', 'Marked Complete by Data Entry'],
-        'data_entry_closed' => ['bi-flag-fill', 'success', 'RFQ Completed'],
+        'data_entry_all_completed' => ['bi-clipboard-check', 'success', 'All Splits Completed by Data Entry'],
+        'category_set' => ['bi-tag', 'secondary', 'Category Set'],
+        'senior_ops_reviewed' => ['bi-clipboard2-check', 'success', 'Approved by Senior Operations (2nd review)'],
+        'head_of_bd_approved' => ['bi-check-circle-fill', 'success', 'Approved by Head of Business Development'],
+        'head_of_bd_rejected' => ['bi-arrow-counterclockwise', 'danger', 'Rejected by Head of Business Development'],
+        'gm_assistant_completed' => ['bi-file-earmark-text', 'info', 'Client Details Added'],
+        'gm_approved' => ['bi-award', 'success', 'Approved by General Manager'],
+        'bd_closed' => ['bi-flag-fill', 'success', 'RFQ Closed'],
         'comment' => ['bi-chat-left-text', 'comment', $entry['comment']->parent_id ? 'Reply' : 'Comment'],
         default => ['bi-dot', 'comment', ''],
     };
+
+    // head_of_bd_rejected's detail already reads "Returned to X: reason" —
+    // give it the same visual weight as sourcing_returned's reason.
+    $detailClass = $entry['type'] === 'head_of_bd_rejected' ? 'text-danger' : 'text-muted-soft';
 
     // Same blur rules as the Progress card above: Sourcing never sees who
     // created or routed the RFQ (unconditional — that's never "you"), and
@@ -132,7 +143,7 @@
                 &middot; {{ $entry['at']->format('M d, Y g:i A') }}
             </div>
             @if ($entry['detail'])
-                <div class="rfq-timeline-detail text-muted-soft">{{ $entry['detail'] }}</div>
+                <div class="rfq-timeline-detail {{ $detailClass }}">{{ $entry['detail'] }}</div>
             @endif
         @endif
     </div>

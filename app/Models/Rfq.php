@@ -38,6 +38,45 @@ class Rfq extends Model
 
     public const RFQ_NUMBER_START = 1000;
 
+    /**
+     * The post-Data-Entry pipeline position, stored in the `stage` column —
+     * Senior Operations' second review through Business Development's
+     * final close. Null (and absent from this list) while an RFQ is still
+     * in the earlier, implicit pipeline — Sourcing/Data Entry — which
+     * already encodes its own position via operations_assigned_at, the
+     * assignees pivot, and sourcing_/data_entry_completed_at. See
+     * stageLabel() and completeDataEntryPartFor().
+     *
+     * @var array<int, string>
+     */
+    public const STAGES = [
+        'senior_ops_review', 'head_of_bd_review', 'gm_assistant',
+        'gm_review', 'bd_closing', 'closed',
+    ];
+
+    /**
+     * Stages Head of Business Development can reject an RFQ back to. See
+     * rejectToStage().
+     *
+     * @var array<int, string>
+     */
+    public const REJECT_TARGET_STAGES = ['sourcing', 'data_entry', 'senior_ops_review'];
+
+    /**
+     * activityTimeline() entry types belonging to the post-Data-Entry
+     * approval chain (category through BD's close) — used to single out
+     * these entries from the earlier Sourcing/Data-Entry ones and from
+     * comments, e.g. so Business Development can see this chain in the
+     * timeline while everything else there stays restricted for them. See
+     * show.blade.php's $restrictAssignment handling.
+     *
+     * @var array<int, string>
+     */
+    public const APPROVAL_CHAIN_TIMELINE_TYPES = [
+        'category_set', 'senior_ops_reviewed', 'head_of_bd_approved',
+        'head_of_bd_rejected', 'gm_assistant_completed', 'gm_approved', 'bd_closed',
+    ];
+
     protected $fillable = [
         'created_by',
         'operations_assigned_by',
@@ -46,6 +85,26 @@ class Rfq extends Model
         'sourcing_completed_at',
         'data_entry_completed_by',
         'data_entry_completed_at',
+        'category',
+        'category_set_by',
+        'category_set_at',
+        'stage',
+        'senior_ops_reviewed_by',
+        'senior_ops_reviewed_at',
+        'head_of_bd_approved_by',
+        'head_of_bd_approved_at',
+        'head_of_bd_rejected_by',
+        'head_of_bd_rejected_at',
+        'head_of_bd_reject_reason',
+        'head_of_bd_reject_target_stage',
+        'client_details',
+        'payment_terms',
+        'gm_assistant_completed_by',
+        'gm_assistant_completed_at',
+        'gm_approved_by',
+        'gm_approved_at',
+        'bd_closed_by',
+        'bd_closed_at',
         'wc_number',
         'rfq_number',
         'priority_level',
@@ -63,7 +122,35 @@ class Rfq extends Model
             'operations_assigned_at' => 'datetime',
             'sourcing_completed_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
+            'category_set_at' => 'datetime',
+            'senior_ops_reviewed_at' => 'datetime',
+            'head_of_bd_approved_at' => 'datetime',
+            'head_of_bd_rejected_at' => 'datetime',
+            'gm_assistant_completed_at' => 'datetime',
+            'gm_approved_at' => 'datetime',
+            'bd_closed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The human label for a stage value — used in the reject-target picker,
+     * the activity timeline, and status messages. Covers both the stored
+     * `stage` values and the two implicit pre-Data-Entry "stages" Head of
+     * BD can reject back to.
+     */
+    public static function stageLabel(?string $stage): string
+    {
+        return match ($stage) {
+            'sourcing' => 'Sourcing',
+            'data_entry' => 'Data Entry',
+            'senior_ops_review' => 'Senior Operations (2nd review)',
+            'head_of_bd_review' => 'Head of Business Development',
+            'gm_assistant' => 'GM Assistant',
+            'gm_review' => 'General Manager',
+            'bd_closing' => 'Business Development (closing)',
+            'closed' => 'Closed',
+            default => $stage ?? 'Unknown',
+        };
     }
 
     /**
@@ -85,6 +172,18 @@ class Rfq extends Model
     public function statusBadgeClass(): string
     {
         return $this->status === 'Completed' ? 'badge-soft-success' : 'badge-soft-warning';
+    }
+
+    /**
+     * This RFQ's status as it should display — "Completed" reads as
+     * "Closed" now that Business Development's final close is the true end
+     * of the lifecycle. The underlying status value, Rfq::STATUSES, and
+     * every ?status=Completed filter/query are unchanged; only this
+     * display text differs. See closeOut().
+     */
+    public function statusLabel(): string
+    {
+        return $this->status === 'Completed' ? 'Closed' : $this->status;
     }
 
     /**
@@ -156,6 +255,69 @@ class Rfq extends Model
     public function dataEntryCompletedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'data_entry_completed_by');
+    }
+
+    /**
+     * The Senior Operations member who set this RFQ's category. See
+     * categorize().
+     */
+    public function categorySetBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'category_set_by');
+    }
+
+    /**
+     * The Senior Operations member who gave the second-stage review, after
+     * Data Entry. See completeSeniorOpsReview().
+     */
+    public function seniorOpsReviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'senior_ops_reviewed_by');
+    }
+
+    /**
+     * The Head of Business Development member who approved this RFQ
+     * onward to GM Assistant. See approveByHeadOfBd().
+     */
+    public function headOfBdApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'head_of_bd_approved_by');
+    }
+
+    /**
+     * The Head of Business Development member who last rejected this RFQ
+     * back to an earlier stage. See rejectToStage().
+     */
+    public function headOfBdRejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'head_of_bd_rejected_by');
+    }
+
+    /**
+     * The GM Assistant who recorded this RFQ's client details and payment
+     * terms. See recordGmAssistantDetails().
+     */
+    public function gmAssistantCompletedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'gm_assistant_completed_by');
+    }
+
+    /**
+     * The General Manager who gave this RFQ its final approval. See
+     * approveByGm().
+     */
+    public function gmApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'gm_approved_by');
+    }
+
+    /**
+     * The Business Development member who formally closed this RFQ out.
+     * See closeOut().
+     */
+    public function bdClosedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'bd_closed_by');
     }
 
     /**
@@ -297,7 +459,17 @@ class Rfq extends Model
             ]);
         }
 
-        if ($this->isDataEntryCompleted()) {
+        // The whole-RFQ "every assignee's split is Data-Entry-complete"
+        // marker, if it was set, no longer holds — this assignee's isn't
+        // anymore. Checked directly rather than via isDataEntryCompleted()
+        // (status === 'Completed'): under the post-Data-Entry approval
+        // chain, status stays 'Pending' all the way through, so that check
+        // would never fire here even though this field still needs
+        // clearing whenever a return happens after the RFQ had reached
+        // Senior Operations' review or later. Also drops status back to
+        // Pending, covering the rarer case of a return reaching this method
+        // after the RFQ had actually been fully closed out.
+        if ($this->data_entry_completed_at !== null || $this->isDataEntryCompleted()) {
             $this->update([
                 'status' => 'Pending',
                 'data_entry_completed_by' => null,
@@ -318,8 +490,9 @@ class Rfq extends Model
      * completing one person's part never touches another's. Idempotent —
      * completing an already-completed split is a no-op. Only once every
      * assignee's split has been completed here does the RFQ as a whole
-     * formally close out (status becomes Completed), recording this as
-     * the closing completion.
+     * move on to Senior Operations' second review — status stays Pending
+     * all the way through that approval chain; see closeOut() for what
+     * actually closes it out.
      *
      * Caller is responsible for verifying $assignee is actually assigned.
      */
@@ -337,11 +510,187 @@ class Rfq extends Model
 
         if ($this->allDataEntryPartsCompleted()) {
             $this->update([
-                'status' => 'Completed',
                 'data_entry_completed_by' => $completedBy->id,
                 'data_entry_completed_at' => now(),
+                'stage' => 'senior_ops_review',
             ]);
         }
+    }
+
+    /**
+     * Senior Operations categorizes an incoming RFQ. Not idempotent-guarded
+     * — re-categorizing is fine — and doesn't move the RFQ's stage on its
+     * own; it's informational, usually set around the same time as
+     * assigning Sourcing.
+     */
+    public function categorize(string $category, User $setBy): void
+    {
+        $this->update([
+            'category' => $category,
+            'category_set_by' => $setBy->id,
+            'category_set_at' => now(),
+        ]);
+    }
+
+    /**
+     * Senior Operations gives the second-stage review, after Data Entry has
+     * finished every assignee's split. Idempotent. Escalates the RFQ on to
+     * Head of Business Development.
+     *
+     * Caller is responsible for verifying stage === 'senior_ops_review'.
+     */
+    public function completeSeniorOpsReview(User $reviewer): void
+    {
+        if ($this->senior_ops_reviewed_at !== null) {
+            return;
+        }
+
+        $this->update([
+            'senior_ops_reviewed_by' => $reviewer->id,
+            'senior_ops_reviewed_at' => now(),
+            'stage' => 'head_of_bd_review',
+        ]);
+    }
+
+    /**
+     * Head of Business Development approves — escalates the RFQ on to GM
+     * Assistant. Idempotent. Retires any prior rejection record, since an
+     * approval supersedes it.
+     *
+     * Caller is responsible for verifying stage === 'head_of_bd_review'.
+     */
+    public function approveByHeadOfBd(User $approver): void
+    {
+        if ($this->head_of_bd_approved_at !== null) {
+            return;
+        }
+
+        $this->update([
+            'head_of_bd_approved_by' => $approver->id,
+            'head_of_bd_approved_at' => now(),
+            'head_of_bd_rejected_by' => null,
+            'head_of_bd_rejected_at' => null,
+            'head_of_bd_reject_reason' => null,
+            'head_of_bd_reject_target_stage' => null,
+            'stage' => 'gm_assistant',
+        ]);
+    }
+
+    /**
+     * Head of Business Development rejects — sends the RFQ back to an
+     * earlier stage (Sourcing, Data Entry, or Senior Operations' own
+     * review) with a reason, undoing whatever downstream approval had
+     * already happened so it has to be earned again:
+     *
+     * - Sourcing: every assignee's split reopens — reuses
+     *   returnSourcingPartFor() per assignee unchanged, exactly as if Data
+     *   Entry had sent each of them back individually.
+     * - Data Entry: lighter reopen — only each assignee's own Data Entry
+     *   completion clears (their Sourcing work stays done), so the RFQ
+     *   reappears in Data Entry's existing "By Sourcing" queue untouched.
+     * - Senior Operations' review: nothing further to reopen below it.
+     *
+     * Also posts a comment recording the rejection, same convention as
+     * returnSourcingPartFor().
+     *
+     * Caller is responsible for verifying stage === 'head_of_bd_review' and
+     * $targetStage is one of REJECT_TARGET_STAGES.
+     */
+    public function rejectToStage(string $targetStage, string $reason, User $rejectedBy): void
+    {
+        $this->update([
+            'senior_ops_reviewed_by' => null,
+            'senior_ops_reviewed_at' => null,
+            'head_of_bd_approved_by' => null,
+            'head_of_bd_approved_at' => null,
+            'head_of_bd_rejected_by' => $rejectedBy->id,
+            'head_of_bd_rejected_at' => now(),
+            'head_of_bd_reject_reason' => $reason,
+            'head_of_bd_reject_target_stage' => $targetStage,
+            'stage' => $targetStage === 'senior_ops_review' ? 'senior_ops_review' : null,
+        ]);
+
+        if ($targetStage === 'sourcing') {
+            foreach ($this->assignees as $assignee) {
+                $this->returnSourcingPartFor($assignee, $reason, $rejectedBy);
+            }
+        } elseif ($targetStage === 'data_entry') {
+            foreach ($this->assignees as $assignee) {
+                $this->assignees()->updateExistingPivot($assignee->id, [
+                    'data_entry_completed_at' => null,
+                    'data_entry_completed_by' => null,
+                ]);
+            }
+            $this->load('assignees');
+            $this->update([
+                'data_entry_completed_by' => null,
+                'data_entry_completed_at' => null,
+            ]);
+        }
+
+        $this->comments()->create([
+            'user_id' => $rejectedBy->id,
+            'body' => 'Head of Business Development rejected — returned to '.self::stageLabel($targetStage).": {$reason}",
+        ]);
+        $this->load(['comments.author', 'comments.replies.author']);
+    }
+
+    /**
+     * GM Assistant records this RFQ's client details and payment terms and
+     * forwards it on to the General Manager. Not idempotent-guarded — the
+     * details can be corrected before the General Manager acts on them.
+     *
+     * Caller is responsible for verifying stage === 'gm_assistant'.
+     */
+    public function recordGmAssistantDetails(User $completedBy, string $clientDetails, ?string $paymentTerms): void
+    {
+        $this->update([
+            'client_details' => $clientDetails,
+            'payment_terms' => $paymentTerms,
+            'gm_assistant_completed_by' => $completedBy->id,
+            'gm_assistant_completed_at' => now(),
+            'stage' => 'gm_review',
+        ]);
+    }
+
+    /**
+     * General Manager gives final approval — the RFQ is now ready for
+     * Business Development to close out. Idempotent.
+     *
+     * Caller is responsible for verifying stage === 'gm_review'.
+     */
+    public function approveByGm(User $approver): void
+    {
+        if ($this->gm_approved_at !== null) {
+            return;
+        }
+
+        $this->update([
+            'gm_approved_by' => $approver->id,
+            'gm_approved_at' => now(),
+            'stage' => 'bd_closing',
+        ]);
+    }
+
+    /**
+     * Business Development formally closes this RFQ out — the true end of
+     * the lifecycle. Idempotent. Reuses the existing 'Completed' status
+     * value (see statusLabel() for why the display text says "Closed").
+     *
+     * Caller is responsible for verifying stage === 'bd_closing'.
+     */
+    public function closeOut(User $closedBy): void
+    {
+        if ($this->stage === 'closed') {
+            return;
+        }
+
+        $this->update([
+            'bd_closed_by' => $closedBy->id,
+            'bd_closed_at' => now(),
+            'stage' => 'closed',
+            'status' => 'Completed',
+        ]);
     }
 
     /**
@@ -451,9 +800,86 @@ class Rfq extends Model
 
         if ($this->data_entry_completed_at) {
             $entries[] = [
-                'type' => 'data_entry_closed',
+                'type' => 'data_entry_all_completed',
                 'at' => $this->data_entry_completed_at,
                 'actor' => $this->dataEntryCompletedBy,
+                'related' => null,
+                'detail' => null,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->category_set_at) {
+            $entries[] = [
+                'type' => 'category_set',
+                'at' => $this->category_set_at,
+                'actor' => $this->categorySetBy,
+                'related' => null,
+                'detail' => $this->category,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->senior_ops_reviewed_at) {
+            $entries[] = [
+                'type' => 'senior_ops_reviewed',
+                'at' => $this->senior_ops_reviewed_at,
+                'actor' => $this->seniorOpsReviewedBy,
+                'related' => null,
+                'detail' => null,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->head_of_bd_approved_at) {
+            $entries[] = [
+                'type' => 'head_of_bd_approved',
+                'at' => $this->head_of_bd_approved_at,
+                'actor' => $this->headOfBdApprovedBy,
+                'related' => null,
+                'detail' => null,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->head_of_bd_rejected_at) {
+            $entries[] = [
+                'type' => 'head_of_bd_rejected',
+                'at' => $this->head_of_bd_rejected_at,
+                'actor' => $this->headOfBdRejectedBy,
+                'related' => null,
+                'detail' => 'Returned to '.self::stageLabel($this->head_of_bd_reject_target_stage).': '.$this->head_of_bd_reject_reason,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->gm_assistant_completed_at) {
+            $entries[] = [
+                'type' => 'gm_assistant_completed',
+                'at' => $this->gm_assistant_completed_at,
+                'actor' => $this->gmAssistantCompletedBy,
+                'related' => null,
+                'detail' => null,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->gm_approved_at) {
+            $entries[] = [
+                'type' => 'gm_approved',
+                'at' => $this->gm_approved_at,
+                'actor' => $this->gmApprovedBy,
+                'related' => null,
+                'detail' => null,
+                'comment' => null,
+            ];
+        }
+
+        if ($this->bd_closed_at) {
+            $entries[] = [
+                'type' => 'bd_closed',
+                'at' => $this->bd_closed_at,
+                'actor' => $this->bdClosedBy,
                 'related' => null,
                 'detail' => null,
                 'comment' => null,

@@ -18,6 +18,10 @@
   --rfq-danger: #e5484d;
   --rfq-success: #1a9c6a;
   --rfq-radius: 0.55rem;
+  /* The regular --rfq-border is deliberately faint for card/input hairlines
+     — far too pale to read as a connector line in the Progress tree, so
+     that gets its own, clearly visible neutral. */
+  --rfq-tree-line: #94a1b8;
   --rfq-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
@@ -1049,139 +1053,190 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-text-muted);
 }
 
-/* ---------- RFQ progress flow chart ---------- */
+/* ---------- RFQ progress tree ---------- */
+/* A real org-chart: RFQ Created → Assigned by Operations → Assigned to
+   Sourcing, forking into one branch per assignee (each completing their
+   own split independently), each of those forking again into that same
+   assignee's own Data Entry status — genuine connector lines that fork,
+   since this is a fork, not a sequence: one branch finishing doesn't mean
+   the others have. The classic pure-CSS org-chart technique: every <li>
+   draws half a horizontal bar on each side via ::before/::after (removed
+   on the outer edges via :first-child/:last-child, skipped entirely via
+   :only-child when there's nothing to fork), plus its own vertical drop
+   down to its box; ul ul::before draws the stub from a parent down into
+   its children's row. Once every branch is done, a plain bridge connector
+   hands off to a second, single-chain tree for the remaining whole-RFQ
+   stages — Senior Operations through Business Development's close — which
+   never forks, so every <li> in it is an :only-child straight line down.
+   See show.blade.php's $stepDone/$currentStep. */
 
-.rfq-flow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0;
+.rfq-tree-scroll {
+  overflow-x: auto;
 }
 
-.rfq-flow-node {
+.rfq-tree,
+.rfq-tree ul {
   display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rfq-tree {
+  padding: 0.5rem 0.5rem 0;
+  width: max-content;
+  min-width: 100%;
+}
+
+.rfq-tree ul {
+  padding-top: 2rem;
+}
+
+.rfq-tree li {
+  position: relative;
+  padding: 2rem 0.6rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rfq-tree li::before,
+.rfq-tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 2rem;
+  border-top: 2px solid var(--rfq-tree-line);
+}
+
+.rfq-tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 2px solid var(--rfq-tree-line);
+}
+
+.rfq-tree li:only-child {
+  padding-top: 0;
+}
+
+.rfq-tree li:only-child::before,
+.rfq-tree li:only-child::after {
+  display: none;
+}
+
+.rfq-tree li:first-child::before,
+.rfq-tree li:last-child::after {
+  border: 0 none;
+}
+
+.rfq-tree li:last-child::before {
+  border-right: 2px solid var(--rfq-tree-line);
+  border-radius: 0 6px 0 0;
+}
+
+.rfq-tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+.rfq-tree ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 2rem;
+  border-left: 2px solid var(--rfq-tree-line);
+}
+
+.rfq-tree-bridge {
+  width: 2px;
+  height: 1.5rem;
+  background: var(--rfq-tree-line);
+  margin: 0 auto;
+}
+
+.rfq-tree-node {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
   background: var(--rfq-surface);
   border: 1px solid var(--rfq-border);
   border-radius: var(--rfq-radius);
-  padding: 0.7rem 0.9rem;
-  min-width: 210px;
+  padding: 0.6rem 0.85rem;
+  min-width: 180px;
+  text-align: left;
 }
 
-.rfq-flow-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--rfq-primary-soft);
-  color: var(--rfq-primary-dark);
-  flex-shrink: 0;
-  font-size: 0.95rem;
+/* Arrowhead where each incoming connector line meets its box — every node
+   has one except the very first ("RFQ Created"), which has no incoming
+   line at all. */
+.rfq-tree-node:not(.rfq-tree-root)::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid var(--rfq-tree-line);
 }
 
-.rfq-flow-node-assigned .rfq-flow-icon {
-  background: #e6f7ee;
-  color: #157347;
-}
-
-.rfq-flow-node-operations .rfq-flow-icon {
-  background: #f0ebfc;
-  color: #6f42c1;
-}
-
-.rfq-flow-node-pending {
+.rfq-tree-node.is-pending {
   border-style: dashed;
-}
-
-.rfq-flow-node-pending .rfq-flow-icon {
-  background: #f1f2f6;
   color: var(--rfq-text-muted);
 }
 
-.rfq-flow-title {
+.rfq-tree-node.is-done {
+  border-color: #a3d9b8;
+  background: #f3fbf6;
+}
+
+.rfq-tree-node.is-current {
+  border-color: var(--rfq-primary);
+  box-shadow: 0 0 0 3px var(--rfq-primary-soft);
+}
+
+.rfq-tree-node.is-returned {
+  border-color: #f5c2c7;
+  background: #fdf2f2;
+}
+
+.rfq-tree-node-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   font-weight: 700;
   font-size: 0.8rem;
 }
 
-.rfq-flow-meta {
+.rfq-tree-node.is-done .rfq-tree-node-title {
+  color: #157347;
+}
+
+.rfq-tree-node.is-current .rfq-tree-node-title {
+  color: var(--rfq-primary-dark);
+}
+
+.rfq-tree-node-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+  background: #f1f2f6;
+  padding: 0.1em 0.5em;
+  border-radius: 999px;
+}
+
+.rfq-tree-node-meta {
   font-size: 0.72rem;
   color: var(--rfq-text-muted);
-  line-height: 1.5;
-}
-
-.rfq-flow-meta-done {
-  color: #157347;
-  font-weight: 700;
-}
-
-.rfq-flow-connector {
-  width: 28px;
-  height: 2px;
-  background: var(--rfq-border);
-  flex-shrink: 0;
-}
-
-.rfq-flow-branches {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  position: relative;
-  padding-left: 28px;
-}
-
-.rfq-flow-branches::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 20px;
-  bottom: 20px;
-  width: 2px;
-  background: var(--rfq-border);
-}
-
-.rfq-flow-branches:has(.rfq-flow-branch:only-child)::before {
-  top: 50%;
-  bottom: 50%;
-}
-
-.rfq-flow-branch {
-  position: relative;
-}
-
-.rfq-flow-branch::before {
-  content: '';
-  position: absolute;
-  left: -28px;
-  top: 50%;
-  width: 28px;
-  height: 2px;
-  background: var(--rfq-border);
-}
-
-@media (max-width: 767.98px) {
-  .rfq-flow {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .rfq-flow-connector {
-    width: 2px;
-    height: 20px;
-    margin-left: 20px;
-  }
-
-  .rfq-flow-branches {
-    padding-left: 0;
-    padding-top: 0;
-  }
-
-  .rfq-flow-branches::before,
-  .rfq-flow-branch::before {
-    display: none;
-  }
+  line-height: 1.4;
 }
 
 /* ---------- RFQ activity timeline ---------- */

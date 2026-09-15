@@ -52,7 +52,7 @@
         <select name="status" id="{{ $idPrefix }}-status" class="form-select @error('status', $idPrefix) is-invalid @enderror" required>
             @foreach ($statuses as $status)
                 <option value="{{ $status }}" {{ ($showOld ? old('status', $defaultStatus ?? 'Pending') : ($defaultStatus ?? 'Pending')) === $status ? 'selected' : '' }}>
-                    {{ $status }}
+                    {{ $status === 'Completed' ? 'Closed' : $status }}
                 </option>
             @endforeach
         </select>

@@ -34,7 +34,29 @@
     // Operations doesn't need a separate "Assign Operations" picker — when
     // they assign Sourcing, they're implicitly recorded as the one routing
     // it (see RfqController::assign()), so just the one button is shown.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Operations');
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Senior Operations');
+
+    // Senior Operations' second review — only shown while the RFQ is
+    // actually sitting in that stage, same as it only appears on the
+    // Review queue while it's there. See Rfq::completeSeniorOpsReview().
+    $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->stage === 'senior_ops_review';
+
+    // Head of Business Development's own review — same "only while it's
+    // actually theirs to decide" rule. See Rfq::approveByHeadOfBd() /
+    // rejectToStage().
+    $canDecideHeadOfBdReview = auth()->user()->hasAnyRole(['Head of Business Development', 'Admin']) && $rfq->stage === 'head_of_bd_review';
+
+    // GM Assistant's own turn — same rule again. See
+    // Rfq::recordGmAssistantDetails().
+    $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->stage === 'gm_assistant';
+
+    // General Manager's final approval — same rule again. See
+    // Rfq::approveByGm().
+    $canApproveGm = auth()->user()->hasAnyRole(['General Manager', 'Admin']) && $rfq->stage === 'gm_review';
+
+    // Business Development's closing action — the true end of the
+    // lifecycle. See Rfq::closeOut().
+    $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing';
 
     // A Sourcing assignee sees their own split RFQ number (e.g.
     // "RFQ1001-P2 of P3") once more than one person is sharing the work;
@@ -42,6 +64,24 @@
     $displayRfqNumber = ($restrictSourcingView && $rfq->assignees->contains('id', auth()->id()))
         ? $rfq->sourcingSplitNumberFor(auth()->user())
         : $rfq->rfq_number;
+
+    // Drives the vertical Progress stepper below — one boolean per stage,
+    // in the same top-to-bottom order they're drawn in, so the first not
+    // yet done is "where things stand right now". A closed RFQ has every
+    // stage done, so $currentStep comes back null — nothing to highlight,
+    // it's finished.
+    $stepDone = [
+        'created' => true,
+        'operations' => $rfq->operationsAssignee !== null,
+        'sourcing' => $rfq->assignees->isNotEmpty() && $rfq->allSourcingPartsCompleted(),
+        'data_entry' => $rfq->data_entry_completed_at !== null,
+        'senior_ops' => $rfq->senior_ops_reviewed_at !== null,
+        'head_of_bd' => $rfq->head_of_bd_approved_at !== null,
+        'gm_assistant' => $rfq->gm_assistant_completed_at !== null,
+        'gm_review' => $rfq->gm_approved_at !== null,
+        'closed' => $rfq->bd_closed_at !== null,
+    ];
+    $currentStep = collect($stepDone)->search(false, true);
 @endphp
 
 @section('title', $displayRfqNumber)
@@ -64,6 +104,60 @@
                     <input type="hidden" name="return_to" value="show">
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-check2-circle"></i> Mark Complete
+                    </button>
+                </form>
+            @endif
+            @if ($canApproveSeniorOpsReview)
+                <form action="{{ route('admin.rfqs.complete-senior-ops-review', $rfq) }}" method="POST"
+                      data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-check2-circle"></i> Approve
+                    </button>
+                </form>
+            @endif
+            @if ($canDecideHeadOfBdReview)
+                <form action="{{ route('admin.rfqs.approve-head-of-bd', $rfq) }}" method="POST"
+                      data-confirm="Approve this RFQ? It moves on to GM Assistant.">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-check2-circle"></i> Approve
+                    </button>
+                </form>
+                <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                        data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                        data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reject
+                </button>
+            @endif
+            @if ($canSubmitGmAssistantDetails)
+                <button type="button" class="btn btn-sm btn-primary js-gm-assistant-rfq"
+                        data-bs-toggle="modal" data-bs-target="#gmAssistantModal"
+                        data-action="{{ route('admin.rfqs.gm-assistant-details', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-pencil-square"></i> Add Details
+                </button>
+            @endif
+            @if ($canApproveGm)
+                <form action="{{ route('admin.rfqs.approve-gm', $rfq) }}" method="POST"
+                      data-confirm="Approve this RFQ? It moves on to Business Development to close.">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-check2-circle"></i> Approve
+                    </button>
+                </form>
+            @endif
+            @if ($canCloseRfq)
+                <form action="{{ route('admin.rfqs.close', $rfq) }}" method="POST"
+                      data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-flag"></i> Close
                     </button>
                 </form>
             @endif
@@ -133,96 +227,183 @@
     <div class="card mb-3">
         <div class="card-header">Progress</div>
         <div class="card-body">
-            <div class="rfq-flow">
-                <div class="rfq-flow-node rfq-flow-node-created">
-                    <div class="rfq-flow-icon"><i class="bi bi-file-earmark-plus"></i></div>
-                    <div>
-                        <div class="rfq-flow-title">RFQ Created</div>
-                        <div class="rfq-flow-meta">{{ $rfq->created_at->format('M d, Y g:i A') }}</div>
-                        <div class="rfq-flow-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">by {{ $rfq->creator?->name ?? 'Unknown' }}</div>
-                    </div>
-                </div>
-
-                <div class="rfq-flow-connector"></div>
-
-                @if ($rfq->operationsAssignee)
-                    <div class="rfq-flow-node rfq-flow-node-operations">
-                        <div class="rfq-flow-icon"><i class="bi bi-diagram-2"></i></div>
-                        <div>
-                            <div class="rfq-flow-title">Assigned by Operations</div>
-                            <div class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                <div class="rfq-flow-meta fw-semibold">{{ $rfq->operationsAssignee->name }}</div>
-                                <div class="rfq-flow-meta">{{ $rfq->operations_assigned_at->format('M d, Y g:i A') }}</div>
+            <div class="rfq-tree-scroll">
+                {{-- RFQ Created → Assigned by Operations → Assigned to
+                     Sourcing, which forks into one branch per assignee —
+                     each completing their own split independently, then
+                     forking again into their own Data Entry status. Real
+                     connector lines rather than a flat list, since this is
+                     genuinely a fork, not a sequence — one branch finishing
+                     doesn't mean the others have. See
+                     Rfq::completeSourcingPartFor()/completeDataEntryPartFor(). --}}
+                <ul class="rfq-tree">
+                    <li>
+                        <div class="rfq-tree-node is-done rfq-tree-root">
+                            <div class="rfq-tree-node-title">RFQ Created</div>
+                            <div class="rfq-tree-node-meta">
+                                {{ $rfq->created_at->format('M d, Y g:i A') }}
+                                &middot; <span class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">by {{ $rfq->creator?->name ?? 'Unknown' }}</span>
                             </div>
                         </div>
-                    </div>
-                @else
-                    <div class="rfq-flow-node rfq-flow-node-pending">
-                        <div class="rfq-flow-icon"><i class="bi bi-hourglass-split"></i></div>
-                        <div>
-                            <div class="rfq-flow-title">Awaiting Operations</div>
-                            <div class="rfq-flow-meta">Not yet assigned</div>
-                        </div>
-                    </div>
-                @endif
-
-                <div class="rfq-flow-connector"></div>
-
-                <div class="rfq-flow-branches">
-                    @forelse ($rfq->assignees->sortBy('pivot.created_at') as $assignee)
-                        @php $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id(); @endphp
-                        <div class="rfq-flow-branch">
-                            <div class="rfq-flow-node rfq-flow-node-assigned">
-                                <div class="rfq-flow-icon"><i class="bi bi-person-check"></i></div>
-                                <div>
-                                    <div class="rfq-flow-title">Assigned to Sourcing</div>
-                                    <div class="{{ ($restrictAssignment || $isOtherSourcingPartner) ? 'rfq-blurred' : '' }}">
-                                        <div class="rfq-flow-meta fw-semibold">{{ $assignee->name }}</div>
-                                        <div class="rfq-flow-meta">{{ $assignee->pivot->created_at->format('M d, Y g:i A') }}</div>
-                                        @if ($assignee->pivot->completed_at)
-                                            <div class="rfq-flow-meta rfq-flow-meta-done">
-                                                <i class="bi bi-check-circle-fill"></i> Part completed
-                                            </div>
+                        <ul>
+                            <li>
+                                <div class="rfq-tree-node {{ $stepDone['operations'] ? 'is-done' : ($currentStep === 'operations' ? 'is-current' : 'is-pending') }}">
+                                    <div class="rfq-tree-node-title">Assigned by Operations</div>
+                                    @if ($rfq->operationsAssignee)
+                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                            {{ $rfq->operationsAssignee->name }} &middot; {{ $rfq->operations_assigned_at->format('M d, Y g:i A') }}
+                                        </div>
+                                    @else
+                                        <div class="rfq-tree-node-meta">Not yet assigned</div>
+                                    @endif
+                                </div>
+                                <ul>
+                                    <li>
+                                        <div class="rfq-tree-node {{ $stepDone['sourcing'] ? 'is-done' : ($currentStep === 'sourcing' ? 'is-current' : 'is-pending') }}">
+                                            <div class="rfq-tree-node-title">Assigned to Sourcing</div>
+                                            @if ($rfq->assignees->isEmpty())
+                                                <div class="rfq-tree-node-meta">Not yet assigned</div>
+                                            @endif
+                                        </div>
+                                        @if ($rfq->assignees->isNotEmpty())
+                                            <ul>
+                                                @foreach ($rfq->assignees->sortBy('pivot.created_at') as $assignee)
+                                                    @php
+                                                        $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id();
+                                                        $branchBlurred = $restrictAssignment || $isOtherSourcingPartner;
+                                                        $sourcingDone = $assignee->pivot->completed_at !== null;
+                                                        $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
+                                                        $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
+                                                        // Sourcing never learns exactly who in Data
+                                                        // Entry touched a split — same substitution
+                                                        // used in the activity timeline and the
+                                                        // return-reason banner.
+                                                        $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
+                                                    @endphp
+                                                    <li>
+                                                        <div class="rfq-tree-node {{ $sourcingDone ? 'is-done' : 'is-pending' }} {{ $branchBlurred ? 'rfq-blurred' : '' }}">
+                                                            <div class="rfq-tree-node-title">
+                                                                {{ $assignee->name }}
+                                                                <span class="rfq-tree-node-tag">{{ $rfq->sourcingSplitNumberFor($assignee) }}</span>
+                                                            </div>
+                                                            @if ($sourcingDone)
+                                                                <div class="rfq-tree-node-meta">Completed {{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</div>
+                                                            @else
+                                                                <div class="rfq-tree-node-meta">Pending since {{ $assignee->pivot->created_at->format('M d, Y g:i A') }}</div>
+                                                            @endif
+                                                        </div>
+                                                        <ul>
+                                                            <li>
+                                                                <div class="rfq-tree-node {{ $deIsDone ? 'is-done' : ($deIsReturned ? 'is-returned' : 'is-pending') }} {{ $branchBlurred ? 'rfq-blurred' : '' }}">
+                                                                    <div class="rfq-tree-node-title">
+                                                                        {{ $assignee->name }}
+                                                                        <span class="rfq-tree-node-tag">{{ $rfq->sourcingSplitNumberFor($assignee) }}</span>
+                                                                    </div>
+                                                                    @if ($deIsDone)
+                                                                        <div class="rfq-tree-node-meta">{{ $deActorName }} &middot; {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</div>
+                                                                    @elseif ($deIsReturned)
+                                                                        <div class="rfq-tree-node-meta">Returned — rework needed</div>
+                                                                    @elseif ($sourcingDone)
+                                                                        <div class="rfq-tree-node-meta">Awaiting review</div>
+                                                                    @else
+                                                                        <div class="rfq-tree-node-meta">Awaiting Sourcing</div>
+                                                                    @endif
+                                                                </div>
+                                                            </li>
+                                                        </ul>
+                                                    </li>
+                                                @endforeach
+                                            </ul>
                                         @endif
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="rfq-flow-branch">
-                            <div class="rfq-flow-node rfq-flow-node-pending">
-                                <div class="rfq-flow-icon"><i class="bi bi-hourglass-split"></i></div>
-                                <div>
-                                    <div class="rfq-flow-title">Awaiting Sourcing</div>
-                                    <div class="rfq-flow-meta">Not yet assigned</div>
-                                </div>
-                            </div>
-                        </div>
-                    @endforelse
-                </div>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
 
-                <div class="rfq-flow-connector"></div>
+            {{-- Every split's done — the branches above converge back into
+                 one whole-RFQ pipeline: Senior Operations' second review,
+                 through Business Development's close. --}}
+            <div class="rfq-tree-bridge"></div>
 
-                @if ($rfq->isWithDataEntry())
-                    <div class="rfq-flow-node rfq-flow-node-operations">
-                        <div class="rfq-flow-icon"><i class="bi bi-clipboard-check"></i></div>
-                        <div>
-                            <div class="rfq-flow-title">Handed to Data Entry</div>
-                            <div class="{{ ($restrictSourcingView && $rfq->sourcing_completed_by !== auth()->id()) ? 'rfq-blurred' : '' }}">
-                                <div class="rfq-flow-meta fw-semibold">{{ $rfq->sourcingCompletedBy?->name ?? 'Unknown' }}</div>
-                                <div class="rfq-flow-meta">{{ $rfq->sourcing_completed_at->format('M d, Y g:i A') }}</div>
-                            </div>
+            <div class="rfq-tree-scroll">
+                <ul class="rfq-tree rfq-tree-tail">
+                    <li>
+                        <div class="rfq-tree-node {{ $stepDone['senior_ops'] ? 'is-done' : ($currentStep === 'senior_ops' ? 'is-current' : 'is-pending') }}">
+                            <div class="rfq-tree-node-title">Senior Operations Approval</div>
+                            @if ($rfq->senior_ops_reviewed_at)
+                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                    {{ $rfq->seniorOpsReviewedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->senior_ops_reviewed_at->format('M d, Y g:i A') }}
+                                </div>
+                            @else
+                                <div class="rfq-tree-node-meta">{{ $stepDone['data_entry'] ? 'Awaiting review' : 'Not yet reached' }}</div>
+                            @endif
                         </div>
-                    </div>
-                @else
-                    <div class="rfq-flow-node rfq-flow-node-pending">
-                        <div class="rfq-flow-icon"><i class="bi bi-hourglass-split"></i></div>
-                        <div>
-                            <div class="rfq-flow-title">Awaiting Data Entry</div>
-                            <div class="rfq-flow-meta">Sourcing not yet complete</div>
-                        </div>
-                    </div>
-                @endif
+                        <ul>
+                            <li>
+                                <div class="rfq-tree-node {{ $stepDone['head_of_bd'] ? 'is-done' : ($currentStep === 'head_of_bd' ? 'is-current' : 'is-pending') }} {{ $rfq->head_of_bd_rejected_at && ! $stepDone['head_of_bd'] ? 'is-returned' : '' }}">
+                                    <div class="rfq-tree-node-title">Head of Business Development</div>
+                                    @if ($rfq->head_of_bd_approved_at)
+                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                            Approved by {{ $rfq->headOfBdApprovedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->head_of_bd_approved_at->format('M d, Y g:i A') }}
+                                        </div>
+                                    @elseif ($rfq->head_of_bd_rejected_at)
+                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                            Rejected by {{ $rfq->headOfBdRejectedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->head_of_bd_rejected_at->format('M d, Y g:i A') }}
+                                        </div>
+                                        <div class="rfq-tree-node-meta text-danger">Returned to {{ \App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage) }}</div>
+                                    @else
+                                        <div class="rfq-tree-node-meta">{{ $stepDone['senior_ops'] ? 'Awaiting review' : 'Not yet reached' }}</div>
+                                    @endif
+                                </div>
+                                <ul>
+                                    <li>
+                                        <div class="rfq-tree-node {{ $stepDone['gm_assistant'] ? 'is-done' : ($currentStep === 'gm_assistant' ? 'is-current' : 'is-pending') }}">
+                                            <div class="rfq-tree-node-title">GM Assistant</div>
+                                            @if ($rfq->gm_assistant_completed_at)
+                                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                                    {{ $rfq->gmAssistantCompletedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->gm_assistant_completed_at->format('M d, Y g:i A') }}
+                                                </div>
+                                            @else
+                                                <div class="rfq-tree-node-meta">{{ $stepDone['head_of_bd'] ? 'Awaiting details' : 'Not yet reached' }}</div>
+                                            @endif
+                                        </div>
+                                        <ul>
+                                            <li>
+                                                <div class="rfq-tree-node {{ $stepDone['gm_review'] ? 'is-done' : ($currentStep === 'gm_review' ? 'is-current' : 'is-pending') }}">
+                                                    <div class="rfq-tree-node-title">General Manager</div>
+                                                    @if ($rfq->gm_approved_at)
+                                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                                            Approved by {{ $rfq->gmApprovedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->gm_approved_at->format('M d, Y g:i A') }}
+                                                        </div>
+                                                    @else
+                                                        <div class="rfq-tree-node-meta">{{ $stepDone['gm_assistant'] ? 'Awaiting approval' : 'Not yet reached' }}</div>
+                                                    @endif
+                                                </div>
+                                                <ul>
+                                                    <li>
+                                                        <div class="rfq-tree-node {{ $stepDone['closed'] ? 'is-done' : ($currentStep === 'closed' ? 'is-current' : 'is-pending') }}">
+                                                            <div class="rfq-tree-node-title">Closed</div>
+                                                            @if ($rfq->bd_closed_at)
+                                                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                                                                    {{ $rfq->bdClosedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->bd_closed_at->format('M d, Y g:i A') }}
+                                                                </div>
+                                                            @else
+                                                                <div class="rfq-tree-node-meta">{{ $stepDone['gm_review'] ? 'Ready for Business Development' : 'Not yet reached' }}</div>
+                                                            @endif
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
@@ -233,7 +414,7 @@
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span>{{ $rfq->subject }}</span>
                     <div class="d-flex gap-2">
-                        <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->status }}</span>
+                        <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
                         <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }} priority</span>
                     </div>
                 </div>
@@ -268,6 +449,18 @@
                         <p class="mb-0" style="white-space: pre-line;">{{ $rfq->description }}</p>
                     @else
                         <p class="text-muted-soft mb-0">No description provided.</p>
+                    @endif
+
+                    @if ($rfq->client_details)
+                        <hr class="my-3">
+
+                        <h2 class="h6 fw-bold mb-2">Client Details</h2>
+                        <p class="mb-3" style="white-space: pre-line;">{{ $rfq->client_details }}</p>
+
+                        @if ($rfq->payment_terms)
+                            <h2 class="h6 fw-bold mb-2">Payment Terms</h2>
+                            <p class="mb-0" style="white-space: pre-line;">{{ $rfq->payment_terms }}</p>
+                        @endif
                     @endif
                 </div>
             </div>
@@ -428,6 +621,12 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
+    @if ($canDecideHeadOfBdReview)
+        @include('admin.rfqs._reject_modal')
+    @endif
+    @if ($canSubmitGmAssistantDetails)
+        @include('admin.rfqs._gm_assistant_modal')
+    @endif
 
     @if ($errors->edit->any())
         @push('scripts')
@@ -435,6 +634,36 @@
                 document.addEventListener('DOMContentLoaded', function () {
                     var modalEl = document.getElementById('editRfqModal');
                     if (modalEl) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
+
+    @if ($canDecideHeadOfBdReview && $errors->reject->any())
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById('rejectRfqModal');
+                    var form = document.getElementById('rejectRfqForm');
+                    if (modalEl && form) {
+                        form.action = @json(route('admin.rfqs.reject-head-of-bd', $rfq));
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
+
+    @if ($canSubmitGmAssistantDetails && $errors->gm_assistant->any())
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById('gmAssistantModal');
+                    var form = document.getElementById('gmAssistantForm');
+                    if (modalEl && form) {
+                        form.action = @json(route('admin.rfqs.gm-assistant-details', $rfq));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

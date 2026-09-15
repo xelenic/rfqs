@@ -32,6 +32,12 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::patch('rfqs/{rfq}/complete-sourcing', [RfqController::class, 'completeSourcing'])->name('rfqs.complete-sourcing');
     Route::patch('rfqs/{rfq}/return-sourcing', [RfqController::class, 'returnSourcing'])->name('rfqs.return-sourcing');
     Route::patch('rfqs/{rfq}/complete-data-entry', [RfqController::class, 'completeDataEntry'])->name('rfqs.complete-data-entry');
+    Route::patch('rfqs/{rfq}/complete-senior-ops-review', [RfqController::class, 'completeSeniorOpsReview'])->name('rfqs.complete-senior-ops-review');
+    Route::patch('rfqs/{rfq}/approve-head-of-bd', [RfqController::class, 'approveHeadOfBd'])->name('rfqs.approve-head-of-bd');
+    Route::patch('rfqs/{rfq}/reject-head-of-bd', [RfqController::class, 'rejectHeadOfBd'])->name('rfqs.reject-head-of-bd');
+    Route::patch('rfqs/{rfq}/gm-assistant-details', [RfqController::class, 'submitGmAssistantDetails'])->name('rfqs.gm-assistant-details');
+    Route::patch('rfqs/{rfq}/approve-gm', [RfqController::class, 'approveGm'])->name('rfqs.approve-gm');
+    Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit']);
     Route::post('rfqs/{rfq}/comments', [RfqCommentController::class, 'store'])->name('rfqs.comments.store');
     Route::delete('rfqs/{rfq}/comments/{comment}', [RfqCommentController::class, 'destroy'])->name('rfqs.comments.destroy');

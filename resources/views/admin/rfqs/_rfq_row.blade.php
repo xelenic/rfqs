@@ -12,7 +12,7 @@
     <td>{{ $rfq->rfq_number }}</td>
     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
     @unless ($statusFilter)
-        <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->status }}</span></td>
+        <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
     @endunless
     <td>{{ $rfq->subject }}</td>
     <td class="text-muted-soft">
