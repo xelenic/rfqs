@@ -82,6 +82,204 @@
         'closed' => $rfq->bd_closed_at !== null,
     ];
     $currentStep = collect($stepDone)->search(false, true);
+
+    // Which tab opens by default in the Step Details panel below the
+    // Progress chart — whichever stage is currently in play, or Closed
+    // once every stage is done and there's nothing left "current".
+    $activeStep = $currentStep ?? 'closed';
+
+    $stepTabs = [
+        'created' => ['label' => 'Created', 'icon' => 'bi-flag'],
+        'operations' => ['label' => 'Operations', 'icon' => 'bi-diagram-2'],
+        'sourcing' => ['label' => 'Sourcing', 'icon' => 'bi-people'],
+        'data_entry' => ['label' => 'Data Entry', 'icon' => 'bi-keyboard'],
+        'senior_ops' => ['label' => 'Senior Ops', 'icon' => 'bi-clipboard2-check'],
+        'head_of_bd' => ['label' => 'Head of BD', 'icon' => 'bi-person-check'],
+        'gm_assistant' => ['label' => 'GM Assistant', 'icon' => 'bi-file-earmark-text'],
+        'gm_review' => ['label' => 'General Manager', 'icon' => 'bi-award'],
+        'closed' => ['label' => 'Closed', 'icon' => 'bi-check2-all'],
+    ];
+
+    // Progress is rendered by Apache ECharts (a single tree series) —
+    // real connector-line geometry instead of fragile pseudo-element math.
+    // Once Sourcing splits, every branch keeps its own copy of the rest of
+    // the chain (Senior Operations Approval onward) all the way to Closed,
+    // rather than merging back into one shared node — each split reads as
+    // its own complete path top to bottom. Those later stages are still
+    // recorded once on the RFQ as a whole (one review, not one per split),
+    // so every branch's copy of them shows the same underlying approval —
+    // this is purely how the chart lays the same state out per branch. See
+    // public/js/admin.js (renderRfqProgressChart) and the
+    // #rfq-progress-data script below.
+    //
+    // Blurred content (Sourcing not seeing another partner's identity, or
+    // who created/routed/approved outside their own sphere) is masked
+    // server-side into a plain label here rather than styled — a canvas
+    // chart can't selectively CSS-blur one rendered text run the way the
+    // rest of the page does.
+    $maskIfBlurred = fn (?string $label, bool $blurred) => $blurred ? 'Restricted' : ($label ?? 'Unknown');
+
+    $nodeState = fn (bool $done, bool $current = false, bool $returned = false) => match (true) {
+        $returned => 'returned',
+        $done => 'done',
+        $current => 'current',
+        default => 'pending',
+    };
+
+    $assignees = $rfq->assignees->sortBy('pivot.created_at')->values();
+    $branchCount = max($assignees->count(), 1);
+
+    // Senior Operations Approval → Closed, duplicated per branch (see
+    // comment above). $rfqNumber identifies which split a given copy
+    // belongs to once there's more than one — null for a single, unsplit
+    // RFQ or a branch that's currently masked from this viewer, and
+    // rendered on its own line rather than folded into the title. Each
+    // node's `meta` is a list of 0-2 further short lines — who (role/
+    // actor) on its own line, when (date and time) on its own, rather
+    // than "Name · Date" packed together. `step` tags which Step Details
+    // tab (below the chart) this node belongs to, so selecting a tab can
+    // highlight every node — across every branch — for that stage. See
+    // public/js/admin.js (renderRfqProgressChart), which renders name,
+    // rfq_number, and every meta entry each as their own line, and reads
+    // `step` to drive the tab-select highlight.
+    $buildTailChain = function (?string $rfqNumber) use ($rfq, $maskIfBlurred, $restrictSourcingView, $nodeState, $stepDone, $currentStep) {
+        $closed = [
+            'name' => 'Closed',
+            'step' => 'closed',
+            'rfq_number' => $rfqNumber,
+            'meta' => $rfq->bd_closed_at
+                ? [$maskIfBlurred($rfq->bdClosedBy?->name, $restrictSourcingView), $rfq->bd_closed_at->format('M d, Y g:i A')]
+                : [$stepDone['gm_review'] ? 'Ready for Business Development' : 'Not yet reached'],
+            'state' => $nodeState($stepDone['closed'], $currentStep === 'closed'),
+            'children' => [],
+        ];
+
+        $gmReview = [
+            'name' => 'General Manager',
+            'step' => 'gm_review',
+            'rfq_number' => $rfqNumber,
+            'meta' => $rfq->gm_approved_at
+                ? ['Approved by '.$maskIfBlurred($rfq->gmApprovedBy?->name, $restrictSourcingView), $rfq->gm_approved_at->format('M d, Y g:i A')]
+                : [$stepDone['gm_assistant'] ? 'Awaiting approval' : 'Not yet reached'],
+            'state' => $nodeState($stepDone['gm_review'], $currentStep === 'gm_review'),
+            'children' => [$closed],
+        ];
+
+        $gmAssistant = [
+            'name' => 'GM Assistant',
+            'step' => 'gm_assistant',
+            'rfq_number' => $rfqNumber,
+            'meta' => $rfq->gm_assistant_completed_at
+                ? [$maskIfBlurred($rfq->gmAssistantCompletedBy?->name, $restrictSourcingView), $rfq->gm_assistant_completed_at->format('M d, Y g:i A')]
+                : [$stepDone['head_of_bd'] ? 'Awaiting details' : 'Not yet reached'],
+            'state' => $nodeState($stepDone['gm_assistant'], $currentStep === 'gm_assistant'),
+            'children' => [$gmReview],
+        ];
+
+        $headOfBd = [
+            'name' => 'Head of Business Development',
+            'step' => 'head_of_bd',
+            'rfq_number' => $rfqNumber,
+            'meta' => match (true) {
+                (bool) $rfq->head_of_bd_approved_at => ['Approved by '.$maskIfBlurred($rfq->headOfBdApprovedBy?->name, $restrictSourcingView), $rfq->head_of_bd_approved_at->format('M d, Y g:i A')],
+                (bool) $rfq->head_of_bd_rejected_at => ['Rejected by '.$maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage)],
+                default => [$stepDone['senior_ops'] ? 'Awaiting review' : 'Not yet reached'],
+            },
+            'state' => $nodeState($stepDone['head_of_bd'], $currentStep === 'head_of_bd', (bool) $rfq->head_of_bd_rejected_at && ! $stepDone['head_of_bd']),
+            'children' => [$gmAssistant],
+        ];
+
+        return [
+            'name' => 'Senior Operations Approval',
+            'step' => 'senior_ops',
+            'rfq_number' => $rfqNumber,
+            'meta' => $rfq->senior_ops_reviewed_at
+                ? [$maskIfBlurred($rfq->seniorOpsReviewedBy?->name, $restrictSourcingView), $rfq->senior_ops_reviewed_at->format('M d, Y g:i A')]
+                : [$stepDone['data_entry'] ? 'Awaiting review' : 'Not yet reached'],
+            'state' => $nodeState($stepDone['senior_ops'], $currentStep === 'senior_ops'),
+            'children' => [$headOfBd],
+        ];
+    };
+
+    $sourcingBranches = [];
+    if ($assignees->isEmpty()) {
+        $sourcingBranches[] = [
+            'name' => 'Awaiting Sourcing',
+            'role' => 'Sourcing',
+            'step' => 'sourcing',
+            'rfq_number' => null,
+            'meta' => ['Not yet assigned'],
+            'state' => 'pending',
+            'children' => [],
+        ];
+    } else {
+        foreach ($assignees as $assignee) {
+            $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id();
+            $blurred = $restrictAssignment || $isOtherSourcingPartner;
+            $splitTag = $rfq->sourcingSplitNumberFor($assignee);
+            $nameLabel = $maskIfBlurred($assignee->name, $blurred);
+            $rfqNumber = $blurred ? null : $splitTag;
+
+            $sourcingDone = $assignee->pivot->completed_at !== null;
+            $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
+            $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
+            $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
+
+            $deMeta = match (true) {
+                $deIsDone => [$deActorName, $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
+                $deIsReturned => ['Returned — rework needed'],
+                $sourcingDone => ['Awaiting review'],
+                default => ['Awaiting Sourcing'],
+            };
+
+            $dataEntryNode = [
+                'name' => $nameLabel,
+                'role' => 'Data Entry',
+                'step' => 'data_entry',
+                'rfq_number' => $rfqNumber,
+                'meta' => $deMeta,
+                'state' => $nodeState($deIsDone, returned: $deIsReturned),
+                'children' => [$buildTailChain($rfqNumber)],
+            ];
+
+            $sourcingBranches[] = [
+                'name' => $nameLabel,
+                'role' => 'Sourcing',
+                'step' => 'sourcing',
+                'rfq_number' => $rfqNumber,
+                'meta' => $sourcingDone
+                    ? ['Completed', $assignee->pivot->completed_at->format('M d, Y g:i A')]
+                    : ['Pending since', $assignee->pivot->created_at->format('M d, Y g:i A')],
+                'state' => $nodeState($sourcingDone),
+                'children' => [$dataEntryNode],
+            ];
+        }
+    }
+
+    $rfqProgressTree = [
+        'name' => 'RFQ Created',
+        'step' => 'created',
+        'rfq_number' => $rfq->rfq_number,
+        'meta' => ['Created by '.$maskIfBlurred($rfq->creator?->name, $restrictSourcingView), $rfq->created_at->format('M d, Y g:i A')],
+        'state' => 'done',
+        'children' => [[
+            'name' => 'Assigned by Operations',
+            'step' => 'operations',
+            'rfq_number' => $rfq->rfq_number,
+            'meta' => $rfq->operationsAssignee
+                ? [$maskIfBlurred($rfq->operationsAssignee->name, $restrictSourcingView), $rfq->operations_assigned_at->format('M d, Y g:i A')]
+                : ['Not yet assigned'],
+            'state' => $nodeState($stepDone['operations'], $currentStep === 'operations'),
+            'children' => [[
+                'name' => 'Assigned to Sourcing',
+                'step' => 'sourcing',
+                'rfq_number' => $rfq->rfq_number,
+                'meta' => $assignees->isEmpty() ? ['Not yet assigned'] : [],
+                'state' => $nodeState($stepDone['sourcing'], $currentStep === 'sourcing'),
+                'children' => $sourcingBranches,
+            ]],
+        ]],
+    ];
 @endphp
 
 @section('title', $displayRfqNumber)
@@ -225,185 +423,289 @@
     @endif
 
     <div class="card mb-3">
-        <div class="card-header">Progress</div>
-        <div class="card-body">
-            <div class="rfq-tree-scroll">
-                {{-- RFQ Created → Assigned by Operations → Assigned to
-                     Sourcing, which forks into one branch per assignee —
-                     each completing their own split independently, then
-                     forking again into their own Data Entry status. Real
-                     connector lines rather than a flat list, since this is
-                     genuinely a fork, not a sequence — one branch finishing
-                     doesn't mean the others have. See
-                     Rfq::completeSourcingPartFor()/completeDataEntryPartFor(). --}}
-                <ul class="rfq-tree">
-                    <li>
-                        <div class="rfq-tree-node is-done rfq-tree-root">
-                            <div class="rfq-tree-node-title">RFQ Created</div>
-                            <div class="rfq-tree-node-meta">
-                                {{ $rfq->created_at->format('M d, Y g:i A') }}
-                                &middot; <span class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">by {{ $rfq->creator?->name ?? 'Unknown' }}</span>
-                            </div>
-                        </div>
-                        <ul>
-                            <li>
-                                <div class="rfq-tree-node {{ $stepDone['operations'] ? 'is-done' : ($currentStep === 'operations' ? 'is-current' : 'is-pending') }}">
-                                    <div class="rfq-tree-node-title">Assigned by Operations</div>
-                                    @if ($rfq->operationsAssignee)
-                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                            {{ $rfq->operationsAssignee->name }} &middot; {{ $rfq->operations_assigned_at->format('M d, Y g:i A') }}
-                                        </div>
-                                    @else
-                                        <div class="rfq-tree-node-meta">Not yet assigned</div>
-                                    @endif
-                                </div>
-                                <ul>
-                                    <li>
-                                        <div class="rfq-tree-node {{ $stepDone['sourcing'] ? 'is-done' : ($currentStep === 'sourcing' ? 'is-current' : 'is-pending') }}">
-                                            <div class="rfq-tree-node-title">Assigned to Sourcing</div>
-                                            @if ($rfq->assignees->isEmpty())
-                                                <div class="rfq-tree-node-meta">Not yet assigned</div>
-                                            @endif
-                                        </div>
-                                        @if ($rfq->assignees->isNotEmpty())
-                                            <ul>
-                                                @foreach ($rfq->assignees->sortBy('pivot.created_at') as $assignee)
-                                                    @php
-                                                        $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id();
-                                                        $branchBlurred = $restrictAssignment || $isOtherSourcingPartner;
-                                                        $sourcingDone = $assignee->pivot->completed_at !== null;
-                                                        $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
-                                                        $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
-                                                        // Sourcing never learns exactly who in Data
-                                                        // Entry touched a split — same substitution
-                                                        // used in the activity timeline and the
-                                                        // return-reason banner.
-                                                        $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
-                                                    @endphp
-                                                    <li>
-                                                        <div class="rfq-tree-node {{ $sourcingDone ? 'is-done' : 'is-pending' }} {{ $branchBlurred ? 'rfq-blurred' : '' }}">
-                                                            <div class="rfq-tree-node-title">
-                                                                {{ $assignee->name }}
-                                                                <span class="rfq-tree-node-tag">{{ $rfq->sourcingSplitNumberFor($assignee) }}</span>
-                                                            </div>
-                                                            @if ($sourcingDone)
-                                                                <div class="rfq-tree-node-meta">Completed {{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</div>
-                                                            @else
-                                                                <div class="rfq-tree-node-meta">Pending since {{ $assignee->pivot->created_at->format('M d, Y g:i A') }}</div>
-                                                            @endif
-                                                        </div>
-                                                        <ul>
-                                                            <li>
-                                                                <div class="rfq-tree-node {{ $deIsDone ? 'is-done' : ($deIsReturned ? 'is-returned' : 'is-pending') }} {{ $branchBlurred ? 'rfq-blurred' : '' }}">
-                                                                    <div class="rfq-tree-node-title">
-                                                                        {{ $assignee->name }}
-                                                                        <span class="rfq-tree-node-tag">{{ $rfq->sourcingSplitNumberFor($assignee) }}</span>
-                                                                    </div>
-                                                                    @if ($deIsDone)
-                                                                        <div class="rfq-tree-node-meta">{{ $deActorName }} &middot; {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</div>
-                                                                    @elseif ($deIsReturned)
-                                                                        <div class="rfq-tree-node-meta">Returned — rework needed</div>
-                                                                    @elseif ($sourcingDone)
-                                                                        <div class="rfq-tree-node-meta">Awaiting review</div>
-                                                                    @else
-                                                                        <div class="rfq-tree-node-meta">Awaiting Sourcing</div>
-                                                                    @endif
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </li>
-                                                @endforeach
-                                            </ul>
-                                        @endif
-                                    </li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
+        <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span>Progress</span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
+                <button type="button" class="btn btn-outline-secondary" id="rfq-progress-zoom-out" title="Zoom out">
+                    <i class="bi bi-zoom-out"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="rfq-progress-zoom-reset" title="Reset zoom">
+                    <i class="bi bi-aspect-ratio"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="rfq-progress-zoom-in" title="Zoom in">
+                    <i class="bi bi-zoom-in"></i>
+                </button>
             </div>
+        </div>
+        <div class="card-body">
+            {{-- Rendered by Apache ECharts (tree series, left-to-right) —
+                 real connector-line geometry instead of hand-rolled CSS.
+                 Sourcing splits into one branch per assignee, and each
+                 branch keeps going as its own path — Data Entry, Senior
+                 Operations Approval, Head of Business Development, GM
+                 Assistant, General Manager, Closed — rather than merging
+                 back together, so a 3-way split shows three full chains
+                 stacked as parallel rows. The zoom buttons above re-render
+                 the chart bigger/smaller (rather than CSS-scaling it,
+                 which would blur the canvas) — see public/js/admin.js
+                 (renderRfqProgressChart). --}}
+            <script type="application/json" id="rfq-progress-data">{!! json_encode(['tree' => $rfqProgressTree]) !!}</script>
+            <div class="rfq-progress-chart-wrap">
+                <div id="rfq-progress-chart" class="rfq-progress-chart"></div>
+            </div>
+            <noscript><p class="text-muted-soft mb-0">Enable JavaScript to see the progress chart.</p></noscript>
+        </div>
 
-            {{-- Every split's done — the branches above converge back into
-                 one whole-RFQ pipeline: Senior Operations' second review,
-                 through Business Development's close. --}}
-            <div class="rfq-tree-bridge"></div>
-
-            <div class="rfq-tree-scroll">
-                <ul class="rfq-tree rfq-tree-tail">
-                    <li>
-                        <div class="rfq-tree-node {{ $stepDone['senior_ops'] ? 'is-done' : ($currentStep === 'senior_ops' ? 'is-current' : 'is-pending') }}">
-                            <div class="rfq-tree-node-title">Senior Operations Approval</div>
-                            @if ($rfq->senior_ops_reviewed_at)
-                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                    {{ $rfq->seniorOpsReviewedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->senior_ops_reviewed_at->format('M d, Y g:i A') }}
-                                </div>
-                            @else
-                                <div class="rfq-tree-node-meta">{{ $stepDone['data_entry'] ? 'Awaiting review' : 'Not yet reached' }}</div>
+        {{-- One tab per lifecycle stage — the same 9 stages the Progress
+             chart above draws as nodes, but here as a compact read-out of
+             exactly what happened (or is still pending) at each one,
+             without needing to zoom/pan the chart to read a node's text.
+             Opens on whichever stage is currently in play ($activeStep).
+             Sourcing/Data Entry re-list every split assignee, since those
+             two stages can have more than one of each. --}}
+        <div class="card-body border-top">
+            <ul class="nav nav-tabs mb-3" id="rfqStepTabs" role="tablist">
+                @foreach ($stepTabs as $stepKey => $tab)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {{ $activeStep === $stepKey ? 'active' : '' }}"
+                                id="step-tab-{{ $stepKey }}" data-bs-toggle="tab"
+                                data-bs-target="#step-pane-{{ $stepKey }}" type="button" role="tab"
+                                aria-controls="step-pane-{{ $stepKey }}"
+                                aria-selected="{{ $activeStep === $stepKey ? 'true' : 'false' }}">
+                            <i class="bi {{ $tab['icon'] }}"></i>
+                            {{ $tab['label'] }}
+                            @if ($stepDone[$stepKey])
+                                <i class="bi bi-check-circle-fill text-success ms-1" title="Done"></i>
+                            @elseif ($currentStep === $stepKey)
+                                <i class="bi bi-arrow-right-circle text-primary ms-1" title="Current"></i>
                             @endif
-                        </div>
-                        <ul>
-                            <li>
-                                <div class="rfq-tree-node {{ $stepDone['head_of_bd'] ? 'is-done' : ($currentStep === 'head_of_bd' ? 'is-current' : 'is-pending') }} {{ $rfq->head_of_bd_rejected_at && ! $stepDone['head_of_bd'] ? 'is-returned' : '' }}">
-                                    <div class="rfq-tree-node-title">Head of Business Development</div>
-                                    @if ($rfq->head_of_bd_approved_at)
-                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                            Approved by {{ $rfq->headOfBdApprovedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->head_of_bd_approved_at->format('M d, Y g:i A') }}
-                                        </div>
-                                    @elseif ($rfq->head_of_bd_rejected_at)
-                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                            Rejected by {{ $rfq->headOfBdRejectedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->head_of_bd_rejected_at->format('M d, Y g:i A') }}
-                                        </div>
-                                        <div class="rfq-tree-node-meta text-danger">Returned to {{ \App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage) }}</div>
-                                    @else
-                                        <div class="rfq-tree-node-meta">{{ $stepDone['senior_ops'] ? 'Awaiting review' : 'Not yet reached' }}</div>
-                                    @endif
-                                </div>
-                                <ul>
-                                    <li>
-                                        <div class="rfq-tree-node {{ $stepDone['gm_assistant'] ? 'is-done' : ($currentStep === 'gm_assistant' ? 'is-current' : 'is-pending') }}">
-                                            <div class="rfq-tree-node-title">GM Assistant</div>
-                                            @if ($rfq->gm_assistant_completed_at)
-                                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                                    {{ $rfq->gmAssistantCompletedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->gm_assistant_completed_at->format('M d, Y g:i A') }}
-                                                </div>
-                                            @else
-                                                <div class="rfq-tree-node-meta">{{ $stepDone['head_of_bd'] ? 'Awaiting details' : 'Not yet reached' }}</div>
-                                            @endif
-                                        </div>
-                                        <ul>
-                                            <li>
-                                                <div class="rfq-tree-node {{ $stepDone['gm_review'] ? 'is-done' : ($currentStep === 'gm_review' ? 'is-current' : 'is-pending') }}">
-                                                    <div class="rfq-tree-node-title">General Manager</div>
-                                                    @if ($rfq->gm_approved_at)
-                                                        <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                                            Approved by {{ $rfq->gmApprovedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->gm_approved_at->format('M d, Y g:i A') }}
-                                                        </div>
-                                                    @else
-                                                        <div class="rfq-tree-node-meta">{{ $stepDone['gm_assistant'] ? 'Awaiting approval' : 'Not yet reached' }}</div>
-                                                    @endif
-                                                </div>
-                                                <ul>
-                                                    <li>
-                                                        <div class="rfq-tree-node {{ $stepDone['closed'] ? 'is-done' : ($currentStep === 'closed' ? 'is-current' : 'is-pending') }}">
-                                                            <div class="rfq-tree-node-title">Closed</div>
-                                                            @if ($rfq->bd_closed_at)
-                                                                <div class="rfq-tree-node-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
-                                                                    {{ $rfq->bdClosedBy?->name ?? 'Unknown' }} &middot; {{ $rfq->bd_closed_at->format('M d, Y g:i A') }}
-                                                                </div>
-                                                            @else
-                                                                <div class="rfq-tree-node-meta">{{ $stepDone['gm_review'] ? 'Ready for Business Development' : 'Not yet reached' }}</div>
-                                                            @endif
-                                                        </div>
-                                                    </li>
-                                                </ul>
-                                            </li>
-                                        </ul>
-                                    </li>
-                                </ul>
-                            </li>
-                        </ul>
+                        </button>
                     </li>
-                </ul>
+                @endforeach
+            </ul>
+
+            <div class="tab-content" id="rfqStepTabsContent">
+                <div class="tab-pane fade {{ $activeStep === 'created' ? 'show active' : '' }}" id="step-pane-created" role="tabpanel" aria-labelledby="step-tab-created">
+                    <dl class="rfq-detail-grid mb-0">
+                        <div>
+                            <dt>Created</dt>
+                            <dd>{{ $rfq->created_at->format('M d, Y g:i A') }}</dd>
+                        </div>
+                        <div>
+                            <dt>Created by</dt>
+                            <dd>{{ $maskIfBlurred($rfq->creator?->name, $restrictSourcingView) }}</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'operations' ? 'show active' : '' }}" id="step-pane-operations" role="tabpanel" aria-labelledby="step-tab-operations">
+                    @if ($rfq->operationsAssignee)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Assigned by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->operationsAssignee->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Assigned at</dt>
+                                <dd>{{ $rfq->operations_assigned_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                    @else
+                        <p class="text-muted-soft mb-0">Not yet assigned.</p>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'sourcing' ? 'show active' : '' }}" id="step-pane-sourcing" role="tabpanel" aria-labelledby="step-tab-sourcing">
+                    @if ($assignees->isEmpty())
+                        <p class="text-muted-soft mb-0">Not yet assigned.</p>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Assignee</th>
+                                        <th>Split</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($assignees as $assignee)
+                                        @php
+                                            $tabBlurred = $restrictAssignment || ($restrictSourcingView && $assignee->id !== auth()->id());
+                                            $tabSourcingDone = $assignee->pivot->completed_at !== null;
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $maskIfBlurred($assignee->name, $tabBlurred) }}</td>
+                                            <td>{{ $tabBlurred ? 'Restricted' : $rfq->sourcingSplitNumberFor($assignee) }}</td>
+                                            <td>
+                                                @if ($tabSourcingDone)
+                                                    <span class="badge bg-success-subtle text-success-emphasis">Completed {{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</span>
+                                                @else
+                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Pending since {{ $assignee->pivot->created_at->format('M d, Y g:i A') }}</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'data_entry' ? 'show active' : '' }}" id="step-pane-data_entry" role="tabpanel" aria-labelledby="step-tab-data_entry">
+                    @if ($assignees->isEmpty())
+                        <p class="text-muted-soft mb-0">Not yet assigned.</p>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Assignee</th>
+                                        <th>Split</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($assignees as $assignee)
+                                        @php
+                                            $tabBlurred = $restrictAssignment || ($restrictSourcingView && $assignee->id !== auth()->id());
+                                            $tabDeIsDone = $assignee->pivot->data_entry_completed_at !== null;
+                                            $tabDeIsReturned = ! $tabDeIsDone && $assignee->pivot->returned_at !== null;
+                                            $tabDeActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $maskIfBlurred($assignee->name, $tabBlurred) }}</td>
+                                            <td>{{ $tabBlurred ? 'Restricted' : $rfq->sourcingSplitNumberFor($assignee) }}</td>
+                                            <td>
+                                                @if ($tabDeIsDone)
+                                                    <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</span>
+                                                @elseif ($tabDeIsReturned)
+                                                    <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
+                                                @elseif ($assignee->pivot->completed_at !== null)
+                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting review</span>
+                                                @else
+                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting Sourcing</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'senior_ops' ? 'show active' : '' }}" id="step-pane-senior_ops" role="tabpanel" aria-labelledby="step-tab-senior_ops">
+                    @if ($rfq->senior_ops_reviewed_at)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Approved by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->seniorOpsReviewedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Approved at</dt>
+                                <dd>{{ $rfq->senior_ops_reviewed_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                    @else
+                        <p class="text-muted-soft mb-0">{{ $stepDone['data_entry'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'head_of_bd' ? 'show active' : '' }}" id="step-pane-head_of_bd" role="tabpanel" aria-labelledby="step-tab-head_of_bd">
+                    @if ($rfq->head_of_bd_approved_at)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Approved by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->headOfBdApprovedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Approved at</dt>
+                                <dd>{{ $rfq->head_of_bd_approved_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                    @elseif ($rfq->head_of_bd_rejected_at)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Rejected by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Rejected at</dt>
+                                <dd>{{ $rfq->head_of_bd_rejected_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                            <div>
+                                <dt>Returned to</dt>
+                                <dd>{{ \App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Reason</dt>
+                                <dd>{{ $rfq->head_of_bd_reject_reason }}</dd>
+                            </div>
+                        </dl>
+                    @else
+                        <p class="text-muted-soft mb-0">{{ $stepDone['senior_ops'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'gm_assistant' ? 'show active' : '' }}" id="step-pane-gm_assistant" role="tabpanel" aria-labelledby="step-tab-gm_assistant">
+                    @if ($rfq->gm_assistant_completed_at)
+                        <dl class="rfq-detail-grid mb-3">
+                            <div>
+                                <dt>Completed by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->gmAssistantCompletedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Completed at</dt>
+                                <dd>{{ $rfq->gm_assistant_completed_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                        @if ($rfq->client_details)
+                            <div class="fw-semibold small mb-1">Client Details</div>
+                            <p class="mb-3" style="white-space: pre-line;">{{ $rfq->client_details }}</p>
+                        @endif
+                        @if ($rfq->payment_terms)
+                            <div class="fw-semibold small mb-1">Payment Terms</div>
+                            <p class="mb-0" style="white-space: pre-line;">{{ $rfq->payment_terms }}</p>
+                        @endif
+                    @else
+                        <p class="text-muted-soft mb-0">{{ $stepDone['head_of_bd'] ? 'Awaiting details.' : 'Not yet reached.' }}</p>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'gm_review' ? 'show active' : '' }}" id="step-pane-gm_review" role="tabpanel" aria-labelledby="step-tab-gm_review">
+                    @if ($rfq->gm_approved_at)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Approved by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->gmApprovedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Approved at</dt>
+                                <dd>{{ $rfq->gm_approved_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                    @else
+                        <p class="text-muted-soft mb-0">{{ $stepDone['gm_assistant'] ? 'Awaiting approval.' : 'Not yet reached.' }}</p>
+                    @endif
+                </div>
+
+                <div class="tab-pane fade {{ $activeStep === 'closed' ? 'show active' : '' }}" id="step-pane-closed" role="tabpanel" aria-labelledby="step-tab-closed">
+                    @if ($rfq->bd_closed_at)
+                        <dl class="rfq-detail-grid mb-0">
+                            <div>
+                                <dt>Closed by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->bdClosedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Closed at</dt>
+                                <dd>{{ $rfq->bd_closed_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                        </dl>
+                    @else
+                        <p class="text-muted-soft mb-0">{{ $stepDone['gm_review'] ? 'Ready for Business Development to close.' : 'Not yet reached.' }}</p>
+                    @endif
+                </div>
             </div>
         </div>
     </div>
@@ -670,4 +972,15 @@
             </script>
         @endpush
     @endif
+
+    @push('scripts')
+        <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                if (window.renderRfqProgressChart) {
+                    window.renderRfqProgressChart();
+                }
+            });
+        </script>
+    @endpush
 @endsection

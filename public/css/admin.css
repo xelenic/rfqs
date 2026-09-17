@@ -1053,190 +1053,36 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-text-muted);
 }
 
-/* ---------- RFQ progress tree ---------- */
-/* A real org-chart: RFQ Created → Assigned by Operations → Assigned to
-   Sourcing, forking into one branch per assignee (each completing their
-   own split independently), each of those forking again into that same
-   assignee's own Data Entry status — genuine connector lines that fork,
-   since this is a fork, not a sequence: one branch finishing doesn't mean
-   the others have. The classic pure-CSS org-chart technique: every <li>
-   draws half a horizontal bar on each side via ::before/::after (removed
-   on the outer edges via :first-child/:last-child, skipped entirely via
-   :only-child when there's nothing to fork), plus its own vertical drop
-   down to its box; ul ul::before draws the stub from a parent down into
-   its children's row. Once every branch is done, a plain bridge connector
-   hands off to a second, single-chain tree for the remaining whole-RFQ
-   stages — Senior Operations through Business Development's close — which
-   never forks, so every <li> in it is an :only-child straight line down.
-   See show.blade.php's $stepDone/$currentStep. */
+/* ---------- RFQ progress chart ---------- */
+/* Rendered by Apache ECharts (a single tree series, left-to-right) — see
+   public/js/admin.js (renderRfqProgressChart). RFQ Created starts the row
+   on the left; Sourcing splits into one horizontal lane per assignee, and
+   each lane keeps its own copy of every stage after it (Data Entry
+   through Closed) rather than merging back together, so a 3-way split
+   renders as three full parallel rows stacked top to bottom. The chart's
+   pixel size is computed in JS from the tree's depth/breadth, and it's
+   often wider than the card, so the wrap scrolls horizontally rather than
+   squeezing or breaking the page layout.
+   The breathing room around the very first/last node (so it doesn't sit
+   flush against the card edge, which reads as "cut off" even though it
+   isn't) is baked into the chart's own canvas width in JS rather than
+   added here as wrap padding — browsers don't reliably honor a scroll
+   container's own trailing padding once scrolled to its end, which left
+   the last node clipped despite the padding.
+   The edge fade (mask-image, set inline in JS) fades whatever node is
+   mid-scroll at each edge instead of hard-clipping it, so a partial node
+   reads as "scroll for more" rather than a rendering glitch — it's set
+   and kept in sync with scroll position in JS rather than fixed here in
+   CSS, since a fade that's always on would also dim the true first/last
+   node once fully scrolled to that end, which is exactly the "half
+   showing" look this is meant to avoid, not cause. */
 
-.rfq-tree-scroll {
+.rfq-progress-chart-wrap {
   overflow-x: auto;
 }
 
-.rfq-tree,
-.rfq-tree ul {
-  display: flex;
-  justify-content: center;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.rfq-tree {
-  padding: 0.5rem 0.5rem 0;
-  width: max-content;
-  min-width: 100%;
-}
-
-.rfq-tree ul {
-  padding-top: 2rem;
-}
-
-.rfq-tree li {
-  position: relative;
-  padding: 2rem 0.6rem 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.rfq-tree li::before,
-.rfq-tree li::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 50%;
-  width: 50%;
-  height: 2rem;
-  border-top: 2px solid var(--rfq-tree-line);
-}
-
-.rfq-tree li::after {
-  right: auto;
-  left: 50%;
-  border-left: 2px solid var(--rfq-tree-line);
-}
-
-.rfq-tree li:only-child {
-  padding-top: 0;
-}
-
-.rfq-tree li:only-child::before,
-.rfq-tree li:only-child::after {
-  display: none;
-}
-
-.rfq-tree li:first-child::before,
-.rfq-tree li:last-child::after {
-  border: 0 none;
-}
-
-.rfq-tree li:last-child::before {
-  border-right: 2px solid var(--rfq-tree-line);
-  border-radius: 0 6px 0 0;
-}
-
-.rfq-tree li:first-child::after {
-  border-radius: 6px 0 0 0;
-}
-
-.rfq-tree ul ul::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 0;
-  height: 2rem;
-  border-left: 2px solid var(--rfq-tree-line);
-}
-
-.rfq-tree-bridge {
-  width: 2px;
-  height: 1.5rem;
-  background: var(--rfq-tree-line);
+.rfq-progress-chart {
   margin: 0 auto;
-}
-
-.rfq-tree-node {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  background: var(--rfq-surface);
-  border: 1px solid var(--rfq-border);
-  border-radius: var(--rfq-radius);
-  padding: 0.6rem 0.85rem;
-  min-width: 180px;
-  text-align: left;
-}
-
-/* Arrowhead where each incoming connector line meets its box — every node
-   has one except the very first ("RFQ Created"), which has no incoming
-   line at all. */
-.rfq-tree-node:not(.rfq-tree-root)::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  width: 0;
-  height: 0;
-  margin-left: -5px;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 7px solid var(--rfq-tree-line);
-}
-
-.rfq-tree-node.is-pending {
-  border-style: dashed;
-  color: var(--rfq-text-muted);
-}
-
-.rfq-tree-node.is-done {
-  border-color: #a3d9b8;
-  background: #f3fbf6;
-}
-
-.rfq-tree-node.is-current {
-  border-color: var(--rfq-primary);
-  box-shadow: 0 0 0 3px var(--rfq-primary-soft);
-}
-
-.rfq-tree-node.is-returned {
-  border-color: #f5c2c7;
-  background: #fdf2f2;
-}
-
-.rfq-tree-node-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  font-weight: 700;
-  font-size: 0.8rem;
-}
-
-.rfq-tree-node.is-done .rfq-tree-node-title {
-  color: #157347;
-}
-
-.rfq-tree-node.is-current .rfq-tree-node-title {
-  color: var(--rfq-primary-dark);
-}
-
-.rfq-tree-node-tag {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--rfq-text-muted);
-  background: #f1f2f6;
-  padding: 0.1em 0.5em;
-  border-radius: 999px;
-}
-
-.rfq-tree-node-meta {
-  font-size: 0.72rem;
-  color: var(--rfq-text-muted);
-  line-height: 1.4;
 }
 
 /* ---------- RFQ activity timeline ---------- */

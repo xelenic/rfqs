@@ -428,3 +428,397 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
+
+// RFQ show page — Progress chart, rendered with Apache ECharts (tree
+// series) rather than hand-rolled CSS, for real connector-line geometry
+// and automatic layout instead of fragile pseudo-element math. Left to
+// right ('LR' orient) — RFQ Created starts the row on the left, and
+// Sourcing splits into one lane per assignee running rightward, each lane
+// keeping its own copy of everything after it (Data Entry, Senior
+// Operations Approval, Head of Business Development, GM Assistant,
+// General Manager, Closed) rather than merging back together — a plain
+// fork, which is exactly what a tree series draws natively, no manual
+// layout or overlay needed. Called from show.blade.php once the ECharts
+// CDN script has loaded. Global (not inside the DOMContentLoaded listener
+// above) so that late <script> can call it after everything here has run.
+window.renderRfqProgressChart = function () {
+    var dataEl = document.getElementById('rfq-progress-data');
+    var chartEl = document.getElementById('rfq-progress-chart');
+    if (!dataEl || !chartEl || typeof echarts === 'undefined') {
+        return;
+    }
+
+    var data;
+    try {
+        data = JSON.parse(dataEl.textContent);
+    } catch (e) {
+        return;
+    }
+
+    // Soft two-tone gradients rather than flat fills, plus a matching
+    // border — gives each node a bit of depth without competing with the
+    // text. Pending stays a flat white/dashed outline on purpose, so a
+    // lane still reads left-to-right at a glance: solid + tinted means
+    // "happened", dashed + white means "not yet".
+    var STATE_COLORS = {
+        done: { from: '#eafaf1', to: '#d7f2e3', border: '#8fd4ac', text: '#157347' },
+        current: { from: '#eef2ff', to: '#dde5ff', border: '#7c93f7', text: '#3b53d1' },
+        pending: { from: '#ffffff', to: '#ffffff', border: '#c3cbdc', text: '#6b7280' },
+        returned: { from: '#fdf1f2', to: '#fbe0e3', border: '#ee9ca6', text: '#b02a37' },
+    };
+    var LINE_COLOR = '#a9b4c9';
+    var BASE_NODE_WIDTH = 170;
+    var BASE_NODE_HEIGHT = 78;
+    var BASE_COLUMN_GAP = 64;
+    var BASE_ROW_GAP = 26;
+
+    // Walk the nested {name, meta, state, children} data (built server-side
+    // in show.blade.php) and attach the per-node itemStyle/label ECharts
+    // actually reads, rather than shaping that there. Title color is state-
+    // dependent, but a `rich` style block is shared across the whole
+    // series rather than settable per node — so rather than one `title`
+    // style, there's one per state ("title_done", "title_current", ...)
+    // defined once below, and each node's formatter just picks the right
+    // one for its own state.
+    //
+    // The rich styles below also set `overflow: 'truncate'`, but in this
+    // ECharts build that only reliably clips the first line of a \n-joined
+    // multi-line rich label — later lines can render at full width and
+    // bleed past the node's edges instead of being cut off. So every line
+    // is pre-truncated here in plain JS first, using rough per-character
+    // width budgets for each line's font, rather than trusting ECharts to
+    // clip text it's already decided not to reliably clip.
+    function truncate(text, maxChars) {
+        if (!text || text.length <= maxChars) {
+            return text;
+        }
+        return text.slice(0, maxChars - 1).trim() + '…';
+    }
+
+    // The node's normal (non-highlighted) fill/border — its own function
+    // so the tab-select highlight (further down) can revert a single node
+    // back to this without re-running `decorate`'s label/recursion setup
+    // on the rest of the tree.
+    function baseItemStyle(node) {
+        var colors = STATE_COLORS[node.state] || STATE_COLORS.pending;
+        return {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: colors.from },
+                { offset: 1, color: colors.to },
+            ]),
+            borderColor: colors.border,
+            borderWidth: node.state === 'current' ? 2.5 : 1.25,
+            borderType: node.state === 'pending' ? 'dashed' : 'solid',
+        };
+    }
+
+    // node.role (its own small "kicker" line above the title) is which
+    // role this node belongs to — "Sourcing" or "Data Entry" — for the
+    // per-branch nodes where the title is a person's name rather than a
+    // stage name, so it isn't otherwise obvious which step that name is
+    // standing in for. node.meta is a list of 0-2 lines (built server-side
+    // in show.blade.php): who acted / status, then when (date and time) —
+    // each its own line under the title, rather than packed together.
+    // node.rfq_number (also its own line) is the RFQ or per-split number
+    // ("RFQ1005-P1 of P3") this node belongs to. node.step (not rendered)
+    // is which Step Details tab below the chart this node belongs to —
+    // see highlightStep() further down.
+    function decorate(node) {
+        node.itemStyle = baseItemStyle(node);
+        var roleKicker = node.role ? node.role.toUpperCase() : null;
+        var title = truncate(node.name, 28);
+        var rfqNumberLine = truncate(node.rfq_number, 26);
+        var metaLine1 = truncate((node.meta || [])[0], 30);
+        var metaLine2 = truncate((node.meta || [])[1], 30);
+        node.label = {
+            formatter: function () {
+                var titleKey = 'title_' + node.state;
+                var lines = [];
+                if (roleKicker) {
+                    lines.push('{role_kicker|' + roleKicker + '}');
+                }
+                lines.push('{' + titleKey + '|' + title + '}');
+                if (rfqNumberLine) {
+                    lines.push('{rfq_number|' + rfqNumberLine + '}');
+                }
+                if (metaLine1) {
+                    lines.push('{meta_role|' + metaLine1 + '}');
+                }
+                if (metaLine2) {
+                    lines.push('{meta_date|' + metaLine2 + '}');
+                }
+                return lines.join('\n');
+            },
+        };
+        if (node.children && node.children.length) {
+            node.children.forEach(decorate);
+        } else {
+            delete node.children;
+        }
+        return node;
+    }
+
+    function treeDepth(node) {
+        if (!node.children || !node.children.length) {
+            return 1;
+        }
+        return 1 + Math.max.apply(null, node.children.map(treeDepth));
+    }
+
+    function leafCount(node) {
+        if (!node.children || !node.children.length) {
+            return 1;
+        }
+        return node.children.reduce(function (sum, child) {
+            return sum + leafCount(child);
+        }, 0);
+    }
+
+    var rootNode = decorate(data.tree);
+    var depth = treeDepth(rootNode);
+    var leaves = leafCount(rootNode);
+    var chart = echarts.init(chartEl);
+
+    // Every node tagged with a given `step` (built server-side — see
+    // show.blade.php) — a Sourcing/Data Entry/Senior Ops/etc. step can be
+    // several nodes at once, one per split branch, so selecting its tab
+    // needs to highlight (and scroll to) all of them together, not just
+    // one. `_level` (column index, 0 = RFQ Created) is stamped in here
+    // rather than sent from the server, since it's just this node's depth
+    // in the walk — used to know which column to scroll to; where a step
+    // spans two columns (e.g. "sourcing" is both the single fan-out node
+    // and every branch's own Sourcing node one column further right), the
+    // deeper (higher) one wins, since that's the more specific one.
+    var stepNodesMap = {};
+    (function collectStepNodes(node, level) {
+        if (node.step) {
+            (stepNodesMap[node.step] = stepNodesMap[node.step] || []).push(node);
+        }
+        node._level = level;
+        if (node.children) {
+            node.children.forEach(function (child) {
+                collectStepNodes(child, level + 1);
+            });
+        }
+    })(rootNode, 0);
+
+    // Fade whichever edge still has more content to scroll to, so a node
+    // sitting mid-scroll at the boundary reads as "scroll for more"
+    // instead of looking hard-clipped — but only that edge, and only
+    // while it's actually scrollable that way. A fade fixed in CSS also
+    // dims the true first/last node once fully scrolled to that end
+    // (nothing there to hint at), which looks exactly like the clipping
+    // this is meant to avoid, so it's recomputed here against live scroll
+    // position instead, and again after every zoom change since that
+    // changes whether there's anything left to scroll to.
+    var wrapEl = chartEl.parentElement;
+    var FADE = 24;
+    var updateEdgeFade = function () {
+        if (!wrapEl) {
+            return;
+        }
+        var maxScroll = wrapEl.scrollWidth - wrapEl.clientWidth;
+        var canScrollLeft = wrapEl.scrollLeft > 1;
+        var canScrollRight = wrapEl.scrollLeft < maxScroll - 1;
+        var mask = 'none';
+        if (canScrollLeft && canScrollRight) {
+            mask = 'linear-gradient(to right, transparent, #000 ' + FADE + 'px, #000 calc(100% - ' + FADE + 'px), transparent)';
+        } else if (canScrollLeft) {
+            mask = 'linear-gradient(to right, transparent, #000 ' + FADE + 'px)';
+        } else if (canScrollRight) {
+            mask = 'linear-gradient(to right, #000 calc(100% - ' + FADE + 'px), transparent)';
+        }
+        wrapEl.style.webkitMaskImage = mask;
+        wrapEl.style.maskImage = mask;
+    };
+
+    // Zoom in/out re-renders the chart bigger/smaller — scaling every
+    // size (node, gaps, padding, font) by the same factor — rather than
+    // CSS-scaling the finished canvas, which would blur the text. Discrete
+    // stops rather than continuous so repeated clicks land on predictable,
+    // reproducible sizes. Truncation budgets in `decorate()` above are
+    // character counts, not pixels, so they don't need to change here —
+    // font size and node width scale together, so the same count of
+    // characters keeps fitting at every zoom level.
+    var ZOOM_LEVELS = [0.6, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    var zoomIndex = ZOOM_LEVELS.indexOf(1);
+    var zoomInBtn = document.getElementById('rfq-progress-zoom-in');
+    var zoomOutBtn = document.getElementById('rfq-progress-zoom-out');
+    var zoomResetBtn = document.getElementById('rfq-progress-zoom-reset');
+    var currentNodeWidth = BASE_NODE_WIDTH;
+    var currentNodeHeight = BASE_NODE_HEIGHT;
+    var currentColumnGap = BASE_COLUMN_GAP;
+    var currentPad = 50;
+
+    function render() {
+        var zoom = ZOOM_LEVELS[zoomIndex];
+        var nodeWidth = BASE_NODE_WIDTH * zoom;
+        var nodeHeight = BASE_NODE_HEIGHT * zoom;
+        currentNodeWidth = nodeWidth;
+        currentNodeHeight = nodeHeight;
+        var columnGap = BASE_COLUMN_GAP * zoom;
+        var rowGap = BASE_ROW_GAP * zoom;
+        var pad = 50 * zoom;
+        currentColumnGap = columnGap;
+        currentPad = pad;
+
+        var minHeight = chartEl.parentElement ? chartEl.parentElement.clientHeight : 0;
+        chartEl.style.width = (depth * (nodeWidth + columnGap) + pad * 2) + 'px';
+        chartEl.style.height = Math.max(leaves * (nodeHeight + rowGap) + 40, minHeight, 140) + 'px';
+        chart.resize();
+
+        chart.setOption({
+            series: [{
+                type: 'tree',
+                data: [rootNode],
+                top: 20 * zoom,
+                bottom: 20 * zoom,
+                left: pad,
+                right: pad,
+                orient: 'LR',
+                edgeShape: 'curve',
+                roam: false,
+                expandAndCollapse: false,
+                initialTreeDepth: -1,
+                symbol: 'rect',
+                symbolSize: [nodeWidth, nodeHeight],
+                itemStyle: {
+                    borderWidth: 1,
+                    shadowBlur: 10,
+                    shadowColor: 'rgba(15, 23, 42, 0.10)',
+                    shadowOffsetY: 3,
+                },
+                lineStyle: { color: LINE_COLOR, width: 2, curveness: 0.4 },
+                emphasis: { disabled: true },
+                label: {
+                    position: 'inside',
+                    verticalAlign: 'middle',
+                    align: 'center',
+                    rich: {
+                        role_kicker: { fontWeight: 700, fontSize: 8 * zoom, color: '#8b98ab', lineHeight: 11 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        title_done: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.done.text, width: nodeWidth - 18, overflow: 'truncate' },
+                        title_current: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.current.text, width: nodeWidth - 18, overflow: 'truncate' },
+                        title_pending: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.pending.text, width: nodeWidth - 18, overflow: 'truncate' },
+                        title_returned: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.returned.text, width: nodeWidth - 18, overflow: 'truncate' },
+                        rfq_number: { fontSize: 9 * zoom, fontWeight: 600, color: '#7c8a9e', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        meta_role: { fontSize: 9 * zoom, color: '#5b6576', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        meta_date: { fontSize: 9 * zoom, color: '#9aa3b2', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                    },
+                },
+            }],
+        });
+
+        if (zoomOutBtn) {
+            zoomOutBtn.disabled = zoomIndex === 0;
+        }
+        if (zoomInBtn) {
+            zoomInBtn.disabled = zoomIndex === ZOOM_LEVELS.length - 1;
+        }
+        updateEdgeFade();
+    }
+
+    function setZoomIndex(nextIndex) {
+        zoomIndex = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, nextIndex));
+        render();
+    }
+
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', function () {
+            setZoomIndex(zoomIndex + 1);
+        });
+    }
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', function () {
+            setZoomIndex(zoomIndex - 1);
+        });
+    }
+    if (zoomResetBtn) {
+        zoomResetBtn.addEventListener('click', function () {
+            setZoomIndex(ZOOM_LEVELS.indexOf(1));
+        });
+    }
+
+    render();
+    window.addEventListener('resize', render);
+    if (wrapEl) {
+        wrapEl.addEventListener('scroll', updateEdgeFade);
+    }
+
+    // Selecting a Step Details tab (below the chart) briefly highlights
+    // every node for that stage — a bright ring, a bigger shadow, and a
+    // slight grow — so the tab and its place in the flow chart visibly
+    // connect, especially useful for Sourcing/Data Entry where the tab
+    // covers several branch nodes at once. Growing/shrinking symbolSize
+    // and fading the itemStyle color are both properties ECharts already
+    // animates smoothly on its own when they change via setOption, so the
+    // "animation" here is just: set the highlighted style, redraw, wait,
+    // set it back, redraw again — no manual tweening needed.
+    var HIGHLIGHT_BORDER = '#f5a524';
+    var highlightTimer = null;
+
+    function clearHighlight() {
+        Object.keys(stepNodesMap).forEach(function (step) {
+            stepNodesMap[step].forEach(function (node) {
+                node.itemStyle = baseItemStyle(node);
+                delete node.symbolSize;
+            });
+        });
+    }
+
+    // Scrolls the (often much wider than its card) chart so the target
+    // column is centered in view. Node x-positions aren't exposed by the
+    // tree series' API, but they're deterministic — the same column-pitch
+    // arithmetic used above to size the canvas — so the column is found
+    // by column index (each node's depth, stamped as `_level` while
+    // collecting stepNodesMap) rather than reading positions back out of
+    // ECharts. Where a step's nodes span two columns (the "sourcing" fan-
+    // out node and every branch's own Sourcing node one column past it),
+    // the deepest one wins, since that's the more specific column.
+    function scrollToStep(step) {
+        if (!wrapEl) {
+            return;
+        }
+        var maxLevel = stepNodesMap[step].reduce(function (max, node) {
+            return Math.max(max, node._level);
+        }, 0);
+        var columnCenter = currentPad + maxLevel * (currentNodeWidth + currentColumnGap) + currentNodeWidth / 2;
+        var maxScroll = wrapEl.scrollWidth - wrapEl.clientWidth;
+        var target = Math.max(0, Math.min(maxScroll, columnCenter - wrapEl.clientWidth / 2));
+        wrapEl.scrollTo({ left: target, behavior: 'smooth' });
+    }
+
+    function highlightStep(step) {
+        if (!stepNodesMap[step]) {
+            return;
+        }
+        if (highlightTimer) {
+            clearTimeout(highlightTimer);
+        }
+        clearHighlight();
+        stepNodesMap[step].forEach(function (node) {
+            node.itemStyle = Object.assign({}, baseItemStyle(node), {
+                borderColor: HIGHLIGHT_BORDER,
+                borderWidth: 3.5,
+                shadowBlur: 24,
+                shadowColor: 'rgba(245, 165, 36, 0.5)',
+            });
+            node.symbolSize = [currentNodeWidth * 1.12, currentNodeHeight * 1.12];
+        });
+        chart.setOption({ series: [{ data: [rootNode] }] });
+        scrollToStep(step);
+        highlightTimer = setTimeout(function () {
+            clearHighlight();
+            chart.setOption({ series: [{ data: [rootNode] }] });
+            highlightTimer = null;
+        }, 1200);
+    }
+
+    Object.keys(stepNodesMap).forEach(function (step) {
+        var tabBtn = document.getElementById('step-tab-' + step);
+        if (tabBtn) {
+            tabBtn.addEventListener('shown.bs.tab', function () {
+                highlightStep(step);
+            });
+        }
+    });
+};
