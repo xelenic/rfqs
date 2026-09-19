@@ -73,7 +73,7 @@
                         <div class="rfq-de-sourcing-row {{ $isDone ? 'is-completed' : '' }}">
                             <i class="bi {{ $isDone ? 'bi-check-circle-fill' : ($isReturned ? 'bi-arrow-counterclockwise' : 'bi-circle') }}"></i>
                             <span class="rfq-de-sourcing-row-name">{{ $assignee->name }}</span>
-                            @if ($rfq->assignees->count() > 1)
+                            @if ($rfq->isSplit())
                                 <span class="rfq-de-sourcing-row-number">{{ $rfq->sourcingSplitNumberFor($assignee) }}</span>
                             @endif
                             <span class="rfq-de-sourcing-row-status">
@@ -167,7 +167,7 @@
                     {{-- Bottom-right corner, last thing in the modal — kept out
                          of the way of the comment thread above it. --}}
                     <form action="{{ route('admin.rfqs.complete-sourcing', $rfq) }}" method="POST" class="d-flex justify-content-end w-100"
-                          data-confirm="{{ $rfq->assignees->count() > 1 ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
+                          data-confirm="{{ $rfq->isSplit() ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
                         @csrf
                         @method('PATCH')
                         {{-- This modal only ever appears on the Pending-filtered list —

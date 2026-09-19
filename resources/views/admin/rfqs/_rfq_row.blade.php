@@ -33,32 +33,29 @@
                 @endif
             </span>
         @endif
+        {{-- A split that's only partly assigned — the empty parts still need
+             someone (see RfqController::assign()). --}}
+        @if ($rfq->split_count !== null && $rfq->hasUnassignedParts() && ! $restrictAssignment)
+            <span class="badge badge-soft-warning"
+                  title="Parts still waiting for a Sourcing member">{{ $rfq->sourcingParts()->whereNull('assignee')->count() }} of {{ $rfq->splitTotal() }} open</span>
+        @endif
         <a href="{{ route('admin.rfqs.show', $rfq) }}{{ $statusFilter ? '?status='.$statusFilter : '' }}"
            class="btn btn-sm btn-outline-secondary" title="View details">
             <i class="bi bi-eye"></i>
         </a>
         @can('rfqs.edit')
-            @if ($rfq->assignees->isEmpty())
-                @if ($canSeeAssignOperationsButton)
-                    <button type="button" class="btn btn-sm btn-outline-secondary js-assign-operations-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
-                            {{ $restrictAssignment ? 'disabled' : '' }}
-                            data-bs-toggle="modal" data-bs-target="#assignOperationsModal"
-                            data-action="{{ route('admin.rfqs.assign-operations', $rfq) }}"
-                            data-operations-user-id="{{ $rfq->operations_assigned_by }}"
-                            title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assign Operations' }}">
-                        <i class="bi bi-diagram-2"></i>
-                    </button>
-                @endif
-                @if ($canSeeAssignButtons)
-                    <button type="button" class="btn btn-sm btn-outline-secondary js-assign-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
-                            {{ $restrictAssignment ? 'disabled' : '' }}
-                            data-bs-toggle="modal" data-bs-target="#assignRfqModal"
-                            data-action="{{ route('admin.rfqs.assign', $rfq) }}"
-                            data-assigned="{{ $rfq->assignees->pluck('id')->implode(',') }}"
-                            title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assign Sourcing' }}">
-                        <i class="bi bi-person-plus"></i>
-                    </button>
-                @endif
+            @if ($rfq->assignees->isEmpty() && $canSeeAssignOperationsButton)
+                <button type="button" class="btn btn-sm btn-outline-secondary js-assign-operations-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
+                        {{ $restrictAssignment ? 'disabled' : '' }}
+                        data-bs-toggle="modal" data-bs-target="#assignOperationsModal"
+                        data-action="{{ route('admin.rfqs.assign-operations', $rfq) }}"
+                        data-operations-user-id="{{ $rfq->operations_assigned_by }}"
+                        title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assign Operations' }}">
+                    <i class="bi bi-diagram-2"></i>
+                </button>
+            @endif
+            @if ($canSeeAssignButtons && $rfq->hasUnassignedParts())
+                @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment])
             @endif
         @endcan
         @if (auth()->user()->hasRole('Admin'))

@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class Rfq extends Model
 {
@@ -37,6 +39,12 @@ class Rfq extends Model
     public const RFQ_NUMBER_DIGITS = 4;
 
     public const RFQ_NUMBER_START = 1000;
+
+    /**
+     * The most parts one RFQ can be split into in the Assign Sourcing
+     * wizard.
+     */
+    public const MAX_SPLIT_PARTS = 20;
 
     /**
      * The post-Data-Entry pipeline position, stored in the `stage` column —
@@ -88,6 +96,7 @@ class Rfq extends Model
         'category',
         'category_set_by',
         'category_set_at',
+        'split_count',
         'stage',
         'senior_ops_reviewed_by',
         'senior_ops_reviewed_at',
@@ -123,6 +132,7 @@ class Rfq extends Model
             'sourcing_completed_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
             'category_set_at' => 'datetime',
+            'split_count' => 'integer',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'head_of_bd_rejected_at' => 'datetime',
@@ -187,14 +197,18 @@ class Rfq extends Model
     }
 
     /**
-     * Users (expected to hold the Sourcing role) assigned to work this RFQ.
-     * Assignment is optional — an RFQ can have none, one, or several.
-     * Ordered by assignment order (pivot id) — that order drives the
-     * per-assignee split RFQ numbers, see sourcingSplitNumbers().
+     * Users (expected to hold the Sourcing role) assigned to work this RFQ —
+     * one row per person, in assignment order (pivot id), however many
+     * parts of a split they hold. Assignment is optional: an RFQ can have
+     * none, one, or several, and with a planned split (split_count) some
+     * parts can still be empty — see sourcingParts(). Which parts each
+     * person holds lives in parts(), not here.
      *
-     * Each assignee completes their own split independently — pivot
+     * Each assignee completes their own share independently — pivot
      * completed_at — rather than one click completing the whole RFQ for
-     * everyone. See completeSourcingPartFor() / allSourcingPartsCompleted().
+     * everyone. A person holding several parts completes them together,
+     * as one share. See completeSourcingPartFor() /
+     * allSourcingPartsCompleted().
      */
     public function assignees(): BelongsToMany
     {
@@ -203,6 +217,17 @@ class Rfq extends Model
             ->withTimestamps()
             ->withPivot(['completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by'])
             ->orderBy('rfq_user.id');
+    }
+
+    /**
+     * The planned Sourcing parts of a split RFQ, in order, each with an
+     * optional person on it. Empty for an RFQ assigned before parts were
+     * planned up front (split_count is null) — see sourcingParts() for the
+     * view that covers both.
+     */
+    public function parts(): HasMany
+    {
+        return $this->hasMany(RfqPart::class)->orderBy('part_number');
     }
 
     /**
@@ -370,24 +395,184 @@ class Rfq extends Model
 
     /**
      * Whether every Sourcing assignee has completed their own part — the
-     * condition that actually hands the RFQ off to Data Entry. False for
-     * an RFQ with no Sourcing assignees at all (nothing to complete).
+     * condition that actually hands the RFQ off to Data Entry. False
+     * for an RFQ with no Sourcing assignees at all (nothing to complete),
+     * and false while any planned part is still unassigned — everyone
+     * assigned so far finishing doesn't mean the work is done.
      */
     public function allSourcingPartsCompleted(): bool
     {
         return $this->assignees->isNotEmpty()
+            && $this->allPartsAssigned()
             && $this->assignees->every(fn (User $assignee) => $assignee->pivot->completed_at !== null);
     }
 
     /**
      * Whether every Sourcing assignee's split has been completed by Data
      * Entry — the condition that formally closes the whole RFQ out. False
-     * for an RFQ with no Sourcing assignees at all.
+     * for an RFQ with no Sourcing assignees at all, and false while any
+     * planned part is still unassigned (same reasoning as
+     * allSourcingPartsCompleted()).
      */
     public function allDataEntryPartsCompleted(): bool
     {
         return $this->assignees->isNotEmpty()
+            && $this->allPartsAssigned()
             && $this->assignees->every(fn (User $assignee) => $assignee->pivot->data_entry_completed_at !== null);
+    }
+
+    /**
+     * How many Sourcing parts this RFQ is split into: what Operations
+     * planned in the Assign Sourcing wizard (split_count), or — for RFQs
+     * assigned before that existed — just however many people are
+     * assigned. Always at least 1.
+     */
+    public function splitTotal(): int
+    {
+        return $this->split_count ?? max($this->assignees->count(), 1);
+    }
+
+    /**
+     * Whether the work is shared across more than one Sourcing part —
+     * including parts nobody has been assigned to yet.
+     */
+    public function isSplit(): bool
+    {
+        return $this->splitTotal() > 1;
+    }
+
+    /**
+     * Every planned Sourcing part, in order, whether or not anyone holds it
+     * yet — e.g. a 5-way split with two people holding parts is five
+     * entries, three of them with a null assignee. One person can hold
+     * several parts, so the same assignee can appear on more than one
+     * entry. An RFQ assigned before parts were planned up front has one
+     * part per assignee; one with nobody assigned at all is a single,
+     * empty part.
+     *
+     * @return Collection<int, array{part: int, number: string, assignee: ?User}>
+     */
+    public function sourcingParts(): Collection
+    {
+        if ($this->split_count !== null && $this->parts->isNotEmpty()) {
+            $assigneesById = $this->assignees->keyBy('id');
+
+            return $this->parts->map(fn (RfqPart $part) => [
+                'part' => $part->part_number,
+                'number' => $this->partNumberLabel($part->part_number),
+                'assignee' => $part->user_id ? $assigneesById->get($part->user_id) : null,
+            ])->values();
+        }
+
+        $assigneesByPart = $this->assignees->values()->keyBy(fn (User $assignee, int $index) => $index + 1);
+
+        return collect(range(1, $this->splitTotal()))->map(fn (int $part) => [
+            'part' => $part,
+            'number' => $this->partNumberLabel($part),
+            'assignee' => $assigneesByPart->get($part),
+        ]);
+    }
+
+    /**
+     * The part numbers the given person holds on this RFQ, ascending —
+     * empty if they hold none.
+     *
+     * @return array<int, int>
+     */
+    public function partNumbersFor(User $user): array
+    {
+        return $this->sourcingParts()
+            ->filter(fn (array $part) => $part['assignee']?->id === $user->id)
+            ->pluck('part')
+            ->all();
+    }
+
+    /**
+     * RFQs that still have a Sourcing part nobody holds yet — nobody
+     * assigned at all, or a planned part left empty. Operations'
+     * "Unassigned" queue, mirrored in PHP by hasUnassignedParts().
+     */
+    public function scopeNeedingSourcing(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q
+            ->doesntHave('assignees')
+            ->orWhereHas('parts', fn (Builder $parts) => $parts->whereNull('user_id')));
+    }
+
+    /**
+     * The opposite: somebody's assigned, and every planned part has
+     * someone on it.
+     */
+    public function scopeFullySourced(Builder $query): void
+    {
+        $query->has('assignees')->whereDoesntHave('parts', fn (Builder $parts) => $parts->whereNull('user_id'));
+    }
+
+    /**
+     * Whether any planned Sourcing part is still waiting for someone —
+     * what keeps "Assign Sourcing" available to Operations after a partial
+     * assignment.
+     */
+    public function hasUnassignedParts(): bool
+    {
+        return $this->sourcingParts()->contains(fn (array $part) => $part['assignee'] === null);
+    }
+
+    public function allPartsAssigned(): bool
+    {
+        return ! $this->hasUnassignedParts();
+    }
+
+    /**
+     * Records how many parts Operations planned this RFQ into, creating
+     * them all empty. 1 means "not split" — still one part, so the same
+     * assign-a-person step applies.
+     */
+    public function planSplit(int $parts): void
+    {
+        $parts = max($parts, 1);
+
+        $this->update(['split_count' => $parts]);
+
+        foreach (range(1, $parts) as $partNumber) {
+            $this->parts()->firstOrCreate(['part_number' => $partNumber]);
+        }
+
+        $this->load('parts');
+    }
+
+    /**
+     * Puts Sourcing users onto still-empty parts — part number => user id.
+     * Blank entries leave that part empty for later; parts someone already
+     * holds, and part numbers outside the planned split, are skipped, so
+     * this never reassigns or overwrites. The same person can be given
+     * several parts, and gets a single assignment row however many. Caller
+     * is responsible for verifying every user actually holds the Sourcing
+     * role and hasn't already finished their share (adding a part to a
+     * finished share would quietly un-finish it).
+     *
+     * @param  array<int|string, int|string|null>  $userIdsByPart
+     */
+    public function assignSourcingParts(array $userIdsByPart): void
+    {
+        $attachedUserIds = $this->assignees->pluck('id')->all();
+
+        foreach ($userIdsByPart as $partNumber => $userId) {
+            $part = $this->parts->firstWhere('part_number', (int) $partNumber);
+
+            if (! $userId || ! $part || $part->user_id !== null) {
+                continue;
+            }
+
+            $part->update(['user_id' => $userId]);
+
+            if (! in_array((int) $userId, $attachedUserIds, true)) {
+                $this->assignees()->attach($userId);
+                $attachedUserIds[] = (int) $userId;
+            }
+        }
+
+        $this->load(['assignees', 'parts']);
     }
 
     /**
@@ -940,27 +1125,56 @@ class Rfq extends Model
     }
 
     /**
+     * The RFQ number for one planned Sourcing part — e.g. on "RFQ1001"
+     * split five ways, part 3 is "RFQ1001-P3 of P5". Unsplit, there's just
+     * the plain rfq_number.
+     */
+    public function partNumberLabel(int $part): string
+    {
+        $total = $this->splitTotal();
+
+        return $total > 1 ? "{$this->rfq_number}-P{$part} of P{$total}" : $this->rfq_number;
+    }
+
+    /**
+     * The RFQ number for a set of parts held together — "RFQ1001-P1 & P4 of
+     * P5", "RFQ1001-P1, P2 & P4 of P5" — or just the one part's number when
+     * it's a single part.
+     *
+     * @param  array<int, int>  $parts
+     */
+    public function partsLabel(array $parts): string
+    {
+        $total = $this->splitTotal();
+
+        if ($total <= 1 || count($parts) <= 1) {
+            return $this->partNumberLabel($parts[0] ?? 1);
+        }
+
+        $labels = array_map(fn (int $part) => "P{$part}", $parts);
+        $last = array_pop($labels);
+
+        return "{$this->rfq_number}-".implode(', ', $labels)." & {$last} of P{$total}";
+    }
+
+    /**
      * Split RFQ numbers per Sourcing assignee — e.g. with three assignees
      * on "RFQ1001": "RFQ1001-P1 of P3", "RFQ1001-P2 of P3",
-     * "RFQ1001-P3 of P3", in assignment order. With only a single assignee
-     * (or none), everyone maps to the plain rfq_number — splitting only
-     * kicks in once the work is actually shared across more than one
-     * person.
+     * "RFQ1001-P3 of P3". Each person's number follows the part(s) they
+     * hold (so P3 is P3 even while P1 and P2 are still empty, and someone
+     * holding two parts is "P1 & P4 of P5"); for assignees from before
+     * parts were planned up front, it's their position in assignment
+     * order. Unsplit, everyone maps to the plain rfq_number — splitting
+     * only kicks in once the work is actually shared across more than one
+     * part.
      *
      * @return array<int, string> user id => display RFQ number
      */
     public function sourcingSplitNumbers(): array
     {
-        $assignees = $this->assignees;
-        $total = $assignees->count();
-
-        if ($total <= 1) {
-            return $assignees->mapWithKeys(fn (User $assignee) => [$assignee->id => $this->rfq_number])->all();
-        }
-
-        return $assignees->values()->mapWithKeys(function (User $assignee, int $index) use ($total) {
-            return [$assignee->id => "{$this->rfq_number}-P".($index + 1)." of P{$total}"];
-        })->all();
+        return $this->assignees->mapWithKeys(fn (User $assignee) => [
+            $assignee->id => $this->partsLabel($this->partNumbersFor($assignee)),
+        ])->all();
     }
 
     /**

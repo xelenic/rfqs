@@ -39,7 +39,7 @@
                         // more than one assignee's part to Data Entry.
                         $pendingBadgeCount = match (true) {
                             auth()->user()->hasRole('Senior Operations') => \App\Models\Rfq::where('status', 'Pending')
-                                ->doesntHave('assignees')
+                                ->needingSourcing()
                                 ->count(),
                             auth()->user()->hasRole('Sourcing') => \App\Models\Rfq::where('status', 'Pending')
                                 ->whereHas('assignees', fn ($q) => $q->whereKey(auth()->id())->whereNull('rfq_user.completed_at'))

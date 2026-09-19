@@ -126,9 +126,6 @@
         default => 'pending',
     };
 
-    $assignees = $rfq->assignees->sortBy('pivot.created_at')->values();
-    $branchCount = max($assignees->count(), 1);
-
     // Senior Operations Approval → Closed, duplicated per branch (see
     // comment above). $rfqNumber identifies which split a given copy
     // belongs to once there's more than one — null for a single, unsplit
@@ -201,59 +198,75 @@
         ];
     };
 
+    // One branch per planned Sourcing part — including parts nobody's been
+    // assigned to yet, which show as an "Unassigned" branch that stays
+    // pending all the way down (see Rfq::sourcingParts()).
     $sourcingBranches = [];
-    if ($assignees->isEmpty()) {
-        $sourcingBranches[] = [
-            'name' => 'Awaiting Sourcing',
-            'role' => 'Sourcing',
-            'step' => 'sourcing',
-            'rfq_number' => null,
-            'meta' => ['Not yet assigned'],
-            'state' => 'pending',
-            'children' => [],
-        ];
-    } else {
-        foreach ($assignees as $assignee) {
-            $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id();
-            $blurred = $restrictAssignment || $isOtherSourcingPartner;
-            $splitTag = $rfq->sourcingSplitNumberFor($assignee);
-            $nameLabel = $maskIfBlurred($assignee->name, $blurred);
-            $rfqNumber = $blurred ? null : $splitTag;
+    foreach ($rfq->sourcingParts() as $part) {
+        $assignee = $part['assignee'];
 
-            $sourcingDone = $assignee->pivot->completed_at !== null;
-            $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
-            $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
-            $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
-
-            $deMeta = match (true) {
-                $deIsDone => [$deActorName, $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
-                $deIsReturned => ['Returned — rework needed'],
-                $sourcingDone => ['Awaiting review'],
-                default => ['Awaiting Sourcing'],
-            };
-
-            $dataEntryNode = [
-                'name' => $nameLabel,
-                'role' => 'Data Entry',
-                'step' => 'data_entry',
-                'rfq_number' => $rfqNumber,
-                'meta' => $deMeta,
-                'state' => $nodeState($deIsDone, returned: $deIsReturned),
-                'children' => [$buildTailChain($rfqNumber)],
-            ];
+        if ($assignee === null) {
+            $rfqNumber = $rfq->split_count !== null && $rfq->isSplit() ? $part['number'] : null;
 
             $sourcingBranches[] = [
-                'name' => $nameLabel,
+                'name' => 'Unassigned',
                 'role' => 'Sourcing',
                 'step' => 'sourcing',
                 'rfq_number' => $rfqNumber,
-                'meta' => $sourcingDone
-                    ? ['Completed', $assignee->pivot->completed_at->format('M d, Y g:i A')]
-                    : ['Pending since', $assignee->pivot->created_at->format('M d, Y g:i A')],
-                'state' => $nodeState($sourcingDone),
-                'children' => [$dataEntryNode],
+                'meta' => ['Not yet assigned'],
+                'state' => 'pending',
+                'children' => [[
+                    'name' => 'Unassigned',
+                    'role' => 'Data Entry',
+                    'step' => 'data_entry',
+                    'rfq_number' => $rfqNumber,
+                    'meta' => ['Awaiting Sourcing'],
+                    'state' => 'pending',
+                    'children' => [$buildTailChain($rfqNumber)],
+                ]],
             ];
+
+            continue;
         }
+
+        $isOtherSourcingPartner = $restrictSourcingView && $assignee->id !== auth()->id();
+        $blurred = $restrictAssignment || $isOtherSourcingPartner;
+        $nameLabel = $maskIfBlurred($assignee->name, $blurred);
+        $rfqNumber = $blurred ? null : $part['number'];
+
+        $sourcingDone = $assignee->pivot->completed_at !== null;
+        $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
+        $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
+        $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
+
+        $deMeta = match (true) {
+            $deIsDone => [$deActorName, $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
+            $deIsReturned => ['Returned — rework needed'],
+            $sourcingDone => ['Awaiting review'],
+            default => ['Awaiting Sourcing'],
+        };
+
+        $dataEntryNode = [
+            'name' => $nameLabel,
+            'role' => 'Data Entry',
+            'step' => 'data_entry',
+            'rfq_number' => $rfqNumber,
+            'meta' => $deMeta,
+            'state' => $nodeState($deIsDone, returned: $deIsReturned),
+            'children' => [$buildTailChain($rfqNumber)],
+        ];
+
+        $sourcingBranches[] = [
+            'name' => $nameLabel,
+            'role' => 'Sourcing',
+            'step' => 'sourcing',
+            'rfq_number' => $rfqNumber,
+            'meta' => $sourcingDone
+                ? ['Completed', $assignee->pivot->completed_at->format('M d, Y g:i A')]
+                : ['Pending since', $assignee->pivot->created_at->format('M d, Y g:i A')],
+            'state' => $nodeState($sourcingDone),
+            'children' => [$dataEntryNode],
+        ];
     }
 
     $rfqProgressTree = [
@@ -274,7 +287,7 @@
                 'name' => 'Assigned to Sourcing',
                 'step' => 'sourcing',
                 'rfq_number' => $rfq->rfq_number,
-                'meta' => $assignees->isEmpty() ? ['Not yet assigned'] : [],
+                'meta' => $rfq->assignees->isEmpty() ? ['Not yet assigned'] : ($rfq->hasUnassignedParts() ? ['Some parts still open'] : []),
                 'state' => $nodeState($stepDone['sourcing'], $currentStep === 'sourcing'),
                 'children' => $sourcingBranches,
             ]],
@@ -293,7 +306,7 @@
         <div class="d-flex gap-2">
             @if ($canCompleteSourcing)
                 <form action="{{ route('admin.rfqs.complete-sourcing', $rfq) }}" method="POST"
-                      data-confirm="{{ $rfq->assignees->count() > 1 ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
+                      data-confirm="{{ $rfq->isSplit() ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
                     @csrf
                     @method('PATCH')
                     @if ($statusFilter)
@@ -360,27 +373,18 @@
                 </form>
             @endif
             @can('rfqs.edit')
-                @if ($rfq->assignees->isEmpty())
-                    @if ($canSeeAssignOperationsButton)
-                        <button type="button" class="btn btn-sm btn-outline-secondary js-assign-operations-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
-                                {{ $restrictAssignment ? 'disabled' : '' }}
-                                data-bs-toggle="modal" data-bs-target="#assignOperationsModal"
-                                data-action="{{ route('admin.rfqs.assign-operations', $rfq) }}"
-                                data-operations-user-id="{{ $rfq->operations_assigned_by }}"
-                                title="{{ $restrictAssignment ? 'Restricted for your role' : '' }}">
-                            <i class="bi bi-diagram-2"></i> Assign Operations
-                        </button>
-                    @endif
-                    @if ($canSeeAssignButtons)
-                        <button type="button" class="btn btn-sm btn-outline-secondary js-assign-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
-                                {{ $restrictAssignment ? 'disabled' : '' }}
-                                data-bs-toggle="modal" data-bs-target="#assignRfqModal"
-                                data-action="{{ route('admin.rfqs.assign', $rfq) }}"
-                                data-assigned="{{ $rfq->assignees->pluck('id')->implode(',') }}"
-                                title="{{ $restrictAssignment ? 'Restricted for your role' : '' }}">
-                            <i class="bi bi-person-plus"></i> Assign Sourcing
-                        </button>
-                    @endif
+                @if ($rfq->assignees->isEmpty() && $canSeeAssignOperationsButton)
+                    <button type="button" class="btn btn-sm btn-outline-secondary js-assign-operations-rfq {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
+                            {{ $restrictAssignment ? 'disabled' : '' }}
+                            data-bs-toggle="modal" data-bs-target="#assignOperationsModal"
+                            data-action="{{ route('admin.rfqs.assign-operations', $rfq) }}"
+                            data-operations-user-id="{{ $rfq->operations_assigned_by }}"
+                            title="{{ $restrictAssignment ? 'Restricted for your role' : '' }}">
+                        <i class="bi bi-diagram-2"></i> Assign Operations
+                    </button>
+                @endif
+                @if ($canSeeAssignButtons && $rfq->hasUnassignedParts())
+                    @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment, 'showLabel' => true])
                 @endif
             @endcan
             @if (auth()->user()->hasRole('Admin'))
@@ -516,7 +520,7 @@
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'sourcing' ? 'show active' : '' }}" id="step-pane-sourcing" role="tabpanel" aria-labelledby="step-tab-sourcing">
-                    @if ($assignees->isEmpty())
+                    @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
                         <p class="text-muted-soft mb-0">Not yet assigned.</p>
                     @else
                         <div class="table-responsive">
@@ -529,21 +533,27 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($assignees as $assignee)
+                                    @foreach ($rfq->sourcingParts() as $part)
                                         @php
-                                            $tabBlurred = $restrictAssignment || ($restrictSourcingView && $assignee->id !== auth()->id());
-                                            $tabSourcingDone = $assignee->pivot->completed_at !== null;
+                                            $tabAssignee = $part['assignee'];
+                                            $tabBlurred = $tabAssignee && ($restrictAssignment || ($restrictSourcingView && $tabAssignee->id !== auth()->id()));
                                         @endphp
                                         <tr>
-                                            <td>{{ $maskIfBlurred($assignee->name, $tabBlurred) }}</td>
-                                            <td>{{ $tabBlurred ? 'Restricted' : $rfq->sourcingSplitNumberFor($assignee) }}</td>
-                                            <td>
-                                                @if ($tabSourcingDone)
-                                                    <span class="badge bg-success-subtle text-success-emphasis">Completed {{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</span>
-                                                @else
-                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Pending since {{ $assignee->pivot->created_at->format('M d, Y g:i A') }}</span>
-                                                @endif
-                                            </td>
+                                            @if ($tabAssignee)
+                                                <td>{{ $maskIfBlurred($tabAssignee->name, $tabBlurred) }}</td>
+                                                <td>{{ $tabBlurred ? 'Restricted' : $part['number'] }}</td>
+                                                <td>
+                                                    @if ($tabAssignee->pivot->completed_at !== null)
+                                                        <span class="badge bg-success-subtle text-success-emphasis">Completed {{ $tabAssignee->pivot->completed_at->format('M d, Y g:i A') }}</span>
+                                                    @else
+                                                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Pending since {{ $tabAssignee->pivot->created_at->format('M d, Y g:i A') }}</span>
+                                                    @endif
+                                                </td>
+                                            @else
+                                                <td class="text-muted-soft">Unassigned</td>
+                                                <td>{{ $part['number'] }}</td>
+                                                <td><span class="badge bg-warning-subtle text-warning-emphasis">Open — waiting for a Sourcing member</span></td>
+                                            @endif
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -553,7 +563,7 @@
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'data_entry' ? 'show active' : '' }}" id="step-pane-data_entry" role="tabpanel" aria-labelledby="step-tab-data_entry">
-                    @if ($assignees->isEmpty())
+                    @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
                         <p class="text-muted-soft mb-0">Not yet assigned.</p>
                     @else
                         <div class="table-responsive">
@@ -566,27 +576,34 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($assignees as $assignee)
+                                    @foreach ($rfq->sourcingParts() as $part)
                                         @php
-                                            $tabBlurred = $restrictAssignment || ($restrictSourcingView && $assignee->id !== auth()->id());
-                                            $tabDeIsDone = $assignee->pivot->data_entry_completed_at !== null;
-                                            $tabDeIsReturned = ! $tabDeIsDone && $assignee->pivot->returned_at !== null;
-                                            $tabDeActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
+                                            $tabAssignee = $part['assignee'];
+                                            $tabBlurred = $tabAssignee && ($restrictAssignment || ($restrictSourcingView && $tabAssignee->id !== auth()->id()));
+                                            $tabDeIsDone = $tabAssignee && $tabAssignee->pivot->data_entry_completed_at !== null;
+                                            $tabDeIsReturned = $tabAssignee && ! $tabDeIsDone && $tabAssignee->pivot->returned_at !== null;
+                                            $tabDeActorName = $restrictSourcingView ? 'Data Entry' : ($tabAssignee?->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
                                         @endphp
                                         <tr>
-                                            <td>{{ $maskIfBlurred($assignee->name, $tabBlurred) }}</td>
-                                            <td>{{ $tabBlurred ? 'Restricted' : $rfq->sourcingSplitNumberFor($assignee) }}</td>
-                                            <td>
-                                                @if ($tabDeIsDone)
-                                                    <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</span>
-                                                @elseif ($tabDeIsReturned)
-                                                    <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
-                                                @elseif ($assignee->pivot->completed_at !== null)
-                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting review</span>
-                                                @else
-                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting Sourcing</span>
-                                                @endif
-                                            </td>
+                                            @if ($tabAssignee)
+                                                <td>{{ $maskIfBlurred($tabAssignee->name, $tabBlurred) }}</td>
+                                                <td>{{ $tabBlurred ? 'Restricted' : $part['number'] }}</td>
+                                                <td>
+                                                    @if ($tabDeIsDone)
+                                                        <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</span>
+                                                    @elseif ($tabDeIsReturned)
+                                                        <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
+                                                    @elseif ($tabAssignee->pivot->completed_at !== null)
+                                                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting review</span>
+                                                    @else
+                                                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting Sourcing</span>
+                                                    @endif
+                                                </td>
+                                            @else
+                                                <td class="text-muted-soft">Unassigned</td>
+                                                <td>{{ $part['number'] }}</td>
+                                                <td><span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting Sourcing</span></td>
+                                            @endif
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -730,6 +747,12 @@
                             <dt>RFQ Number</dt>
                             <dd>{{ $displayRfqNumber }}</dd>
                         </div>
+                        @if ($rfq->category)
+                            <div>
+                                <dt>Category</dt>
+                                <dd>{{ $rfq->category }}</dd>
+                            </div>
+                        @endif
                         <div>
                             <dt>Created by</dt>
                             <dd class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">{{ $rfq->creator?->name ?? '—' }}</dd>
@@ -774,31 +797,45 @@
 
                 <div class="{{ $restrictAssignment ? 'rfq-locked-panel' : '' }}">
                     <div class="card-body {{ $restrictAssignment ? 'rfq-blurred' : '' }}">
-                        @forelse ($rfq->assignees as $assignee)
-                            <div class="d-flex align-items-center gap-2 mb-2 {{ ($restrictSourcingView && $assignee->id !== auth()->id()) ? 'rfq-blurred' : '' }}">
-                                <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
-                                <div class="flex-grow-1">
-                                    <div class="fw-semibold small">{{ $assignee->name }}</div>
-                                    <div class="text-muted-soft assignee-email">{{ $assignee->email }}</div>
-                                    @if ($rfq->assignees->count() > 1)
-                                        <div class="text-muted-soft small fw-semibold">{{ $rfq->sourcingSplitNumberFor($assignee) }}</div>
+                        @foreach ($rfq->sourcingParts() as $part)
+                            @php $assignee = $part['assignee']; @endphp
+                            @if ($assignee)
+                                <div class="d-flex align-items-center gap-2 mb-2 {{ ($restrictSourcingView && $assignee->id !== auth()->id()) ? 'rfq-blurred' : '' }}">
+                                    <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold small">{{ $assignee->name }}</div>
+                                        <div class="text-muted-soft assignee-email">{{ $assignee->email }}</div>
+                                        @if ($rfq->isSplit())
+                                            <div class="text-muted-soft small fw-semibold">{{ $part['number'] }}</div>
+                                        @endif
+                                    </div>
+                                    @if ($assignee->pivot->completed_at)
+                                        <span class="badge badge-soft-success" title="Completed {{ $assignee->pivot->completed_at->diffForHumans() }}">
+                                            <i class="bi bi-check-circle-fill"></i> Done
+                                        </span>
+                                    @elseif ($assignee->pivot->returned_at)
+                                        <span class="badge badge-soft-danger" title="{{ $assignee->pivot->return_reason }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Returned
+                                        </span>
+                                    @else
+                                        <span class="badge badge-soft-secondary">Pending</span>
                                     @endif
                                 </div>
-                                @if ($assignee->pivot->completed_at)
-                                    <span class="badge badge-soft-success" title="Completed {{ $assignee->pivot->completed_at->diffForHumans() }}">
-                                        <i class="bi bi-check-circle-fill"></i> Done
-                                    </span>
-                                @elseif ($assignee->pivot->returned_at)
-                                    <span class="badge badge-soft-danger" title="{{ $assignee->pivot->return_reason }}">
-                                        <i class="bi bi-arrow-counterclockwise"></i> Returned
-                                    </span>
-                                @else
-                                    <span class="badge badge-soft-secondary">Pending</span>
-                                @endif
-                            </div>
-                        @empty
-                            <p class="text-muted-soft mb-0">Not assigned yet.</p>
-                        @endforelse
+                            @elseif ($rfq->split_count !== null)
+                                {{-- A planned part nobody holds yet (Operations left it
+                                     empty in the Assign Sourcing wizard). --}}
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <span class="assignee-avatar assignee-avatar-empty"><i class="bi bi-person-dash"></i></span>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold small text-muted-soft">Unassigned</div>
+                                        <div class="text-muted-soft small fw-semibold">{{ $part['number'] }}</div>
+                                    </div>
+                                    <span class="badge badge-soft-warning">Open</span>
+                                </div>
+                            @else
+                                <p class="text-muted-soft mb-0">Not assigned yet.</p>
+                            @endif
+                        @endforeach
                     </div>
 
                     @if ($restrictAssignment)

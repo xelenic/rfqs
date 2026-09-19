@@ -106,49 +106,290 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Populate the shared "Assign Sourcing" modal from the clicked row's data-* attributes.
-    document.querySelectorAll('.js-assign-rfq').forEach(function (button) {
-        button.addEventListener('click', function () {
-            var form = document.getElementById('assignRfqForm');
-            if (!form) return;
-
-            form.action = button.dataset.action;
-            var assignedIds = (button.dataset.assigned || '').split(',').filter(Boolean);
-            form.querySelectorAll('input[name="users[]"]').forEach(function (checkbox) {
-                checkbox.checked = assignedIds.indexOf(checkbox.value) !== -1;
-                syncRolePickCard(checkbox);
-            });
-
-            // Already split across more than one person — open with the
-            // toggle on so re-saving doesn't silently strip anyone.
-            var splitToggle = document.getElementById('assign-split-toggle');
-            if (splitToggle) {
-                splitToggle.checked = assignedIds.length > 1;
-            }
-        });
-    });
-
-    // "Split this task" toggle in the Assign Sourcing modal — off (the
-    // default) keeps the pick to one person: choosing someone new
-    // un-picks whoever was previously checked. On allows picking several
-    // Sourcing members at once, which is what drives the WP0003-01/-02/-03
-    // split numbering (see Rfq::sourcingSplitNumbers()).
+    // Assign Sourcing wizard (see _assign_modal.blade.php). Two steps —
+    // job category, then keep-whole-or-split and who takes which part — on
+    // one form that only actually submits from the last step. Opened from
+    // any .js-assign-rfq button, which carries the RFQ's number, its
+    // planned split (empty until one's been made), and who already holds
+    // which part. With a split already planned it skips straight to the
+    // parts list and only offers the still-empty ones, since category and
+    // split size are settled by then. One person can hold several parts —
+    // they're worked and completed together, as one share — but once
+    // someone's finished their share they can't be given more, so they're
+    // disabled in every dropdown. See RfqController::assign() for the
+    // server side.
     (function () {
-        var assignForm = document.getElementById('assignRfqForm');
-        var splitToggle = document.getElementById('assign-split-toggle');
-        if (!assignForm || !splitToggle) return;
+        var modalEl = document.getElementById('assignRfqModal');
+        var form = document.getElementById('assignRfqForm');
+        var nextBtn = document.getElementById('assign-wizard-next');
+        if (!modalEl || !form || !nextBtn) return; // no Sourcing users to pick from
 
-        assignForm.querySelectorAll('input[name="users[]"]').forEach(function (checkbox) {
-            checkbox.addEventListener('change', function () {
-                if (splitToggle.checked || !checkbox.checked) return;
+        var NEW_OPTION = '__new__';
+        var backBtn = document.getElementById('assign-wizard-back');
+        var finishBtn = document.getElementById('assign-wizard-finish');
+        var subtitle = document.getElementById('assign-wizard-subtitle');
+        var stepsEl = document.getElementById('assign-wizard-steps');
+        var panels = {
+            1: form.querySelector('[data-step-panel="1"]'),
+            2: form.querySelector('[data-step-panel="2"]'),
+        };
+        var errorEls = {
+            1: document.getElementById('assign-step-1-error'),
+            2: document.getElementById('assign-step-2-error'),
+        };
+        var categorySelect = document.getElementById('assign-category');
+        var newCategoryWrap = document.getElementById('assign-new-category-wrap');
+        var newCategoryInput = document.getElementById('assign-new-category');
+        var splitInput = document.getElementById('assign-split-input');
+        var choiceWrap = document.getElementById('assign-split-choice');
+        var partsCountWrap = document.getElementById('assign-parts-count-wrap');
+        var partsCountInput = document.getElementById('assign-parts-count');
+        var partsList = document.getElementById('assign-parts-list');
+        var partsHint = document.getElementById('assign-parts-hint');
+        var userOptions = document.getElementById('assign-user-options');
+        var maxParts = parseInt(partsCountInput.max, 10) || 20;
 
-                assignForm.querySelectorAll('input[name="users[]"]').forEach(function (other) {
-                    if (other !== checkbox && other.checked) {
-                        other.checked = false;
-                        syncRolePickCard(other);
-                    }
+        var state = null;
+
+        function isSplitChosen() {
+            return form.querySelector('input[name="split_choice"]:checked').value === 'split';
+        }
+
+        // Part count while typing may be blank or out of range — fall back
+        // to something renderable rather than clearing the list.
+        function partsCount() {
+            if (state.remaining) return state.total;
+            if (!isSplitChosen()) return 1;
+            var n = parseInt(partsCountInput.value, 10);
+            return isNaN(n) ? 2 : Math.max(2, Math.min(maxParts, n));
+        }
+
+        function partLabel(part, total) {
+            return total > 1 ? state.rfqNumber + '-P' + part + ' of P' + total : state.rfqNumber;
+        }
+
+        function showError(step, message) {
+            errorEls[step].textContent = message || '';
+            errorEls[step].classList.toggle('d-none', !message);
+        }
+
+        function showStep(step) {
+            state.step = step;
+            panels[1].classList.toggle('d-none', step !== 1);
+            panels[2].classList.toggle('d-none', step !== 2);
+            stepsEl.querySelectorAll('[data-step-tab]').forEach(function (tab) {
+                var n = parseInt(tab.dataset.stepTab, 10);
+                tab.classList.toggle('is-active', n === step);
+                tab.classList.toggle('is-done', n < step);
+            });
+            backBtn.classList.toggle('d-none', step !== 2 || state.remaining);
+            nextBtn.classList.toggle('d-none', step !== 1);
+            finishBtn.classList.toggle('d-none', step !== 2);
+            finishBtn.textContent = state.remaining ? 'Assign' : 'Finish';
+            showError(1, '');
+            showError(2, '');
+        }
+
+        function toggleNewCategory() {
+            var isNew = categorySelect.value === NEW_OPTION;
+            newCategoryWrap.classList.toggle('d-none', !isNew);
+            if (isNew) newCategoryInput.focus();
+        }
+
+        // Disable, in every part's dropdown, anyone who's already finished
+        // their share of this RFQ — see the note up top.
+        function refreshUserOptions() {
+            var finishedIds = Object.keys(state.assigned).filter(function (part) {
+                return state.assigned[part].done;
+            }).map(function (part) {
+                return String(state.assigned[part].id);
+            });
+            partsList.querySelectorAll('select').forEach(function (select) {
+                select.querySelectorAll('option[value]').forEach(function (option) {
+                    if (!option.value) return;
+                    option.disabled = finishedIds.indexOf(option.value) !== -1;
                 });
             });
+        }
+
+        function buildPartRow(part, total, previousValue) {
+            var row = document.createElement('div');
+            row.className = 'wizard-part-row';
+
+            var label = document.createElement('span');
+            label.className = 'wizard-part-number';
+            label.textContent = partLabel(part, total);
+            row.appendChild(label);
+
+            if (state.assigned[part]) {
+                row.classList.add('is-assigned');
+                var who = document.createElement('span');
+                who.className = 'wizard-part-assignee';
+                who.innerHTML = '<i class="bi bi-check-circle-fill"></i> ';
+                who.appendChild(document.createTextNode(state.assigned[part].name));
+                row.appendChild(who);
+                return row;
+            }
+
+            var select = document.createElement('select');
+            select.className = 'form-select form-select-sm wizard-part-select';
+            select.name = 'assignments[' + part + ']';
+            select.dataset.part = part;
+            select.setAttribute('aria-label', 'Sourcing member for ' + partLabel(part, total));
+            select.appendChild(userOptions.content.cloneNode(true));
+            // A whole, unsplit RFQ needs someone; a part of a split can wait.
+            select.querySelector('option[value=""]').textContent =
+                !state.remaining && !isSplitChosen() ? 'Select a Sourcing member' : 'Leave unassigned';
+            select.value = previousValue || '';
+            select.addEventListener('change', refreshUserOptions);
+            row.appendChild(select);
+            return row;
+        }
+
+        function renderParts() {
+            var total = partsCount();
+            var previous = {};
+            partsList.querySelectorAll('select').forEach(function (select) {
+                previous[select.dataset.part] = select.value;
+            });
+
+            partsList.innerHTML = '';
+            for (var part = 1; part <= total; part++) {
+                partsList.appendChild(buildPartRow(part, total, previous[part]));
+            }
+            refreshUserOptions();
+
+            if (state.remaining) {
+                partsHint.textContent = 'Parts left on "Leave unassigned" can be assigned later. A person can take more than one part; they\'re worked and marked complete together. The RFQ moves on to Data Entry once every part is assigned and done.';
+            } else if (isSplitChosen()) {
+                partsHint.textContent = 'The same Sourcing member can take more than one part — they\'re worked and marked complete together. Parts left on "Leave unassigned" can be assigned later; the RFQ waits for every part before it moves on.';
+            } else {
+                partsHint.textContent = '';
+            }
+        }
+
+        function validateStep1() {
+            categorySelect.classList.remove('is-invalid');
+            newCategoryInput.classList.remove('is-invalid');
+
+            if (!categorySelect.value) {
+                categorySelect.classList.add('is-invalid');
+                showError(1, 'Pick a job category to continue.');
+                return false;
+            }
+            if (categorySelect.value === NEW_OPTION && !newCategoryInput.value.trim()) {
+                newCategoryInput.classList.add('is-invalid');
+                showError(1, 'Type a name for the new category.');
+                return false;
+            }
+            showError(1, '');
+            return true;
+        }
+
+        function validateStep2() {
+            var selects = partsList.querySelectorAll('select');
+            var anyPicked = Array.prototype.some.call(selects, function (select) {
+                return select.value !== '';
+            });
+
+            if (!state.remaining && isSplitChosen()) {
+                var n = parseInt(partsCountInput.value, 10);
+                if (isNaN(n) || n < 2 || n > maxParts) {
+                    showError(2, 'Enter a number of parts between 2 and ' + maxParts + '.');
+                    return false;
+                }
+            }
+            if (!state.remaining && !isSplitChosen() && !anyPicked) {
+                showError(2, 'Pick a Sourcing member to take this RFQ, or split it into parts.');
+                return false;
+            }
+            if (state.remaining && !anyPicked) {
+                showError(2, 'Pick someone for at least one part, or cancel to leave them for later.');
+                return false;
+            }
+            showError(2, '');
+            return true;
+        }
+
+        function parseAssigned(raw) {
+            try {
+                var parsed = JSON.parse(raw || '{}');
+                return Array.isArray(parsed) ? {} : parsed;
+            } catch (e) {
+                return {};
+            }
+        }
+
+        document.querySelectorAll('.js-assign-rfq').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var splitCount = button.dataset.splitCount || '';
+                state = {
+                    step: 1,
+                    remaining: splitCount !== '',
+                    total: parseInt(splitCount, 10) || 1,
+                    rfqNumber: button.dataset.rfqNumber || '',
+                    assigned: parseAssigned(button.dataset.assigned),
+                };
+
+                form.action = button.dataset.action;
+                categorySelect.value = '';
+                newCategoryInput.value = '';
+                categorySelect.classList.remove('is-invalid');
+                newCategoryInput.classList.remove('is-invalid');
+                newCategoryWrap.classList.add('d-none');
+                form.querySelector('input[name="split_choice"][value="single"]').checked = true;
+                partsCountInput.value = 2;
+                partsCountWrap.classList.add('d-none');
+
+                subtitle.textContent = state.rfqNumber + (state.remaining ? ' — assign the remaining parts' : '');
+                choiceWrap.classList.toggle('d-none', state.remaining);
+                stepsEl.classList.toggle('d-none', state.remaining);
+
+                partsList.innerHTML = '';
+                renderParts();
+                showStep(state.remaining ? 2 : 1);
+            });
+        });
+
+        categorySelect.addEventListener('change', function () {
+            categorySelect.classList.remove('is-invalid');
+            toggleNewCategory();
+        });
+
+        form.querySelectorAll('input[name="split_choice"]').forEach(function (radio) {
+            radio.addEventListener('change', function () {
+                partsCountWrap.classList.toggle('d-none', !isSplitChosen());
+                renderParts();
+            });
+        });
+
+        partsCountInput.addEventListener('input', renderParts);
+        partsCountInput.addEventListener('change', function () {
+            var n = parseInt(partsCountInput.value, 10);
+            partsCountInput.value = isNaN(n) ? 2 : Math.max(2, Math.min(maxParts, n));
+            renderParts();
+        });
+
+        nextBtn.addEventListener('click', function () {
+            if (validateStep1()) showStep(2);
+        });
+        backBtn.addEventListener('click', function () {
+            showStep(1);
+        });
+
+        form.addEventListener('submit', function (event) {
+            // Enter in the new-category box would otherwise submit the whole
+            // wizard from step 1 — treat it as "Next" instead.
+            if (state && state.step === 1 && !state.remaining) {
+                event.preventDefault();
+                nextBtn.click();
+                return;
+            }
+            if (!state || !validateStep2()) {
+                event.preventDefault();
+                return;
+            }
+            splitInput.value = !state.remaining && isSplitChosen() ? '1' : '0';
         });
     })();
 

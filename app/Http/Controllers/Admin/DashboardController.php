@@ -73,7 +73,7 @@ class DashboardController extends Controller
                 ];
             }
 
-            $awaitingSourcing = Rfq::where('status', 'Pending')->doesntHave('assignees')->count();
+            $awaitingSourcing = Rfq::where('status', 'Pending')->needingSourcing()->count();
             if ($awaitingSourcing > 0) {
                 $notifications[] = [
                     'type' => 'warning',

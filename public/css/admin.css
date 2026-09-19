@@ -1424,3 +1424,189 @@ h6, .h6 { font-size: 0.85rem; }
     display: block;
   }
 }
+
+/* ---------- Assign Sourcing wizard ---------- */
+/* Two-step modal (_assign_modal.blade.php, driven by admin.js): a stepper
+   across the top, then either the category picker or the split/assign
+   panel. Rows for each planned part ("RFQ1005-P3 of P5") are built in JS. */
+
+.wizard-steps {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+  background: var(--rfq-bg);
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+.wizard-step + .wizard-step::before {
+  content: "";
+  flex: 0 0 1.5rem;
+  height: 2px;
+  margin-right: 0.25rem;
+  background: var(--rfq-border);
+}
+
+.wizard-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--rfq-border);
+  background: var(--rfq-surface);
+  font-size: 0.72rem;
+}
+
+.wizard-step.is-active {
+  color: var(--rfq-primary-dark);
+}
+
+.wizard-step.is-active .wizard-step-dot {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+.wizard-step.is-done {
+  color: var(--rfq-success);
+}
+
+.wizard-step.is-done .wizard-step-dot {
+  border-color: var(--rfq-success);
+  background: var(--rfq-success);
+  color: #fff;
+}
+
+/* "Keep as one task" / "Split this task" — two big selectable cards. */
+.wizard-choice-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.wizard-choice {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  padding: 0.75rem 0.9rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wizard-choice:hover {
+  border-color: var(--rfq-primary);
+}
+
+.wizard-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wizard-choice:has(input:checked) {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+  box-shadow: 0 0 0 1px var(--rfq-primary);
+}
+
+.wizard-choice:has(input:focus-visible) {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.wizard-choice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.wizard-choice-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.wizard-choice-desc {
+  font-size: 0.75rem;
+  color: var(--rfq-text-muted);
+}
+
+.assign-parts-count {
+  max-width: 8rem;
+}
+
+/* One row per planned part — its number on the left, who takes it on the
+   right. */
+.wizard-part-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.wizard-part-list:empty {
+  display: none;
+}
+
+.wizard-part-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+}
+
+.wizard-part-row.is-assigned {
+  background: var(--rfq-bg);
+}
+
+.wizard-part-number {
+  font-weight: 700;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.wizard-part-select {
+  max-width: 18rem;
+}
+
+.wizard-part-assignee {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rfq-success);
+}
+
+/* A planned part nobody holds yet, in the Assigned Sourcing card. */
+.assignee-avatar-empty {
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  border: 1px dashed var(--rfq-border);
+}
+
+@media (max-width: 575.98px) {
+  .wizard-part-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  .wizard-part-select {
+    max-width: none;
+  }
+}

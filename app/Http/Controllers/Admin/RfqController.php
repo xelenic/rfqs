@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class RfqController extends Controller implements HasMiddleware
@@ -107,7 +110,7 @@ class RfqController extends Controller implements HasMiddleware
         };
 
         $rfqs = Rfq::query()
-            ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy'])
+            ->with(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy'])
             // The quick-detail modal (Data Entry's "By Sourcing" list and
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
@@ -125,7 +128,7 @@ class RfqController extends Controller implements HasMiddleware
                 });
             })
             ->when($scopedToDataEntry, fn ($query) => $query->whereNotNull('sourcing_completed_at'))
-            ->when($scopedToUnassigned, fn ($query) => $query->doesntHave('assignees'))
+            ->when($scopedToUnassigned, fn ($query) => $query->needingSourcing())
             ->when($scopedToHeadOfBdReview, fn ($query) => $query->where('stage', 'head_of_bd_review'))
             ->when($scopedToGmAssistant, fn ($query) => $query->where('stage', 'gm_assistant'))
             ->when($scopedToGmReview, fn ($query) => $query->where('stage', 'gm_review'))
@@ -141,7 +144,7 @@ class RfqController extends Controller implements HasMiddleware
         // here before it's fully handed off and appears there.
         $bySourcingRfqs = $scopedToDataEntry
             ? Rfq::query()
-                ->with(['assignees', 'comments.author', 'comments.replies.author'])
+                ->with(['assignees', 'parts', 'comments.author', 'comments.replies.author'])
                 // Only assignees Sourcing has finished but Data Entry
                 // hasn't processed yet — once Data Entry completes one
                 // assignee's split, it drops out of this queue on its own,
@@ -159,8 +162,8 @@ class RfqController extends Controller implements HasMiddleware
         // but is still Pending overall.
         $assignedRfqs = $scopedToUnassigned
             ? Rfq::query()
-                ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
-                ->has('assignees')
+                ->with(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
+                ->fullySourced()
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(10, ['*'], 'assigned_page')
@@ -196,6 +199,7 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToGmReview' => $scopedToGmReview,
             'scopedToBdClosing' => $scopedToBdClosing,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
+            'jobCategories' => JobCategory::orderBy('name')->pluck('name'),
             'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
@@ -210,11 +214,12 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return view('admin.rfqs.show', [
-            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles']),
+            'rfq' => $rfq->load(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles']),
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
+            'jobCategories' => JobCategory::orderBy('name')->pluck('name'),
             'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
         ]);
     }
@@ -259,11 +264,23 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Assign (or reassign) which Sourcing-team members are working this
-     * RFQ. Optional — an empty selection clears all assignees. Only users
-     * who actually hold the Sourcing role are ever synced, even if the
-     * request is tampered with. Sourcing itself never has access to this —
-     * it's a receiving role, not an assigning one.
+     * The Assign Sourcing wizard's submit. Two passes over the same
+     * endpoint:
+     *
+     * - First (no split planned yet): the job category, whether to split
+     *   the task and into how many parts, and who takes which part. A
+     *   category typed in by hand is stored in job_categories so it's in
+     *   the dropdown next time. Parts can be left empty.
+     * - Later (split already planned): only fills parts still empty —
+     *   category and split size are settled by then, and assigned parts
+     *   are never reassigned here.
+     *
+     * Only users who actually hold the Sourcing role are ever assigned,
+     * even if the request is tampered with. One person can take several
+     * parts — they're worked and completed together, as that person's one
+     * share of the RFQ (rfq_user is one row per person per RFQ) — as long
+     * as they haven't already finished their share. Sourcing itself never
+     * has access to this — it's a receiving role, not an assigning one.
      *
      * An Operations member assigning Sourcing directly is implicitly the
      * one routing this RFQ — if nobody's recorded as the Operations
@@ -274,24 +291,94 @@ class RfqController extends Controller implements HasMiddleware
     {
         abort_if($request->user()->hasRole('Sourcing'), 403, 'Sourcing cannot assign RFQs — that\'s Operations\' or a coordinator\'s call.');
 
-        $validated = $request->validate([
-            'users' => ['array'],
-            'users.*' => ['integer'],
+        $planning = $rfq->split_count === null;
+
+        abort_if(
+            $planning && $rfq->assignees->isNotEmpty(),
+            422,
+            'This RFQ was assigned before parts could be planned up front, so its Sourcing assignment can\'t be changed here.'
+        );
+
+        $splitting = $planning && $request->boolean('split');
+        $newCategory = $planning && $request->input('category') === JobCategory::NEW_OPTION;
+
+        $validator = Validator::make($request->all(), [
+            'category' => [Rule::requiredIf($planning), 'nullable', 'string', 'max:100'],
+            'new_category' => [Rule::requiredIf($newCategory), 'nullable', 'string', 'max:100'],
+            'split' => ['nullable', 'boolean'],
+            'parts' => [Rule::requiredIf($splitting), 'nullable', 'integer', 'min:2', 'max:'.Rfq::MAX_SPLIT_PARTS],
+            'assignments' => ['nullable', 'array'],
+            'assignments.*' => ['nullable', 'integer'],
         ]);
 
-        $sourcingUserIds = User::role('Sourcing')->pluck('id');
-        $userIds = collect($validated['users'] ?? [])->intersect($sourcingUserIds)->all();
+        $totalParts = $planning ? ($splitting ? (int) $request->input('parts') : 1) : $rfq->split_count;
+        $assignments = collect($request->input('assignments', []))
+            ->mapWithKeys(fn ($userId, $part) => [(int) $part => $userId ? (int) $userId : null]);
 
-        $rfq->assignees()->sync($userIds);
+        $validator->after(function ($validator) use ($request, $rfq, $planning, $splitting, $newCategory, $totalParts, $assignments) {
+            if ($planning && ! $newCategory && $request->filled('category') && ! JobCategory::where('name', $request->input('category'))->exists()) {
+                $validator->errors()->add('category', 'That job category doesn\'t exist.');
+            }
 
-        if ($request->user()->hasRole('Senior Operations') && ! $rfq->operations_assigned_by) {
-            $rfq->update([
-                'operations_assigned_by' => $request->user()->id,
-                'operations_assigned_at' => now(),
-            ]);
+            if ($planning && ! $splitting && ! $assignments->get(1)) {
+                $validator->errors()->add('assignments', 'Pick a Sourcing member to take this task, or split it into parts.');
+            }
+
+            if ($assignments->keys()->contains(fn (int $part) => $part < 1 || $part > $totalParts)) {
+                $validator->errors()->add('assignments', 'One of those parts doesn\'t exist on this RFQ.');
+            }
+
+            $pickedUserIds = $assignments->filter()->values()->unique();
+
+            if ($pickedUserIds->diff(User::role('Sourcing')->pluck('id'))->isNotEmpty()) {
+                $validator->errors()->add('assignments', 'Only users with the Sourcing role can be assigned.');
+            }
+
+            // A person can hold several parts — they're one share, completed
+            // together — but a share that's already finished can't quietly
+            // grow: the new part would un-finish work Data Entry may already
+            // have processed.
+            $finishedShareNames = $rfq->assignees
+                ->filter(fn (User $assignee) => $assignee->pivot->completed_at !== null && $pickedUserIds->contains($assignee->id))
+                ->pluck('name');
+
+            if ($finishedShareNames->isNotEmpty()) {
+                $validator->errors()->add('assignments', $finishedShareNames->join(', ', ' and ').' already finished their part, so can\'t take another one — pick someone else.');
+            }
+        });
+
+        if ($validator->fails()) {
+            return back()->with('error', implode(' ', $validator->errors()->all()));
         }
 
-        return $this->redirectAfterSave($request, $rfq)->with('status', 'RFQ assignment updated.');
+        DB::transaction(function () use ($request, $rfq, $planning, $newCategory, $totalParts, $assignments) {
+            $user = $request->user();
+
+            if ($planning) {
+                $category = JobCategory::findOrCreateByName(
+                    $newCategory ? $request->input('new_category') : $request->input('category'),
+                    $user
+                );
+
+                $rfq->categorize($category->name, $user);
+                $rfq->planSplit($totalParts);
+            }
+
+            $rfq->assignSourcingParts($assignments->all());
+
+            if ($user->hasRole('Senior Operations') && ! $rfq->operations_assigned_by) {
+                $rfq->update([
+                    'operations_assigned_by' => $user->id,
+                    'operations_assigned_at' => now(),
+                ]);
+            }
+        });
+
+        $remaining = $rfq->sourcingParts()->whereNull('assignee')->count();
+
+        return $this->redirectAfterSave($request, $rfq)->with('status', $remaining === 0
+            ? 'Sourcing assigned.'
+            : 'Saved — '.($totalParts - $remaining).' of '.$totalParts.' parts assigned, '.$remaining.' still to assign.');
     }
 
     /**

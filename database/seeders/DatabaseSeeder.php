@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
             BusinessRoleSeeder::class,
             UserSeeder::class,
+            JobCategorySeeder::class,
         ]);
     }
 }

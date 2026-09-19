@@ -513,7 +513,7 @@
                                 <td class="text-end">
                                     @if (! $iHaveCompletedMyPart)
                                         <form action="{{ route('admin.rfqs.complete-sourcing', $rfq) }}" method="POST"
-                                              data-confirm="{{ $rfq->assignees->count() > 1 ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
+                                              data-confirm="{{ $rfq->isSplit() ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="redirect_status" value="Pending">
