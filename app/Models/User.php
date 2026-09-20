@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
@@ -39,6 +40,23 @@ class User extends Authenticatable
     public function assignedRfqs(): BelongsToMany
     {
         return $this->belongsToMany(Rfq::class)->withTimestamps();
+    }
+
+    /**
+     * Private messages sent to this user — the unread ones are the count on
+     * their Messages link.
+     */
+    public function receivedMessages(): HasMany
+    {
+        return $this->hasMany(PrivateMessage::class, 'recipient_id');
+    }
+
+    /**
+     * Private messages this user has sent.
+     */
+    public function sentMessages(): HasMany
+    {
+        return $this->hasMany(PrivateMessage::class, 'sender_id');
     }
 
     /**

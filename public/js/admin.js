@@ -106,18 +106,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Assign Sourcing wizard (see _assign_modal.blade.php). Two steps —
-    // job category, then keep-whole-or-split and who takes which part — on
-    // one form that only actually submits from the last step. Opened from
-    // any .js-assign-rfq button, which carries the RFQ's number, its
-    // planned split (empty until one's been made), and who already holds
-    // which part. With a split already planned it skips straight to the
-    // parts list and only offers the still-empty ones, since category and
-    // split size are settled by then. One person can hold several parts —
-    // they're worked and completed together, as one share — but once
-    // someone's finished their share they can't be given more, so they're
-    // disabled in every dropdown. See RfqController::assign() for the
-    // server side.
+    // Assign Sourcing wizard (see _assign_modal.blade.php). Four steps —
+    // job category; keep whole or split into parts; who takes each part;
+    // then a summary of it all — on one form that only actually submits
+    // from the last one, where Finish appears. Opened from any
+    // .js-assign-rfq button, which carries the RFQ's number, subject and
+    // category, its planned split (empty until one's been made), and who
+    // already holds which part. With a split already planned it skips
+    // straight to assigning, and only offers the still-empty parts, since
+    // category and split size are settled by then. One person can hold several parts — each becomes its own
+    // assignment, shown, worked and completed on its own. See
+    // RfqController::assign() for the server side.
     (function () {
         var modalEl = document.getElementById('assignRfqModal');
         var form = document.getElementById('assignRfqForm');
@@ -132,20 +131,39 @@ document.addEventListener('DOMContentLoaded', function () {
         var panels = {
             1: form.querySelector('[data-step-panel="1"]'),
             2: form.querySelector('[data-step-panel="2"]'),
+            3: form.querySelector('[data-step-panel="3"]'),
+            4: form.querySelector('[data-step-panel="4"]'),
         };
         var errorEls = {
             1: document.getElementById('assign-step-1-error'),
             2: document.getElementById('assign-step-2-error'),
+            3: document.getElementById('assign-step-3-error'),
+            4: document.getElementById('assign-step-4-error'),
         };
         var categorySelect = document.getElementById('assign-category');
         var newCategoryWrap = document.getElementById('assign-new-category-wrap');
         var newCategoryInput = document.getElementById('assign-new-category');
+        var newCategoryDescription = document.getElementById('assign-new-category-description');
+        var newCategoryCount = document.getElementById('assign-new-category-count');
+        var categoryCard = document.getElementById('assign-category-card');
+        var categoryIcon = document.getElementById('assign-category-icon');
+        var categoryName = document.getElementById('assign-category-name');
+        var categoryDesc = document.getElementById('assign-category-desc');
+        var categoryBadge = document.getElementById('assign-category-badge');
+        var rfqContext = document.getElementById('assign-rfq-context');
         var splitInput = document.getElementById('assign-split-input');
-        var choiceWrap = document.getElementById('assign-split-choice');
         var partsCountWrap = document.getElementById('assign-parts-count-wrap');
         var partsCountInput = document.getElementById('assign-parts-count');
+        var partsMinus = document.getElementById('assign-parts-minus');
+        var partsPlus = document.getElementById('assign-parts-plus');
+        var partsQuickPicks = document.querySelectorAll('#assign-parts-count-wrap .parts-quick-btn');
+        var partsPreview = document.getElementById('assign-parts-preview');
+        var partsChips = document.getElementById('assign-parts-chips');
         var partsList = document.getElementById('assign-parts-list');
-        var partsHint = document.getElementById('assign-parts-hint');
+        var leadTitle = document.getElementById('assign-lead-title');
+        var leadText = document.getElementById('assign-lead-text');
+        var summary = document.getElementById('assign-summary');
+        var reviewParts = document.getElementById('review-parts');
         var userOptions = document.getElementById('assign-user-options');
         var maxParts = parseInt(partsCountInput.max, 10) || 20;
 
@@ -175,19 +193,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function showStep(step) {
             state.step = step;
-            panels[1].classList.toggle('d-none', step !== 1);
-            panels[2].classList.toggle('d-none', step !== 2);
+            [1, 2, 3, 4].forEach(function (n) {
+                panels[n].classList.toggle('d-none', step !== n);
+                showError(n, '');
+            });
             stepsEl.querySelectorAll('[data-step-tab]').forEach(function (tab) {
                 var n = parseInt(tab.dataset.stepTab, 10);
                 tab.classList.toggle('is-active', n === step);
                 tab.classList.toggle('is-done', n < step);
             });
-            backBtn.classList.toggle('d-none', step !== 2 || state.remaining);
-            nextBtn.classList.toggle('d-none', step !== 1);
-            finishBtn.classList.toggle('d-none', step !== 2);
-            finishBtn.textContent = state.remaining ? 'Assign' : 'Finish';
-            showError(1, '');
-            showError(2, '');
+            backBtn.classList.toggle('d-none', step <= state.firstStep);
+            nextBtn.classList.toggle('d-none', step === 4);
+            nextBtn.innerHTML = (step === 3 ? 'Review' : 'Next') + ' <i class="bi bi-arrow-right"></i>';
+            // Finish only shows on the summary — and, being shown then,
+            // plays its entrance animation (see .wizard-finish).
+            finishBtn.classList.toggle('d-none', step !== 4);
+            finishBtn.innerHTML = '<i class="bi bi-check2-circle"></i> ' + (state.remaining ? 'Assign' : 'Finish');
+
+            // The button just pressed may be hidden now (Back, Next and Finish
+            // swap places) — keep keyboard focus in the modal, on the modal
+            // itself rather than on Finish so a held-down Enter can't save it.
+            var focused = document.activeElement;
+            if (!modalEl.contains(focused) || focused.offsetParent === null) {
+                modalEl.focus();
+            }
         }
 
         function toggleNewCategory() {
@@ -196,20 +225,44 @@ document.addEventListener('DOMContentLoaded', function () {
             if (isNew) newCategoryInput.focus();
         }
 
-        // Disable, in every part's dropdown, anyone who's already finished
-        // their share of this RFQ — see the note up top.
-        function refreshUserOptions() {
-            var finishedIds = Object.keys(state.assigned).filter(function (part) {
-                return state.assigned[part].done;
-            }).map(function (part) {
-                return String(state.assigned[part].id);
-            });
-            partsList.querySelectorAll('select').forEach(function (select) {
-                select.querySelectorAll('option[value]').forEach(function (option) {
-                    if (!option.value) return;
-                    option.disabled = finishedIds.indexOf(option.value) !== -1;
-                });
-            });
+        // The card under the picker: what the chosen category covers — its
+        // description — or, for a new one, a live preview of what's being
+        // typed. With nothing chosen it says so, rather than sitting empty.
+        function renderCategoryCard(animate) {
+            var chosen = categorySelect.value;
+            var isNew = chosen === NEW_OPTION;
+            var option = categorySelect.options[categorySelect.selectedIndex];
+            var name, description, icon, isPlaceholder;
+
+            if (!chosen) {
+                name = 'No category selected yet';
+                description = 'Choose one above and what it covers will show up here.';
+                icon = 'bi-tag';
+                isPlaceholder = true;
+            } else if (isNew) {
+                name = newCategoryInput.value.trim() || 'New category';
+                description = newCategoryDescription.value.trim() || 'Add a short description so everyone knows what it covers.';
+                icon = 'bi-plus-lg';
+                isPlaceholder = !newCategoryDescription.value.trim();
+            } else {
+                name = chosen;
+                description = option.dataset.description || 'No description has been added for this category yet.';
+                icon = option.dataset.icon || 'bi-tag';
+                isPlaceholder = !option.dataset.description;
+            }
+
+            categoryName.textContent = name;
+            categoryDesc.textContent = description;
+            categoryDesc.classList.toggle('is-placeholder', isPlaceholder);
+            categoryIcon.className = 'bi ' + icon;
+            categoryBadge.classList.toggle('d-none', !isNew);
+            categoryCard.classList.toggle('is-empty', !chosen);
+
+            if (animate) {
+                categoryCard.classList.remove('is-changing');
+                void categoryCard.offsetWidth; // restart the animation
+                categoryCard.classList.add('is-changing');
+            }
         }
 
         function buildPartRow(part, total, previousValue) {
@@ -241,7 +294,6 @@ document.addEventListener('DOMContentLoaded', function () {
             select.querySelector('option[value=""]').textContent =
                 !state.remaining && !isSplitChosen() ? 'Select a Sourcing member' : 'Leave unassigned';
             select.value = previousValue || '';
-            select.addEventListener('change', refreshUserOptions);
             row.appendChild(select);
             return row;
         }
@@ -257,15 +309,182 @@ document.addEventListener('DOMContentLoaded', function () {
             for (var part = 1; part <= total; part++) {
                 partsList.appendChild(buildPartRow(part, total, previous[part]));
             }
-            refreshUserOptions();
+            renderAssignLead();
+        }
 
-            if (state.remaining) {
-                partsHint.textContent = 'Parts left on "Leave unassigned" can be assigned later. A person can take more than one part; they\'re worked and marked complete together. The RFQ moves on to Data Entry once every part is assigned and done.';
-            } else if (isSplitChosen()) {
-                partsHint.textContent = 'The same Sourcing member can take more than one part — they\'re worked and marked complete together. Parts left on "Leave unassigned" can be assigned later; the RFQ waits for every part before it moves on.';
-            } else {
-                partsHint.textContent = '';
+        // The part-count stepper: − and + stop at the limits, and the quick
+        // pick matching the current number lights up.
+        function syncPartsCounter() {
+            var n = parseInt(partsCountInput.value, 10);
+            partsMinus.disabled = !isNaN(n) && n <= 2;
+            partsPlus.disabled = !isNaN(n) && n >= maxParts;
+            partsQuickPicks.forEach(function (pick) {
+                pick.classList.toggle('is-active', parseInt(pick.dataset.parts, 10) === n);
+            });
+        }
+
+        function setPartsCount(n) {
+            partsCountInput.value = isNaN(n) ? 2 : Math.max(2, Math.min(maxParts, n));
+            syncPartsCounter();
+            renderPartsPreview();
+            renderParts();
+        }
+
+        // Step 2's "This makes …" — the parts a split will create, so the
+        // count isn't just a number.
+        function renderPartsPreview() {
+            var splitting = isSplitChosen();
+            partsPreview.classList.toggle('d-none', !splitting);
+            partsChips.innerHTML = '';
+            if (!splitting) return;
+
+            var total = partsCount();
+            for (var part = 1; part <= total; part++) {
+                var chip = document.createElement('span');
+                chip.className = 'wizard-chip';
+                chip.textContent = partLabel(part, total);
+                partsChips.appendChild(chip);
             }
+        }
+
+        // Step 3's lead-in and summary, worded for what was chosen: the
+        // whole task, a fresh split, or the parts still left on a split.
+        // The category being assigned: picked from the list, typed in as a new
+        // one, or — when only the remaining parts are being filled — already
+        // on the RFQ. The list's options carry each category's description
+        // and icon.
+        function currentCategory() {
+            var name = state.remaining ? state.category : categorySelect.value;
+
+            if (!state.remaining && name === NEW_OPTION) {
+                return {
+                    name: newCategoryInput.value.trim(),
+                    description: newCategoryDescription.value.trim(),
+                    icon: 'bi-tag',
+                    isNew: true,
+                };
+            }
+
+            var option = Array.prototype.find.call(categorySelect.options, function (candidate) {
+                return candidate.value === name;
+            });
+
+            return {
+                name: name,
+                description: option ? option.dataset.description || '' : '',
+                icon: option ? option.dataset.icon || 'bi-tag' : 'bi-tag',
+                isNew: false,
+            };
+        }
+
+        function renderAssignLead() {
+            var total = partsCount();
+            var whole = !state.remaining && !isSplitChosen();
+            var category = currentCategory().name;
+            var open = total - Object.keys(state.assigned).length;
+
+            leadTitle.textContent = state.remaining ? 'Assign the remaining parts' : (whole ? 'Who takes this task?' : 'Who takes which part?');
+            leadText.textContent = whole
+                ? 'Pick the Sourcing member who takes the whole RFQ.'
+                : 'Pick a Sourcing member for each part — the same person can take more than one, and each part is completed on its own. Parts left on "Leave unassigned" can be assigned later; the RFQ moves on to Data Entry once every part is assigned and done.';
+
+            var chips = [];
+            if (category) chips.push(['bi-tag', category]);
+            chips.push(whole
+                ? ['bi-person', 'Whole task']
+                : ['bi-diagram-3', state.remaining ? open + ' of ' + total + ' parts still to assign' : total + ' parts']);
+
+            summary.innerHTML = '';
+            chips.forEach(function (chip) {
+                var el = document.createElement('span');
+                el.className = 'wizard-chip';
+                el.innerHTML = '<i class="bi ' + chip[0] + '"></i> ';
+                el.appendChild(document.createTextNode(chip[1]));
+                summary.appendChild(el);
+            });
+        }
+
+        // Step 4: the whole picture, laid out from what the earlier steps
+        // hold — the category, how it's split, and who takes each part.
+        function renderReview() {
+            var total = partsCount();
+            var whole = !state.remaining && !isSplitChosen();
+            var category = currentCategory();
+
+            document.getElementById('review-rfq-number').textContent = state.rfqNumber;
+            document.getElementById('review-rfq-subject').textContent = state.subject;
+            document.getElementById('review-rfq').classList.toggle('d-none', !state.subject);
+            document.getElementById('review-finish-name').textContent = state.remaining ? 'Assign' : 'Finish';
+
+            document.getElementById('review-category-icon').className = 'bi ' + category.icon;
+            document.getElementById('review-category-name').textContent = category.name;
+            var categoryDescription = document.getElementById('review-category-desc');
+            categoryDescription.textContent = category.description || 'No description has been added for this category yet.';
+            categoryDescription.classList.toggle('is-placeholder', !category.description);
+            document.getElementById('review-category-new').classList.toggle('d-none', !category.isNew);
+
+            // Who takes what — one row per part.
+            var already = 0;
+            var assignedNow = 0;
+            var unassigned = 0;
+            reviewParts.innerHTML = '';
+            for (var part = 1; part <= total; part++) {
+                var row = document.createElement('li');
+                row.className = 'review-part';
+
+                var label = document.createElement('span');
+                label.className = 'review-part-number';
+                label.textContent = partLabel(part, total);
+                row.appendChild(label);
+
+                var who = document.createElement('span');
+                who.className = 'review-part-who';
+                var select = partsList.querySelector('select[data-part="' + part + '"]');
+                var picked = select && select.value ? select.options[select.selectedIndex] : null;
+
+                if (state.assigned[part]) {
+                    already++;
+                    who.innerHTML = '<i class="bi bi-check-circle-fill"></i> ';
+                    who.appendChild(document.createTextNode(state.assigned[part].name));
+                    var tag = document.createElement('span');
+                    tag.className = 'review-part-tag';
+                    tag.textContent = 'already assigned';
+                    who.appendChild(tag);
+                } else if (picked) {
+                    assignedNow++;
+                    who.innerHTML = '<i class="bi bi-person-check-fill"></i> ';
+                    who.appendChild(document.createTextNode(picked.dataset.name || picked.textContent));
+                } else {
+                    unassigned++;
+                    who.classList.add('is-empty');
+                    who.textContent = 'Unassigned — assign later';
+                }
+                row.appendChild(who);
+                reviewParts.appendChild(row);
+            }
+
+            document.getElementById('review-split-title').textContent = whole ? 'Kept as one task' : 'Split into ' + total + ' parts';
+            document.getElementById('review-split-text').textContent = whole
+                ? 'One Sourcing member takes the whole RFQ.'
+                : 'Each part is tracked and completed on its own' + (already ? ' — ' + already + ' already assigned.' : '.');
+
+            var note;
+            if (whole) {
+                note = 'Once they mark it complete, the RFQ moves on to Data Entry.';
+            } else if (unassigned) {
+                note = (already + assignedNow) + ' of ' + total + ' parts have someone. ' + unassigned
+                    + (unassigned === 1 ? ' stays' : ' stay') + ' unassigned for now — assign '
+                    + (unassigned === 1 ? 'it' : 'them') + ' later; the RFQ waits for every part before it moves on to Data Entry.';
+            } else {
+                note = 'Every part has someone. Once they\'re all completed, the RFQ moves on to Data Entry.';
+            }
+            document.getElementById('review-note').textContent = note;
+
+            // A split that's already been planned can't be re-categorised or
+            // re-split here.
+            form.querySelectorAll('[data-goto-step]').forEach(function (button) {
+                button.classList.toggle('d-none', state.remaining && parseInt(button.dataset.gotoStep, 10) < 3);
+            });
         }
 
         function validateStep1() {
@@ -287,27 +506,32 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         function validateStep2() {
-            var selects = partsList.querySelectorAll('select');
-            var anyPicked = Array.prototype.some.call(selects, function (select) {
-                return select.value !== '';
-            });
-
-            if (!state.remaining && isSplitChosen()) {
+            if (isSplitChosen()) {
                 var n = parseInt(partsCountInput.value, 10);
                 if (isNaN(n) || n < 2 || n > maxParts) {
                     showError(2, 'Enter a number of parts between 2 and ' + maxParts + '.');
                     return false;
                 }
             }
+            showError(2, '');
+            return true;
+        }
+
+        function validateStep3() {
+            var selects = partsList.querySelectorAll('select');
+            var anyPicked = Array.prototype.some.call(selects, function (select) {
+                return select.value !== '';
+            });
+
             if (!state.remaining && !isSplitChosen() && !anyPicked) {
-                showError(2, 'Pick a Sourcing member to take this RFQ, or split it into parts.');
+                showError(3, 'Pick a Sourcing member to take this RFQ, or go back and split it into parts.');
                 return false;
             }
             if (state.remaining && !anyPicked) {
-                showError(2, 'Pick someone for at least one part, or cancel to leave them for later.');
+                showError(3, 'Pick someone for at least one part, or cancel to leave them for later.');
                 return false;
             }
-            showError(2, '');
+            showError(3, '');
             return true;
         }
 
@@ -327,70 +551,614 @@ document.addEventListener('DOMContentLoaded', function () {
                     step: 1,
                     remaining: splitCount !== '',
                     total: parseInt(splitCount, 10) || 1,
+                    firstStep: splitCount !== '' ? 3 : 1,
                     rfqNumber: button.dataset.rfqNumber || '',
+                    subject: button.dataset.rfqSubject || '',
+                    category: button.dataset.category || '',
                     assigned: parseAssigned(button.dataset.assigned),
                 };
 
                 form.action = button.dataset.action;
                 categorySelect.value = '';
                 newCategoryInput.value = '';
+                newCategoryDescription.value = '';
+                newCategoryCount.textContent = '0 / ' + newCategoryDescription.maxLength;
                 categorySelect.classList.remove('is-invalid');
                 newCategoryInput.classList.remove('is-invalid');
                 newCategoryWrap.classList.add('d-none');
+                renderCategoryCard(false);
+
+                // Which RFQ is being categorised — its subject helps pick.
+                document.getElementById('assign-rfq-context-number').textContent = state.rfqNumber;
+                document.getElementById('assign-rfq-context-subject').textContent = state.subject;
+                rfqContext.classList.toggle('d-none', !state.subject);
                 form.querySelector('input[name="split_choice"][value="single"]').checked = true;
                 partsCountInput.value = 2;
+                syncPartsCounter();
                 partsCountWrap.classList.add('d-none');
 
                 subtitle.textContent = state.rfqNumber + (state.remaining ? ' — assign the remaining parts' : '');
-                choiceWrap.classList.toggle('d-none', state.remaining);
                 stepsEl.classList.toggle('d-none', state.remaining);
 
                 partsList.innerHTML = '';
+                renderPartsPreview();
                 renderParts();
-                showStep(state.remaining ? 2 : 1);
+                finishBtn.disabled = false;
+                showStep(state.firstStep);
             });
         });
 
         categorySelect.addEventListener('change', function () {
             categorySelect.classList.remove('is-invalid');
             toggleNewCategory();
+            renderCategoryCard(true);
+        });
+
+        newCategoryInput.addEventListener('input', function () {
+            newCategoryInput.classList.remove('is-invalid');
+            renderCategoryCard(false);
+        });
+        newCategoryDescription.addEventListener('input', function () {
+            newCategoryCount.textContent = newCategoryDescription.value.length + ' / ' + newCategoryDescription.maxLength;
+            renderCategoryCard(false);
         });
 
         form.querySelectorAll('input[name="split_choice"]').forEach(function (radio) {
             radio.addEventListener('change', function () {
                 partsCountWrap.classList.toggle('d-none', !isSplitChosen());
+                renderPartsPreview();
                 renderParts();
             });
         });
 
-        partsCountInput.addEventListener('input', renderParts);
-        partsCountInput.addEventListener('change', function () {
-            var n = parseInt(partsCountInput.value, 10);
-            partsCountInput.value = isNaN(n) ? 2 : Math.max(2, Math.min(maxParts, n));
+        partsCountInput.addEventListener('input', function () {
+            syncPartsCounter();
+            renderPartsPreview();
             renderParts();
+        });
+        partsCountInput.addEventListener('change', function () {
+            setPartsCount(parseInt(partsCountInput.value, 10));
+        });
+        partsMinus.addEventListener('click', function () {
+            setPartsCount((parseInt(partsCountInput.value, 10) || 2) - 1);
+        });
+        partsPlus.addEventListener('click', function () {
+            setPartsCount((parseInt(partsCountInput.value, 10) || 2) + 1);
+        });
+        partsQuickPicks.forEach(function (pick) {
+            pick.addEventListener('click', function () {
+                setPartsCount(parseInt(pick.dataset.parts, 10));
+            });
         });
 
         nextBtn.addEventListener('click', function () {
-            if (validateStep1()) showStep(2);
+            if (state.step === 1 && validateStep1()) {
+                showStep(2);
+            } else if (state.step === 2 && validateStep2()) {
+                renderParts(); // the rows reflect what was just chosen
+                showStep(3);
+            } else if (state.step === 3 && validateStep3()) {
+                renderReview();
+                showStep(4);
+            }
         });
         backBtn.addEventListener('click', function () {
-            showStep(1);
+            showStep(state.step - 1);
+        });
+
+        // The summary's "Change" buttons jump back to the step each card
+        // came from.
+        form.querySelectorAll('[data-goto-step]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                showStep(parseInt(button.dataset.gotoStep, 10));
+            });
         });
 
         form.addEventListener('submit', function (event) {
-            // Enter in the new-category box would otherwise submit the whole
-            // wizard from step 1 — treat it as "Next" instead.
-            if (state && state.step === 1 && !state.remaining) {
+            // Enter in the new-category box, the part count and the like would
+            // otherwise submit the whole wizard from an earlier step — treat
+            // it as "Next" instead.
+            if (state && state.step < 4) {
                 event.preventDefault();
                 nextBtn.click();
                 return;
             }
-            if (!state || !validateStep2()) {
+            if (!state || !validateStep3()) {
                 event.preventDefault();
+                if (state) {
+                    showStep(3);
+                    validateStep3();
+                }
                 return;
             }
             splitInput.value = !state.remaining && isSplitChosen() ? '1' : '0';
+
+            // One click, one save.
+            finishBtn.disabled = true;
+            finishBtn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Saving…';
         });
+    })();
+
+    // Operations' Assigned tab — each RFQ's parts fold away under its row
+    // (see _rfq_parts.blade.php), one at a time or all together.
+    (function () {
+        var allToggle = document.querySelector('.js-toggle-all-parts');
+
+        function setCollapsed(group, collapsed) {
+            group.classList.toggle('is-collapsed', collapsed);
+            group.querySelector('.js-toggle-parts').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        }
+
+        function syncAllToggle() {
+            if (!allToggle) return;
+            var groups = document.querySelectorAll('.rfq-group');
+            var allCollapsed = Array.prototype.every.call(groups, function (group) {
+                return group.classList.contains('is-collapsed');
+            });
+            allToggle.dataset.collapsed = allCollapsed ? '1' : '';
+            allToggle.querySelector('span').textContent = allCollapsed ? 'Expand all' : 'Collapse all';
+            allToggle.querySelector('i').className = 'bi ' + (allCollapsed ? 'bi-arrows-expand' : 'bi-arrows-collapse');
+        }
+
+        document.querySelectorAll('.js-toggle-parts').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var group = button.closest('.rfq-group');
+                setCollapsed(group, !group.classList.contains('is-collapsed'));
+                syncAllToggle();
+            });
+        });
+
+        if (allToggle) {
+            allToggle.addEventListener('click', function () {
+                var collapse = !allToggle.dataset.collapsed;
+                document.querySelectorAll('.rfq-group').forEach(function (group) {
+                    setCollapsed(group, collapse);
+                });
+                syncAllToggle();
+            });
+        }
+    })();
+
+    // Mark Complete and Return to Sourcing ask for a comment first (see
+    // _complete_modal.blade.php) — Sourcing's on their own part, Data Entry's
+    // on a Sourcing part (to complete it, or to send it back with a reason as
+    // the comment): every such button (.js-complete) opens the one prompt,
+    // which is pointed at the right route and part, dressed for the action and
+    // worded for whoever's next, when it opens. From inside a quick-detail
+    // modal — where Bootstrap swaps one modal for the other — Back goes back
+    // to it.
+    (function () {
+        var modalEl = document.getElementById('completeModal');
+        if (!modalEl) return;
+
+        // What differs by action; the wording that depends on the RFQ comes
+        // from the button's own data-* attributes.
+        var KINDS = {
+            complete: {
+                title: 'Mark complete', icon: 'bi-check2-circle', field: 'comment', label: 'Comment', max: 2000,
+                submit: 'Mark Complete', submitClass: 'btn-success', missing: 'Add a comment to mark this part complete.',
+            },
+            'return': {
+                title: 'Return to Sourcing', icon: 'bi-arrow-counterclockwise', field: 'reason', label: 'Reason', max: 1000,
+                submit: 'Return to Sourcing', submitClass: 'btn-danger', missing: 'Add a reason to send this part back.',
+            },
+        };
+
+        var form = document.getElementById('completeForm');
+        var comment = document.getElementById('complete-comment');
+        var count = document.getElementById('complete-count');
+        var error = document.getElementById('complete-error');
+        var cancel = document.getElementById('complete-cancel');
+        var submit = document.getElementById('complete-submit');
+        var kind = KINDS.complete;
+
+        function showError(message) {
+            error.textContent = message;
+            error.classList.toggle('d-none', !message);
+            comment.classList.toggle('is-invalid', !!message);
+        }
+
+        function resetSubmit() {
+            submit.disabled = false;
+            submit.className = 'btn ' + kind.submitClass;
+            submit.innerHTML = '<i class="bi ' + kind.icon + '"></i> ' + kind.submit;
+        }
+
+        modalEl.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-complete')) return;
+
+            kind = KINDS[button.dataset.kind] || KINDS.complete;
+
+            form.action = button.dataset.action;
+            form.elements.part.value = button.dataset.part;
+            form.elements.return_to.value = button.dataset.returnTo || '';
+            form.elements.redirect_status.value = button.dataset.redirectStatus || '';
+
+            document.getElementById('completeModalLabel').textContent = kind.title;
+            document.getElementById('complete-subtitle').textContent =
+                (button.dataset.who ? button.dataset.who + '\'s part \u00b7 ' : '') + button.dataset.rfqNumber + ' \u2014 ' + button.dataset.subject;
+            document.getElementById('complete-lead-icon').className = 'bi ' + (kind.field === 'reason' ? kind.icon : 'bi-chat-left-text');
+            document.getElementById('complete-lead-title').textContent = button.dataset.heading;
+            document.getElementById('complete-hint').textContent = button.dataset.hint;
+            document.getElementById('complete-label').textContent = kind.label;
+            document.getElementById('complete-audience').textContent = button.dataset.audience;
+
+            comment.name = kind.field;
+            comment.maxLength = kind.max;
+            comment.placeholder = button.dataset.placeholder || '';
+            comment.value = '';
+            count.textContent = '0 / ' + kind.max;
+            showError('');
+            resetSubmit();
+
+            if (button.dataset.backModal) {
+                cancel.removeAttribute('data-bs-dismiss');
+                cancel.setAttribute('data-bs-toggle', 'modal');
+                cancel.setAttribute('data-bs-target', '#' + button.dataset.backModal);
+                cancel.textContent = 'Back';
+            } else {
+                cancel.removeAttribute('data-bs-toggle');
+                cancel.removeAttribute('data-bs-target');
+                cancel.setAttribute('data-bs-dismiss', 'modal');
+                cancel.textContent = 'Cancel';
+            }
+        });
+
+        modalEl.addEventListener('shown.bs.modal', function () {
+            comment.focus();
+        });
+
+        comment.addEventListener('input', function () {
+            count.textContent = comment.value.length + ' / ' + comment.maxLength;
+            if (comment.value.trim()) showError('');
+        });
+
+        form.addEventListener('submit', function (event) {
+            if (!comment.value.trim()) {
+                event.preventDefault();
+                showError(kind.missing);
+                comment.focus();
+                return;
+            }
+
+            // One click, one save.
+            submit.disabled = true;
+            submit.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Saving\u2026';
+        });
+    })();
+
+    // The hover card behind every name marked .js-user-card (see
+    // layouts/_user_card.blade.php): hover — or focus, or tap — a person's name
+    // on a comment for their details and a Private message button, which opens
+    // a little box to write them one right there. Sent as JSON, so the page
+    // (or the modal the name was in) stays put. The one card is moved into
+    // whichever modal the name is in: Bootstrap's focus trap would otherwise
+    // pull the cursor back out of the message box.
+    (function () {
+        var card = document.getElementById('userCard');
+        if (!card) return;
+
+        var els = {
+            avatar: document.getElementById('userCardAvatar'),
+            name: document.getElementById('userCardName'),
+            roles: document.getElementById('userCardRoles'),
+            email: document.getElementById('userCardEmail'),
+            since: document.getElementById('userCardSince'),
+            actions: document.getElementById('userCardActions'),
+            you: document.getElementById('userCardYou'),
+            message: document.getElementById('userCardMessage'),
+            conversation: document.getElementById('userCardConversation'),
+            composer: document.getElementById('userCardComposer'),
+            recipientId: document.querySelector('#userCardComposer [name="recipient_id"]'),
+            recipientName: document.getElementById('userCardRecipient'),
+            body: document.querySelector('#userCardComposer [name="body"]'),
+            cancel: document.getElementById('userCardCancel'),
+            send: document.getElementById('userCardSend'),
+            status: document.getElementById('userCardStatus'),
+        };
+        var csrf = document.querySelector('meta[name="csrf-token"]');
+        var current = null;
+        var showTimer = null;
+        var hideTimer = null;
+        var holdTimer = null;
+        var holding = false;
+
+        function setStatus(message, kind) {
+            els.status.textContent = message || '';
+            els.status.className = 'user-card-status' + (kind ? ' is-' + kind : '');
+        }
+
+        function composerOpen() {
+            return !els.composer.classList.contains('d-none');
+        }
+
+        function closeComposer() {
+            els.composer.classList.add('d-none');
+            card.classList.remove('is-composing');
+            els.body.value = '';
+        }
+
+        function fill(trigger) {
+            var data = trigger.dataset;
+
+            els.avatar.textContent = (data.name || '?').charAt(0).toUpperCase();
+            els.name.textContent = data.name;
+            els.roles.innerHTML = '';
+            (data.roles ? data.roles.split('|') : []).forEach(function (role) {
+                var badge = document.createElement('span');
+                badge.className = 'badge badge-soft-secondary';
+                badge.textContent = role;
+                els.roles.appendChild(badge);
+            });
+            els.email.textContent = data.email;
+            els.since.textContent = data.since ? 'Member since ' + data.since : '';
+
+            // Nobody messages themselves.
+            var isSelf = data.self === '1';
+            els.actions.classList.toggle('d-none', isSelf);
+            els.you.classList.toggle('d-none', !isSelf);
+
+            els.recipientId.value = data.userId;
+            els.recipientName.textContent = data.name;
+            els.conversation.href = data.conversation;
+            closeComposer();
+            setStatus('');
+        }
+
+        function place(trigger) {
+            var rect = trigger.getBoundingClientRect();
+            var margin = 8;
+            var left = Math.max(margin, Math.min(rect.left, window.innerWidth - card.offsetWidth - margin));
+            var top = rect.bottom + 6;
+
+            // Flip above the name when there's no room below.
+            if (top + card.offsetHeight > window.innerHeight - margin && rect.top - card.offsetHeight - 6 > margin) {
+                top = rect.top - card.offsetHeight - 6;
+            }
+            card.style.left = left + 'px';
+            card.style.top = top + 'px';
+        }
+
+        function show(trigger) {
+            clearTimeout(hideTimer);
+
+            var host = trigger.closest('.modal') || document.body;
+            if (card.parentNode !== host) host.appendChild(card);
+
+            if (current !== trigger) {
+                fill(trigger);
+                current = trigger;
+            }
+            card.classList.add('is-open');
+            place(trigger);
+        }
+
+        function hide() {
+            clearTimeout(showTimer);
+            clearTimeout(hideTimer);
+            clearTimeout(holdTimer);
+            holding = false;
+            card.classList.remove('is-open');
+            current = null;
+            closeComposer();
+            setStatus('');
+        }
+
+        // Moving from the name to the card mustn't close it — and it stays put
+        // while a message is being written, and for a moment after one's sent so
+        // "Message sent" can be read.
+        function hideSoon() {
+            clearTimeout(hideTimer);
+            if (composerOpen() || holding) return;
+            hideTimer = setTimeout(hide, 250);
+        }
+
+        function triggerOf(event) {
+            return event.target.closest ? event.target.closest('.js-user-card') : null;
+        }
+
+        document.addEventListener('mouseover', function (event) {
+            var trigger = triggerOf(event);
+            if (!trigger) return;
+
+            clearTimeout(hideTimer);
+            if (trigger === current && card.classList.contains('is-open')) return;
+            clearTimeout(showTimer);
+            showTimer = setTimeout(function () { show(trigger); }, 180);
+        });
+
+        document.addEventListener('mouseout', function (event) {
+            if (!triggerOf(event)) return;
+            clearTimeout(showTimer);
+            hideSoon();
+        });
+
+        card.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
+        card.addEventListener('mouseleave', hideSoon);
+
+        // Keyboard and touch, where there's no hover.
+        document.addEventListener('focusin', function (event) {
+            var trigger = triggerOf(event);
+            if (trigger) show(trigger);
+        });
+        document.addEventListener('click', function (event) {
+            var trigger = triggerOf(event);
+            if (trigger) show(trigger);
+        });
+        document.addEventListener('keydown', function (event) {
+            var trigger = triggerOf(event);
+            if (trigger && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                show(trigger);
+            }
+        });
+
+        // Clicking away, or Escape, closes it — and only it, not the modal
+        // it's sitting in.
+        document.addEventListener('mousedown', function (event) {
+            if (card.classList.contains('is-open') && !card.contains(event.target) && !triggerOf(event)) hide();
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && card.classList.contains('is-open')) {
+                event.stopPropagation();
+                hide();
+            }
+        }, true);
+        window.addEventListener('scroll', function () {
+            if (card.classList.contains('is-open') && !composerOpen()) hide();
+        }, true);
+
+        els.message.addEventListener('click', function () {
+            card.classList.add('is-composing');
+            els.composer.classList.remove('d-none');
+            setStatus('');
+            place(current);
+            els.body.focus();
+        });
+
+        els.cancel.addEventListener('click', function () {
+            closeComposer();
+            place(current);
+        });
+
+        els.composer.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            if (!els.body.value.trim()) {
+                setStatus('Write a message to send.', 'error');
+                els.body.focus();
+                return;
+            }
+
+            els.send.disabled = true;
+            setStatus('Sending…');
+
+            fetch(els.composer.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrf ? csrf.content : '',
+                },
+                body: new FormData(els.composer),
+            })
+                .then(function (response) {
+                    // Signed out (a redirect to the login page) or too many in a minute
+                    // don't come back as JSON.
+                    if (response.redirected || response.status === 419) {
+                        throw new Error('Your session has expired — reload the page and sign in again.');
+                    }
+                    if (response.status === 429) {
+                        throw new Error('You\'re sending messages too quickly — wait a moment.');
+                    }
+
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        var errors = result.data.errors || {};
+                        var first = Object.keys(errors).length ? errors[Object.keys(errors)[0]][0] : result.data.message;
+                        throw new Error(first);
+                    }
+                    closeComposer();
+                    setStatus(result.data.message, 'ok');
+                    els.conversation.href = result.data.conversation;
+                    place(current);
+
+                    holding = true;
+                    clearTimeout(holdTimer);
+                    holdTimer = setTimeout(function () {
+                        holding = false;
+                        if (!card.matches(':hover')) hideSoon();
+                    }, 2500);
+                })
+                .catch(function (error) {
+                    setStatus(error.message || 'Couldn\'t send that — try again.', 'error');
+                })
+                .then(function () {
+                    els.send.disabled = false;
+                });
+        });
+    })();
+
+    // Senior Operations' Unassigned/Assigned filters (see _ops_filters.blade.php):
+    // the form applies itself as you change it, after a short pause so a few
+    // quick changes — two priorities, say — go through as one request. The
+    // Custom range waits for its dates, and the tab you're on is remembered
+    // so applying a filter doesn't drop you back on the first one.
+    (function () {
+        var form = document.getElementById('opsFilterForm');
+        if (!form) return;
+
+        var customRange = document.getElementById('opsCustomRange');
+        var tabInput = document.getElementById('opsFilterTab');
+        var from = form.elements.from;
+        var to = form.elements.to;
+        var today = new Date().toISOString().slice(0, 10);
+        var timer = null;
+
+        // Goes to the filtered page — with only what's actually set in the
+        // URL, not a string of empty fields.
+        function applyFilters() {
+            var params = new URLSearchParams();
+            new FormData(form).forEach(function (value, key) {
+                var isDefault = value === '' || (key === 'range' && value === 'all') || (key === 'sort' && value === 'newest');
+                if (!isDefault) params.append(key, value);
+            });
+
+            var card = form.closest('.card');
+            if (card) card.classList.add('is-loading');
+            window.location.assign(form.action + '?' + params.toString());
+        }
+
+        function submitSoon(delay) {
+            clearTimeout(timer);
+            timer = setTimeout(applyFilters, delay);
+        }
+
+        // Coming back to the page with the Back button shouldn't leave it dimmed.
+        window.addEventListener('pageshow', function (event) {
+            var card = form.closest('.card');
+            if (event.persisted && card) card.classList.remove('is-loading');
+        });
+
+        // The two dates can't cross, or go past today.
+        function limitCustomDates() {
+            from.max = to.value || today;
+            to.min = from.value || '';
+            to.max = today;
+        }
+
+        form.addEventListener('change', function (event) {
+            var field = event.target;
+
+            if (field.name === 'range') {
+                var isCustom = field.value === 'custom';
+                customRange.classList.toggle('d-none', !isCustom);
+                if (isCustom) {
+                    limitCustomDates();
+                    (from.value ? to : from).focus();
+                    return; // nothing to filter on until a date's picked
+                }
+            }
+            if (field.name === 'from' || field.name === 'to') {
+                limitCustomDates();
+                if (!from.value && !to.value) return;
+            }
+
+            submitSoon(field.type === 'checkbox' ? 500 : 150);
+        });
+
+        document.querySelectorAll('[data-ops-tab]').forEach(function (tab) {
+            tab.addEventListener('shown.bs.tab', function () {
+                tabInput.value = tab.dataset.opsTab;
+            });
+        });
+
+        limitCustomDates();
     })();
 
     // Populate the shared "Assign Operations" modal from the clicked row's data-* attributes.
@@ -409,28 +1177,46 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Head of Business Development's Reject modal — one shared modal,
-    // populated per-row with which RFQ it's actually rejecting.
+    // populated per-row with which RFQ it's actually rejecting, and which part
+    // of it when it's one part that's being sent back (none for a whole RFQ).
     document.querySelectorAll('.js-reject-rfq').forEach(function (button) {
         button.addEventListener('click', function () {
             var form = document.getElementById('rejectRfqForm');
             if (!form) return;
 
+            var isPart = !!button.dataset.part;
             form.action = button.dataset.action;
-            var rfqIdField = form.querySelector('[name="reject_rfq_id"]');
-            if (rfqIdField) rfqIdField.value = button.dataset.rfqId || '';
+            form.querySelector('[name="reject_rfq_id"]').value = button.dataset.rfqId || '';
+            form.querySelector('[name="part"]').value = button.dataset.part || '';
+            form.querySelector('[name="reject_label"]').value = button.dataset.label || '';
+            document.getElementById('rejectRfqTarget').textContent = button.dataset.label || '';
+            form.dataset.confirm = isPart
+                ? 'Send this part back? Any approval already given for it is undone.'
+                : 'Send this RFQ back? Any approval already given for it is undone.';
         });
     });
 
     // GM Assistant's Client Details / Payment Terms modal — same
-    // shared-modal-populated-per-row pattern as the Reject modal above.
+    // shared-modal-populated-per-row pattern as the Reject modal above: which
+    // RFQ, and which part of it when it's one part going on (none for a whole
+    // RFQ), with what's already been given for the RFQ to confirm or adjust.
     document.querySelectorAll('.js-gm-assistant-rfq').forEach(function (button) {
         button.addEventListener('click', function () {
             var form = document.getElementById('gmAssistantForm');
             if (!form) return;
 
+            var isPart = !!button.dataset.part;
             form.action = button.dataset.action;
-            var rfqIdField = form.querySelector('[name="gm_assistant_rfq_id"]');
-            if (rfqIdField) rfqIdField.value = button.dataset.rfqId || '';
+            form.querySelector('[name="gm_assistant_rfq_id"]').value = button.dataset.rfqId || '';
+            form.querySelector('[name="part"]').value = button.dataset.part || '';
+            form.querySelector('[name="gm_assistant_label"]').value = button.dataset.label || '';
+            form.querySelector('[name="client_details"]').value = button.dataset.clientDetails || '';
+            form.querySelector('[name="payment_terms"]').value = button.dataset.paymentTerms || '';
+            document.getElementById('gmAssistantTarget').textContent = button.dataset.label || '';
+            document.getElementById('gmAssistantWholeNote').classList.toggle('d-none', !isPart);
+            form.dataset.confirm = isPart
+                ? 'Forward this part to the General Manager?'
+                : 'Forward this RFQ to the General Manager?';
         });
     });
 

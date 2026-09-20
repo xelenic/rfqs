@@ -6,10 +6,40 @@
 
     Expects: $rfq, $statusFilter, $restrictAssignment,
     $canSeeAssignOperationsButton, $canSeeAssignButtons.
+    Optional: $showClosed — the Closed RFQs list, which has a column for when
+    it was closed and by whom.
+    Optional: $groupedParts — this row heads a group whose parts follow it
+    (see _rfq_parts.blade.php), so it gets the button that folds them away
+    and a one-line summary of how far along they are.
 --}}
-<tr>
-    <td class="fw-semibold">{{ $rfq->wc_number }}</td>
-    <td>{{ $rfq->rfq_number }}</td>
+<tr @class(['rfq-group-head' => $groupedParts ?? false])>
+    <td class="fw-semibold">
+        @if ($groupedParts ?? false)
+            <button type="button" class="rfq-group-toggle js-toggle-parts" aria-expanded="true"
+                    aria-label="Show or hide the parts of {{ $rfq->rfq_number }}">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        @endif
+        {{ $rfq->wc_number }}
+    </td>
+    <td>
+        {{ $rfq->rfq_number }}
+        @if ($groupedParts ?? false)
+            @php
+                $partsTotal = $rfq->splitTotal();
+                $sourcingDone = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null)->count();
+            @endphp
+            {{-- One segment per part, coloured by where it stands. --}}
+            <div class="rfq-group-progress">
+                @foreach ($rfq->sourcingParts() as $part)
+                    @php $partState = $part['assignee']?->pivot->progressState() ?? 'unassigned'; @endphp
+                    <span class="rfq-seg" data-state="{{ $partState }}"
+                          title="{{ $part['number'] }} — {{ $part['assignee']?->pivot->progressLabel() ?? 'Not assigned' }}"></span>
+                @endforeach
+            </div>
+            <div class="rfq-group-caption">{{ $sourcingDone }} of {{ $partsTotal }} {{ $partsTotal === 1 ? 'task' : 'parts' }} done by Sourcing</div>
+        @endif
+    </td>
     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
     @unless ($statusFilter)
         <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
@@ -21,15 +51,25 @@
             <div class="small">by {{ $rfq->creator->name }}</div>
         @endif
     </td>
+    @if ($showClosed ?? false)
+        <td class="text-muted-soft">
+            {{ $rfq->bd_closed_at?->format('M d, Y g:i A') ?? '—' }}
+            @if ($rfq->bdClosedBy)
+                <div class="small">by {{ $rfq->bdClosedBy->name }}</div>
+            @endif
+        </td>
+    @endif
     <td class="text-end">
         @if ($rfq->assignees->isNotEmpty())
+            {{-- One avatar per person, however many parts they hold. --}}
+            @php $assigneeUsers = $rfq->assignees->unique('id')->values(); @endphp
             <span class="assignee-cluster {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
-                  title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assigned: '.$rfq->assignees->pluck('name')->implode(', ') }}">
-                @foreach ($rfq->assignees->take(3) as $assignee)
+                  title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assigned: '.$assigneeUsers->pluck('name')->implode(', ') }}">
+                @foreach ($assigneeUsers->take(3) as $assignee)
                     <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
                 @endforeach
-                @if ($rfq->assignees->count() > 3)
-                    <span class="assignee-avatar assignee-avatar-more">+{{ $rfq->assignees->count() - 3 }}</span>
+                @if ($assigneeUsers->count() > 3)
+                    <span class="assignee-avatar assignee-avatar-more">+{{ $assigneeUsers->count() - 3 }}</span>
                 @endif
             </span>
         @endif
@@ -76,9 +116,7 @@
             <form action="{{ route('admin.rfqs.destroy', $rfq) }}" method="POST" class="d-inline" data-confirm="Delete this RFQ?">
                 @csrf
                 @method('DELETE')
-                @if ($statusFilter)
-                    <input type="hidden" name="redirect_status" value="{{ $statusFilter }}">
-                @endif
+                @include('admin.rfqs._redirect_fields')
                 <button type="submit" class="btn btn-sm btn-outline-danger">
                     <i class="bi bi-trash"></i>
                 </button>

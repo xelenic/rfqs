@@ -21,6 +21,11 @@
         'sourcing_handoff' => ['bi-clipboard-check', 'info', 'Handed off to Data Entry'],
         'data_entry_part_completed' => ['bi-check2-circle', 'success', 'Marked Complete by Data Entry'],
         'data_entry_all_completed' => ['bi-clipboard-check', 'success', 'All Splits Completed by Data Entry'],
+        'senior_ops_part_reviewed' => ['bi-clipboard2-check', 'success', 'Part approved by Senior Operations'],
+        'head_of_bd_part_approved' => ['bi-check-circle-fill', 'success', 'Part approved by Head of Business Development'],
+        'gm_assistant_part_completed' => ['bi-file-earmark-text', 'info', 'Part details added by GM Assistant'],
+        'gm_part_approved' => ['bi-award', 'success', 'Part approved by General Manager'],
+        'bd_part_closed' => ['bi-flag-fill', 'success', 'Part closed by Business Development'],
         'category_set' => ['bi-tag', 'secondary', 'Category Set'],
         'senior_ops_reviewed' => ['bi-clipboard2-check', 'success', 'Approved by Senior Operations (2nd review)'],
         'head_of_bd_approved' => ['bi-check-circle-fill', 'success', 'Approved by Head of Business Development'],
@@ -28,7 +33,7 @@
         'gm_assistant_completed' => ['bi-file-earmark-text', 'info', 'Client Details Added'],
         'gm_approved' => ['bi-award', 'success', 'Approved by General Manager'],
         'bd_closed' => ['bi-flag-fill', 'success', 'RFQ Closed'],
-        'comment' => ['bi-chat-left-text', 'comment', $entry['comment']->parent_id ? 'Reply' : 'Comment'],
+        'comment' => [$entry['comment']->actionIcon(), $entry['comment']->action ? $entry['comment']->actionTone() : 'comment', $entry['comment']->parent_id ? 'Reply' : 'Comment'],
         default => ['bi-dot', 'comment', ''],
     };
 
@@ -67,10 +72,8 @@
                 <span class="assignee-avatar">{{ strtoupper(substr($comment->author->name ?? '?', 0, 1)) }}</span>
                 <div class="rfq-comment-body">
                     <div class="rfq-comment-meta">
-                        <span class="fw-semibold">{{ $comment->author->name ?? 'Deleted user' }}</span>
-                        @if ($comment->author && $comment->author->roles->isNotEmpty())
-                            <span class="badge badge-soft-secondary rfq-comment-role">{{ $comment->author->roles->pluck('name')->implode(', ') }}</span>
-                        @endif
+                        @include('admin.rfqs._comment_author', ['author' => $comment->author])
+                        @include('admin.rfqs._comment_action', ['comment' => $comment])
                         <span class="text-muted-soft">{{ $comment->created_at->diffForHumans() }}</span>
                     </div>
                     @if ($entry['detail'])

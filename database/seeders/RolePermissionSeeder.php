@@ -29,11 +29,6 @@ class RolePermissionSeeder extends Seeder
         $admin->save();
         $admin->syncPermissions(Permission::all());
 
-        $manager = Role::findOrCreate('Manager');
-        $manager->description = 'Read-only access to users, roles, permissions and RFQs.';
-        $manager->save();
-        $manager->syncPermissions(Permission::where('name', 'like', '%.view')->get());
-
         $adminUser = User::firstOrCreate(
             ['email' => 'admin@rfqms.test'],
             [

@@ -14,9 +14,7 @@
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="rfq_id" value="{{ old('rfq_id') }}">
-                @if ($statusFilter ?? null)
-                    <input type="hidden" name="redirect_status" value="{{ $statusFilter }}">
-                @endif
+                @include('admin.rfqs._redirect_fields')
                 @if (($returnTo ?? null) === 'show')
                     <input type="hidden" name="return_to" value="show">
                 @endif

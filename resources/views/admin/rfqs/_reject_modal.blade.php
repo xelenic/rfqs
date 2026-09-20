@@ -1,10 +1,12 @@
 {{--
-    Reject modal — Head of Business Development sends an RFQ back to an
-    earlier stage with a reason. Shared across the index (list) page,
-    populated per-row via JS, see public/js/admin.js (.js-reject-rfq).
+    Reject modal — Head of Business Development sends an RFQ, or just one part
+    of it, back to an earlier stage with a reason. Shared across the index
+    (list) page, populated per-row via JS, see public/js/admin.js
+    (.js-reject-rfq).
 
     Expects: nothing extra — Rfq::REJECT_TARGET_STAGES/stageLabel() are
-    static, and the form's action is set per-row by JS.
+    static, and the form's action, the part (none, for a whole RFQ) and its
+    label are set per-row by JS.
 --}}
 @php
     $isFailedReject = $errors->reject->any();
@@ -13,7 +15,7 @@
 <div class="modal fade" id="rejectRfqModal" tabindex="-1" aria-labelledby="rejectRfqModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" id="rejectRfqForm" action="#" data-confirm="Send this RFQ back? Any approval already given for it is undone.">
+            <form method="POST" id="rejectRfqForm" action="#" data-confirm="Send this {{ old('part') ? 'part' : 'RFQ' }} back? Any approval already given for it is undone.">
                 @csrf
                 @method('PATCH')
                 {{-- Not part of the request the route needs — just carried
@@ -23,8 +25,14 @@
                      (not "rfq_id") avoids colliding with the create/edit
                      modal's own rfq_id field elsewhere on this page. --}}
                 <input type="hidden" name="reject_rfq_id" value="{{ old('reject_rfq_id') }}">
+                {{-- The part being sent back, if it's one — empty for a whole RFQ. --}}
+                <input type="hidden" name="part" value="{{ old('part') }}">
+                <input type="hidden" name="reject_label" value="{{ old('reject_label') }}">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="rejectRfqModalLabel">Reject &amp; Return</h5>
+                    <div>
+                        <h5 class="modal-title" id="rejectRfqModalLabel">Reject &amp; Return</h5>
+                        <div class="text-muted-soft small" id="rejectRfqTarget">{{ old('reject_label') }}</div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">

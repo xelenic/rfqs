@@ -22,6 +22,8 @@
      — far too pale to read as a connector line in the Progress tree, so
      that gets its own, clearly visible neutral. */
   --rfq-tree-line: #94a1b8;
+  /* The same idea for the sidebar's page tree, where a lighter line suits. */
+  --rfq-tree-line-soft: #c9d0e0;
   --rfq-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 
@@ -162,6 +164,108 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-text-muted);
   padding: 0.65rem 0.65rem 0.3rem;
   font-weight: 700;
+}
+
+/* Admin's sidebar is a tree of the workflow: each role a node, its pages
+   hanging off it. A node's heading is the button that collapses it — a caret
+   leads, then the role's icon and name, and — only while collapsed — the
+   node's queue count at the end. */
+.sidebar-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--rfq-text);
+  cursor: pointer;
+}
+
+.sidebar-group-title:hover {
+  color: var(--rfq-primary-dark);
+}
+
+.sidebar-group-title:focus-visible {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: -2px;
+  border-radius: var(--rfq-radius);
+}
+
+.sidebar-group-title i {
+  font-size: 0.8rem;
+  color: var(--rfq-primary-dark);
+}
+
+.sidebar-group-name {
+  flex: 1;
+}
+
+.sidebar-group-title .sidebar-group-chevron {
+  font-size: 0.65rem;
+  color: var(--rfq-text-muted);
+  transform: rotate(90deg);
+  transition: transform 0.2s ease;
+}
+
+.sidebar-group-title.collapsed .sidebar-group-chevron {
+  transform: none;
+}
+
+.sidebar-group-title .sidebar-group-count {
+  display: none;
+}
+
+.sidebar-group-title.collapsed .sidebar-group-count {
+  display: inline-flex;
+}
+
+/* The branch: the pages sit a step smaller than the top-level links, indented
+   under their role. A guide runs down the node's left edge (under its caret)
+   with a short elbow into each page, and the last page's guide stops at its
+   elbow. */
+.sidebar-group-links {
+  margin-left: 0.8rem;
+}
+
+.sidebar-nav .sidebar-group .nav-link {
+  position: relative;
+  margin-left: 0.85rem;
+  font-size: 0.75rem;
+}
+
+.sidebar-nav .sidebar-group .nav-link::before,
+.sidebar-nav .sidebar-group .nav-link::after {
+  content: "";
+  position: absolute;
+  left: -0.85rem;
+  border: 0 solid var(--rfq-tree-line-soft);
+  pointer-events: none;
+}
+
+.sidebar-nav .sidebar-group .nav-link::before {
+  top: 0;
+  bottom: -0.1rem;
+  border-left-width: 1px;
+}
+
+.sidebar-nav .sidebar-group .nav-link:last-child::before {
+  bottom: 50%;
+}
+
+.sidebar-nav .sidebar-group .nav-link::after {
+  top: 50%;
+  width: 0.7rem;
+  border-top-width: 1px;
+}
+
+.sidebar-nav .sidebar-group .nav-link i {
+  font-size: 0.85rem;
 }
 
 .sidebar-nav .nav-link {
@@ -366,6 +470,11 @@ h6, .h6 { font-size: 0.85rem; }
   color: #0f766e;
 }
 
+.stat-card .stat-icon.stat-icon-danger {
+  background: #fde8e8;
+  color: #c81e1e;
+}
+
 /* ---------- Dashboard header ---------- */
 
 .dashboard-header {
@@ -478,6 +587,273 @@ h6, .h6 { font-size: 0.85rem; }
   display: inline-block;
 }
 
+/* ---------- Business Development dashboard ---------- */
+
+.stat-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.stat-card-link:hover {
+  color: inherit;
+}
+
+.stat-card .stat-caption {
+  font-size: 0.7rem;
+  color: var(--rfq-text-muted);
+  margin-top: 0.15rem;
+}
+
+/* One colour per kind of step, shared by today's tiles and feed and the
+   pipeline bars: the earlier workflow blue, review violet, done/close green,
+   sent-back red. */
+.tone-primary {
+  --tone: #3b53d1;
+  --tone-soft: #eef1fe;
+}
+
+.tone-violet {
+  --tone: #6f42c1;
+  --tone-soft: #f0ebfc;
+}
+
+.tone-success {
+  --tone: #157347;
+  --tone-soft: #e6f7ee;
+}
+
+.tone-danger {
+  --tone: #c81e1e;
+  --tone-soft: #fde8e8;
+}
+
+.today-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 0.65rem;
+  height: 100%;
+}
+
+.today-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.75rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+}
+
+.today-tile-icon,
+.today-feed-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--tone-soft);
+  color: var(--tone);
+}
+
+.today-tile-icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.today-tile-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.today-tile-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+.today-heading {
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.today-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+  font-size: 0.8rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.today-feed-item:last-child {
+  border-bottom: 0;
+}
+
+.today-feed-item:hover {
+  color: inherit;
+  background: var(--rfq-bg);
+}
+
+.today-feed-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 0.85rem;
+}
+
+.today-feed-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.today-feed-time {
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+  white-space: nowrap;
+}
+
+.pipeline-row {
+  display: grid;
+  grid-template-columns: 13rem 1fr 2rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  font-size: 0.8rem;
+}
+
+.pipeline-track {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  overflow: hidden;
+}
+
+.pipeline-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tone);
+}
+
+.pipeline-count {
+  font-weight: 700;
+  text-align: right;
+}
+
+@media (max-width: 575.98px) {
+  .pipeline-row {
+    grid-template-columns: 8.5rem 1fr 1.75rem;
+  }
+}
+
+.dash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+}
+
+.dash-item > :first-child {
+  min-width: 0;
+}
+
+.dash-item:first-child {
+  padding-top: 0;
+}
+
+.dash-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* A small heading over a list inside a dashboard card, in the colour of what it lists. */
+.dash-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tone);
+}
+
+.dash-group-count {
+  margin-left: auto;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--tone-soft);
+  font-size: 0.7rem;
+}
+
+/* A Sourcing member's parts by where they stand — one bar, then a legend. The
+   colours are the ones on the Assigned tab's part segments. */
+.workload-bar {
+  display: flex;
+  gap: 3px;
+  height: 0.75rem;
+  margin-bottom: 0.9rem;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.workload-seg {
+  min-width: 0.5rem;
+  border-radius: 999px;
+}
+
+.workload-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.8rem;
+}
+
+.workload-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.workload-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+.workload-seg[data-state="in_progress"],
+.workload-dot[data-state="in_progress"] {
+  background: #f0a04b;
+}
+
+.workload-seg[data-state="returned"],
+.workload-dot[data-state="returned"] {
+  background: #c81e1e;
+}
+
+.workload-seg[data-state="with_data_entry"],
+.workload-dot[data-state="with_data_entry"] {
+  background: #3b53d1;
+}
+
+.workload-seg[data-state="data_entry_done"],
+.workload-dot[data-state="data_entry_done"] {
+  background: #157347;
+}
+
 /* ---------- Tables ---------- */
 
 .table {
@@ -498,6 +874,727 @@ h6, .h6 { font-size: 0.85rem; }
 .table td, .table th {
   vertical-align: middle;
   padding: 0.55rem 0.85rem;
+}
+
+/* ---------- Senior Operations — Unassigned / Assigned filters ---------- */
+/* One bar above both tabs (_ops_filters.blade.php): created range as a pill
+   group, priority as toggle chips, then the selects. It applies itself, so the
+   card dims while the page reloads. */
+
+.card.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.ops-filters {
+  padding: 0.9rem 1rem 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+  background: linear-gradient(180deg, #fbfcff, var(--rfq-surface));
+}
+
+.ops-filters-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.ops-filters-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.ops-filters-title i {
+  color: var(--rfq-primary-dark);
+}
+
+.ops-filters-clear {
+  margin-left: auto;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--rfq-danger);
+  text-decoration: none;
+}
+
+.ops-filters-clear:hover {
+  text-decoration: underline;
+}
+
+.ops-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-bottom: 0.65rem;
+}
+
+.ops-filter-label {
+  flex: 0 0 4.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+/* The dashboard's range pills, as radio buttons. */
+.ops-range {
+  flex-wrap: wrap;
+  border-radius: 1.2rem;
+}
+
+.range-filter-btn {
+  position: relative;
+  margin: 0;
+  cursor: pointer;
+}
+
+.range-filter-btn input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.range-filter-btn:has(input:checked) {
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+.range-filter-btn:has(input:focus-visible) {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 1px;
+}
+
+.ops-custom-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ops-custom-range .form-control {
+  width: 9.5rem;
+}
+
+.ops-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.priority-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--rfq-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.priority-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.priority-chip-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--dot);
+}
+
+.priority-chip:hover {
+  border-color: var(--dot);
+}
+
+.priority-chip:has(input:checked) {
+  border-color: var(--dot);
+  background: var(--dot-soft);
+  color: var(--dot);
+}
+
+.priority-chip:has(input:focus-visible) {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.priority-chip-urgent {
+  --dot: #c81e1e;
+  --dot-soft: #fde8e8;
+}
+
+.priority-chip-high {
+  --dot: #b45309;
+  --dot-soft: #fef3e2;
+}
+
+.priority-chip-medium {
+  --dot: #3b53d1;
+  --dot-soft: #eef1fe;
+}
+
+.priority-chip-low {
+  --dot: #6b7280;
+  --dot-soft: #f1f2f6;
+}
+
+.ops-filter-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.ops-select {
+  margin: 0;
+}
+
+.ops-select > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-tab-count {
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.rfq-view-toggle .nav-link.active .rfq-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+@media (max-width: 575.98px) {
+  .ops-filter-label {
+    flex-basis: 100%;
+  }
+
+  /* Two to a row, rather than a tall stack of four. */
+  .ops-filter-selects {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+  }
+}
+
+/* ---------- Comment authors: their role, and a hover card of their details ---------- */
+
+.rfq-comment-author {
+  cursor: pointer;
+  border-bottom: 1px dotted transparent;
+}
+
+.rfq-comment-author:hover,
+.rfq-comment-author:focus-visible {
+  border-bottom-color: currentColor;
+  color: var(--rfq-primary-dark);
+  outline: none;
+}
+
+.rfq-comment-role {
+  padding: 0.2em 0.55em;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The one card for the page, filled in and positioned by admin.js. Fixed to
+   the viewport, and above a modal when it's moved into one. */
+.user-card {
+  position: fixed;
+  z-index: 1090;
+  display: none;
+  width: 17.5rem;
+  padding: 0.9rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 0.75rem;
+  background: var(--rfq-surface);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+}
+
+.user-card.is-open {
+  display: block;
+  animation: user-card-in 0.15s ease;
+}
+
+@keyframes user-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.user-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.user-card-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-left: 0;
+  font-size: 1rem;
+}
+
+.user-card-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.user-card-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+
+.user-card-roles .badge {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.user-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+  padding: 0.6rem 0;
+  border-block: 1px solid var(--rfq-border);
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--rfq-text-muted);
+}
+
+.user-card-details i {
+  margin-right: 0.35rem;
+  color: var(--rfq-primary-dark);
+}
+
+.user-card-details span {
+  word-break: break-all;
+}
+
+.user-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.user-card-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.user-card.is-composing .user-card-actions {
+  display: none;
+}
+
+.user-card-you {
+  font-size: 0.78rem;
+  color: var(--rfq-text-muted);
+}
+
+.user-card-composer textarea {
+  resize: none;
+}
+
+.user-card-note {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--rfq-text-muted);
+}
+
+.user-card-status {
+  margin-top: 0.5rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+.user-card-status:empty {
+  display: none;
+}
+
+.user-card-status.is-ok {
+  color: var(--rfq-success);
+}
+
+.user-card-status.is-error {
+  color: var(--rfq-danger);
+}
+
+/* ---------- Messages ---------- */
+
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+  color: inherit;
+  text-decoration: none;
+}
+
+.conversation-row:last-child {
+  border-bottom: 0;
+}
+
+.conversation-row:hover {
+  background: var(--rfq-bg);
+  color: inherit;
+}
+
+.conversation-row.is-unread {
+  background: #f8f9ff;
+}
+
+.conversation-row.is-unread .conversation-name {
+  font-weight: 800;
+}
+
+.conversation-avatar {
+  flex-shrink: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin-left: 0;
+  font-size: 0.95rem;
+}
+
+.conversation-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.conversation-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.conversation-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.conversation-preview {
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-meta {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.conversation-empty-icon {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+  color: var(--rfq-text-muted);
+}
+
+.message-thread-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--rfq-bg);
+}
+
+.message-bubble-row {
+  display: flex;
+}
+
+.message-bubble-row.is-mine {
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  max-width: 75%;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 0.85rem 0.85rem 0.85rem 0.2rem;
+  background: var(--rfq-surface);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.message-bubble-row.is-mine .message-bubble {
+  border-color: var(--rfq-primary);
+  border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+.message-time {
+  font-size: 0.68rem;
+  text-align: right;
+  opacity: 0.7;
+}
+
+/* ---------- Operations' Assigned tab — each RFQ with its parts ---------- */
+/* One tbody per RFQ (_rfq_row with $groupedParts, then _rfq_parts): its row,
+   then a nested line per part — who holds it and how it's going — hanging
+   off it on guide lines like the sidebar's tree. The caret in the row folds
+   the parts away. */
+
+.rfq-groups-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.6rem 1rem 0.5rem;
+}
+
+.rfq-groups > :not(:first-child) {
+  border-top: 1px solid var(--rfq-border);
+}
+
+.rfq-groups > tbody:first-of-type {
+  border-top: 0;
+}
+
+.rfq-group-head:hover > td {
+  background: var(--rfq-bg);
+}
+
+.rfq-group-toggle {
+  margin-right: 0.2rem;
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  line-height: 1;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-group-toggle:hover {
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+}
+
+.rfq-group-toggle i {
+  display: inline-block;
+  font-size: 0.8rem;
+  transform: rotate(90deg);
+  transition: transform 0.2s ease;
+}
+
+.rfq-group.is-collapsed .rfq-group-toggle i {
+  transform: none;
+}
+
+.rfq-group.is-collapsed .rfq-part-row {
+  display: none;
+}
+
+/* One segment per part, coloured by where it stands. */
+.rfq-group-progress {
+  display: flex;
+  gap: 3px;
+  max-width: 9rem;
+  margin-top: 0.35rem;
+}
+
+.rfq-seg {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--rfq-border);
+}
+
+.rfq-seg[data-state="in_progress"] {
+  background: #f0a04b;
+}
+
+.rfq-seg[data-state="with_data_entry"] {
+  background: #3b53d1;
+}
+
+.rfq-seg[data-state="data_entry_done"] {
+  background: #157347;
+}
+
+.rfq-seg[data-state="returned"] {
+  background: #c81e1e;
+}
+
+.rfq-seg[data-state="unassigned"] {
+  border: 1px dashed var(--rfq-text-muted);
+  background: transparent;
+}
+
+.rfq-group-caption {
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-part-row > td {
+  position: relative;
+  padding: 0.6rem 0.85rem 0.6rem 3.2rem;
+  border-bottom: 0;
+  background: var(--rfq-bg);
+}
+
+/* The guide down the group's left edge, with an elbow into each part; the
+   last part's guide stops at its elbow. */
+.rfq-part-row > td::before,
+.rfq-part-row > td::after {
+  content: "";
+  position: absolute;
+  left: 1.55rem;
+  border: 0 solid var(--rfq-tree-line-soft);
+  pointer-events: none;
+}
+
+.rfq-part-row > td::before {
+  top: 0;
+  bottom: 0;
+  border-left-width: 1px;
+}
+
+.rfq-part-row:last-child > td::before {
+  bottom: 50%;
+}
+
+.rfq-part-row > td::after {
+  top: 50%;
+  width: 1.1rem;
+  border-top-width: 1px;
+}
+
+.rfq-part-line {
+  display: grid;
+  grid-template-columns: 11rem minmax(13rem, 1.3fr) 13rem minmax(12rem, 1.5fr);
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+}
+
+.rfq-part-name {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rfq-part-who {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.rfq-part-who .assignee-avatar {
+  width: 28px;
+  height: 28px;
+  margin-left: 0;
+  font-size: 0.72rem;
+}
+
+.rfq-part-who.is-empty {
+  font-style: italic;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-part-user {
+  font-weight: 600;
+}
+
+.rfq-part-assigned {
+  font-size: 0.76rem;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-part-caption {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rfq-part-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.rfq-part-detail {
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+}
+
+.rfq-part-detail-returned {
+  color: #b02a37;
+}
+
+@media (max-width: 991.98px) {
+  .rfq-part-line {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rfq-part-name {
+    grid-column: 1 / -1;
+  }
+}
+
+/* On a phone the table scrolls sideways, and a group's part lines would run out
+   to the right with it — pin them to the width of the screen, where they
+   started. */
+@media (max-width: 767.98px) {
+  .rfq-part-line {
+    position: sticky;
+    left: 3.2rem;
+    width: calc(100vw - 6.6rem);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .rfq-part-line {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- Buttons ---------- */
@@ -1193,6 +2290,205 @@ h6, .h6 { font-size: 0.85rem; }
   padding: 0;
 }
 
+/* What a comment posted with an action records — "Marked complete",
+   "Returned to Sourcing" — as chips beside the author's name, then what it was
+   about (whose part, which one, where it went). */
+.rfq-comment-meta {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+
+.comment-action,
+.comment-action-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.comment-action {
+  font-weight: 700;
+}
+
+.comment-action i {
+  font-size: 0.75rem;
+}
+
+.comment-action-success {
+  background: #e6f7ee;
+  color: #157347;
+}
+
+.comment-action-danger {
+  background: #fde8e8;
+  color: #c81e1e;
+}
+
+.comment-action-context {
+  background: #f1f2f6;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+/* The comments in the quick-detail modal, as a vertical timeline: a marker on
+   the line for each — a speech bubble, or the icon of what was done — and the
+   comment in a bubble tinted to match. It animates in every time the modal
+   opens: the line draws down, the markers pop, the comments slide up one after
+   another (--i is a comment's place, set in _modal_comment.blade.php), and the
+   newest marker pulses. */
+.rfq-thread {
+  padding: 0.25rem 0;
+}
+
+.rfq-thread .rfq-timeline-item {
+  --delay: min(calc(var(--i, 0) * 110ms), 770ms);
+  padding-bottom: 1.1rem;
+}
+
+.rfq-thread .rfq-timeline-marker {
+  position: relative;
+}
+
+.rfq-thread-content {
+  padding-top: 0.15rem;
+}
+
+.rfq-thread-bubble {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #dfe4fc;
+  border-radius: 0.2rem 0.75rem 0.75rem 0.75rem;
+  background: #f8f9ff;
+  font-size: 0.83rem;
+  overflow-wrap: anywhere;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.rfq-thread-bubble:hover {
+  box-shadow: 0 3px 12px rgba(16, 24, 40, 0.07);
+  transform: translateY(-1px);
+}
+
+.rfq-timeline-item-success .rfq-thread-bubble {
+  border-color: #cdeedb;
+  background: #f3fbf7;
+}
+
+.rfq-timeline-item-danger .rfq-thread-bubble {
+  border-color: #f6d3d5;
+  background: #fef5f5;
+}
+
+.rfq-thread-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--rfq-border);
+}
+
+.rfq-thread-reply .rfq-thread-bubble {
+  font-size: 0.8rem;
+  border-radius: 0.2rem 0.65rem 0.65rem 0.65rem;
+}
+
+.rfq-thread .rfq-timeline-item::before {
+  transform-origin: top;
+  animation: rfq-thread-line 0.5s ease both;
+  animation-delay: calc(var(--delay) + 200ms);
+}
+
+.rfq-thread .rfq-timeline-marker {
+  animation: rfq-thread-pop 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  animation-delay: var(--delay);
+}
+
+.rfq-thread .rfq-thread-content {
+  animation: rfq-thread-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--delay) + 120ms);
+}
+
+.rfq-thread .rfq-timeline-item:last-child .rfq-timeline-marker::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: rfq-thread-pulse 1.6s ease-out 2;
+  animation-delay: calc(var(--delay) + 600ms);
+}
+
+.rfq-thread .rfq-timeline-item-primary:last-child .rfq-timeline-marker::after {
+  --pulse: rgba(79, 109, 245, 0.45);
+}
+
+.rfq-thread .rfq-timeline-item-success:last-child .rfq-timeline-marker::after {
+  --pulse: rgba(21, 115, 71, 0.45);
+}
+
+.rfq-thread .rfq-timeline-item-danger:last-child .rfq-timeline-marker::after {
+  --pulse: rgba(200, 30, 30, 0.45);
+}
+
+@keyframes rfq-thread-line {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes rfq-thread-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes rfq-thread-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rfq-thread-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--pulse);
+  }
+
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rfq-thread .rfq-timeline-item::before,
+  .rfq-thread .rfq-timeline-marker,
+  .rfq-thread .rfq-thread-content,
+  .rfq-thread .rfq-timeline-marker::after {
+    animation: none;
+  }
+}
+
 .permission-group {
   border: 1px solid var(--rfq-border);
   border-radius: var(--rfq-radius);
@@ -1426,12 +2722,14 @@ h6, .h6 { font-size: 0.85rem; }
 }
 
 /* ---------- Assign Sourcing wizard ---------- */
-/* Two-step modal (_assign_modal.blade.php, driven by admin.js): a stepper
-   across the top, then either the category picker or the split/assign
-   panel. Rows for each planned part ("RFQ1005-P3 of P5") are built in JS. */
+/* Four-step modal (_assign_modal.blade.php, driven by admin.js): a stepper
+   across the top, then the category picker, the keep-whole-or-split choice,
+   the parts to assign, or the summary. Rows for each planned part
+   ("RFQ1005-P3 of P5") are built in JS. */
 
 .wizard-steps {
   display: flex;
+  flex-shrink: 0;
   gap: 0.5rem;
   list-style: none;
   margin: 0;
@@ -1490,6 +2788,161 @@ h6, .h6 { font-size: 0.85rem; }
   color: #fff;
 }
 
+/* Step 1, the job category: a lead-in, the RFQ being categorised, the picker,
+   and a card saying what the chosen category covers (its description) — or,
+   for a new one, previewing what's being typed. */
+.wizard-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #dfe4fc;
+  border-radius: var(--rfq-radius);
+  background: linear-gradient(135deg, var(--rfq-primary-soft), #f8f9ff);
+}
+
+.wizard-lead-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.7rem;
+  background: var(--rfq-primary);
+  color: #fff;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 10px rgba(79, 109, 245, 0.28);
+}
+
+.wizard-lead-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.wizard-lead-text {
+  font-size: 0.78rem;
+  color: var(--rfq-text-muted);
+}
+
+.wizard-rfq {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+}
+
+.wizard-rfq-number {
+  flex-shrink: 0;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  font-weight: 700;
+}
+
+.wizard-rfq-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--rfq-text-muted);
+}
+
+.category-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #cdd6fb;
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-primary-soft);
+}
+
+.category-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.75rem;
+  background: var(--rfq-primary);
+  color: #fff;
+  font-size: 1.15rem;
+}
+
+.category-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.category-card-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.category-card-desc {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.category-card-desc.is-placeholder {
+  font-style: italic;
+  color: var(--rfq-text-muted);
+}
+
+.category-card.is-empty {
+  border-style: dashed;
+  border-color: var(--rfq-border);
+  background: var(--rfq-bg);
+}
+
+.category-card.is-empty .category-card-icon {
+  border: 1px dashed var(--rfq-border);
+  background: var(--rfq-surface);
+  color: var(--rfq-text-muted);
+}
+
+.category-card.is-empty .category-card-name {
+  color: var(--rfq-text-muted);
+}
+
+.category-card .badge {
+  border: 1px solid #cdd6fb;
+  background: var(--rfq-surface);
+  color: var(--rfq-primary-dark);
+}
+
+.category-card.is-changing {
+  animation: category-card-in 0.25s ease;
+}
+
+@keyframes category-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .category-card.is-changing {
+    animation: none;
+  }
+}
+
 /* "Keep as one task" / "Split this task" — two big selectable cards. */
 .wizard-choice-group {
   display: grid;
@@ -1544,8 +2997,382 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-text-muted);
 }
 
-.assign-parts-count {
-  max-width: 8rem;
+/* "How many parts?": a big number with − / + either side, and one-tap picks
+   for the usual counts. */
+.parts-counter {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+}
+
+.parts-counter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.7rem;
+}
+
+.parts-counter-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.parts-counter-range {
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+}
+
+.parts-counter-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem 1.5rem;
+}
+
+.parts-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.parts-stepper:focus-within {
+  border-color: var(--rfq-primary);
+  box-shadow: 0 0 0 3px rgba(79, 109, 245, 0.15);
+}
+
+.parts-stepper-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.9rem;
+  border: 0;
+  background: var(--rfq-bg);
+  color: var(--rfq-primary-dark);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.parts-stepper-btn:hover:not(:disabled) {
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+.parts-stepper-btn:disabled {
+  color: var(--rfq-text-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.parts-stepper-input {
+  width: 4.75rem;
+  padding: 0.35rem 0;
+  border: 0;
+  border-inline: 1px solid var(--rfq-border);
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--rfq-text);
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.parts-stepper-input:focus {
+  outline: 0;
+}
+
+.parts-stepper-input::-webkit-outer-spin-button,
+.parts-stepper-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.parts-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.parts-quick-label {
+  margin-right: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.parts-quick-btn {
+  min-width: 2.1rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-surface);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rfq-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.parts-quick-btn:hover {
+  border-color: var(--rfq-primary);
+  color: var(--rfq-primary-dark);
+}
+
+.parts-quick-btn.is-active {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+/* Step 4, the summary: a card each for the category, how it's handled and who
+   takes what, fading up one after another; then the Finish button arrives
+   after them (see .wizard-finish). Change on a card goes back to its step. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-card {
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+  animation: review-in 0.4s ease both;
+}
+
+.review-card:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.review-card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.review-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius) var(--rfq-radius) 0 0;
+  background: var(--rfq-bg);
+}
+
+.review-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.review-card-title i {
+  color: var(--rfq-primary-dark);
+}
+
+.review-edit {
+  padding: 0.15rem 0.55rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--rfq-primary-dark);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.review-edit:hover {
+  background: var(--rfq-primary-soft);
+}
+
+.review-card-body {
+  padding: 0.85rem 0.9rem;
+}
+
+.review-category {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.review-split-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.review-split-text {
+  font-size: 0.8rem;
+  color: var(--rfq-text-muted);
+}
+
+.review-parts {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-part {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+  font-size: 0.82rem;
+}
+
+.review-part:first-child {
+  padding-top: 0;
+}
+
+.review-part:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.review-part-number {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.review-part-who {
+  text-align: right;
+  font-weight: 600;
+  color: var(--rfq-success);
+}
+
+.review-part-who.is-empty {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.review-part-tag {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.review-note {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed #cdd6fb;
+  border-radius: 0.5rem;
+  background: #f8f9ff;
+  font-size: 0.76rem;
+  color: var(--rfq-text-muted);
+}
+
+/* Finish only exists on the summary, so it plays every time it's shown: it
+   drops in once the cards have settled, then pulses a few times to say
+   "this is the one". */
+.wizard-finish {
+  animation:
+    wizard-finish-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.5s both,
+    wizard-finish-pulse 1.6s ease-out 1.2s 3;
+}
+
+@keyframes review-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wizard-finish-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wizard-finish-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(79, 109, 245, 0.55);
+  }
+
+  100% {
+    box-shadow: 0 0 0 14px rgba(79, 109, 245, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-card,
+  .wizard-finish {
+    animation: none;
+  }
+}
+
+/* Small pills — step 2's "This makes …" list of the parts a split creates, and
+   step 3's summary of what was chosen. */
+.wizard-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.wizard-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wizard-chip i {
+  color: var(--rfq-primary-dark);
+}
+
+.wizard-parts-preview {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed #cdd6fb;
+  border-radius: var(--rfq-radius);
+  background: #f8f9ff;
+}
+
+.wizard-parts-preview-label {
+  margin-bottom: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
 }
 
 /* One row per planned part — its number on the left, who takes it on the
@@ -1600,6 +3427,15 @@ h6, .h6 { font-size: 0.85rem; }
 }
 
 @media (max-width: 575.98px) {
+  /* Four steps don't fit with every label — only the current one keeps its. */
+  .wizard-step:not(.is-active) .wizard-step-label {
+    display: none;
+  }
+
+  .wizard-step:not(.is-active) {
+    flex: 0 0 auto;
+  }
+
   .wizard-part-row {
     flex-direction: column;
     align-items: stretch;
@@ -1608,5 +3444,270 @@ h6, .h6 { font-size: 0.85rem; }
 
   .wizard-part-select {
     max-width: none;
+  }
+}
+
+/* ---------- Celebration: fireworks when something is closed ----------
+   layouts/_celebration.blade.php + public/js/fireworks.js. A dark, softly lit
+   sky over the page, the fireworks on a canvas, confetti falling, and a card
+   that pops up a little below the middle so the sky has room. */
+
+.celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  padding-top: 24vh;
+  background:
+    radial-gradient(120% 80% at 50% 105%, rgba(63, 81, 181, 0.55) 0%, rgba(20, 26, 70, 0.0) 60%),
+    radial-gradient(140% 100% at 50% 0%, rgba(12, 16, 46, 0.9) 0%, rgba(6, 8, 24, 0.95) 100%);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  animation: celebration-in 0.35s ease both;
+}
+
+.celebration.is-leaving {
+  pointer-events: none;
+  animation: celebration-out 0.45s ease both;
+}
+
+.celebration-canvas,
+.celebration-confetti-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.celebration-confetti-layer {
+  overflow: hidden;
+}
+
+.celebration-confetti {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: var(--w);
+  height: var(--h);
+  background: var(--c);
+  opacity: 0;
+  animation: celebration-confetti var(--t) linear var(--d) both;
+}
+
+.celebration-card {
+  position: relative;
+  width: min(24rem, 100%);
+  padding: 1.7rem 1.5rem 1.5rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 28px 70px rgba(3, 5, 28, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  text-align: center;
+  overflow: hidden;
+  cursor: default;
+  animation: celebration-pop 0.75s cubic-bezier(0.2, 0.9, 0.25, 1.12) 0.15s both;
+}
+
+/* A ribbon of the app's colours along the top. */
+.celebration-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: linear-gradient(90deg, #4f6df5, #22c55e, #fbbf24, #f472b6, #4f6df5);
+  background-size: 200% 100%;
+  animation: celebration-stripe 3s linear infinite;
+}
+
+.celebration-badge {
+  display: grid;
+  place-items: center;
+  width: 4.3rem;
+  height: 4.3rem;
+  margin: 0 auto 0.85rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #4ade80 0%, #16a34a 72%);
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55), 0 10px 22px rgba(22, 163, 74, 0.35);
+  animation: celebration-halo 1.9s ease-out 0.9s 3;
+}
+
+.celebration-check {
+  width: 2.7rem;
+  height: 2.7rem;
+  stroke: #fff;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.celebration-check-ring {
+  stroke-dasharray: 145;
+  stroke-dashoffset: 145;
+  opacity: 0.55;
+  animation: celebration-draw 0.6s ease 0.35s forwards;
+}
+
+.celebration-check-mark {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: celebration-draw 0.4s ease 0.8s forwards;
+}
+
+.celebration-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  background: linear-gradient(90deg, #16a34a, #0ea5e9, #4f6df5, #16a34a);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: celebration-shine 3.2s linear infinite;
+}
+
+.celebration-label {
+  display: inline-block;
+  margin-bottom: 0.65rem;
+  padding: 0.28rem 0.85rem;
+  border-radius: 999px;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+  font-size: 0.86rem;
+  font-weight: 700;
+  animation: celebration-rise 0.5s ease 0.55s both;
+}
+
+.celebration-text {
+  margin: 0 0 1.05rem;
+  color: var(--rfq-text-muted);
+  font-size: 0.88rem;
+  animation: celebration-rise 0.5s ease 0.7s both;
+}
+
+.celebration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  animation: celebration-rise 0.5s ease 0.85s both;
+}
+
+/* The time it has left, running down the bottom edge; resting the pointer on
+   the card pauses it. */
+.celebration-bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: linear-gradient(90deg, #4f6df5, #22c55e);
+  transform-origin: left;
+  animation: celebration-count var(--stay, 7s) linear forwards;
+}
+
+.celebration.is-held .celebration-bar {
+  animation-play-state: paused;
+}
+
+/* A few stars twinkling round the badge. */
+.celebration-sparkle {
+  position: absolute;
+  top: 2.9rem;
+  left: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: #fbbf24;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  transform: translate(var(--x), var(--y)) scale(0);
+  animation: celebration-twinkle 1.6s ease-in-out var(--d) infinite;
+}
+
+@keyframes celebration-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes celebration-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes celebration-pop {
+  0% { opacity: 0; transform: translateY(28px) scale(0.84); }
+  60% { opacity: 1; transform: translateY(-5px) scale(1.03); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes celebration-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes celebration-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes celebration-halo {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55), 0 10px 22px rgba(22, 163, 74, 0.35); }
+  100% { box-shadow: 0 0 0 1.6rem rgba(34, 197, 94, 0), 0 10px 22px rgba(22, 163, 74, 0.35); }
+}
+
+@keyframes celebration-shine {
+  to { background-position: -250% 0; }
+}
+
+@keyframes celebration-stripe {
+  to { background-position: -200% 0; }
+}
+
+@keyframes celebration-count {
+  to { transform: scaleX(0); }
+}
+
+@keyframes celebration-twinkle {
+  0%, 100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(0) rotate(0deg); }
+  50% { opacity: 1; transform: translate(var(--x), var(--y)) scale(1) rotate(90deg); }
+}
+
+@keyframes celebration-confetti {
+  0% { opacity: 1; transform: translate3d(0, -6vh, 0) rotate(0deg); }
+  25% { transform: translate3d(var(--s), 24vh, 0) rotate(calc(var(--r) * 0.25)); }
+  50% { transform: translate3d(calc(var(--s) * -0.6), 52vh, 0) rotate(calc(var(--r) * 0.5)); }
+  75% { transform: translate3d(calc(var(--s) * 0.8), 80vh, 0) rotate(calc(var(--r) * 0.75)); }
+  100% { opacity: 0.9; transform: translate3d(0, 108vh, 0) rotate(var(--r)); }
+}
+
+/* For anyone who's asked for less motion: the card, still, and no fireworks. */
+@media (prefers-reduced-motion: reduce) {
+  .celebration,
+  .celebration-card,
+  .celebration-badge,
+  .celebration-check-ring,
+  .celebration-check-mark,
+  .celebration-title,
+  .celebration-label,
+  .celebration-text,
+  .celebration-actions,
+  .celebration-card::before {
+    animation: none;
+  }
+
+  .celebration-check-ring,
+  .celebration-check-mark {
+    stroke-dashoffset: 0;
+  }
+
+  .celebration-canvas,
+  .celebration-confetti-layer,
+  .celebration-sparkle {
+    display: none;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .celebration {
+    padding-top: 30vh;
   }
 }

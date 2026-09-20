@@ -11,20 +11,18 @@
     // Sourcing partners are also on it — they still see their own entry.
     $restrictSourcingView = auth()->user()->hasRole('Sourcing');
 
-    // Only a Sourcing member actually assigned to this RFQ can mark their
-    // own split of the work complete, and only once. With more than one
-    // assignee, everyone has to complete their own part — the RFQ only
-    // hands off to Data Entry once all of them have. See
-    // Rfq::completeSourcingPartFor().
-    $myAssignment = $rfq->assignees->firstWhere('id', auth()->id());
-    $canCompleteSourcing = $restrictSourcingView
-        && $myAssignment !== null
-        && $myAssignment->pivot->completed_at === null;
+    // Only a Sourcing member actually assigned to a part of this RFQ can
+    // mark that part complete, and only once. Every part is completed on its
+    // own — someone holding several gets a Mark Complete for each — and the
+    // RFQ only hands off to Data Entry once all of its parts have been. See
+    // Rfq::completeSourcingPart().
+    $myParts = $restrictSourcingView ? $rfq->assignees->where('id', auth()->id()) : collect();
+    $myOpenParts = $myParts->whereNull('pivot.completed_at');
 
-    // Data Entry sent this Sourcing viewer's own split back for rework —
+    // Data Entry sent one of this Sourcing viewer's parts back for rework —
     // flagged here so a banner with the reason can show up front, rather
     // than the reappearing Mark Complete button being the only clue.
-    $myPartWasReturned = $restrictSourcingView && $rfq->hasReturnedSourcingPart(auth()->user());
+    $myReturnedParts = $myOpenParts->whereNotNull('pivot.returned_at');
 
     // Sourcing never gets access to the assign controls at all — it's a
     // receiving role, not an assigning one — enforced server-side too, see
@@ -83,6 +81,27 @@
     ];
     $currentStep = collect($stepDone)->search(false, true);
 
+    // Most stages are taken part by part on a split RFQ, each part going on as
+    // soon as it's through — so how many parts have got past each one, for
+    // the tabs below the chart to show while the stage as a whole isn't done.
+    $stepPartColumns = [
+        'sourcing' => 'completed_at',
+        'data_entry' => 'data_entry_completed_at',
+        'senior_ops' => 'senior_ops_reviewed_at',
+        'head_of_bd' => 'head_of_bd_approved_at',
+        'gm_assistant' => 'gm_assistant_completed_at',
+        'gm_review' => 'gm_approved_at',
+        'closed' => 'bd_closed_at',
+    ];
+    $stepPartsDone = collect($stepPartColumns)->map(
+        fn (string $column) => $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->{$column} !== null)->count()
+    );
+
+    // The latest time the Head sent something back — which part it was about,
+    // if it was one part (RfqComment::concernsPart()) — so only that part's
+    // branch shows it as sent back, rather than every one.
+    $latestRejection = $rfq->comments->where('action', 'rejected')->last();
+
     // Which tab opens by default in the Step Details panel below the
     // Progress chart — whichever stage is currently in play, or Closed
     // once every stage is done and there's nothing left "current".
@@ -105,12 +124,12 @@
     // Once Sourcing splits, every branch keeps its own copy of the rest of
     // the chain (Senior Operations Approval onward) all the way to Closed,
     // rather than merging back into one shared node — each split reads as
-    // its own complete path top to bottom. Those later stages are still
-    // recorded once on the RFQ as a whole (one review, not one per split),
-    // so every branch's copy of them shows the same underlying approval —
-    // this is purely how the chart lays the same state out per branch. See
-    // public/js/admin.js (renderRfqProgressChart) and the
-    // #rfq-progress-data script below.
+    // its own complete path top to bottom. Each part goes through those
+    // stages on its own, so every branch shows its own part's progress: a
+    // stage goes green on the branch as soon as that part has been through
+    // it, whatever the others are up to — Closed included, since Business
+    // Development closes part by part too. See public/js/admin.js
+    // (renderRfqProgressChart) and the #rfq-progress-data script below.
     //
     // Blurred content (Sourcing not seeing another partner's identity, or
     // who created/routed/approved outside their own sphere) is masked
@@ -127,8 +146,10 @@
     };
 
     // Senior Operations Approval → Closed, duplicated per branch (see
-    // comment above). $rfqNumber identifies which split a given copy
-    // belongs to once there's more than one — null for a single, unsplit
+    // comment above), each copy going by its own part's progress — or the
+    // RFQ's own when there's no part to speak of ($part null: nobody's been
+    // assigned to that branch). $rfqNumber identifies which split a given
+    // copy belongs to once there's more than one — null for a single, unsplit
     // RFQ or a branch that's currently masked from this viewer, and
     // rendered on its own line rather than folded into the title. Each
     // node's `meta` is a list of 0-2 further short lines — who (role/
@@ -139,15 +160,36 @@
     // public/js/admin.js (renderRfqProgressChart), which renders name,
     // rfq_number, and every meta entry each as their own line, and reads
     // `step` to drive the tab-select highlight.
-    $buildTailChain = function (?string $rfqNumber) use ($rfq, $maskIfBlurred, $restrictSourcingView, $nodeState, $stepDone, $currentStep) {
+    $buildTailChain = function (?string $rfqNumber, ?\App\Models\RfqAssignment $part = null) use ($rfq, $maskIfBlurred, $restrictSourcingView, $nodeState, $stepDone, $latestRejection) {
+        // Who did each stage and when, for this part — or the RFQ, with no part.
+        $seniorOpsAt = $part ? $part->senior_ops_reviewed_at : $rfq->senior_ops_reviewed_at;
+        $seniorOpsBy = $part ? $part->seniorOpsReviewedBy : $rfq->seniorOpsReviewedBy;
+        $headAt = $part ? $part->head_of_bd_approved_at : $rfq->head_of_bd_approved_at;
+        $headBy = $part ? $part->headOfBdApprovedBy : $rfq->headOfBdApprovedBy;
+        $assistantAt = $part ? $part->gm_assistant_completed_at : $rfq->gm_assistant_completed_at;
+        $assistantBy = $part ? $part->gmAssistantCompletedBy : $rfq->gmAssistantCompletedBy;
+        $gmAt = $part ? $part->gm_approved_at : $rfq->gm_approved_at;
+        $gmBy = $part ? $part->gmApprovedBy : $rfq->gmApprovedBy;
+        // An RFQ closed whole, before parts were closed one by one, has no
+        // closing recorded on its parts — it's the RFQ's own.
+        $closedAt = $part?->bd_closed_at ?? $rfq->bd_closed_at;
+        $closedBy = $part?->bd_closed_at ? $part->bdClosedBy : $rfq->bdClosedBy;
+        $dataEntryDone = $part ? $part->data_entry_completed_at !== null : $stepDone['data_entry'];
+
+        // Sent back by the Head: on every branch when it was the whole RFQ,
+        // on just the part's own when it was one part.
+        $headRejected = $rfq->head_of_bd_rejected_at !== null
+            && $headAt === null
+            && ($part === null || $latestRejection === null || $latestRejection->concernsPart($part->part_number));
+
         $closed = [
             'name' => 'Closed',
             'step' => 'closed',
             'rfq_number' => $rfqNumber,
-            'meta' => $rfq->bd_closed_at
-                ? [$maskIfBlurred($rfq->bdClosedBy?->name, $restrictSourcingView), $rfq->bd_closed_at->format('M d, Y g:i A')]
-                : [$stepDone['gm_review'] ? 'Ready for Business Development' : 'Not yet reached'],
-            'state' => $nodeState($stepDone['closed'], $currentStep === 'closed'),
+            'meta' => $closedAt
+                ? [$maskIfBlurred($closedBy?->name, $restrictSourcingView), $closedAt->format('M d, Y g:i A')]
+                : [$gmAt !== null ? 'Ready for Business Development' : 'Not yet reached'],
+            'state' => $nodeState($closedAt !== null, $gmAt !== null && $closedAt === null),
             'children' => [],
         ];
 
@@ -155,10 +197,10 @@
             'name' => 'General Manager',
             'step' => 'gm_review',
             'rfq_number' => $rfqNumber,
-            'meta' => $rfq->gm_approved_at
-                ? ['Approved by '.$maskIfBlurred($rfq->gmApprovedBy?->name, $restrictSourcingView), $rfq->gm_approved_at->format('M d, Y g:i A')]
-                : [$stepDone['gm_assistant'] ? 'Awaiting approval' : 'Not yet reached'],
-            'state' => $nodeState($stepDone['gm_review'], $currentStep === 'gm_review'),
+            'meta' => $gmAt
+                ? ['Approved by '.$maskIfBlurred($gmBy?->name, $restrictSourcingView), $gmAt->format('M d, Y g:i A')]
+                : [$assistantAt !== null ? 'Awaiting approval' : 'Not yet reached'],
+            'state' => $nodeState($gmAt !== null, $assistantAt !== null && $gmAt === null),
             'children' => [$closed],
         ];
 
@@ -166,10 +208,10 @@
             'name' => 'GM Assistant',
             'step' => 'gm_assistant',
             'rfq_number' => $rfqNumber,
-            'meta' => $rfq->gm_assistant_completed_at
-                ? [$maskIfBlurred($rfq->gmAssistantCompletedBy?->name, $restrictSourcingView), $rfq->gm_assistant_completed_at->format('M d, Y g:i A')]
-                : [$stepDone['head_of_bd'] ? 'Awaiting details' : 'Not yet reached'],
-            'state' => $nodeState($stepDone['gm_assistant'], $currentStep === 'gm_assistant'),
+            'meta' => $assistantAt
+                ? [$maskIfBlurred($assistantBy?->name, $restrictSourcingView), $assistantAt->format('M d, Y g:i A')]
+                : [$headAt !== null ? 'Awaiting details' : 'Not yet reached'],
+            'state' => $nodeState($assistantAt !== null, $headAt !== null && $assistantAt === null),
             'children' => [$gmReview],
         ];
 
@@ -178,11 +220,11 @@
             'step' => 'head_of_bd',
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
-                (bool) $rfq->head_of_bd_approved_at => ['Approved by '.$maskIfBlurred($rfq->headOfBdApprovedBy?->name, $restrictSourcingView), $rfq->head_of_bd_approved_at->format('M d, Y g:i A')],
-                (bool) $rfq->head_of_bd_rejected_at => ['Rejected by '.$maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage)],
-                default => [$stepDone['senior_ops'] ? 'Awaiting review' : 'Not yet reached'],
+                $headAt !== null => ['Approved by '.$maskIfBlurred($headBy?->name, $restrictSourcingView), $headAt->format('M d, Y g:i A')],
+                $headRejected => ['Rejected by '.$maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage)],
+                default => [$seniorOpsAt !== null ? 'Awaiting review' : 'Not yet reached'],
             },
-            'state' => $nodeState($stepDone['head_of_bd'], $currentStep === 'head_of_bd', (bool) $rfq->head_of_bd_rejected_at && ! $stepDone['head_of_bd']),
+            'state' => $nodeState($headAt !== null, $seniorOpsAt !== null && $headAt === null, $headRejected),
             'children' => [$gmAssistant],
         ];
 
@@ -190,10 +232,10 @@
             'name' => 'Senior Operations Approval',
             'step' => 'senior_ops',
             'rfq_number' => $rfqNumber,
-            'meta' => $rfq->senior_ops_reviewed_at
-                ? [$maskIfBlurred($rfq->seniorOpsReviewedBy?->name, $restrictSourcingView), $rfq->senior_ops_reviewed_at->format('M d, Y g:i A')]
-                : [$stepDone['data_entry'] ? 'Awaiting review' : 'Not yet reached'],
-            'state' => $nodeState($stepDone['senior_ops'], $currentStep === 'senior_ops'),
+            'meta' => $seniorOpsAt
+                ? [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->format('M d, Y g:i A')]
+                : [$dataEntryDone ? 'Awaiting review' : 'Not yet reached'],
+            'state' => $nodeState($seniorOpsAt !== null, $dataEntryDone && $seniorOpsAt === null),
             'children' => [$headOfBd],
         ];
     };
@@ -253,7 +295,7 @@
             'rfq_number' => $rfqNumber,
             'meta' => $deMeta,
             'state' => $nodeState($deIsDone, returned: $deIsReturned),
-            'children' => [$buildTailChain($rfqNumber)],
+            'children' => [$buildTailChain($rfqNumber, $assignee->pivot)],
         ];
 
         $sourcingBranches[] = [
@@ -304,20 +346,14 @@
         </a>
 
         <div class="d-flex gap-2">
-            @if ($canCompleteSourcing)
-                <form action="{{ route('admin.rfqs.complete-sourcing', $rfq) }}" method="POST"
-                      data-confirm="{{ $rfq->isSplit() ? 'Mark your part of this split RFQ complete? It only hands off to Data Entry once every assignee has completed theirs.' : 'Mark your Sourcing work done and hand this RFQ off to Data Entry?' }}">
-                    @csrf
-                    @method('PATCH')
-                    @if ($statusFilter)
-                        <input type="hidden" name="redirect_status" value="{{ $statusFilter }}">
-                    @endif
-                    <input type="hidden" name="return_to" value="show">
-                    <button type="submit" class="btn btn-sm btn-success">
-                        <i class="bi bi-check2-circle"></i> Mark Complete
-                    </button>
-                </form>
-            @endif
+            @foreach ($myOpenParts as $myPart)
+                @include('admin.rfqs._complete_button', [
+                    'rfq' => $rfq,
+                    'part' => $myPart->pivot->part_number,
+                    'returnTo' => 'show',
+                    'label' => 'Mark '.($rfq->isSplit() ? 'P'.$myPart->pivot->part_number.' ' : '').'Complete',
+                ])
+            @endforeach
             @if ($canApproveSeniorOpsReview)
                 <form action="{{ route('admin.rfqs.complete-senior-ops-review', $rfq) }}" method="POST"
                       data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
@@ -416,15 +452,15 @@
         </div>
     </div>
 
-    @if ($myPartWasReturned)
+    @foreach ($myReturnedParts as $returnedPart)
         <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
             <i class="bi bi-arrow-counterclockwise fs-5"></i>
             <div>
-                <div class="fw-bold">Data Entry sent your part back for rework</div>
-                <div>{{ $myAssignment->pivot->return_reason }}</div>
+                <div class="fw-bold">Data Entry sent {{ $rfq->isSplit() ? $rfq->partNumberLabel($returnedPart->pivot->part_number) : 'your part' }} back for rework</div>
+                <div>{{ $returnedPart->pivot->return_reason }}</div>
             </div>
         </div>
-    @endif
+    @endforeach
 
     <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -480,8 +516,14 @@
                             {{ $tab['label'] }}
                             @if ($stepDone[$stepKey])
                                 <i class="bi bi-check-circle-fill text-success ms-1" title="Done"></i>
-                            @elseif ($currentStep === $stepKey)
-                                <i class="bi bi-arrow-right-circle text-primary ms-1" title="Current"></i>
+                            @else
+                                {{-- A split goes through most stages part by part: some parts done. --}}
+                                @if ($rfq->isSplit() && ($stepPartsDone[$stepKey] ?? 0) > 0)
+                                    <span class="badge badge-soft-success ms-1" title="{{ $stepPartsDone[$stepKey] }} of {{ $rfq->splitTotal() }} parts done">{{ $stepPartsDone[$stepKey] }}/{{ $rfq->splitTotal() }}</span>
+                                @endif
+                                @if ($currentStep === $stepKey)
+                                    <i class="bi bi-arrow-right-circle text-primary ms-1" title="Current"></i>
+                                @endif
                             @endif
                         </button>
                     </li>
@@ -612,8 +654,13 @@
                     @endif
                 </div>
 
+                {{-- Senior Operations Approval, the Head, GM Assistant and the General
+                     Manager each take a split part by part (_step_parts) — an RFQ
+                     kept whole has just the one record of each. --}}
                 <div class="tab-pane fade {{ $activeStep === 'senior_ops' ? 'show active' : '' }}" id="step-pane-senior_ops" role="tabpanel" aria-labelledby="step-tab-senior_ops">
-                    @if ($rfq->senior_ops_reviewed_at)
+                    @if ($rfq->isSplit())
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'senior_ops_reviewed_at', 'byRelation' => 'seniorOpsReviewedBy', 'reachedColumn' => 'data_entry_completed_at', 'awaiting' => 'Awaiting review'])
+                    @elseif ($rfq->senior_ops_reviewed_at)
                         <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Approved by</dt>
@@ -630,7 +677,9 @@
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'head_of_bd' ? 'show active' : '' }}" id="step-pane-head_of_bd" role="tabpanel" aria-labelledby="step-tab-head_of_bd">
-                    @if ($rfq->head_of_bd_approved_at)
+                    @if ($rfq->isSplit())
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'head_of_bd_approved_at', 'byRelation' => 'headOfBdApprovedBy', 'reachedColumn' => 'senior_ops_reviewed_at', 'awaiting' => 'Awaiting review'])
+                    @elseif ($rfq->head_of_bd_approved_at)
                         <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Approved by</dt>
@@ -641,8 +690,10 @@
                                 <dd>{{ $rfq->head_of_bd_approved_at->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
-                    @elseif ($rfq->head_of_bd_rejected_at)
-                        <dl class="rfq-detail-grid mb-0">
+                    @endif
+                    @if ($rfq->head_of_bd_rejected_at && ! $rfq->head_of_bd_approved_at)
+                        {{-- The latest thing sent back, and which part it was if it was one. --}}
+                        <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
                             <div>
                                 <dt>Rejected by</dt>
                                 <dd>{{ $maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView) }}</dd>
@@ -651,6 +702,12 @@
                                 <dt>Rejected at</dt>
                                 <dd>{{ $rfq->head_of_bd_rejected_at->format('M d, Y g:i A') }}</dd>
                             </div>
+                            @if ($latestRejection?->meta['label'] ?? null)
+                                <div>
+                                    <dt>Part</dt>
+                                    <dd>{{ $latestRejection->meta['label'] }}</dd>
+                                </div>
+                            @endif
                             <div>
                                 <dt>Returned to</dt>
                                 <dd>{{ \App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage) }}</dd>
@@ -660,14 +717,16 @@
                                 <dd>{{ $rfq->head_of_bd_reject_reason }}</dd>
                             </div>
                         </dl>
-                    @else
+                    @elseif (! $rfq->isSplit() && ! $rfq->head_of_bd_approved_at)
                         <p class="text-muted-soft mb-0">{{ $stepDone['senior_ops'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
                     @endif
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'gm_assistant' ? 'show active' : '' }}" id="step-pane-gm_assistant" role="tabpanel" aria-labelledby="step-tab-gm_assistant">
-                    @if ($rfq->gm_assistant_completed_at)
-                        <dl class="rfq-detail-grid mb-3">
+                    @if ($rfq->isSplit())
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'gm_assistant_completed_at', 'byRelation' => 'gmAssistantCompletedBy', 'reachedColumn' => 'head_of_bd_approved_at', 'awaiting' => 'Awaiting details'])
+                    @elseif ($rfq->gm_assistant_completed_at)
+                        <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Completed by</dt>
                                 <dd>{{ $maskIfBlurred($rfq->gmAssistantCompletedBy?->name, $restrictSourcingView) }}</dd>
@@ -677,21 +736,24 @@
                                 <dd>{{ $rfq->gm_assistant_completed_at->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
-                        @if ($rfq->client_details)
-                            <div class="fw-semibold small mb-1">Client Details</div>
-                            <p class="mb-3" style="white-space: pre-line;">{{ $rfq->client_details }}</p>
-                        @endif
-                        @if ($rfq->payment_terms)
-                            <div class="fw-semibold small mb-1">Payment Terms</div>
-                            <p class="mb-0" style="white-space: pre-line;">{{ $rfq->payment_terms }}</p>
-                        @endif
                     @else
                         <p class="text-muted-soft mb-0">{{ $stepDone['head_of_bd'] ? 'Awaiting details.' : 'Not yet reached.' }}</p>
+                    @endif
+                    {{-- Given once, for the RFQ — from the first part GM Assistant does. --}}
+                    @if ($rfq->client_details)
+                        <div class="fw-semibold small mb-1 mt-3">Client Details</div>
+                        <p class="mb-0" style="white-space: pre-line;">{{ $rfq->client_details }}</p>
+                    @endif
+                    @if ($rfq->payment_terms)
+                        <div class="fw-semibold small mb-1 mt-3">Payment Terms</div>
+                        <p class="mb-0" style="white-space: pre-line;">{{ $rfq->payment_terms }}</p>
                     @endif
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'gm_review' ? 'show active' : '' }}" id="step-pane-gm_review" role="tabpanel" aria-labelledby="step-tab-gm_review">
-                    @if ($rfq->gm_approved_at)
+                    @if ($rfq->isSplit())
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'gm_approved_at', 'byRelation' => 'gmApprovedBy', 'reachedColumn' => 'gm_assistant_completed_at', 'awaiting' => 'Awaiting approval'])
+                    @elseif ($rfq->gm_approved_at)
                         <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Approved by</dt>
@@ -708,7 +770,9 @@
                 </div>
 
                 <div class="tab-pane fade {{ $activeStep === 'closed' ? 'show active' : '' }}" id="step-pane-closed" role="tabpanel" aria-labelledby="step-tab-closed">
-                    @if ($rfq->bd_closed_at)
+                    @if ($rfq->isSplit())
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'bd_closed_at', 'byRelation' => 'bdClosedBy', 'reachedColumn' => 'gm_approved_at', 'awaiting' => 'Ready to close'])
+                    @elseif ($rfq->bd_closed_at)
                         <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Closed by</dt>
@@ -856,19 +920,18 @@
         $failedReplyParentId = old('parent_id');
         $commentCount = $rfq->comments->sum(fn ($comment) => 1 + $comment->replies->count());
 
-        // Data Entry/Admin can send an assignee's completed split back to
-        // Sourcing right from here — same action as the quick-detail
-        // modal's Return to Sourcing, just reachable from the full RFQ
-        // page too, and presented as a plain text box alongside the
-        // comment box rather than hidden behind a toggle. One box per
-        // assignee still eligible for it (their Sourcing part is done, but
-        // Data Entry hasn't processed it yet) — a split RFQ can have more
-        // than one at once. See RfqController::returnSourcing().
+        // Data Entry/Admin can complete an assignee's finished split or send
+        // it back to Sourcing right from here — the same actions as the
+        // quick-detail modal's, side by side, each asking for a comment (the
+        // reason, for a return) in the shared prompt. One line per part still
+        // eligible for it (its Sourcing work is done, but Data Entry hasn't
+        // processed it yet) — a split RFQ can have more than one at once,
+        // including several held by the same person. See
+        // RfqController::completeDataEntry() and returnSourcing().
         $canReturnSourcing = auth()->user()->hasAnyRole(['Data Entry', 'Admin']);
         $returnEligibleAssignees = $canReturnSourcing
-            ? $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && ! $rfq->hasDataEntryCompletedPart($assignee))
+            ? $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && $assignee->pivot->data_entry_completed_at === null)
             : collect();
-        $failedReturnAssigneeId = old('assignee_id');
     @endphp
 
     {{-- Sourcing team roster for the @mention dropdown in comments — read
@@ -897,41 +960,24 @@
             @unless ($restrictAssignment)
                 <div class="card-footer bg-white">
                     @foreach ($returnEligibleAssignees as $returnAssignee)
-                        @php
-                            $isFailedReturn = $failedReturnAssigneeId && (string) $failedReturnAssigneeId === (string) $returnAssignee->id;
-                        @endphp
-                        <div class="mb-3 pb-3 border-bottom">
-                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                                <label class="fw-semibold small mb-0">
-                                    <i class="bi bi-arrow-counterclockwise"></i> Return {{ $returnAssignee->name }}'s part to Sourcing
-                                </label>
-                                <form action="{{ route('admin.rfqs.complete-data-entry', $rfq) }}" method="POST"
-                                      data-confirm="Mark {{ $returnAssignee->name }}'s part complete?">
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="assignee_id" value="{{ $returnAssignee->id }}">
-                                    <button type="submit" class="btn btn-sm btn-outline-success">
-                                        <i class="bi bi-check2-circle"></i> Mark Complete
-                                    </button>
-                                </form>
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 pb-3 border-bottom">
+                            <div class="fw-semibold small">
+                                {{ $returnAssignee->name }}'s part{{ $rfq->isSplit() ? ' ('.$rfq->partNumberLabel($returnAssignee->pivot->part_number).')' : '' }}
                             </div>
-                            <form action="{{ route('admin.rfqs.return-sourcing', $rfq) }}" method="POST"
-                                  data-confirm="Send {{ $returnAssignee->name }}'s part back to Sourcing for rework?">
-                                @csrf
-                                @method('PATCH')
-                                <input type="hidden" name="assignee_id" value="{{ $returnAssignee->id }}">
-                                <div class="mb-2">
-                                    <textarea name="reason" rows="2" class="form-control @error('reason', 'return') is-invalid @enderror">{{ $isFailedReturn ? old('reason') : '' }}</textarea>
-                                    @if ($isFailedReturn)
-                                        @error('reason', 'return')
-                                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                                        @enderror
-                                    @endif
-                                </div>
-                                <button type="submit" class="btn btn-sm btn-danger">
-                                    Send back to {{ $returnAssignee->name }}
-                                </button>
-                            </form>
+                            <div class="d-flex gap-2">
+                                @include('admin.rfqs._complete_button', [
+                                    'rfq' => $rfq,
+                                    'part' => $returnAssignee->pivot->part_number,
+                                    'kind' => 'return',
+                                    'who' => $returnAssignee->name,
+                                ])
+                                @include('admin.rfqs._complete_button', [
+                                    'rfq' => $rfq,
+                                    'part' => $returnAssignee->pivot->part_number,
+                                    'kind' => 'data_entry',
+                                    'who' => $returnAssignee->name,
+                                ])
+                            </div>
                         </div>
                     @endforeach
 
@@ -960,6 +1006,9 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
+    @if ($myOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty())
+        @include('admin.rfqs._complete_modal')
+    @endif
     @if ($canDecideHeadOfBdReview)
         @include('admin.rfqs._reject_modal')
     @endif

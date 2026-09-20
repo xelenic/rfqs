@@ -3,21 +3,10 @@
 use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\User;
+use Database\Seeders\JobCategorySeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
-
-function userWithRole(string $role): User
-{
-    Permission::findOrCreate('rfqs.view');
-    Permission::findOrCreate('rfqs.edit');
-
-    Role::findOrCreate($role)->givePermissionTo(['rfqs.view', 'rfqs.edit']);
-
-    return User::factory()->create()->assignRole($role);
-}
 
 function assignSourcing(User $actor, Rfq $rfq, array $payload)
 {
@@ -106,7 +95,7 @@ it('holds the RFQ back from Data Entry until every part is assigned and done', f
         'assignments' => [1 => $riley->id, 2 => ''],
     ]);
 
-    $rfq->refresh()->completeSourcingPartFor($riley);
+    $rfq->refresh()->completeSourcingPart(1);
     expect($rfq->refresh()->isWithDataEntry())->toBeFalse()
         ->and($rfq->allSourcingPartsCompleted())->toBeFalse();
 
@@ -119,7 +108,7 @@ it('holds the RFQ back from Data Entry until every part is assigned and done', f
         ->and($rfq->sourcingSplitNumberFor($riley))->toBe($rfq->rfq_number.'-P1 of P2')
         ->and($rfq->sourcingSplitNumberFor($sam))->toBe($rfq->rfq_number.'-P2 of P2');
 
-    $rfq->completeSourcingPartFor($sam);
+    $rfq->completeSourcingPart(2);
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
 });
 
@@ -160,7 +149,7 @@ it('only assigns people with the Sourcing role', function () {
         ->and($rfq->parts)->toBeEmpty();
 });
 
-it('lets one person take several parts, kept as a single share', function () {
+it('lets one person take several parts, each its own assignment', function () {
     $ops = userWithRole('Senior Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -175,7 +164,7 @@ it('lets one person take several parts, kept as a single share', function () {
 
     $rfq->refresh();
 
-    expect($rfq->assignees)->toHaveCount(2)
+    expect($rfq->assignees)->toHaveCount(3)
         ->and($rfq->partNumbersFor($riley))->toBe([1, 4])
         ->and($rfq->partNumbersFor($sam))->toBe([2])
         ->and($rfq->sourcingSplitNumberFor($riley))->toBe('RFQ1005-P1 & P4 of P5')
@@ -199,7 +188,7 @@ it('words three or more held parts as a list', function () {
     expect($rfq->refresh()->sourcingSplitNumberFor($riley))->toBe('RFQ1005-P1, P2 & P4 of P5');
 });
 
-it('completes all of a person\'s parts together and hands off once every part is done', function () {
+it('completes each of a person\'s parts on its own and hands off once every part is done', function () {
     $ops = userWithRole('Senior Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -212,37 +201,121 @@ it('completes all of a person\'s parts together and hands off once every part is
         'assignments' => [1 => $riley->id, 2 => $sam->id, 3 => $riley->id],
     ]);
 
-    $rfq->refresh()->completeSourcingPartFor($riley);
-    expect($rfq->refresh()->hasCompletedSourcingPart($riley))->toBeTrue()
+    $rfq->refresh()->completeSourcingPart(1);
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->not->toBeNull()
+        // Riley's other part is untouched by finishing this one.
+        ->and($rfq->assigneeForPart(3)->pivot->completed_at)->toBeNull()
         ->and($rfq->isWithDataEntry())->toBeFalse();
 
-    $rfq->completeSourcingPartFor($sam);
+    $rfq->completeSourcingPart(2);
+    expect($rfq->refresh()->isWithDataEntry())->toBeFalse();
+
+    $rfq->completeSourcingPart(3);
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
 });
 
-it('adds more parts to a share that is not finished yet, but never to a finished one', function () {
+it('lets a person take another part even after finishing one', function () {
     $ops = userWithRole('Senior Operations');
-    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
+    $riley = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1005']);
 
     assignSourcing($ops, $rfq, [
         'category' => 'Fire Safety',
         'split' => 1,
-        'parts' => 4,
-        'assignments' => [1 => $riley->id, 2 => $sam->id],
+        'parts' => 3,
+        'assignments' => [1 => $riley->id],
+    ]);
+    $rfq->refresh()->completeSourcingPart(1);
+
+    assignSourcing($ops, $rfq, ['assignments' => [3 => $riley->id]])->assertSessionHas('status');
+
+    $rfq->refresh();
+    expect($rfq->partNumbersFor($riley))->toBe([1, 3])
+        // Finished stays finished; the new part starts out pending.
+        ->and($rfq->assigneeForPart(1)->pivot->completed_at)->not->toBeNull()
+        ->and($rfq->assigneeForPart(3)->pivot->completed_at)->toBeNull();
+});
+
+it('only lets the part\'s own assignee complete it', function () {
+    $ops = userWithRole('Senior Operations');
+    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
+    JobCategory::factory()->create(['name' => 'Fire Safety']);
+    $rfq = Rfq::factory()->create();
+
+    assignSourcing($ops, $rfq, [
+        'category' => 'Fire Safety',
+        'split' => 1,
+        'parts' => 3,
+        'assignments' => [1 => $riley->id, 2 => $sam->id, 3 => $riley->id],
     ]);
 
-    // Riley hasn't finished — part 3 joins her existing share, still one assignment row.
-    assignSourcing($ops, $rfq, ['assignments' => [3 => $riley->id]])->assertSessionHas('status');
-    expect($rfq->refresh()->assignees)->toHaveCount(2)
-        ->and($rfq->partNumbersFor($riley))->toBe([1, 3]);
+    // Sam can't complete Riley's part; Riley can complete either of hers, separately.
+    test()->actingAs($sam)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1])->assertForbidden();
+    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 3, 'comment' => 'Quotes attached'])->assertSessionHas('status');
 
-    // Sam finishes — part 4 can't be added to a finished share.
-    $rfq->completeSourcingPartFor($sam);
-    assignSourcing($ops, $rfq, ['assignments' => [4 => $sam->id]])->assertSessionHas('error');
-    expect($rfq->refresh()->partNumbersFor($sam))->toBe([2])
-        ->and($rfq->hasUnassignedParts())->toBeTrue();
+    $rfq->refresh();
+    expect($rfq->assigneeForPart(3)->pivot->completed_at)->not->toBeNull()
+        ->and($rfq->assigneeForPart(1)->pivot->completed_at)->toBeNull();
+});
+
+it('has Data Entry process and return parts one at a time, even ones held by the same person', function () {
+    $ops = userWithRole('Senior Operations');
+    $dataEntry = userWithRole('Data Entry');
+    $riley = userWithRole('Sourcing');
+    JobCategory::factory()->create(['name' => 'Fire Safety']);
+    $rfq = Rfq::factory()->create();
+
+    assignSourcing($ops, $rfq, [
+        'category' => 'Fire Safety',
+        'split' => 1,
+        'parts' => 2,
+        'assignments' => [1 => $riley->id, 2 => $riley->id],
+    ]);
+    $rfq->refresh()->completeSourcingPart(1);
+    $rfq->completeSourcingPart(2);
+    expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
+
+    // Data Entry finishes part 1 only — the RFQ doesn't move on yet.
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Entered'])->assertSessionHas('status');
+    expect($rfq->refresh()->stage)->toBeNull()
+        ->and($rfq->assigneeForPart(1)->pivot->data_entry_completed_at)->not->toBeNull()
+        ->and($rfq->assigneeForPart(2)->pivot->data_entry_completed_at)->toBeNull();
+
+    // Sending part 2 back reopens just that part.
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 2, 'reason' => 'Prices are missing'])->assertSessionHas('status');
+    $rfq->refresh();
+    expect($rfq->assigneeForPart(2)->pivot->completed_at)->toBeNull()
+        ->and($rfq->assigneeForPart(2)->pivot->return_reason)->toBe('Prices are missing')
+        ->and($rfq->assigneeForPart(1)->pivot->completed_at)->not->toBeNull()
+        ->and($rfq->assigneeForPart(1)->pivot->returned_at)->toBeNull()
+        ->and($rfq->isWithDataEntry())->toBeFalse();
+});
+
+it('moves to Senior Operations\' review only once Data Entry has finished every part', function () {
+    $ops = userWithRole('Senior Operations');
+    $dataEntry = userWithRole('Data Entry');
+    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
+    JobCategory::factory()->create(['name' => 'Fire Safety']);
+    $rfq = Rfq::factory()->create();
+
+    assignSourcing($ops, $rfq, [
+        'category' => 'Fire Safety',
+        'split' => 1,
+        'parts' => 3,
+        'assignments' => [1 => $riley->id, 2 => $sam->id, 3 => $riley->id],
+    ]);
+    foreach ([1, 2, 3] as $part) {
+        $rfq->refresh()->completeSourcingPart($part);
+    }
+
+    foreach ([1, 2] as $part) {
+        test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => $part, 'comment' => 'Entered']);
+        expect($rfq->refresh()->stage)->toBeNull();
+    }
+
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 3, 'comment' => 'Entered']);
+    expect($rfq->refresh()->stage)->toBe('senior_ops_review');
 });
 
 it('keeps Sourcing itself from assigning', function () {
@@ -254,23 +327,6 @@ it('keeps Sourcing itself from assigning', function () {
         'category' => 'Fire Safety',
         'assignments' => [1 => $sourcing->id],
     ])->assertForbidden();
-});
-
-it('leaves an RFQ assigned before parts could be planned alone', function () {
-    $ops = userWithRole('Senior Operations');
-    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
-    JobCategory::factory()->create(['name' => 'Fire Safety']);
-    $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1001']);
-    $rfq->assignees()->attach([$riley->id, $sam->id]);
-
-    // Legacy numbering still follows assignment order.
-    expect($rfq->refresh()->sourcingSplitNumberFor($sam))->toBe('RFQ1001-P2 of P2')
-        ->and($rfq->hasUnassignedParts())->toBeFalse();
-
-    assignSourcing($ops, $rfq, [
-        'category' => 'Fire Safety',
-        'assignments' => [1 => $riley->id],
-    ])->assertStatus(422);
 });
 
 it('lists RFQs with empty parts in Operations\' queue until they are full', function () {
@@ -297,4 +353,178 @@ it('lists RFQs with empty parts in Operations\' queue until they are full', func
 
     expect(Rfq::needingSourcing()->count())->toBe(0)
         ->and(Rfq::fullySourced()->pluck('id')->all())->toBe([$rfq->id]);
+});
+
+it('stores the description typed in with a new category', function () {
+    $ops = userWithRole('Senior Operations');
+    $sourcing = userWithRole('Sourcing');
+    $rfq = Rfq::factory()->create();
+
+    assignSourcing($ops, $rfq, [
+        'category' => JobCategory::NEW_OPTION,
+        'new_category' => 'Elevator Maintenance',
+        'new_category_description' => '  Servicing, repairs and inspections of lifts and escalators. ',
+        'assignments' => [1 => $sourcing->id],
+    ])->assertSessionHas('status');
+
+    expect(JobCategory::where('name', 'Elevator Maintenance')->value('description'))
+        ->toBe('Servicing, repairs and inspections of lifts and escalators.');
+});
+
+it('leaves a new category\'s description empty when none is typed', function () {
+    $ops = userWithRole('Senior Operations');
+    $sourcing = userWithRole('Sourcing');
+
+    assignSourcing($ops, Rfq::factory()->create(), [
+        'category' => JobCategory::NEW_OPTION,
+        'new_category' => 'Elevator Maintenance',
+        'new_category_description' => '   ',
+        'assignments' => [1 => $sourcing->id],
+    ])->assertSessionHas('status');
+
+    expect(JobCategory::where('name', 'Elevator Maintenance')->value('description'))->toBeNull();
+});
+
+it('keeps an existing category\'s description when the same name is typed in again', function () {
+    $ops = userWithRole('Senior Operations');
+    $sourcing = userWithRole('Sourcing');
+    JobCategory::factory()->create(['name' => 'Fire Safety', 'description' => 'Alarms and extinguishers.']);
+
+    assignSourcing($ops, Rfq::factory()->create(), [
+        'category' => JobCategory::NEW_OPTION,
+        'new_category' => 'fire safety',
+        'new_category_description' => 'Something else entirely.',
+        'assignments' => [1 => $sourcing->id],
+    ])->assertSessionHas('status');
+
+    expect(JobCategory::where('name', 'Fire Safety')->value('description'))->toBe('Alarms and extinguishers.');
+});
+
+it('turns down a category description that\'s too long', function () {
+    $ops = userWithRole('Senior Operations');
+    $sourcing = userWithRole('Sourcing');
+
+    assignSourcing($ops, Rfq::factory()->create(), [
+        'category' => JobCategory::NEW_OPTION,
+        'new_category' => 'Elevator Maintenance',
+        'new_category_description' => str_repeat('a', 501),
+        'assignments' => [1 => $sourcing->id],
+    ])->assertSessionHas('error');
+
+    expect(JobCategory::where('name', 'Elevator Maintenance')->exists())->toBeFalse();
+});
+
+it('gives the wizard each category\'s description and icon to show', function () {
+    JobCategory::factory()->create(['name' => 'Electrical Works', 'description' => 'Wiring and lighting.']);
+    JobCategory::factory()->create(['name' => 'Elevator Maintenance', 'description' => null]);
+    userWithRole('Sourcing');
+
+    test()->actingAs(userWithRole('Senior Operations'))
+        ->get(route('admin.rfqs.index'))
+        ->assertOk()
+        ->assertSee('<option value="Electrical Works" data-icon="bi-lightning-charge" data-description="Wiring and lighting.">Electrical Works</option>', false)
+        // No description yet: nothing to show, and a plain tag for an icon.
+        ->assertSee('<option value="Elevator Maintenance" data-icon="bi-tag" data-description="">Elevator Maintenance</option>', false)
+        // The new-category form asks for one.
+        ->assertSee('name="new_category_description"', false);
+});
+
+it('picks a category\'s icon from a keyword in its name', function (string $name, string $icon) {
+    expect((new JobCategory(['name' => $name]))->icon())->toBe($icon);
+})->with([
+    'Electrical Works' => ['Electrical Works', 'bi-lightning-charge'],
+    'Plumbing & Sanitary' => ['Plumbing & Sanitary', 'bi-droplet'],
+    'HVAC & Air Conditioning' => ['HVAC & Air Conditioning', 'bi-snow'],
+    'Fire Safety' => ['Fire Safety', 'bi-fire'],
+    'IT & Networking' => ['IT & Networking', 'bi-hdd-network'],
+    'typed by hand' => ['electrical repairs', 'bi-lightning-charge'],
+    'nothing matches' => ['Elevator Maintenance', 'bi-tag'],
+]);
+
+it('seeds a description for every starter category without overwriting one already written', function () {
+    JobCategory::factory()->create(['name' => 'Fire Safety', 'description' => 'Our own wording.']);
+    JobCategory::factory()->create(['name' => 'Landscaping', 'description' => null]);
+
+    test()->seed(JobCategorySeeder::class);
+
+    expect(JobCategory::count())->toBe(12)
+        ->and(JobCategory::whereNull('description')->count())->toBe(0)
+        ->and(JobCategory::where('name', 'Fire Safety')->value('description'))->toBe('Our own wording.')
+        ->and(JobCategory::where('name', 'Landscaping')->value('description'))->toContain('lawns');
+
+    // Running it again changes nothing.
+    test()->seed(JobCategorySeeder::class);
+    expect(JobCategory::count())->toBe(12);
+});
+
+it('lays the wizard out as three steps — category, split, then assigning the parts', function () {
+    userWithRole('Sourcing');
+
+    $response = test()->actingAs(userWithRole('Senior Operations'))
+        ->get(route('admin.rfqs.index'))
+        ->assertOk();
+
+    foreach ([1, 2, 3] as $step) {
+        $response->assertSee('data-step-tab="'.$step.'"', false)
+            ->assertSee('data-step-panel="'.$step.'"', false);
+    }
+
+    // The split choice and the per-part pick-lists live on separate steps.
+    $html = $response->getContent();
+    $splitStep = strpos($html, 'data-step-panel="2"');
+    $assignStep = strpos($html, 'data-step-panel="3"');
+
+    expect(strpos($html, 'name="split_choice"'))->toBeGreaterThan($splitStep)->toBeLessThan($assignStep)
+        ->and(strpos($html, 'id="assign-parts-list"'))->toBeGreaterThan($assignStep);
+});
+
+it('offers a stepper and quick picks for how many parts, within the limits', function () {
+    userWithRole('Sourcing');
+
+    $response = test()->actingAs(userWithRole('Senior Operations'))
+        ->get(route('admin.rfqs.index'))
+        ->assertOk()
+        // The number field is the one that's submitted, with − and + either side.
+        ->assertSee('name="parts" id="assign-parts-count"', false)
+        ->assertSee('min="2" max="'.Rfq::MAX_SPLIT_PARTS.'"', false)
+        ->assertSee('id="assign-parts-minus"', false)
+        ->assertSee('id="assign-parts-plus"', false)
+        ->assertSee('Between 2 and '.Rfq::MAX_SPLIT_PARTS);
+
+    foreach ([2, 3, 4, 5, 6, 8, 10] as $count) {
+        $response->assertSee('data-parts="'.$count.'"', false);
+    }
+});
+
+it('ends the wizard on a summary step, the only place Finish appears', function () {
+    userWithRole('Sourcing');
+
+    $response = test()->actingAs(userWithRole('Senior Operations'))
+        ->get(route('admin.rfqs.index'))
+        ->assertOk()
+        ->assertSee('data-step-tab="4"', false)
+        ->assertSee('data-step-panel="4"', false)
+        // What the summary lays out, and the way back to each step.
+        ->assertSee('id="review-category-name"', false)
+        ->assertSee('id="review-parts"', false)
+        ->assertSee('id="review-note"', false)
+        ->assertSee('data-goto-step="1"', false)
+        ->assertSee('data-goto-step="2"', false)
+        ->assertSee('data-goto-step="3"', false)
+        // Finish starts hidden and animates in when the summary shows.
+        ->assertSee('class="btn btn-primary wizard-finish d-none" id="assign-wizard-finish"', false);
+
+    $html = $response->getContent();
+
+    // The summary comes after assigning the parts, and Finish is only in the footer.
+    expect(strpos($html, 'data-step-panel="4"'))->toBeGreaterThan(strpos($html, 'data-step-panel="3"'))
+        ->and(substr_count($html, 'id="assign-wizard-finish"'))->toBe(1);
+});
+
+it('gives each Sourcing member\'s bare name to the summary', function () {
+    $sam = userWithRole('Sourcing');
+
+    test()->actingAs(userWithRole('Senior Operations'))
+        ->get(route('admin.rfqs.index'))
+        ->assertSee('data-name="'.e($sam->name).'"', false);
 });

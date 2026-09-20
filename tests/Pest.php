@@ -1,6 +1,10 @@
 <?php
 
+use App\Models\Rfq;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /*
@@ -47,4 +51,54 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * A user holding $role, which can view and edit RFQs (as every workflow role
+ * can). Creates the role and permissions on first use.
+ */
+function userWithRole(string $role): User
+{
+    Permission::findOrCreate('rfqs.view');
+    Permission::findOrCreate('rfqs.edit');
+
+    Role::findOrCreate($role)->givePermissionTo(['rfqs.view', 'rfqs.edit']);
+
+    return User::factory()->create()->assignRole($role);
+}
+
+/**
+ * Splits an RFQ into $parts, assigning each to the given Sourcing members
+ * (part number => user) straight through the model.
+ *
+ * @param  array<int, User>  $holders
+ */
+function splitAmong(Rfq $rfq, array $holders): Rfq
+{
+    $rfq->planSplit(count($holders));
+    $rfq->assignSourcingParts(collect($holders)->map(fn ($user) => $user->id)->all());
+
+    return $rfq->refresh();
+}
+
+/**
+ * Senior Operations' Pending page (or Admin's view of it, with $role), split
+ * at the Assigned tab: [what comes before it — the filters and the Unassigned
+ * tab, the Assigned tab onwards, the whole page]. $query is added to the URL.
+ *
+ * @param  array<string, mixed>  $query
+ * @return array{0: string, 1: string, 2: string}
+ */
+function operationsTabs(array $query = [], ?string $role = null): array
+{
+    $user = $role ? userWithRole('Admin') : userWithRole('Senior Operations');
+
+    $html = test()->actingAs($user)
+        ->get(route('admin.rfqs.index', array_filter(['status' => 'Pending', 'role' => $role]) + $query))
+        ->assertOk()
+        ->getContent();
+
+    $assignedAt = strpos($html, 'id="rfq-ops-assigned"');
+
+    return [substr($html, 0, $assignedAt), substr($html, $assignedAt), $html];
 }

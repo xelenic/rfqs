@@ -9,11 +9,95 @@ use Illuminate\Support\Collection;
 
 class RfqComment extends Model
 {
+    /**
+     * What a comment posted along with an action records, shown as a chip
+     * beside the author's name: how it reads, its Bootstrap icon, and its tone
+     * (success or danger — the colour of its marker on the thread).
+     *
+     * @var array<string, array{label: string, icon: string, tone: string}>
+     */
+    public const ACTIONS = [
+        'sourcing_completed' => ['label' => 'Marked complete', 'icon' => 'bi-check-circle-fill', 'tone' => 'success'],
+        'data_entry_completed' => ['label' => 'Completed in Data Entry', 'icon' => 'bi-check2-circle', 'tone' => 'success'],
+        'returned_to_sourcing' => ['label' => 'Returned to Sourcing', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
+        'rejected' => ['label' => 'Rejected', 'icon' => 'bi-x-octagon-fill', 'tone' => 'danger'],
+    ];
+
     protected $fillable = [
         'user_id',
         'parent_id',
         'body',
+        'action',
+        'meta',
     ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'meta' => 'array',
+        ];
+    }
+
+    /**
+     * How this comment's action reads ("Marked complete"), or null for an
+     * ordinary comment.
+     */
+    public function actionLabel(): ?string
+    {
+        return self::ACTIONS[$this->action]['label'] ?? null;
+    }
+
+    /**
+     * The icon for this comment's marker on the thread — the action's, or a
+     * speech bubble for an ordinary comment.
+     */
+    public function actionIcon(): string
+    {
+        return self::ACTIONS[$this->action]['icon'] ?? 'bi-chat-left-text';
+    }
+
+    /**
+     * The tone of its marker: the action's, or the primary blue.
+     */
+    public function actionTone(): string
+    {
+        return self::ACTIONS[$this->action]['tone'] ?? 'primary';
+    }
+
+    /**
+     * What the action was about, for the small chip after it — whose part,
+     * which one, or where it was sent back to ("Sam Rivera's part ·
+     * RFQ1001-P2 of P3", "Returned to Sourcing") — or null when there's
+     * nothing to add.
+     */
+    public function actionContext(): ?string
+    {
+        $meta = $this->meta ?? [];
+
+        $context = collect([
+            isset($meta['who']) ? "{$meta['who']}'s part" : null,
+            $meta['label'] ?? null,
+            isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
+        ])->filter()->implode(' · ');
+
+        return $context !== '' ? $context : null;
+    }
+
+    /**
+     * Whether this comment belongs on $part's thread of a split RFQ. One
+     * recorded against a part — its completion, its return — is for that part
+     * alone; an ordinary comment, or an action on the RFQ as a whole (a
+     * rejection), is for every part.
+     */
+    public function concernsPart(int $part): bool
+    {
+        $commentPart = $this->meta['part'] ?? null;
+
+        return $commentPart === null || (int) $commentPart === $part;
+    }
 
     public function rfq(): BelongsTo
     {
@@ -43,7 +127,7 @@ class RfqComment extends Model
      */
     public function replies(): HasMany
     {
-        return $this->hasMany(self::class, 'parent_id')->oldest();
+        return $this->hasMany(self::class, 'parent_id')->oldest()->oldest('id');
     }
 
     /**

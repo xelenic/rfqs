@@ -68,5 +68,20 @@ class BusinessRoleSeeder extends Seeder
             $role->save();
             $role->syncPermissions(Permission::whereIn('name', $config['permissions'])->get());
         }
+
+        // The original "Manager" role is retired: the General Manager is the
+        // manager here. Whoever held it holds General Manager now — same
+        // accounts, same logins — and then it goes.
+        $legacyManager = Role::where('name', 'Manager')->first();
+        if ($legacyManager) {
+            $generalManager = Role::findByName('General Manager');
+
+            foreach ($legacyManager->users()->get() as $user) {
+                $user->assignRole($generalManager);
+                $user->removeRole($legacyManager);
+            }
+
+            $legacyManager->delete();
+        }
     }
 }

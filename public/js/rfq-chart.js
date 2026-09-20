@@ -1,6 +1,7 @@
 // RFQMS Admin Panel — RFQ activity line chart. Plain JS + inline SVG, no
 // charting library, no build step. Renders a Pending vs Completed trend line
-// from the JSON payload in the container's [data-chart] attribute.
+// from the JSON payload in the container's [data-chart] attribute (whose
+// optional seriesLabels renames a series).
 (function () {
     var SVG_NS = 'http://www.w3.org/2000/svg';
     var SERIES = [
@@ -47,6 +48,13 @@
         } catch (e) {
             return;
         }
+
+        // A page can rename a series through data.seriesLabels — e.g. the
+        // finished one is "Closed" rather than "Completed" for Business Development.
+        var seriesList = SERIES.map(function (series) {
+            var label = data.seriesLabels && data.seriesLabels[series.key];
+            return { key: series.key, label: label || series.label, color: series.color };
+        });
 
         var labels = data.labels || [];
         var total = (data.pending || []).reduce(function (a, b) { return a + b; }, 0) +
@@ -115,7 +123,7 @@
         // Series lines + end markers.
         var seriesEls = {};
         var lastIndex = labels.length - 1;
-        SERIES.forEach(function (series) {
+        seriesList.forEach(function (series) {
             var values = data[series.key] || [];
             var points = values.map(function (v, i) { return x(i) + ',' + y(v); }).join(' ');
 
@@ -137,7 +145,7 @@
         // endpoints (e.g. both series at 0) can be pushed apart instead of
         // left to collide (see dataviz skill: "when end-labels collide,
         // don't stack them").
-        var endYs = SERIES.map(function (series) {
+        var endYs = seriesList.map(function (series) {
             return y(seriesEls[series.key].values[lastIndex]);
         });
         var minGap = 13;
@@ -145,7 +153,7 @@
             var mid = (endYs[0] + endYs[1]) / 2;
             endYs = endYs[0] <= endYs[1] ? [mid - minGap, mid + minGap] : [mid + minGap, mid - minGap];
         }
-        SERIES.forEach(function (series, sIndex) {
+        seriesList.forEach(function (series, sIndex) {
             var values = seriesEls[series.key].values;
             var endLabel = el('text', {
                 x: x(lastIndex) - 6, y: endYs[sIndex], class: 'rfq-chart-endlabel', 'text-anchor': 'end',
@@ -180,7 +188,7 @@
             heading.textContent = labels[index];
             tooltip.appendChild(heading);
 
-            SERIES.forEach(function (series) {
+            seriesList.forEach(function (series) {
                 var row = document.createElement('div');
                 row.className = 'rfq-chart-tooltip-row';
 
@@ -233,7 +241,7 @@
         // Legend — toggle-to-isolate a series by clicking its swatch.
         var legend = document.createElement('div');
         legend.className = 'rfq-chart-legend';
-        SERIES.forEach(function (series) {
+        seriesList.forEach(function (series) {
             var item = document.createElement('button');
             item.type = 'button';
             item.className = 'rfq-chart-legend-item';

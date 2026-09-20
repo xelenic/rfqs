@@ -5,24 +5,49 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\JobCategory;
 use App\Models\Rfq;
+use App\Models\RfqAssignment;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class RfqController extends Controller implements HasMiddleware
 {
+    /**
+     * The "created within" presets on Senior Operations' Unassigned and
+     * Assigned tabs, in days — today counts as the first day, as it does on
+     * the dashboard.
+     *
+     * @var array<string, int>
+     */
+    public const OPERATIONS_RANGES = ['today' => 1, '3d' => 3, '7d' => 7, '30d' => 30];
+
+    /**
+     * How those two tabs can be sorted.
+     *
+     * @var array<string, string>
+     */
+    public const OPERATIONS_SORTS = [
+        'newest' => 'Newest first',
+        'oldest' => 'Oldest first',
+        'priority' => 'Highest priority first',
+    ];
+
     public static function middleware(): array
     {
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveHeadOfBd', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'close']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'close', 'closePart']),
             new Middleware('permission:rfqs.delete', only: ['destroy']),
         ];
     }
@@ -34,6 +59,19 @@ class RfqController extends Controller implements HasMiddleware
         if (! in_array($status, Rfq::STATUSES, true)) {
             $status = null;
         }
+
+        $user = $request->user();
+
+        // Admin's sidebar groups every workflow role's pages together
+        // (layouts/_sidebar_admin_groups.blade.php); ?role=<slug> opens one
+        // of them, and the scoping below then treats Admin as that role for
+        // the page. Anyone else's ?role= is ignored.
+        $lensRole = $user->hasRole('Admin') ? Rfq::workflowRoleForSlug($request->query('role')) : null;
+        $actsAs = fn (string $role): bool => $user->hasRole($role) || $lensRole === $role;
+
+        // Sourcing's queues are scoped to the signed-in member's own parts —
+        // Admin, with none of their own, gets everyone's instead.
+        $sourcingOverview = $lensRole === 'Sourcing' && ! $user->hasRole('Sourcing');
 
         // A Sourcing member's Pending list is their own queue, not the whole
         // company's backlog — scoped to RFQs they're actually assigned to.
@@ -47,59 +85,65 @@ class RfqController extends Controller implements HasMiddleware
         //
         // "Returns" (below) is a separate lens on the same Pending status,
         // so the two are mutually exclusive rather than double-counting.
-        $scopedToReturns = $request->user()->hasRole('Sourcing') && $request->query('view') === 'returns';
-        $scopedToMe = $status === 'Pending' && $request->user()->hasRole('Sourcing') && ! $scopedToReturns;
+        $scopedToReturns = $actsAs('Sourcing') && $request->query('view') === 'returns';
+        $scopedToMe = $status === 'Pending' && $actsAs('Sourcing') && ! $scopedToReturns;
 
         // Data Entry's Pending list is only what Sourcing has actually
         // handed off — RFQs still with Operations or in progress with
         // Sourcing aren't theirs to act on yet.
-        $scopedToDataEntry = $status === 'Pending' && $request->user()->hasRole('Data Entry');
+        $scopedToDataEntry = $status === 'Pending' && $actsAs('Data Entry');
 
-        // Senior Operations' second review — RFQs where every assignee's
-        // split is both Sourcing- and Data-Entry-complete, waiting on
-        // approval before escalating to Head of Business Development. A
-        // second lens on Senior Operations' own Pending status, alongside
+        // Senior Operations' second review — one row per part that is both
+        // Sourcing- and Data-Entry-complete, whether that's every part of an
+        // RFQ or just some of a split's, each approved on its own; the RFQ
+        // escalates to Head of Business Development once all of them have
+        // been. A second lens on Senior Operations' own Pending status, alongside
         // "Unassigned" below — mutually exclusive via ?view=review, same
         // pattern as Sourcing's "Returns".
-        $scopedToSeniorOpsReview = $status === 'Pending' && $request->user()->hasRole('Senior Operations') && $request->query('view') === 'review';
+        $scopedToSeniorOpsReview = $status === 'Pending' && $actsAs('Senior Operations') && $request->query('view') === 'review';
 
         // Operations' Pending list is just their actionable backlog — RFQs
         // nobody's assigned to Sourcing yet — not every Pending RFQ in the
         // company regardless of stage. Matches the red count badge in the
         // sidebar (layouts/app.blade.php).
-        $scopedToUnassigned = $status === 'Pending' && $request->user()->hasRole('Senior Operations') && ! $scopedToSeniorOpsReview;
+        $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview;
 
-        // Head of Business Development's Pending list — RFQs Senior
-        // Operations has approved, waiting on their own approve/reject
-        // decision. Unlike Senior Operations (which also has "Unassigned"),
-        // this is Head of BD's only queue, so it's their whole Pending page
-        // rather than a ?view= toggle.
-        $scopedToHeadOfBdReview = $status === 'Pending' && $request->user()->hasRole('Head of Business Development');
+        // Head of Business Development's Pending list — one row per part
+        // Senior Operations has approved, waiting on their own approve/reject
+        // decision, each part as it comes rather than once the whole RFQ has
+        // been approved. Unlike Senior Operations (which also has
+        // "Unassigned"), this is Head of BD's only queue, so it's their whole
+        // Pending page rather than a ?view= toggle.
+        $scopedToHeadOfBdReview = $status === 'Pending' && $actsAs('Head of Business Development');
 
-        // GM Assistant's Pending list — RFQs Head of Business Development
-        // has approved, waiting on client details and payment terms before
-        // forwarding to the General Manager. Their only queue, same as
-        // Head of Business Development above.
-        $scopedToGmAssistant = $status === 'Pending' && $request->user()->hasRole('GM Assistant');
+        // GM Assistant's Pending list — one row per part Head of Business
+        // Development has approved, waiting on client details and payment
+        // terms before going on to the General Manager, each part as it comes.
+        // Their only queue, same as Head of Business Development above.
+        $scopedToGmAssistant = $status === 'Pending' && $actsAs('GM Assistant');
 
-        // General Manager's Pending list — RFQs GM Assistant has finished
-        // adding client details/payment terms to, waiting on final
-        // executive approval. Their only queue, same as Head of Business
-        // Development/GM Assistant above.
-        $scopedToGmReview = $status === 'Pending' && $request->user()->hasRole('General Manager');
+        // General Manager's Pending list — one row per part GM Assistant has
+        // finished adding client details/payment terms to, waiting on final
+        // executive approval, each part as it comes. Their only queue, same as
+        // Head of Business Development/GM Assistant above.
+        $scopedToGmReview = $status === 'Pending' && $actsAs('General Manager');
 
-        // Business Development's own reference — RFQs the General Manager
-        // has approved, ready for BD to send to the client and formally
-        // close out. BD also sees the full company-wide Pending list by
+        // Business Development's own reference — one row per part the General
+        // Manager has approved, each as it comes, ready for BD to send to the
+        // client and close out. BD also sees the full company-wide Pending list by
         // default (they may be tracking RFQs at any stage), so this is a
         // second lens via ?view=closing, same pattern as Sourcing's
         // "Returns" and Senior Operations' "Review".
-        $scopedToBdClosing = $status === 'Pending' && $request->user()->hasRole('Business Development') && $request->query('view') === 'closing';
+        $scopedToBdClosing = $status === 'Pending' && $actsAs('Business Development') && $request->query('view') === 'closing';
 
         $search = $request->string('search')->trim()->toString();
 
         $applyCommonFilters = function ($query) use ($status, $search) {
-            $query->when($status, fn ($query, $status) => $query->where('status', $status))
+            // The Closed list is the RFQs that have been closed and, beside
+            // them, the closed parts of split RFQs still open — a part shows
+            // there as soon as Business Development closes it.
+            $query->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
+                ->when($status && $status !== 'Completed', fn ($query) => $query->where('status', $status))
                 ->when($search, function ($query, $search) {
                     $query->where(function ($q) use ($search) {
                         $q->where('wc_number', 'like', "%{$search}%")
@@ -109,31 +153,44 @@ class RfqController extends Controller implements HasMiddleware
                 });
         };
 
+        $jobCategories = JobCategory::orderBy('name')->get();
+        $sourcingUsers = User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get();
+
+        // Senior Operations' Unassigned and Assigned tabs can be narrowed —
+        // created range, priority, category, Sourcing member, part status —
+        // and sorted; both tabs answer to the same filters.
+        $opsFilters = $scopedToUnassigned
+            ? $this->operationsFilters($request, $jobCategories->pluck('name')->all(), $sourcingUsers->pluck('id')->all())
+            : null;
+
         $rfqs = Rfq::query()
-            ->with(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy'])
+            ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy', 'bdClosedBy'])
             // The quick-detail modal (Data Entry's "By Sourcing" list and
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
             // those two views.
-            ->when($scopedToDataEntry || $scopedToMe, fn ($query) => $query->with(['comments.author', 'comments.replies.author']))
+            ->when($scopedToDataEntry || ($scopedToMe && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
             ->tap($applyCommonFilters)
-            ->when($scopedToMe, function ($query) use ($request) {
-                $query->whereHas('assignees', fn ($q) => $q->whereKey($request->user()->id));
+            ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
+                $query->whereHas('assignees', fn ($q) => $sourcingOverview
+                    ? $q->whereNull('rfq_user.completed_at')
+                    : $q->whereKey($user->id));
             })
-            ->when($scopedToReturns, function ($query) use ($request) {
-                $query->whereHas('assignees', function ($q) use ($request) {
-                    $q->whereKey($request->user()->id)
+            ->when($scopedToReturns, function ($query) use ($user, $sourcingOverview) {
+                $query->whereHas('assignees', function ($q) use ($user, $sourcingOverview) {
+                    $q->when(! $sourcingOverview, fn ($q) => $q->whereKey($user->id))
                         ->whereNotNull('rfq_user.returned_at')
                         ->whereNull('rfq_user.completed_at');
                 });
             })
             ->when($scopedToDataEntry, fn ($query) => $query->whereNotNull('sourcing_completed_at'))
             ->when($scopedToUnassigned, fn ($query) => $query->needingSourcing())
-            ->when($scopedToHeadOfBdReview, fn ($query) => $query->where('stage', 'head_of_bd_review'))
-            ->when($scopedToGmAssistant, fn ($query) => $query->where('stage', 'gm_assistant'))
-            ->when($scopedToGmReview, fn ($query) => $query->where('stage', 'gm_review'))
-            ->when($scopedToBdClosing, fn ($query) => $query->where('stage', 'bd_closing'))
+            ->when($scopedToHeadOfBdReview, fn ($query) => $query->awaitingHeadOfBdReview())
+            ->when($scopedToGmAssistant, fn ($query) => $query->awaitingGmAssistant())
+            ->when($scopedToGmReview, fn ($query) => $query->awaitingGmApproval())
+            ->when($scopedToBdClosing, fn ($query) => $query->awaitingBdClosing())
             ->latest()
+            ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
             ->paginate(10)
             ->withQueryString();
 
@@ -144,7 +201,7 @@ class RfqController extends Controller implements HasMiddleware
         // here before it's fully handed off and appears there.
         $bySourcingRfqs = $scopedToDataEntry
             ? Rfq::query()
-                ->with(['assignees', 'parts', 'comments.author', 'comments.replies.author'])
+                ->with(['assignees', 'comments.author.roles', 'comments.replies.author.roles'])
                 // Only assignees Sourcing has finished but Data Entry
                 // hasn't processed yet — once Data Entry completes one
                 // assignee's split, it drops out of this queue on its own,
@@ -162,29 +219,62 @@ class RfqController extends Controller implements HasMiddleware
         // but is still Pending overall.
         $assignedRfqs = $scopedToUnassigned
             ? Rfq::query()
-                ->with(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
+                ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
                 ->fullySourced()
                 ->tap($applyCommonFilters)
                 ->latest()
+                ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
                 ->paginate(10, ['*'], 'assigned_page')
                 ->withQueryString()
             : null;
 
+        // Each tab's page links keep you on that tab, whichever one you
+        // asked for.
+        if ($opsFilters) {
+            $rfqs->appends(['tab' => 'unassigned']);
+            $assignedRfqs->appends(['tab' => 'assigned']);
+        }
+
         $seniorOpsReviewRfqs = $scopedToSeniorOpsReview
             ? Rfq::query()
                 ->with(['assignees', 'creator', 'operationsAssignee', 'dataEntryCompletedBy'])
-                ->where('stage', 'senior_ops_review')
+                ->awaitingSeniorOpsReview()
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(10, ['*'], 'review_page')
                 ->withQueryString()
             : null;
 
+        // Who did the step before on each part listed (id => name), for its
+        // row: Data Entry on Senior Operations' page, Senior Operations on the
+        // Head's, the Head on GM Assistant's, GM Assistant on the General
+        // Manager's.
+        $namesOfWhoDid = fn ($rfqs, string $column) => $rfqs
+            ? User::whereIn('id', $rfqs->getCollection()
+                ->flatMap(fn (Rfq $rfq) => $rfq->assignees->pluck("pivot.{$column}"))
+                ->filter()
+                ->unique())
+                ->pluck('name', 'id')
+            : collect();
+
+        $dataEntryNames = $namesOfWhoDid($seniorOpsReviewRfqs, 'data_entry_completed_by');
+        $seniorOpsNames = $namesOfWhoDid($scopedToHeadOfBdReview ? $rfqs : null, 'senior_ops_reviewed_by');
+        $headOfBdNames = $namesOfWhoDid($scopedToGmAssistant ? $rfqs : null, 'head_of_bd_approved_by');
+        $gmAssistantNames = $namesOfWhoDid($scopedToGmReview ? $rfqs : null, 'gm_assistant_completed_by');
+        $gmNames = $namesOfWhoDid($scopedToBdClosing ? $rfqs : null, 'gm_approved_by');
+        $bdClosedNames = $namesOfWhoDid($status === 'Completed' ? $rfqs : null, 'bd_closed_by');
+
         return view('admin.rfqs.index', [
             'rfqs' => $rfqs,
+            'seniorOpsNames' => $seniorOpsNames,
+            'headOfBdNames' => $headOfBdNames,
+            'gmAssistantNames' => $gmAssistantNames,
+            'gmNames' => $gmNames,
+            'bdClosedNames' => $bdClosedNames,
             'bySourcingRfqs' => $bySourcingRfqs,
             'assignedRfqs' => $assignedRfqs,
             'seniorOpsReviewRfqs' => $seniorOpsReviewRfqs,
+            'dataEntryNames' => $dataEntryNames,
             'search' => $search,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
@@ -198,11 +288,114 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToGmAssistant' => $scopedToGmAssistant,
             'scopedToGmReview' => $scopedToGmReview,
             'scopedToBdClosing' => $scopedToBdClosing,
-            'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
-            'jobCategories' => JobCategory::orderBy('name')->pluck('name'),
+            'lensRole' => $lensRole,
+            'sourcingOverview' => $sourcingOverview,
+            'opsFilters' => $opsFilters,
+            'sourcingUsers' => $sourcingUsers,
+            'jobCategories' => $jobCategories,
             'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
+    }
+
+    /**
+     * The filters on Senior Operations' Unassigned and Assigned tabs, read
+     * from the query string and cleaned up — anything that isn't a known
+     * value is dropped rather than trusted.
+     *
+     * @param  array<int, string>  $categories  the job category names that exist
+     * @param  array<int, int>  $sourcingIds  the ids of the Sourcing members
+     * @return array{
+     *     range: string, from: ?string, to: ?string, priority: array<int, string>,
+     *     category: ?string, member: ?int, part_status: ?string, sort: string,
+     *     tab: string, count: int
+     * }
+     */
+    protected function operationsFilters(Request $request, array $categories, array $sourcingIds): array
+    {
+        $range = (string) $request->query('range');
+        $from = $this->dateFromQuery($request->query('from'));
+        $to = $this->dateFromQuery($request->query('to'));
+
+        // A custom range needs at least one end; anything unknown is "all".
+        if ($range !== 'custom' || (! $from && ! $to)) {
+            $range = array_key_exists($range, self::OPERATIONS_RANGES) ? $range : 'all';
+        }
+
+        if ($range !== 'custom') {
+            $from = $to = null;
+        } elseif ($from && $to && $from->gt($to)) {
+            [$from, $to] = [$to, $from];
+        }
+
+        $priority = array_values(array_intersect(Rfq::PRIORITIES, array_filter((array) $request->query('priority'), 'is_string')));
+
+        $category = $request->query('category');
+        $category = is_string($category) && in_array($category, $categories, true) ? $category : null;
+
+        $member = $request->query('member');
+        $member = is_numeric($member) && in_array((int) $member, $sourcingIds, true) ? (int) $member : null;
+
+        $partStatus = $request->query('part_status');
+        $partStatus = is_string($partStatus) && array_key_exists($partStatus, RfqAssignment::PROGRESS_LABELS) ? $partStatus : null;
+
+        $sort = $request->query('sort');
+
+        return [
+            'range' => $range,
+            'from' => $from?->toDateString(),
+            'to' => $to?->toDateString(),
+            'priority' => $priority,
+            'category' => $category,
+            'member' => $member,
+            'part_status' => $partStatus,
+            'sort' => is_string($sort) && array_key_exists($sort, self::OPERATIONS_SORTS) ? $sort : 'newest',
+            'tab' => $request->query('tab') === 'assigned' ? 'assigned' : 'unassigned',
+            'count' => (int) ($range !== 'all') + (int) ($priority !== []) + (int) ($category !== null) + (int) ($member !== null) + (int) ($partStatus !== null),
+        ];
+    }
+
+    /**
+     * A Y-m-d date out of a query value, or null if it isn't one.
+     */
+    protected function dateFromQuery(mixed $value): ?Carbon
+    {
+        return is_string($value) && Carbon::canBeCreatedFromFormat($value, 'Y-m-d')
+            ? Carbon::createFromFormat('Y-m-d', $value)->startOfDay()
+            : null;
+    }
+
+    /**
+     * Narrows and sorts a Senior Operations tab's RFQs by the cleaned-up
+     * filters from operationsFilters().
+     *
+     * @param  Builder<Rfq>  $query
+     * @param  array<string, mixed>  $filters
+     */
+    protected function applyOperationsFilters(Builder $query, array $filters): void
+    {
+        $query
+            ->when(self::OPERATIONS_RANGES[$filters['range']] ?? null, fn ($query, int $days) => $query->where('created_at', '>=', now()->subDays($days - 1)->startOfDay()))
+            ->when($filters['from'], fn ($query, string $from) => $query->whereDate('created_at', '>=', $from))
+            ->when($filters['to'], fn ($query, string $to) => $query->whereDate('created_at', '<=', $to))
+            ->when($filters['priority'], fn ($query, array $priorities) => $query->whereIn('priority_level', $priorities))
+            ->when($filters['category'], fn ($query, string $category) => $query->where('category', $category))
+            // Member and part status describe the same part, so they're
+            // asked of one assignment together — "Riley's returned part",
+            // not "Riley has a part and someone's is returned".
+            ->when($filters['member'] || $filters['part_status'], fn ($query) => $query->whereHas('assignees', function ($assignees) use ($filters) {
+                $assignees
+                    ->when($filters['member'], fn ($assignees, int $member) => $assignees->whereKey($member))
+                    ->when($filters['part_status'], fn ($assignees, string $state) => RfqAssignment::wherePartIs($assignees, $state));
+            }));
+
+        $query->reorder();
+
+        match ($filters['sort']) {
+            'oldest' => $query->oldest(),
+            'priority' => $query->orderByRaw("case priority_level when 'Urgent' then 0 when 'High' then 1 when 'Medium' then 2 else 3 end")->latest(),
+            default => $query->latest(),
+        };
     }
 
     public function show(Request $request, Rfq $rfq): View
@@ -214,12 +407,12 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return view('admin.rfqs.show', [
-            'rfq' => $rfq->load(['assignees', 'parts', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles']),
+            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles']),
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
-            'jobCategories' => JobCategory::orderBy('name')->pluck('name'),
+            'jobCategories' => JobCategory::orderBy('name')->get(),
             'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
         ]);
     }
@@ -227,8 +420,9 @@ class RfqController extends Controller implements HasMiddleware
     public function store(Request $request): RedirectResponse
     {
         // RFQ Number is auto-generated (WP0001, WP0002, ...), never taken
-        // from user input — see Rfq::nextRfqNumber().
-        $validator = Validator::make($request->all(), $this->rules(requireRfqNumber: false));
+        // from user input — see Rfq::nextRfqNumber(). Nor is the status: a
+        // new RFQ always starts Pending, whatever the request says.
+        $validator = Validator::make($request->all(), Arr::except($this->rules(requireRfqNumber: false), 'status'));
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'create')->withInput();
@@ -237,8 +431,15 @@ class RfqController extends Controller implements HasMiddleware
         Rfq::create([
             ...$validator->validated(),
             'rfq_number' => Rfq::nextRfqNumber(),
+            'status' => 'Pending',
             'created_by' => $request->user()->id,
         ]);
+
+        // Created from the Closed list, the new (Pending) RFQ would land out
+        // of sight — show the Pending list instead.
+        if ($request->input('redirect_status') === 'Completed') {
+            $request->merge(['redirect_status' => 'Pending']);
+        }
 
         return $this->redirectToIndex($request)->with('status', 'RFQ created successfully.');
     }
@@ -269,18 +470,18 @@ class RfqController extends Controller implements HasMiddleware
      *
      * - First (no split planned yet): the job category, whether to split
      *   the task and into how many parts, and who takes which part. A
-     *   category typed in by hand is stored in job_categories so it's in
-     *   the dropdown next time. Parts can be left empty.
+     *   category typed in by hand — with an optional description — is
+     *   stored in job_categories so it's in the dropdown next time. Parts
+     *   can be left empty.
      * - Later (split already planned): only fills parts still empty —
      *   category and split size are settled by then, and assigned parts
      *   are never reassigned here.
      *
      * Only users who actually hold the Sourcing role are ever assigned,
      * even if the request is tampered with. One person can take several
-     * parts — they're worked and completed together, as that person's one
-     * share of the RFQ (rfq_user is one row per person per RFQ) — as long
-     * as they haven't already finished their share. Sourcing itself never
-     * has access to this — it's a receiving role, not an assigning one.
+     * parts — each is its own assignment (rfq_user is one row per part),
+     * shown, worked and completed separately. Sourcing itself never has
+     * access to this — it's a receiving role, not an assigning one.
      *
      * An Operations member assigning Sourcing directly is implicitly the
      * one routing this RFQ — if nobody's recorded as the Operations
@@ -293,18 +494,13 @@ class RfqController extends Controller implements HasMiddleware
 
         $planning = $rfq->split_count === null;
 
-        abort_if(
-            $planning && $rfq->assignees->isNotEmpty(),
-            422,
-            'This RFQ was assigned before parts could be planned up front, so its Sourcing assignment can\'t be changed here.'
-        );
-
         $splitting = $planning && $request->boolean('split');
         $newCategory = $planning && $request->input('category') === JobCategory::NEW_OPTION;
 
         $validator = Validator::make($request->all(), [
             'category' => [Rule::requiredIf($planning), 'nullable', 'string', 'max:100'],
             'new_category' => [Rule::requiredIf($newCategory), 'nullable', 'string', 'max:100'],
+            'new_category_description' => ['nullable', 'string', 'max:500'],
             'split' => ['nullable', 'boolean'],
             'parts' => [Rule::requiredIf($splitting), 'nullable', 'integer', 'min:2', 'max:'.Rfq::MAX_SPLIT_PARTS],
             'assignments' => ['nullable', 'array'],
@@ -315,7 +511,7 @@ class RfqController extends Controller implements HasMiddleware
         $assignments = collect($request->input('assignments', []))
             ->mapWithKeys(fn ($userId, $part) => [(int) $part => $userId ? (int) $userId : null]);
 
-        $validator->after(function ($validator) use ($request, $rfq, $planning, $splitting, $newCategory, $totalParts, $assignments) {
+        $validator->after(function ($validator) use ($request, $planning, $splitting, $newCategory, $totalParts, $assignments) {
             if ($planning && ! $newCategory && $request->filled('category') && ! JobCategory::where('name', $request->input('category'))->exists()) {
                 $validator->errors()->add('category', 'That job category doesn\'t exist.');
             }
@@ -333,18 +529,6 @@ class RfqController extends Controller implements HasMiddleware
             if ($pickedUserIds->diff(User::role('Sourcing')->pluck('id'))->isNotEmpty()) {
                 $validator->errors()->add('assignments', 'Only users with the Sourcing role can be assigned.');
             }
-
-            // A person can hold several parts — they're one share, completed
-            // together — but a share that's already finished can't quietly
-            // grow: the new part would un-finish work Data Entry may already
-            // have processed.
-            $finishedShareNames = $rfq->assignees
-                ->filter(fn (User $assignee) => $assignee->pivot->completed_at !== null && $pickedUserIds->contains($assignee->id))
-                ->pluck('name');
-
-            if ($finishedShareNames->isNotEmpty()) {
-                $validator->errors()->add('assignments', $finishedShareNames->join(', ', ' and ').' already finished their part, so can\'t take another one — pick someone else.');
-            }
         });
 
         if ($validator->fails()) {
@@ -357,7 +541,8 @@ class RfqController extends Controller implements HasMiddleware
             if ($planning) {
                 $category = JobCategory::findOrCreateByName(
                     $newCategory ? $request->input('new_category') : $request->input('category'),
-                    $user
+                    $user,
+                    $newCategory ? $request->input('new_category_description') : null
                 );
 
                 $rfq->categorize($category->name, $user);
@@ -409,38 +594,53 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * A Sourcing member assigned to this RFQ marks their own split of the
-     * work done. Only an assigned Sourcing member may do this, and only
-     * once per person — the button disappears once their part is set. When
-     * the RFQ is split across several Sourcing members, each of them has
-     * to complete their own part; only once everyone has does the RFQ
-     * actually hand off to Data Entry (see Rfq::completeSourcingPartFor()).
+     * A Sourcing member marks one of their own parts of this RFQ done, with
+     * a comment for Data Entry that's posted to the RFQ's thread. Only the
+     * part's assignee may do this, and only once per part — the button
+     * disappears once it's set. Someone holding several parts of a split
+     * completes each on its own. Only once every part has been completed
+     * does the RFQ actually hand off to Data Entry (see
+     * Rfq::completeSourcingPart()).
      */
     public function completeSourcing(Request $request, Rfq $rfq): RedirectResponse
     {
         $user = $request->user();
 
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $assignee = $rfq->assigneeForPart((int) $validated['part']);
+
         abort_unless(
-            $user->hasRole('Sourcing') && $rfq->assignees->contains('id', $user->id),
+            $user->hasRole('Sourcing') && $assignee?->id === $user->id,
             403,
-            'Only a Sourcing member assigned to this RFQ can mark it complete.'
+            'Only the Sourcing member assigned to this part can mark it complete.'
         );
 
-        $rfq->completeSourcingPartFor($user);
+        $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
+
+        if ($comment instanceof RedirectResponse) {
+            return $comment;
+        }
+
+        $rfq->completeSourcingPart((int) $validated['part'], $comment);
 
         $status = $rfq->isWithDataEntry()
             ? 'Marked complete — handed off to Data Entry.'
-            : 'Your part is marked complete — waiting on the rest of the Sourcing team.';
+            : ($rfq->isSplit()
+                ? 'Part marked complete — waiting on the rest of the parts.'
+                : 'Your part is marked complete — waiting on the rest of the Sourcing team.');
 
         return $this->redirectAfterSave($request, $rfq)->with('status', $status);
     }
 
     /**
-     * Data Entry sends one Sourcing assignee's split of this RFQ back for
-     * rework, with a required reason. Clears that assignee's completed_at
-     * (Mark Complete becomes available to them again, and it shows up in
-     * their "Returns" list) and, if the RFQ had already fully handed off
-     * to Data Entry, undoes that too — see Rfq::returnSourcingPartFor().
+     * Data Entry sends one Sourcing part of this RFQ back for rework, with
+     * a required reason. Clears that part's completed_at (Mark Complete
+     * becomes available to its assignee again, and it shows up in their
+     * "Returns" list) and, if the RFQ had already fully handed off to Data
+     * Entry, undoes that too — see Rfq::returnSourcingPart().
      */
     public function returnSourcing(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -450,27 +650,32 @@ class RfqController extends Controller implements HasMiddleware
             'Only Data Entry can send an RFQ back to Sourcing.'
         );
 
-        $validated = $request->validateWithBag('return', [
-            'assignee_id' => ['required', 'integer'],
-            'reason' => ['required', 'string', 'max:1000'],
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
         ]);
 
-        $assignee = $rfq->assignees->firstWhere('id', (int) $validated['assignee_id']);
+        $assignee = $rfq->assigneeForPart((int) $validated['part']);
 
-        abort_unless($assignee, 404, 'That Sourcing assignee is not on this RFQ.');
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
 
-        $rfq->returnSourcingPartFor($assignee, $validated['reason'], $request->user());
+        $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back.', 1000);
+
+        if ($reason instanceof RedirectResponse) {
+            return $reason;
+        }
+
+        $rfq->returnSourcingPart((int) $validated['part'], $reason, $request->user());
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part back to Sourcing.");
     }
 
     /**
-     * Data Entry finishes processing one Sourcing assignee's split — only
-     * that split, never the others on the same RFQ. The RFQ as a whole
-     * only formally closes out (status becomes Completed, dropping it out
-     * of "Ready for Data Entry" and into "Completed RFQs") once every
-     * assignee's split has been completed here. See
-     * Rfq::completeDataEntryPartFor().
+     * Data Entry finishes processing one Sourcing part — only that part,
+     * never the others on the same RFQ (even other parts held by the same
+     * person) — with a comment for Senior Operations that's posted to the
+     * RFQ's thread. The RFQ as a whole only moves on to Senior Operations'
+     * review once every part has been completed here. See
+     * Rfq::completeDataEntryPart().
      */
     public function completeDataEntry(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -481,22 +686,59 @@ class RfqController extends Controller implements HasMiddleware
         );
 
         $validated = $request->validate([
-            'assignee_id' => ['required', 'integer'],
+            'part' => ['required', 'integer'],
         ]);
 
-        $assignee = $rfq->assignees->firstWhere('id', (int) $validated['assignee_id']);
+        $assignee = $rfq->assigneeForPart((int) $validated['part']);
 
-        abort_unless($assignee, 404, 'That Sourcing assignee is not on this RFQ.');
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
 
-        $rfq->completeDataEntryPartFor($assignee, $request->user());
+        $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
+
+        if ($comment instanceof RedirectResponse) {
+            return $comment;
+        }
+
+        $rfq->completeDataEntryPart((int) $validated['part'], $request->user(), $comment);
 
         return redirect()->back()->with('status', "Marked {$assignee->name}'s part complete.");
     }
 
     /**
-     * Senior Operations' second review — every assignee's split is both
-     * Sourcing- and Data-Entry-complete; approving here escalates the RFQ
-     * on to Head of Business Development. See Rfq::completeSeniorOpsReview().
+     * Senior Operations approves one Sourcing part that has been through both
+     * Sourcing and Data Entry — without waiting for the rest of a split. The
+     * RFQ escalates to Head of Business Development once every part has been
+     * approved. See Rfq::approveSeniorOpsPart().
+     */
+    public function approveSeniorOpsPart(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            403,
+            'Only Senior Operations can approve this review.'
+        );
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+
+        abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->partAwaitsSeniorOpsReview($part), 422, 'This part is not awaiting Senior Operations review.');
+
+        $rfq->approveSeniorOpsPart($part, $request->user());
+
+        return redirect()->back()->with('status', $rfq->stage === 'head_of_bd_review'
+            ? 'Approved — every part is through, escalated to Head of Business Development.'
+            : "Approved {$rfq->partNumberLabel($part)} — waiting on the rest of the parts.");
+    }
+
+    /**
+     * Senior Operations' second review of the whole RFQ — every assignee's
+     * split is both Sourcing- and Data-Entry-complete; approving here approves
+     * any part not yet approved on its own and escalates the RFQ on to Head
+     * of Business Development. See Rfq::completeSeniorOpsReview().
      */
     public function completeSeniorOpsReview(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -513,8 +755,39 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Head of Business Development approves — escalates the RFQ on to GM
-     * Assistant. See Rfq::approveByHeadOfBd().
+     * Head of Business Development approves one Sourcing part Senior
+     * Operations has approved — without waiting for the rest of a split. The
+     * RFQ escalates to GM Assistant once every part has been approved. See
+     * Rfq::approveHeadOfBdPart().
+     */
+    public function approveHeadOfBdPart(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Head of Business Development', 'Admin']),
+            403,
+            'Only Head of Business Development can approve here.'
+        );
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+
+        abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->partAwaitsHeadOfBdReview($part), 422, 'This part is not awaiting Head of Business Development review.');
+
+        $rfq->approveHeadOfBdPart($part, $request->user());
+
+        return redirect()->back()->with('status', $rfq->stage === 'gm_assistant'
+            ? 'Approved — every part is through, escalated to GM Assistant.'
+            : "Approved {$rfq->partNumberLabel($part)} — waiting on the rest of the parts.");
+    }
+
+    /**
+     * Head of Business Development approves the whole RFQ — any part not yet
+     * approved on its own included — and escalates it on to GM Assistant. See
+     * Rfq::approveByHeadOfBd().
      */
     public function approveHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -531,9 +804,11 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Head of Business Development rejects — sends the RFQ back to an
-     * earlier stage (Sourcing, Data Entry, or Senior Operations' own
-     * review) with a reason. See Rfq::rejectToStage().
+     * Head of Business Development rejects — sends an earlier stage (Sourcing,
+     * Data Entry, or Senior Operations' own review) the RFQ back with a
+     * reason. With a part, just that one part goes back — see
+     * Rfq::rejectPartToStage() — otherwise the whole RFQ, which has to be at
+     * their review stage — see Rfq::rejectToStage().
      */
     public function rejectHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -542,22 +817,37 @@ class RfqController extends Controller implements HasMiddleware
             403,
             'Only Head of Business Development can reject here.'
         );
-        abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+
+        $part = $request->filled('part') ? (int) $request->input('part') : null;
+
+        if ($part === null) {
+            abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+        } else {
+            abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+            abort_unless($rfq->partAwaitsHeadOfBdReview($part), 422, 'This part is not awaiting Head of Business Development review.');
+        }
 
         $validated = $request->validateWithBag('reject', [
             'target_stage' => ['required', 'in:'.implode(',', Rfq::REJECT_TARGET_STAGES)],
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user());
+        if ($part === null) {
+            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user());
 
-        return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
+            return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
+        }
+
+        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $request->user());
+
+        return redirect()->back()->with('status', "Sent {$rfq->partNumberLabel($part)} back to ".Rfq::stageLabel($validated['target_stage']).'.');
     }
 
     /**
-     * GM Assistant records this RFQ's client details and payment terms and
-     * forwards it on to the General Manager. See
-     * Rfq::recordGmAssistantDetails().
+     * GM Assistant records client details and payment terms and forwards it on
+     * to the General Manager. With a part, just that one part goes on — see
+     * Rfq::recordGmAssistantPart() — otherwise the whole RFQ, which has to be
+     * at their step — see Rfq::recordGmAssistantDetails().
      */
     public function submitGmAssistantDetails(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -566,21 +856,68 @@ class RfqController extends Controller implements HasMiddleware
             403,
             'Only GM Assistant can add these details.'
         );
-        abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not awaiting GM Assistant details.');
+
+        $part = $request->filled('part') ? (int) $request->input('part') : null;
+
+        if ($part === null) {
+            abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not awaiting GM Assistant details.');
+        } else {
+            abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+            abort_unless($rfq->partAwaitsGmAssistant($part), 422, 'This part is not awaiting GM Assistant details.');
+        }
 
         $validated = $request->validateWithBag('gm_assistant', [
             'client_details' => ['required', 'string', 'max:2000'],
             'payment_terms' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $rfq->recordGmAssistantDetails($request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
+        if ($part === null) {
+            $rfq->recordGmAssistantDetails($request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
 
-        return redirect()->back()->with('status', 'Forwarded to General Manager.');
+            return redirect()->back()->with('status', 'Forwarded to General Manager.');
+        }
+
+        $rfq->recordGmAssistantPart($part, $request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
+
+        return redirect()->back()->with('status', $rfq->stage === 'gm_review'
+            ? 'Details added — every part is through, forwarded to General Manager.'
+            : "Details added for {$rfq->partNumberLabel($part)} — forwarded to General Manager.");
     }
 
     /**
-     * General Manager gives final approval — the RFQ is now ready for
-     * Business Development to close out. See Rfq::approveByGm().
+     * The General Manager approves one Sourcing part GM Assistant has
+     * completed — without waiting for the rest of a split. The RFQ is ready for
+     * Business Development to close once every part has been approved. See
+     * Rfq::approveGmPart().
+     */
+    public function approveGmPart(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['General Manager', 'Admin']),
+            403,
+            'Only the General Manager can give final approval.'
+        );
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+
+        abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->partAwaitsGmApproval($part), 422, 'This part is not awaiting General Manager approval.');
+
+        $rfq->approveGmPart($part, $request->user());
+
+        return redirect()->back()->with('status', $rfq->stage === 'bd_closing'
+            ? 'Approved — every part is through, ready for Business Development to close.'
+            : "Approved {$rfq->partNumberLabel($part)} — waiting on the rest of the parts.");
+    }
+
+    /**
+     * General Manager gives final approval to the whole RFQ — any part not yet
+     * approved on its own included — and it's ready for Business Development
+     * to close out. See Rfq::approveByGm().
      */
     public function approveGm(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -597,8 +934,52 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Business Development formally closes this RFQ out — the true end of
-     * the lifecycle. See Rfq::closeOut().
+     * Business Development closes one Sourcing part the General Manager has
+     * approved — without waiting for the rest of a split. The RFQ closes once
+     * every part has been. See Rfq::closePart().
+     */
+    public function closePart(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Business Development', 'Admin']),
+            403,
+            'Only Business Development can close an RFQ.'
+        );
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+
+        abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->partAwaitsBdClosing($part), 422, 'This part is not ready to close.');
+
+        $rfq->closePart($part, $request->user());
+
+        // Fireworks: a modest show for a part, a grand one when that was the
+        // last and the RFQ itself is closed.
+        $celebration = match (true) {
+            $rfq->stage === 'closed' && $rfq->isSplit() => $this->celebration($rfq->rfq_number, "All {$rfq->splitTotal()} parts are closed — the whole RFQ is done.", grand: true),
+            $rfq->stage === 'closed' => $this->celebration($rfq->rfq_number, "It's now in Closed RFQs.", grand: true),
+            default => $this->celebration(
+                $rfq->partNumberLabel($part),
+                "It's now in Closed RFQs — {$rfq->assignees->filter(fn (User $assignee) => $assignee->pivot->isBdClosed())->count()} of {$rfq->splitTotal()} parts closed.",
+                grand: false,
+            ),
+        };
+
+        return redirect()->back()->with('celebrate', $celebration)->with('status', match (true) {
+            $rfq->stage === 'closed' && $rfq->isSplit() => "Closed {$rfq->partNumberLabel($part)} — every part is closed, so the RFQ is closed.",
+            $rfq->stage === 'closed' => 'RFQ closed.',
+            default => "Closed {$rfq->partNumberLabel($part)} — it's now in Closed RFQs.",
+        });
+    }
+
+    /**
+     * Business Development formally closes this whole RFQ out — any part not
+     * yet closed on its own included — the true end of the lifecycle. See
+     * Rfq::closeOut().
      */
     public function close(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -611,12 +992,57 @@ class RfqController extends Controller implements HasMiddleware
 
         $rfq->closeOut($request->user());
 
-        return redirect()->back()->with('status', 'RFQ closed.');
+        return redirect()->back()
+            ->with('celebrate', $this->celebration($rfq->rfq_number, "It's now in Closed RFQs.", grand: true))
+            ->with('status', 'RFQ closed.');
+    }
+
+    /**
+     * What the fireworks overlay says when something has been closed — see
+     * layouts/_celebration.blade.php and public/js/fireworks.js. $grand is the
+     * bigger show, for a whole RFQ closing rather than one part of it.
+     *
+     * @return array{title: string, label: string, message: string, grand: bool, url: string}
+     */
+    private function celebration(string $label, string $message, bool $grand): array
+    {
+        return [
+            'title' => $grand ? 'RFQ closed!' : 'Closed!',
+            'label' => $label,
+            'message' => $message,
+            'grand' => $grand,
+            'url' => route('admin.rfqs.index', ['status' => 'Completed']),
+        ];
+    }
+
+    /**
+     * The comment that has to go with completing a part (Sourcing's or Data
+     * Entry's) or sending one back (its reason) — or, if it's missing or too
+     * long, the redirect back saying so. Asked for by the one prompt modal on
+     * whichever page this came from, so a miss is flashed like the Assign
+     * Sourcing wizard's errors rather than shown against a field.
+     *
+     * @param  string  $field  the request field it arrives in
+     * @param  string  $missing  what to say when it isn't there
+     */
+    protected function requiredComment(Request $request, string $field, string $missing, int $max = 2000): string|RedirectResponse
+    {
+        $validator = Validator::make($request->all(), [
+            $field => ['required', 'string', 'max:'.$max],
+        ], [
+            "{$field}.required" => $missing,
+            "{$field}.max" => "That comment is too long — keep it under {$max} characters.",
+        ]);
+
+        return $validator->fails()
+            ? back()->with('error', $validator->errors()->first())
+            : $validator->validated()[$field];
     }
 
     /**
      * After an edit or assignment, send the user back to the RFQ's detail
-     * page if that's where they started, otherwise back to the list.
+     * page or their dashboard if that's where they started, otherwise back
+     * to the list.
      */
     protected function redirectAfterSave(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -624,18 +1050,35 @@ class RfqController extends Controller implements HasMiddleware
             return redirect()->route('admin.rfqs.show', $rfq);
         }
 
+        if ($request->input('return_to') === 'dashboard') {
+            return redirect()->route('admin.dashboard');
+        }
+
         return $this->redirectToIndex($request);
     }
 
     /**
      * Send the user back to whichever RFQ list (all / pending / completed)
-     * they were on, rather than always dropping them on the unfiltered list.
+     * they were on, rather than always dropping them on the unfiltered list —
+     * and, for Admin, on whichever role's pages (?role=, ?view=) they were
+     * looking at. See admin/rfqs/_redirect_fields.blade.php.
      */
     protected function redirectToIndex(Request $request): RedirectResponse
     {
         $status = $request->input('redirect_status');
+        $parameters = in_array($status, Rfq::STATUSES, true) ? ['status' => $status] : [];
 
-        return redirect()->route('admin.rfqs.index', in_array($status, Rfq::STATUSES, true) ? ['status' => $status] : []);
+        $role = $request->user()->hasRole('Admin') ? Rfq::workflowRoleForSlug($request->input('redirect_role')) : null;
+
+        if ($role) {
+            $parameters['role'] = Str::slug($role);
+
+            if (in_array($request->input('redirect_view'), Rfq::QUEUE_VIEWS, true)) {
+                $parameters['view'] = $request->input('redirect_view');
+            }
+        }
+
+        return redirect()->route('admin.rfqs.index', $parameters);
     }
 
     /**

@@ -13,9 +13,7 @@
             <form method="POST" id="assignOperationsForm" action="#">
                 @csrf
                 @method('PATCH')
-                @if ($statusFilter ?? null)
-                    <input type="hidden" name="redirect_status" value="{{ $statusFilter }}">
-                @endif
+                @include('admin.rfqs._redirect_fields')
                 @if (($returnTo ?? null) === 'show')
                     <input type="hidden" name="return_to" value="show">
                 @endif

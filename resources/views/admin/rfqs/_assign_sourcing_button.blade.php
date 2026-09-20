@@ -2,9 +2,8 @@
     The button that opens the Assign Sourcing wizard (_assign_modal.blade.php)
     — shared by the RFQ list rows and the RFQ detail header. Carries what the
     wizard needs to open in the right mode: the RFQ's number (for the part
-    labels), its planned split if any, and who already holds which part —
-    including whether they've finished, since someone who has can't be given
-    another part.
+    labels), subject (to help pick its category) and category once set, its
+    planned split if any, and who already holds which part.
 
     Expects: $rfq, $restrictAssignment. Optional: $showLabel (text next to the
     icon, for the detail page).
@@ -15,7 +14,6 @@
         ->mapWithKeys(fn (array $part) => [$part['part'] => [
             'id' => $part['assignee']->id,
             'name' => $part['assignee']->name,
-            'done' => $part['assignee']->pivot->completed_at !== null,
         ]]);
 
     // Once a split's been planned (or anyone assigned), reopening only fills
@@ -28,6 +26,8 @@
         data-bs-toggle="modal" data-bs-target="#assignRfqModal"
         data-action="{{ route('admin.rfqs.assign', $rfq) }}"
         data-rfq-number="{{ $rfq->rfq_number }}"
+        data-rfq-subject="{{ $rfq->subject }}"
+        data-category="{{ $rfq->category }}"
         data-split-count="{{ $rfq->split_count }}"
         data-assigned="{{ $assignedParts->toJson() }}"
         title="{{ $restrictAssignment ? 'Restricted for your role' : $assignTitle }}">

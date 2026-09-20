@@ -26,10 +26,6 @@ class UserSeeder extends Seeder
             'Admin' => [
                 ['name' => 'Avery Thompson', 'email' => 'admin2@rfqms.test'],
             ],
-            'Manager' => [
-                ['name' => 'Morgan Blake', 'email' => 'manager@rfqms.test'],
-                ['name' => 'Jamie Whitfield', 'email' => 'manager2@rfqms.test'],
-            ],
             'Business Development' => [
                 ['name' => 'Bailey Nguyen', 'email' => 'business.development@rfqms.test'],
                 ['name' => 'Taylor Osei', 'email' => 'business.development2@rfqms.test'],
@@ -55,7 +51,11 @@ class UserSeeder extends Seeder
                 ['name' => 'Harper Collins', 'email' => 'gm.assistant@rfqms.test'],
                 ['name' => 'Devon Marsh', 'email' => 'gm.assistant2@rfqms.test'],
             ],
+            // The first two are the accounts that held the old "Manager" role
+            // (see BusinessRoleSeeder) — same logins, now General Managers.
             'General Manager' => [
+                ['name' => 'Morgan Blake', 'email' => 'manager@rfqms.test'],
+                ['name' => 'Jamie Whitfield', 'email' => 'manager2@rfqms.test'],
                 ['name' => 'Quinn Alderman', 'email' => 'general.manager@rfqms.test'],
                 ['name' => 'Frankie Sutton', 'email' => 'general.manager2@rfqms.test'],
             ],

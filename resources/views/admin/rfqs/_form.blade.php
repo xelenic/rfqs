@@ -4,6 +4,9 @@
     on the same page. Fields are populated client-side (admin.js) when opening
     the edit modal, or by old() — scoped to whichever modal actually failed
     validation — when redisplaying errors.
+
+    Status is edit-only: a new RFQ is always Pending (RfqController::store()),
+    so creating has nothing to choose. Expects $statuses in edit mode.
 --}}
 @php
     $showOld = old('rfq_id') ? $idPrefix === 'edit' : ($errors->create->any() && $idPrefix === 'create');
@@ -47,19 +50,21 @@
         @enderror
     </div>
 
-    <div class="col-md-6">
-        <label for="{{ $idPrefix }}-status" class="form-label">Status</label>
-        <select name="status" id="{{ $idPrefix }}-status" class="form-select @error('status', $idPrefix) is-invalid @enderror" required>
-            @foreach ($statuses as $status)
-                <option value="{{ $status }}" {{ ($showOld ? old('status', $defaultStatus ?? 'Pending') : ($defaultStatus ?? 'Pending')) === $status ? 'selected' : '' }}>
-                    {{ $status === 'Completed' ? 'Closed' : $status }}
-                </option>
-            @endforeach
-        </select>
-        @error('status', $idPrefix)
-            <div class="invalid-feedback">{{ $message }}</div>
-        @enderror
-    </div>
+    @if ($mode === 'edit')
+        <div class="col-md-6">
+            <label for="{{ $idPrefix }}-status" class="form-label">Status</label>
+            <select name="status" id="{{ $idPrefix }}-status" class="form-select @error('status', $idPrefix) is-invalid @enderror" required>
+                @foreach ($statuses as $status)
+                    <option value="{{ $status }}" {{ ($showOld ? old('status', 'Pending') : 'Pending') === $status ? 'selected' : '' }}>
+                        {{ $status === 'Completed' ? 'Closed' : $status }}
+                    </option>
+                @endforeach
+            </select>
+            @error('status', $idPrefix)
+                <div class="invalid-feedback">{{ $message }}</div>
+            @enderror
+        </div>
+    @endif
 
     <div class="col-12">
         <label for="{{ $idPrefix }}-subject" class="form-label">Subject</label>
