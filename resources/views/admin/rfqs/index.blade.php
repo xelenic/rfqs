@@ -877,7 +877,7 @@
                                 </tr>
                             </thead>
                             @forelse ($assignedRfqs as $rfq)
-                                <tbody class="rfq-group">
+                                <tbody class="rfq-group" data-rfq-id="{{ $rfq->id }}">
                                     @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'groupedParts' => true])
                                     @include('admin.rfqs._rfq_parts', ['rfq' => $rfq, 'columns' => 6])
                                 </tbody>

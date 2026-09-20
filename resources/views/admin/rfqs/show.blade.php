@@ -490,7 +490,7 @@
                  which would blur the canvas) — see public/js/admin.js
                  (renderRfqProgressChart). --}}
             <script type="application/json" id="rfq-progress-data">{!! json_encode(['tree' => $rfqProgressTree]) !!}</script>
-            <div class="rfq-progress-chart-wrap">
+            <div class="rfq-progress-chart-wrap" data-live-scroll="progress-chart">
                 <div id="rfq-progress-chart" class="rfq-progress-chart"></div>
             </div>
             <noscript><p class="text-muted-soft mb-0">Enable JavaScript to see the progress chart.</p></noscript>

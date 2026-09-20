@@ -30,7 +30,7 @@ it('groups each assigned RFQ with a line per part, naming who holds it and where
     [, $assigned] = operationsTabs();
 
     // One group per RFQ.
-    expect(substr_count($assigned, '<tbody class="rfq-group">'))->toBe(2);
+    expect(substr_count($assigned, '<tbody class="rfq-group" data-rfq-id="'))->toBe(2);
 
     foreach (['RFQ1001-P1 of P3', 'RFQ1001-P2 of P3', 'RFQ1001-P3 of P3', 'Whole task'] as $line) {
         expect($assigned)->toContain($line);

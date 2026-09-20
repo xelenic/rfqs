@@ -59,7 +59,13 @@ class MessageController extends Controller
 
         $user->load('roles');
 
-        $me->receivedMessages()->unread()->where('sender_id', $user->id)->update(['read_at' => now()]);
+        // Only when there's something to read: a write on every visit would
+        // move the live version on each time this page is refreshed by it.
+        $unread = $me->receivedMessages()->unread()->where('sender_id', $user->id);
+
+        if ($unread->exists()) {
+            $unread->update(['read_at' => now()]);
+        }
 
         return view('admin.messages.show', [
             'other' => $user,

@@ -100,15 +100,12 @@ return new class extends Migration
     }
 
     /**
-     * Whether the given index already exists on the given table.
+     * Whether the given index already exists on the given table. Through the
+     * schema builder rather than information_schema, which only MySQL has.
      */
     private function indexExists(string $table, string $index): bool
     {
-        return DB::table('information_schema.statistics')
-            ->where('table_schema', DB::getDatabaseName())
-            ->where('table_name', $table)
-            ->where('index_name', $index)
-            ->exists();
+        return Schema::hasIndex($table, $index);
     }
 
     /**

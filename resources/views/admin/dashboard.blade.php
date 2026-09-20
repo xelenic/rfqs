@@ -61,5 +61,5 @@
 @endsection
 
 @push('scripts')
-    <script src="{{ asset('js/rfq-chart.js') }}"></script>
+    <script src="{{ asset('js/rfq-chart.js') }}?v={{ filemtime(public_path('js/rfq-chart.js')) }}"></script>
 @endpush

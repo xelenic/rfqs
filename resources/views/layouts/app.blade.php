@@ -4,11 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- Live updates (public/js/live.js): the data's version this page was built
+         from, and where to ask whether it has moved on. --}}
+    <meta name="live-version" content="{{ request()->attributes->get('live_version', \App\LiveVersion::current()) }}">
+    <meta name="live-pulse" content="{{ route('admin.live') }}">
     <title>@yield('title', 'Dashboard') · {{ config('app.name', 'RFQMS') }} Admin</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/admin.css') }}?v={{ filemtime(public_path('css/admin.css')) }}">
     @stack('styles')
 </head>
 <body>
@@ -88,27 +92,40 @@
                     </div>
                 </div>
 
-                <div class="dropdown">
-                    <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>
-                        <span>{{ auth()->user()->name ?? 'Account' }}</span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><h6 class="dropdown-header">{{ auth()->user()->email ?? '' }}</h6></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form method="POST" action="{{ route('logout') }}">
-                                @csrf
-                                <button type="submit" class="dropdown-item text-danger">
-                                    <i class="bi bi-box-arrow-right me-1"></i> Log out
-                                </button>
-                            </form>
-                        </li>
-                    </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="live-indicator" id="liveIndicator" data-state="live" role="status" title="This page updates by itself">
+                        <i class="live-dot" aria-hidden="true"></i><span class="live-label">Live</span>
+                    </span>
+                    <div class="dropdown">
+                        <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>
+                            <span>{{ auth()->user()->name ?? 'Account' }}</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">{{ auth()->user()->email ?? '' }}</h6></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="POST" action="{{ route('logout') }}">
+                                    @csrf
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <i class="bi bi-box-arrow-right me-1"></i> Log out
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </header>
 
-            <main class="page-body">
+            @php
+                // The page body is what live updates swap (see public/js/live.js),
+                // except on the pages for users, roles and permissions, which
+                // aren't live. Its hash lets a refresh tell whether anything
+                // in it actually changed.
+                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*');
+                $pageContent = $__env->yieldContent('content');
+            @endphp
+            <main class="page-body" id="live-main" data-live="{{ $liveBody ? 'on' : 'off' }}" data-live-hash="{{ md5($pageContent) }}">
                 @if (session('status'))
                     <div class="alert alert-success alert-dismissible fade show" role="alert">
                         {{ session('status') }}
@@ -123,7 +140,7 @@
                     </div>
                 @endif
 
-                @yield('content')
+                {!! $pageContent !!}
             </main>
         </div>
     </div>
@@ -132,7 +149,8 @@
     @include('layouts._celebration')
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ asset('js/admin.js') }}"></script>
+    <script src="{{ asset('js/admin.js') }}?v={{ filemtime(public_path('js/admin.js')) }}"></script>
+    <script src="{{ asset('js/live.js') }}?v={{ filemtime(public_path('js/live.js')) }}"></script>
     @stack('scripts')
 </body>
 </html>

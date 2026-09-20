@@ -266,7 +266,9 @@
         container.appendChild(wrap);
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+    // Also run again (window.renderRfqCharts) when live.js swaps a fresh page
+    // body in — the charts in it are new, empty elements.
+    function init() {
         document.querySelectorAll('.rfq-chart[data-chart]').forEach(renderChart);
 
         // Table-view toggle — the accessibility twin of the chart above it.
@@ -285,5 +287,8 @@
                     : '<i class="bi bi-table"></i> View as table';
             });
         });
-    });
+    }
+
+    window.renderRfqCharts = init;
+    document.addEventListener('DOMContentLoaded', init);
 })();

@@ -23,7 +23,7 @@
             <span class="ms-auto text-muted-soft small fw-normal"><i class="bi bi-lock"></i> Private</span>
         </div>
 
-        <div class="card-body message-thread-body" id="messageThread">
+        <div class="card-body message-thread-body" id="messageThread" data-live-scroll="message-thread">
             @forelse ($messages as $message)
                 @php $mine = $message->sender_id === auth()->id(); @endphp
                 <div class="message-bubble-row {{ $mine ? 'is-mine' : '' }}">

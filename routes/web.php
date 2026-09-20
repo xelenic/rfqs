@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\MessageController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RfqCommentController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Admin\RfqController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Middleware\CaptureLiveVersion;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/admin');
@@ -21,8 +23,9 @@ Route::post('logout', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('live', LivePulseController::class)->name('live');
 
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');

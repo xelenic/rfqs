@@ -3711,3 +3711,122 @@ h6, .h6 { font-size: 0.85rem; }
     padding-top: 30vh;
   }
 }
+
+/* Live updates (public/js/live.js) ------------------------------------- */
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-surface);
+  color: var(--rfq-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--rfq-success);
+  animation: live-pulse 2s ease-out infinite;
+}
+
+.live-indicator[data-state="offline"] {
+  color: #b7791f;
+}
+
+.live-indicator[data-state="offline"] .live-dot {
+  background: #f5a524;
+  animation: none;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(26, 156, 106, 0.45);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 0.45rem rgba(26, 156, 106, 0);
+  }
+}
+
+/* A count that has just changed. */
+.nav-link-count.is-bumped {
+  animation: nav-count-bump 0.7s ease;
+}
+
+@keyframes nav-count-bump {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.45);
+    box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.25);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0);
+  }
+}
+
+/* "New updates on this page" — for when a refresh has to wait. */
+.live-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 1040;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: #1f2430;
+  color: #fff;
+  font-size: 0.82rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+  animation: live-notice-in 0.25s ease;
+}
+
+@keyframes live-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Once the body has been refreshed in place, its entrance animations
+   (the activity thread draws itself in) mustn't replay on every update. */
+.page-body.is-live .rfq-thread .rfq-timeline-item::before,
+.page-body.is-live .rfq-thread .rfq-timeline-marker,
+.page-body.is-live .rfq-thread .rfq-thread-content,
+.page-body.is-live .rfq-thread .rfq-timeline-marker::after {
+  animation: none;
+}
+
+@media (max-width: 575.98px) {
+  .live-label {
+    display: none;
+  }
+
+  .live-indicator {
+    padding: 0.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .live-notice,
+  .nav-link-count.is-bumped {
+    animation: none;
+  }
+}

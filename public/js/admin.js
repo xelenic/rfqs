@@ -1,5 +1,14 @@
 // RFQMS Admin Panel — plain JS, no build step.
-document.addEventListener('DOMContentLoaded', function () {
+
+// Wires up the page. Runs once it has loaded, and again (as
+// window.rfqmsRebind) each time live.js swaps a fresh page body in, since the
+// new elements have none of it — so whatever is tied to the page's chrome or
+// to the document itself, rather than to the body, is only set up the first
+// time (`first`).
+function rfqmsBoot() {
+    var first = !window.__rfqmsBooted;
+    window.__rfqmsBooted = true;
+
     var sidebar = document.getElementById('sidebar');
     var backdrop = document.getElementById('sidebarBackdrop');
     var toggleBtn = document.getElementById('sidebarToggle');
@@ -9,14 +18,14 @@ document.addEventListener('DOMContentLoaded', function () {
         backdrop && backdrop.classList.remove('show');
     }
 
-    if (toggleBtn) {
+    if (first && toggleBtn) {
         toggleBtn.addEventListener('click', function () {
             sidebar.classList.toggle('show');
             backdrop.classList.toggle('show');
         });
     }
 
-    if (backdrop) {
+    if (first && backdrop) {
         backdrop.addEventListener('click', closeSidebar);
     }
 
@@ -692,6 +701,7 @@ document.addEventListener('DOMContentLoaded', function () {
         function syncAllToggle() {
             if (!allToggle) return;
             var groups = document.querySelectorAll('.rfq-group');
+            if (!groups.length) return;
             var allCollapsed = Array.prototype.every.call(groups, function (group) {
                 return group.classList.contains('is-collapsed');
             });
@@ -717,6 +727,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 syncAllToggle();
             });
         }
+
+        // After a live update the groups may not all be as the page starts.
+        syncAllToggle();
     })();
 
     // Mark Complete and Return to Sourcing ask for a comment first (see
@@ -838,7 +851,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // pull the cursor back out of the message box.
     (function () {
         var card = document.getElementById('userCard');
-        if (!card) return;
+        if (!card || !first) return;
 
         var els = {
             avatar: document.getElementById('userCardAvatar'),
@@ -1120,11 +1133,15 @@ document.addEventListener('DOMContentLoaded', function () {
             timer = setTimeout(applyFilters, delay);
         }
 
-        // Coming back to the page with the Back button shouldn't leave it dimmed.
-        window.addEventListener('pageshow', function (event) {
-            var card = form.closest('.card');
-            if (event.persisted && card) card.classList.remove('is-loading');
-        });
+        // Coming back to the page with the Back button shouldn't leave it
+        // dimmed (on the window, so once only).
+        if (first) {
+            window.addEventListener('pageshow', function (event) {
+                var filterForm = document.getElementById('opsFilterForm');
+                var card = filterForm ? filterForm.closest('.card') : null;
+                if (event.persisted && card) card.classList.remove('is-loading');
+            });
+        }
 
         // The two dates can't cross, or go past today.
         function limitCustomDates() {
@@ -1160,6 +1177,11 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         limitCustomDates();
+
+        // A live update puts back the tab you were on without firing its
+        // event, so pick it up from what's showing.
+        var activeTab = document.querySelector('[data-ops-tab].active');
+        if (activeTab) tabInput.value = activeTab.dataset.opsTab;
     })();
 
     // Populate the shared "Assign Operations" modal from the clicked row's data-* attributes.
@@ -1271,10 +1293,14 @@ document.addEventListener('DOMContentLoaded', function () {
         var activeTextarea = null;
         var mentionStart = -1;
 
-        var dropdown = document.createElement('div');
-        dropdown.className = 'mention-dropdown';
-        dropdown.style.display = 'none';
-        document.body.appendChild(dropdown);
+        // One dropdown for the page, kept across live updates.
+        var dropdown = document.querySelector('.mention-dropdown');
+        if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.className = 'mention-dropdown';
+            dropdown.style.display = 'none';
+            document.body.appendChild(dropdown);
+        }
 
         function closeDropdown() {
             dropdown.style.display = 'none';
@@ -1401,9 +1427,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
-    // Clear stale input/validation state when a modal is closed.
-    document.querySelectorAll('.modal').forEach(function (modalEl) {
-        modalEl.addEventListener('hidden.bs.modal', function () {
+    // Clear stale input/validation state when a modal is closed. One listener
+    // on the document (Bootstrap's modal events bubble), so it covers the
+    // modals a live update brings in, too.
+    if (first) {
+        document.addEventListener('hidden.bs.modal', function (event) {
+            var modalEl = event.target;
+            if (!modalEl.classList || !modalEl.classList.contains('modal')) return;
+
             var form = modalEl.querySelector('form');
             if (form) form.reset();
             modalEl.querySelectorAll('.is-invalid').forEach(function (el) {
@@ -1413,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 syncRolePickCard(checkbox);
             });
         });
-    });
+    }
 
     // Role card enable/disable switch — flips status in place, no page reload.
     var csrfToken = document.querySelector('meta[name="csrf-token"]');
@@ -1455,7 +1486,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         });
     });
-});
+}
+
+document.addEventListener('DOMContentLoaded', rfqmsBoot);
+window.rfqmsRebind = rfqmsBoot;
 
 // RFQ show page — Progress chart, rendered with Apache ECharts (tree
 // series) rather than hand-rolled CSS, for real connector-line geometry
@@ -1470,6 +1504,14 @@ document.addEventListener('DOMContentLoaded', function () {
 // CDN script has loaded. Global (not inside the DOMContentLoaded listener
 // above) so that late <script> can call it after everything here has run.
 window.renderRfqProgressChart = function () {
+    // Called again whenever live.js swaps a fresh page body in: the previous
+    // chart is put away first, and its zoom kept.
+    var previous = window.rfqProgressChart || null;
+    if (previous) {
+        previous.dispose();
+        window.rfqProgressChart = null;
+    }
+
     var dataEl = document.getElementById('rfq-progress-data');
     var chartEl = document.getElementById('rfq-progress-chart');
     if (!dataEl || !chartEl || typeof echarts === 'undefined') {
@@ -1669,7 +1711,7 @@ window.renderRfqProgressChart = function () {
     // font size and node width scale together, so the same count of
     // characters keeps fitting at every zoom level.
     var ZOOM_LEVELS = [0.6, 0.75, 1, 1.25, 1.5, 1.75, 2];
-    var zoomIndex = ZOOM_LEVELS.indexOf(1);
+    var zoomIndex = previous ? previous.zoomIndex() : ZOOM_LEVELS.indexOf(1);
     var zoomInBtn = document.getElementById('rfq-progress-zoom-in');
     var zoomOutBtn = document.getElementById('rfq-progress-zoom-out');
     var zoomResetBtn = document.getElementById('rfq-progress-zoom-reset');
@@ -1696,6 +1738,8 @@ window.renderRfqProgressChart = function () {
         chart.resize();
 
         chart.setOption({
+            // A chart put back by a live update shouldn't play its entrance again.
+            animation: !previous,
             series: [{
                 type: 'tree',
                 data: [rootNode],
@@ -1771,6 +1815,16 @@ window.renderRfqProgressChart = function () {
     if (wrapEl) {
         wrapEl.addEventListener('scroll', updateEdgeFade);
     }
+
+    window.rfqProgressChart = {
+        zoomIndex: function () {
+            return zoomIndex;
+        },
+        dispose: function () {
+            window.removeEventListener('resize', render);
+            chart.dispose();
+        },
+    };
 
     // Selecting a Step Details tab (below the chart) briefly highlights
     // every node for that stage — a bright ring, a bigger shadow, and a
