@@ -211,8 +211,9 @@ class DashboardController extends Controller
      * front of them: what they were given most recently, what Data Entry
      * sent back, and what's with Data Entry now.
      *
-     * "Pending" is what's still theirs to complete (returned parts
-     * included), the same count as the badge on their sidebar link.
+     * "Pending" is what's still theirs to complete, leaving out what Data Entry
+     * sent back (that's "Returned", and their Returns list) — the same count
+     * as the badge on their sidebar link.
      *
      * @return array{
      *     assigned: int, pending: int, urgent: int, returned: int, inReview: int, done: int, inProgress: int,
@@ -241,7 +242,7 @@ class DashboardController extends Controller
             ->values();
 
         $inState = fn (string $state) => $parts->where('state', $state);
-        $stillTheirs = $parts->filter(fn (array $part) => $part['assignment']->completed_at === null);
+        $stillTheirs = $parts->filter(fn (array $part) => $part['assignment']->completed_at === null && $part['state'] !== 'returned');
 
         return [
             'assigned' => $parts->count(),

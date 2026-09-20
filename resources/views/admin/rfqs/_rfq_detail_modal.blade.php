@@ -20,7 +20,9 @@
 
     Expects: $rfq, $assignee (a member of $rfq->assignees — one part, with
     comments.author, comments.replies.author eager-loaded on $rfq, see
-    RfqController::index()).
+    RfqController::index()). Optional: $redirectView — 'returns' on Sourcing's
+    Returns list, so completing the part from here lands back on it (it reaches
+    the Mark Complete button inside, see _complete_button.blade.php).
 --}}
 @php
     $part = $assignee->pivot->part_number;

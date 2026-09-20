@@ -228,7 +228,8 @@ it('keeps each part of a split to its own thread, with what concerns the whole R
 it('shows the same on Sourcing\'s modal, in the order it happened', function () {
     [$rfq, $riley] = rfqWithActionComments();
 
-    $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+    // Part 2 was sent back, so it's worked from Sourcing's Returns list.
+    $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()->getContent();
 
     $modal = partModal($html, $rfq, 2);
 

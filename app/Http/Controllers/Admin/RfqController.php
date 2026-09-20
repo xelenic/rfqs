@@ -83,8 +83,10 @@ class RfqController extends Controller implements HasMiddleware
         // split reference, see the "Handed off" note in the view), not
         // vanish from their queue just because a teammate finished first.
         //
-        // "Returns" (below) is a separate lens on the same Pending status,
-        // so the two are mutually exclusive rather than double-counting.
+        // "Returns" (below) is a separate lens on the same Pending status, so
+        // the two are mutually exclusive rather than double-counting: a part
+        // Data Entry sent back is listed there, and only there, until it's
+        // completed again.
         $scopedToReturns = $actsAs('Sourcing') && $request->query('view') === 'returns';
         $scopedToMe = $status === 'Pending' && $actsAs('Sourcing') && ! $scopedToReturns;
 
@@ -169,12 +171,14 @@ class RfqController extends Controller implements HasMiddleware
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
             // those two views.
-            ->when($scopedToDataEntry || ($scopedToMe && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
+            ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
+                // Not the parts Data Entry has sent back: those are on the
+                // Returns list (below) until they're completed again.
                 $query->whereHas('assignees', fn ($q) => $sourcingOverview
-                    ? $q->whereNull('rfq_user.completed_at')
-                    : $q->whereKey($user->id));
+                    ? $q->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at')
+                    : $q->whereKey($user->id)->tap(fn ($q) => RfqAssignment::whereNotReturned($q)));
             })
             ->when($scopedToReturns, function ($query) use ($user, $sourcingOverview) {
                 $query->whereHas('assignees', function ($q) use ($user, $sourcingOverview) {
@@ -1076,6 +1080,9 @@ class RfqController extends Controller implements HasMiddleware
             if (in_array($request->input('redirect_view'), Rfq::QUEUE_VIEWS, true)) {
                 $parameters['view'] = $request->input('redirect_view');
             }
+        } elseif ($request->user()->hasRole('Sourcing') && $request->input('redirect_view') === 'returns') {
+            // Reworking a returned part from the Returns list: back there.
+            $parameters['view'] = 'returns';
         }
 
         return redirect()->route('admin.rfqs.index', $parameters);

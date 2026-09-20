@@ -98,7 +98,8 @@ it('counts each role\'s queue company-wide', function () {
         // The five stage RFQs have no Sourcing assignees, and neither does anything else…
         'unassigned' => 5,
         'ops_review' => 1,
-        'sourcing_pending' => 1,
+        // Riley's part was sent back, so it's a return rather than a pending part; Sam's is with Data Entry.
+        'sourcing_pending' => 0,
         'sourcing_returns' => 1,
         'data_entry' => 1,
         'head_of_bd' => 1,

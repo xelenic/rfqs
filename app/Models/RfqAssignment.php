@@ -92,6 +92,22 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * Narrows a query over the rfq_user rows to the parts that aren't sitting
+     * with Sourcing for rework — everything but wherePartIs($query,
+     * 'returned'). What My Pending RFQs lists: a part Data Entry sent back
+     * is on the Returns list instead, until it's completed again.
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     */
+    public static function whereNotReturned(Builder $query): void
+    {
+        $query->where(fn (Builder $parts) => $parts
+            ->whereNull('rfq_user.returned_at')
+            ->orWhereNotNull('rfq_user.completed_at')
+            ->orWhereNotNull('rfq_user.data_entry_completed_at'));
+    }
+
+    /**
      * The badge class to pair with progressState().
      */
     public function progressBadgeClass(): string

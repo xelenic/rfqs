@@ -774,6 +774,7 @@ document.addEventListener('DOMContentLoaded', function () {
             form.elements.part.value = button.dataset.part;
             form.elements.return_to.value = button.dataset.returnTo || '';
             form.elements.redirect_status.value = button.dataset.redirectStatus || '';
+            form.elements.redirect_view.value = button.dataset.redirectView || '';
 
             document.getElementById('completeModalLabel').textContent = kind.title;
             document.getElementById('complete-subtitle').textContent =

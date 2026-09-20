@@ -141,7 +141,10 @@
             {{-- Parts Data Entry sent back for rework, scoped to this
                  Sourcing member and not yet completed again — see
                  RfqController::index() ($scopedToReturns) and
-                 Rfq::returnSourcingPartFor(). --}}
+                 Rfq::returnSourcingPart(). They're worked from here: click a row
+                 for the part and its comments, or Mark Complete when it's done
+                 again — which lands back on this list. They aren't on My
+                 Pending RFQs while they're here. --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -159,7 +162,7 @@
                             {{-- One row per returned part of mine — someone holding
                                  several parts of a split can have more than one. --}}
                             @foreach ($rfq->assignees->where('id', auth()->id())->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
-                                <tr>
+                                <tr class="js-de-sourcing-row" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $myAssignment->pivot->part_number }}" role="button" tabindex="0">
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($myAssignment->pivot->part_number) }}</td>
                                     <td>
@@ -173,10 +176,11 @@
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->returned_at?->format('M d, Y g:i A') ?? '—' }}</td>
-                                    <td class="text-end">
+                                    <td class="text-end text-nowrap">
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
+                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => 'returns'])
                                     </td>
                                 </tr>
                             @endforeach
@@ -190,6 +194,12 @@
                     </tbody>
                 </table>
             </div>
+
+            @foreach ($rfqs as $rfq)
+                @foreach ($rfq->assignees->where('id', auth()->id())->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
+                    @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment, 'redirectView' => 'returns'])
+                @endforeach
+            @endforeach
         @elseif ($scopedToSeniorOpsReview)
             {{-- Senior Operations' second review — one row per Sourcing part that
                  has been through both Sourcing and Data Entry, each approved on
@@ -720,8 +730,9 @@
                                 @php
                                     $myPart = $myAssignment->pivot->part_number;
                                     $iHaveCompletedMyPart = $myAssignment->pivot->completed_at !== null;
-                                    $myPartWasReturned = ! $iHaveCompletedMyPart && $myAssignment->pivot->returned_at !== null;
                                 @endphp
+                                {{-- Sent back by Data Entry: that's on the Returns list, not here. --}}
+                                @continue(! $iHaveCompletedMyPart && $myAssignment->pivot->returned_at !== null)
                                 {{-- Clicking the row (but not the Mark Complete button) opens
                                      the same quick-detail modal Data Entry uses (description,
                                      status, comments scoped to you) — see admin.js, which
@@ -738,11 +749,6 @@
                                                 @if ($rfq->sourcingCompletedBy)
                                                     &middot; completed by {{ $rfq->sourcing_completed_by === auth()->id() ? 'you' : $rfq->sourcingCompletedBy->name }}
                                                 @endif
-                                            </div>
-                                        @elseif ($myPartWasReturned)
-                                            <div class="rfq-list-subnote rfq-list-subnote-returned">
-                                                <i class="bi bi-arrow-counterclockwise"></i>
-                                                Returned by Data Entry: {{ $myAssignment->pivot->return_reason }}
                                             </div>
                                         @endif
                                     </td>
@@ -768,6 +774,7 @@
 
             @foreach ($rfqs as $rfq)
                 @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)
+                    @continue($myAssignment->pivot->completed_at === null && $myAssignment->pivot->returned_at !== null)
                     @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment])
                 @endforeach
             @endforeach
@@ -977,7 +984,7 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter])
-    @if ($scopedToDataEntry || ($scopedToMe && ! $sourcingOverview))
+    @if ($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview))
         @include('admin.rfqs._complete_modal')
     @endif
     @if ($scopedToHeadOfBdReview)

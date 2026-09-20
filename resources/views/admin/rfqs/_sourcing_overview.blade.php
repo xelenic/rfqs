@@ -22,8 +22,10 @@
         <tbody>
             @forelse ($rfqs as $rfq)
                 @php
+                    // Open parts: the ones sent back on Returns, the rest on Pending —
+                    // each in one list only, as on a member's own pages.
                     $openParts = $rfq->assignees->whereNull('pivot.completed_at');
-                    $listedParts = $scopedToReturns ? $openParts->whereNotNull('pivot.returned_at') : $openParts;
+                    $listedParts = $scopedToReturns ? $openParts->whereNotNull('pivot.returned_at') : $openParts->whereNull('pivot.returned_at');
                 @endphp
                 @foreach ($listedParts as $partAssignment)
                     <tr>

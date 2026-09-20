@@ -16,6 +16,7 @@
             <input type="hidden" name="part" value="">
             <input type="hidden" name="return_to" value="">
             <input type="hidden" name="redirect_status" value="">
+            <input type="hidden" name="redirect_view" value="">
 
             <div class="modal-header">
                 <div>

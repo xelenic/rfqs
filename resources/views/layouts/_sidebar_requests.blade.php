@@ -8,7 +8,9 @@
     // RFQs" link, as a red count so it doesn't get lost in
     // the list — Operations: not yet assigned to Sourcing;
     // Sourcing: their own parts not yet marked complete —
-    // one per part, matching the rows on their list;
+    // one per part — and not counting the ones Data Entry sent
+    // back, which are on their Returns link (with its own count)
+    // rather than on My Pending RFQs;
     // Data Entry: Sourcing-completed splits they haven't
     // marked complete yet — one per assignee, matching the
     // "By Sourcing" rows (see RfqController::index()
@@ -23,6 +25,7 @@
             ->where('rfqs.status', 'Pending')
             ->where('rfq_user.user_id', auth()->id())
             ->whereNull('rfq_user.completed_at')
+            ->whereNull('rfq_user.returned_at')
             ->count(),
         auth()->user()->hasRole('Data Entry') => \Illuminate\Support\Facades\DB::table('rfq_user')
             ->whereNotNull('completed_at')
@@ -62,8 +65,23 @@
     @endif
 </a>
 @if (auth()->user()->hasRole('Sourcing'))
+    {{-- Their parts Data Entry sent back for rework — one per row on the
+         Returns list — as a red count, like the queue above it. --}}
+    @php
+        $returnedCount = \Illuminate\Support\Facades\DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->where('rfq_user.user_id', auth()->id())
+            ->whereNull('rfq_user.completed_at')
+            ->whereNotNull('rfq_user.returned_at')
+            ->count();
+    @endphp
     <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
-        <i class="bi bi-arrow-counterclockwise"></i> Returns
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($returnedCount > 0)
+            <span class="nav-link-count" title="{{ $returnedCount }} sent back by Data Entry">{{ $returnedCount }}</span>
+        @endif
     </a>
 @endif
 @if (auth()->user()->hasRole('Senior Operations'))

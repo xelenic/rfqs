@@ -10,8 +10,10 @@
     Optional: $kind ('sourcing' by default, 'data_entry' or 'return'), $who
     (whose part it is — Data Entry's), $returnTo ('show' or 'dashboard' —
     otherwise Sourcing's goes back to the Pending list and Data Entry's to
-    wherever it was), $backModal (id of the modal this sits in, which Back
-    returns to), $label (the button's text), $class (its classes).
+    wherever it was), $redirectView ('returns' — Sourcing reworking a returned
+    part from the Returns list goes back there, not to My Pending RFQs),
+    $backModal (id of the modal this sits in, which Back returns to), $label
+    (the button's text), $class (its classes).
 --}}
 @php
     $kind = $kind ?? 'sourcing';
@@ -69,6 +71,7 @@
         data-placeholder="{{ $placeholder }}"
         data-return-to="{{ $returnTo ?? '' }}"
         data-redirect-status="{{ $kind === 'sourcing' && ! ($returnTo ?? null) ? 'Pending' : '' }}"
+        data-redirect-view="{{ $kind === 'sourcing' ? ($redirectView ?? '') : '' }}"
         data-back-modal="{{ $backModal ?? '' }}">
     <i class="bi {{ $icon }}"></i> {{ $label ?? $defaultLabel }}
 </button>

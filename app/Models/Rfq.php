@@ -1844,7 +1844,8 @@ class Rfq extends Model
      * How many items sit in each role's queue company-wide — what the
      * badges on Admin's grouped sidebar show. Mirrors what each role's own
      * sidebar badge counts (see layouts/app.blade.php), except Sourcing's,
-     * which counts everyone's parts rather than one person's.
+     * which counts everyone's parts rather than one person's — pending ones
+     * leaving out those sent back, which are the returns.
      *
      * @return array<string, int>
      */
@@ -1859,7 +1860,7 @@ class Rfq extends Model
             'closing' => static::bdClosingCount(),
             'unassigned' => static::where('status', 'Pending')->needingSourcing()->count(),
             'ops_review' => static::seniorOpsReviewCount(),
-            'sourcing_pending' => $sourcingParts()->count(),
+            'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count(),
             'sourcing_returns' => $sourcingParts()->whereNotNull('rfq_user.returned_at')->count(),
             'data_entry' => DB::table('rfq_user')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->count(),
             'head_of_bd' => static::headOfBdReviewCount(),

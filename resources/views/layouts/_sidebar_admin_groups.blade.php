@@ -18,9 +18,9 @@
     $currentView = in_array(request('view'), \App\Models\Rfq::QUEUE_VIEWS, true) ? request('view') : null;
 
     // Per group: the pages under it and which of the counts its heading shows
-    // while collapsed (Sourcing's returns are part of its pending parts, so
-    // adding the two would count them twice). A page's "view" is the role's
-    // second queue; its first has none.
+    // while collapsed — a role's queues add up, each item in one only. (Sourcing's
+    // pending parts leave out the returns, which have a count of their own.) A
+    // page's "view" is the role's second queue; its first has none.
     $groups = [
         [
             'role' => 'Business Development', 'icon' => 'bi-briefcase', 'badge' => ['closing'],
@@ -38,7 +38,7 @@
             ],
         ],
         [
-            'role' => 'Sourcing', 'icon' => 'bi-people', 'badge' => ['sourcing_pending'],
+            'role' => 'Sourcing', 'icon' => 'bi-people', 'badge' => ['sourcing_pending', 'sourcing_returns'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts not marked complete'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry'],

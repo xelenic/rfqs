@@ -80,8 +80,9 @@ it('counts only their own parts, by where each stands', function () {
         expect($overview)->toMatchArray([
             // P1–P3 of the split and the Urgent one; not Sam's P4, and not the closed RFQ.
             'assigned' => 4,
-            // Still theirs to complete: the returned P3, the in-progress Urgent one — and not what's already handed on.
-            'pending' => 2,
+            // Still theirs to complete: the in-progress Urgent one — not what's already handed on, and not the
+            // returned P3, which is a return (below) rather than pending.
+            'pending' => 1,
             'urgent' => 1,
             'returned' => 1,
             'inReview' => 1,
@@ -209,10 +210,11 @@ it('tells them about their own parts, not the company\'s', function () {
     $split->completeSourcingPart(2);
     $split->refresh()->returnSourcingPart(2, 'Wrong model', $dataEntry);
 
+    // The Urgent RFQ's returned part is a return, so what's waiting is just its other part.
     test()->actingAs($riley)->get(route('admin.dashboard'))
         ->assertSee('1 part was sent back')
-        ->assertSee('2 urgent parts are waiting')
-        ->assertSee('2 parts are waiting on you')
+        ->assertSee('1 urgent part is waiting')
+        ->assertSee('1 part is waiting on you')
         ->assertDontSee('awaiting Operations')
         ->assertDontSee('awaiting Sourcing');
 });
