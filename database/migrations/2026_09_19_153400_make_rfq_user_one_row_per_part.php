@@ -29,10 +29,30 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('rfq_user', function (Blueprint $table) {
-            $table->unsignedSmallInteger('part_number')->nullable()->after('user_id');
-            $table->dropUnique(['rfq_id', 'user_id']);
-        });
+        // An earlier migration (2026_09_19_093208) already adds this column
+        // and its own unique index on some environments — guard both so this
+        // migration is safe to run regardless of which state it starts from.
+        if (! Schema::hasColumn('rfq_user', 'part_number')) {
+            Schema::table('rfq_user', function (Blueprint $table) {
+                $table->unsignedSmallInteger('part_number')->nullable()->after('user_id');
+            });
+        }
+
+        // Create the new unique index before dropping the old one — MySQL
+        // refuses to drop (rfq_id, user_id) while it's the only index backing
+        // the rfq_id foreign key. Safe even before part_number is backfilled,
+        // since MySQL treats each NULL in a unique index as distinct.
+        if (! $this->indexExists('rfq_user', 'rfq_user_rfq_id_part_number_unique')) {
+            Schema::table('rfq_user', function (Blueprint $table) {
+                $table->unique(['rfq_id', 'part_number']);
+            });
+        }
+
+        if ($this->indexExists('rfq_user', 'rfq_user_rfq_id_user_id_unique')) {
+            Schema::table('rfq_user', function (Blueprint $table) {
+                $table->dropUnique(['rfq_id', 'user_id']);
+            });
+        }
 
         // RFQs whose split was planned: number each held part's row. When
         // one person held several parts, their first row takes the first
@@ -76,11 +96,19 @@ return new class extends Migration
                 ]);
             });
 
-        Schema::table('rfq_user', function (Blueprint $table) {
-            $table->unique(['rfq_id', 'part_number']);
-        });
-
         Schema::dropIfExists('rfq_parts');
+    }
+
+    /**
+     * Whether the given index already exists on the given table.
+     */
+    private function indexExists(string $table, string $index): bool
+    {
+        return DB::table('information_schema.statistics')
+            ->where('table_schema', DB::getDatabaseName())
+            ->where('table_name', $table)
+            ->where('index_name', $index)
+            ->exists();
     }
 
     /**
