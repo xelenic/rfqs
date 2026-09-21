@@ -22,6 +22,16 @@ class User extends Authenticatable
     use HasFactory, HasRoles, Notifiable;
 
     /**
+     * What a preference is until the person changes it on their Settings page.
+     *
+     * @var array<string, bool>
+     */
+    public const PREFERENCE_DEFAULTS = [
+        'live_updates' => true,
+        'celebrations' => true,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -31,7 +41,17 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'preferences' => 'array',
         ];
+    }
+
+    /**
+     * One of the person's Settings-page choices, or its default if they've
+     * never changed it. See PREFERENCE_DEFAULTS.
+     */
+    public function preference(string $key): mixed
+    {
+        return $this->preferences[$key] ?? self::PREFERENCE_DEFAULTS[$key] ?? null;
     }
 
     /**

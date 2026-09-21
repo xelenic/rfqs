@@ -112,15 +112,5 @@
                 <i class="bi bi-pencil"></i>
             </button>
         @endif
-        @can('rfqs.delete')
-            <form action="{{ route('admin.rfqs.destroy', $rfq) }}" method="POST" class="d-inline" data-confirm="Delete this RFQ?">
-                @csrf
-                @method('DELETE')
-                @include('admin.rfqs._redirect_fields')
-                <button type="submit" class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </form>
-        @endcan
     </td>
 </tr>

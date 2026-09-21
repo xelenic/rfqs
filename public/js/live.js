@@ -21,7 +21,9 @@
     var indicator = document.getElementById('liveIndicator');
     if (!versionMeta || !pulseMeta || !main || !window.fetch || !window.DOMParser) return;
 
-    var INTERVAL = 3000;
+    // How often to ask — the Admin's setting, given by the page; kept within reason.
+    var intervalMeta = document.querySelector('meta[name="live-interval"]');
+    var INTERVAL = Math.max(2000, Math.min(60000, parseInt(intervalMeta && intervalMeta.content, 10) || 3000));
     var RETRY_INTERVAL = 10000; // after a failed check
     var COOL_DOWN = 10000; // when refreshes are coming thick and fast
 

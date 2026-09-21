@@ -31,7 +31,7 @@ final class LiveVersion
     public const WATCHED_TABLES = ['rfqs', 'rfq_user', 'rfq_comments', 'private_messages', 'job_categories'];
 
     /**
-     * Every other table — framework plumbing and access control. A new table
+     * Every other table — framework plumbing, access control and settings. A new table
      * has to be put in one list or the other (tests/Feature/LiveUpdatesTest.php
      * fails until it is), so a page's data can't quietly be left out of live
      * updates.
@@ -39,7 +39,7 @@ final class LiveVersion
      * @var list<string>
      */
     public const IGNORED_TABLES = [
-        'cache', 'cache_locks', 'failed_jobs', 'job_batches', 'jobs', 'migrations', 'password_reset_tokens', 'sessions',
+        'cache', 'cache_locks', 'failed_jobs', 'job_batches', 'jobs', 'migrations', 'password_reset_tokens', 'sessions', 'settings',
         'users', 'roles', 'permissions', 'model_has_roles', 'model_has_permissions', 'role_has_permissions',
     ];
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Log in · {{ config('app.name', 'RFQMS') }} Admin</title>
+    <title>Log in · {{ \App\Models\Setting::companyName() }} Admin</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -14,7 +14,7 @@
         <div class="auth-card">
             <div class="text-center mb-4">
                 <span class="brand-mark d-inline-flex mb-2" style="width:44px;height:44px;font-size:1rem;">RFQ</span>
-                <h1 class="h4 fw-bold mb-1">{{ config('app.name', 'RFQMS') }} Admin</h1>
+                <h1 class="h4 fw-bold mb-1">{{ \App\Models\Setting::companyName() }} Admin</h1>
                 <p class="text-muted-soft mb-0">Sign in to manage your workspace</p>
             </div>
 

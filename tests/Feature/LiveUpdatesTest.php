@@ -71,7 +71,7 @@ it('moves the version on when what the pages show is written', function (Closure
 })->with([
     'an RFQ created' => [fn () => Rfq::factory()->create()],
     'an RFQ changed' => [fn (Rfq $rfq) => $rfq->update(['subject' => 'Something else'])],
-    'an RFQ deleted' => [fn (Rfq $rfq) => $rfq->delete()],
+    'an RFQ removed by hand' => [fn (Rfq $rfq) => $rfq->delete()],
     // The part's own progress is written straight to the pivot, which fires no
     // model events — the version still has to move.
     'a part completed' => [fn (Rfq $rfq) => $rfq->completeSourcingPart(1)],
@@ -188,7 +188,7 @@ it('notes the version before the page is built, not after', function () {
         ->and(LiveVersion::current())->not->toBe($before);
 });
 
-it('refreshes the body of the workflow pages, but not the pages for users, roles and permissions', function () {
+it('refreshes the body of the workflow pages, but not the pages for users, roles, permissions and settings', function () {
     $admin = liveAdmin();
     $rfq = Rfq::factory()->create();
 
@@ -201,7 +201,7 @@ it('refreshes the body of the workflow pages, but not the pages for users, roles
         expect(test()->actingAs($admin)->get($url)->assertOk()->getContent())->toContain('id="live-main" data-live="on"');
     }
 
-    foreach ([route('admin.users.index'), route('admin.roles.index'), route('admin.permissions.index')] as $url) {
+    foreach ([route('admin.users.index'), route('admin.roles.index'), route('admin.permissions.index'), route('admin.settings.edit')] as $url) {
         expect(test()->actingAs($admin)->get($url)->assertOk()->getContent())->toContain('id="live-main" data-live="off"');
     }
 });

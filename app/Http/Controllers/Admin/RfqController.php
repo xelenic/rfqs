@@ -48,7 +48,6 @@ class RfqController extends Controller implements HasMiddleware
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
             new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'close', 'closePart']),
-            new Middleware('permission:rfqs.delete', only: ['destroy']),
         ];
     }
 
@@ -459,13 +458,6 @@ class RfqController extends Controller implements HasMiddleware
         $rfq->update($validator->validated());
 
         return $this->redirectAfterSave($request, $rfq)->with('status', 'RFQ updated successfully.');
-    }
-
-    public function destroy(Request $request, Rfq $rfq): RedirectResponse
-    {
-        $rfq->delete();
-
-        return $this->redirectToIndex($request)->with('status', 'RFQ deleted successfully.');
     }
 
     /**

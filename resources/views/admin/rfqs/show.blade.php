@@ -437,18 +437,6 @@
                     <i class="bi bi-pencil"></i> Edit
                 </button>
             @endif
-            @can('rfqs.delete')
-                <form action="{{ route('admin.rfqs.destroy', $rfq) }}" method="POST" data-confirm="Delete this RFQ?">
-                    @csrf
-                    @method('DELETE')
-                    @if ($statusFilter)
-                        <input type="hidden" name="redirect_status" value="{{ $statusFilter }}">
-                    @endif
-                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
-                </form>
-            @endcan
         </div>
     </div>
 

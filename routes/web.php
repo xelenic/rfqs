@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RfqCommentController;
 use App\Http\Controllers\Admin\RfqController;
 use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Middleware\CaptureLiveVersion;
@@ -27,6 +28,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('live', LivePulseController::class)->name('live');
 
+    Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
+    Route::patch('settings/profile', [SettingsController::class, 'updateProfile'])->name('settings.profile');
+    Route::put('settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
+    Route::patch('settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences');
+    Route::patch('settings/application', [SettingsController::class, 'updateApplication'])->name('settings.application');
+
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');
     Route::resource('roles', RoleController::class)->except('show');
@@ -46,7 +53,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/approve-gm-part', [RfqController::class, 'approveGmPart'])->name('rfqs.approve-gm-part');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
-    Route::resource('rfqs', RfqController::class)->except(['create', 'edit']);
+    Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);
     Route::post('rfqs/{rfq}/comments', [RfqCommentController::class, 'store'])->name('rfqs.comments.store');
     Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
     Route::get('messages/{user}', [MessageController::class, 'show'])->name('messages.show');

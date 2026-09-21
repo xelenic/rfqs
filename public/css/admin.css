@@ -2550,13 +2550,17 @@ h6, .h6 { font-size: 0.85rem; }
 }
 
 /* ---------- RFQ activity chart ---------- */
-/* Colors are validated for CVD-safe adjacent separation — see
-   scripts/validate_palette.js in the dataviz skill ("#3b53d1,#157347" passes
-   all checks against a white surface). Pending = blue, Completed = green,
-   matching the badge-soft-* colors used for RFQ status elsewhere. */
+/* Drawn by Apache ECharts (public/js/rfq-chart.js — colors are set there),
+   which needs the box it draws in to have a height of its own. */
 
 .rfq-chart {
   position: relative;
+  height: 300px;
+}
+
+/* An empty period's message, with no chart to fill the box. */
+.rfq-chart.is-plain {
+  height: auto;
 }
 
 .rfq-chart-empty {
@@ -2564,132 +2568,10 @@ h6, .h6 { font-size: 0.85rem; }
   text-align: center;
 }
 
-.rfq-chart-wrap {
-  position: relative;
-}
-
-.rfq-chart-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-
-.rfq-chart-gridline {
-  stroke: var(--rfq-border);
-  stroke-width: 1;
-}
-
-.rfq-chart-tick {
-  font-size: 10px;
-  fill: var(--rfq-text-muted);
-}
-
-.rfq-chart-line {
-  fill: none;
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  transition: opacity 0.15s ease;
-}
-
-.rfq-chart-enddot {
-  stroke: var(--rfq-surface);
-  stroke-width: 2;
-  transition: opacity 0.15s ease;
-}
-
-.rfq-chart-endlabel {
-  font-size: 10px;
-  font-weight: 700;
-  fill: var(--rfq-text);
-}
-
-.rfq-chart-crosshair {
-  stroke: var(--rfq-text-muted);
-  stroke-width: 1;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.rfq-chart-overlay {
-  fill: transparent;
-  cursor: crosshair;
-}
-
-.rfq-chart-tooltip {
-  position: absolute;
-  top: 6%;
-  min-width: 140px;
-  background: var(--rfq-text);
-  color: #fff;
-  border-radius: 0.45rem;
-  padding: 0.5rem 0.65rem;
-  font-size: 0.72rem;
-  pointer-events: none;
-  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.18);
-  z-index: 5;
-}
-
-.rfq-chart-tooltip-heading {
-  font-weight: 700;
-  margin-bottom: 0.3rem;
-  opacity: 0.85;
-}
-
-.rfq-chart-tooltip-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.1rem 0;
-}
-
-.rfq-chart-tooltip-key {
-  width: 10px;
-  height: 2px;
-  border-radius: 1px;
-  flex-shrink: 0;
-}
-
-.rfq-chart-tooltip-name {
-  flex: 1;
-  opacity: 0.85;
-}
-
-.rfq-chart-tooltip-value {
-  font-weight: 700;
-}
-
-.rfq-chart-legend {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.rfq-chart-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: transparent;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--rfq-text);
-  padding: 0.15rem 0.3rem;
-  border-radius: 0.35rem;
-}
-
-.rfq-chart-legend-item:hover {
-  background: var(--rfq-bg);
-}
-
-.rfq-chart-legend-item.is-hidden {
-  color: var(--rfq-text-muted);
-}
-
-.rfq-chart-legend-swatch {
-  width: 14px;
-  height: 2px;
-  border-radius: 1px;
+@media (max-width: 575.98px) {
+  .rfq-chart {
+    height: 260px;
+  }
 }
 
 @media (max-width: 991.98px) {
@@ -3829,4 +3711,26 @@ h6, .h6 { font-size: 0.85rem; }
   .nav-link-count.is-bumped {
     animation: none;
   }
+}
+
+/* ---------- Settings page ---------- */
+
+.settings-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.settings-avatar {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.15rem;
 }

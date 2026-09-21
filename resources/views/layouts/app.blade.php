@@ -5,10 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     {{-- Live updates (public/js/live.js): the data's version this page was built
-         from, and where to ask whether it has moved on. --}}
-    <meta name="live-version" content="{{ request()->attributes->get('live_version', \App\LiveVersion::current()) }}">
-    <meta name="live-pulse" content="{{ route('admin.live') }}">
-    <title>@yield('title', 'Dashboard') · {{ config('app.name', 'RFQMS') }} Admin</title>
+         from, where to ask whether it has moved on, and how often. Left out for
+         anyone who has turned them off on their Settings page — the script then
+         does nothing. --}}
+    @if (auth()->user()->preference('live_updates'))
+        <meta name="live-version" content="{{ request()->attributes->get('live_version', \App\LiveVersion::current()) }}">
+        <meta name="live-pulse" content="{{ route('admin.live') }}">
+        <meta name="live-interval" content="{{ \App\Models\Setting::liveIntervalSeconds() * 1000 }}">
+    @endif
+    <title>@yield('title', 'Dashboard') · {{ \App\Models\Setting::companyName() }} Admin</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -21,7 +26,7 @@
 
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
-                <img src="{{ asset('logo.png') }}" alt="{{ config('app.name', 'RFQMS') }}" class="sidebar-logo">
+                <img src="{{ asset('logo.png') }}" alt="{{ \App\Models\Setting::companyName() }}" class="sidebar-logo">
             </div>
 
             <nav class="sidebar-nav">
@@ -67,10 +72,15 @@
                         <i class="bi bi-key"></i> Permissions
                     </a>
                 @endcan
+
+                <div class="sidebar-section-title">Account</div>
+                <a href="{{ route('admin.settings.edit') }}" class="nav-link {{ request()->routeIs('admin.settings.*') ? 'active' : '' }}">
+                    <i class="bi bi-gear"></i> Settings
+                </a>
             </nav>
 
             <div class="sidebar-footer">
-                &copy; {{ now()->year }} {{ config('app.name', 'RFQMS') }}
+                &copy; {{ now()->year }} {{ \App\Models\Setting::companyName() }}
             </div>
         </aside>
 
@@ -93,9 +103,11 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-3">
-                    <span class="live-indicator" id="liveIndicator" data-state="live" role="status" title="This page updates by itself">
-                        <i class="live-dot" aria-hidden="true"></i><span class="live-label">Live</span>
-                    </span>
+                    @if (auth()->user()->preference('live_updates'))
+                        <span class="live-indicator" id="liveIndicator" data-state="live" role="status" title="This page updates by itself">
+                            <i class="live-dot" aria-hidden="true"></i><span class="live-label">Live</span>
+                        </span>
+                    @endif
                     <div class="dropdown">
                         <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>
@@ -104,6 +116,11 @@
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><h6 class="dropdown-header">{{ auth()->user()->email ?? '' }}</h6></li>
                             <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ route('admin.settings.edit') }}">
+                                    <i class="bi bi-gear me-1"></i> Settings
+                                </a>
+                            </li>
                             <li>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
@@ -119,10 +136,10 @@
 
             @php
                 // The page body is what live updates swap (see public/js/live.js),
-                // except on the pages for users, roles and permissions, which
-                // aren't live. Its hash lets a refresh tell whether anything
+                // except on the pages for users, roles, permissions and settings,
+                // which aren't live. Its hash lets a refresh tell whether anything
                 // in it actually changed.
-                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*');
+                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*');
                 $pageContent = $__env->yieldContent('content');
             @endphp
             <main class="page-body" id="live-main" data-live="{{ $liveBody ? 'on' : 'off' }}" data-live-hash="{{ md5($pageContent) }}">
@@ -146,7 +163,9 @@
     </div>
 
     @include('layouts._user_card')
-    @include('layouts._celebration')
+    @if (auth()->user()->preference('celebrations'))
+        @include('layouts._celebration')
+    @endif
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ asset('js/admin.js') }}?v={{ filemtime(public_path('js/admin.js')) }}"></script>
