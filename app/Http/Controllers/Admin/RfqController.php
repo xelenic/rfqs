@@ -47,7 +47,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'close', 'closePart']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'close', 'closePart']),
         ];
     }
 
@@ -751,6 +751,18 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
+     * Senior Operations rejects from their own second review — sends the
+     * RFQ (or, with a part, just that part) back to their own
+     * assignment/split step. With a part, just that one part goes back —
+     * see Rfq::rejectPartToStage() — otherwise the whole RFQ, which has to
+     * be at their review stage — see Rfq::rejectToStage().
+     */
+    public function rejectSeniorOps(Request $request, Rfq $rfq): RedirectResponse
+    {
+        return $this->reject($request, $rfq, 'senior_ops_review', 'Senior Operations');
+    }
+
+    /**
      * Head of Business Development approves one Sourcing part Senior
      * Operations has approved — without waiting for the rest of a split. The
      * RFQ escalates to GM Assistant once every part has been approved. See
@@ -800,41 +812,69 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Head of Business Development rejects — sends an earlier stage (Sourcing,
-     * Data Entry, or Senior Operations' own review) the RFQ back with a
-     * reason. With a part, just that one part goes back — see
-     * Rfq::rejectPartToStage() — otherwise the whole RFQ, which has to be at
-     * their review stage — see Rfq::rejectToStage().
+     * Head of Business Development rejects — sends the RFQ (or, with a
+     * part, just that part) back to an earlier stage with a reason. With a
+     * part, just that one part goes back — see Rfq::rejectPartToStage() —
+     * otherwise the whole RFQ, which has to be at their review stage — see
+     * Rfq::rejectToStage().
      */
     public function rejectHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
     {
+        return $this->reject($request, $rfq, 'head_of_bd_review', 'Head of Business Development');
+    }
+
+    /**
+     * General Manager rejects — sends the RFQ (or, with a part, just that
+     * part) back to an earlier stage with a reason, all the way back
+     * through GM Assistant. With a part, just that one part goes back —
+     * see Rfq::rejectPartToStage() — otherwise the whole RFQ, which has to
+     * be at their review stage — see Rfq::rejectToStage().
+     */
+    public function rejectGm(Request $request, Rfq $rfq): RedirectResponse
+    {
+        return $this->reject($request, $rfq, 'gm_review', 'General Manager');
+    }
+
+    /**
+     * Shared by rejectSeniorOps()/rejectHeadOfBd()/rejectGm(): the
+     * three stages that can send an RFQ back to an earlier one (see
+     * Rfq::REJECTABLE_STAGES) all work the same way, only $fromStage and
+     * $roleName differ.
+     */
+    private function reject(Request $request, Rfq $rfq, string $fromStage, string $roleName): RedirectResponse
+    {
         abort_unless(
-            $request->user()->hasAnyRole(['Head of Business Development', 'Admin']),
+            $request->user()->hasAnyRole([$roleName, 'Admin']),
             403,
-            'Only Head of Business Development can reject here.'
+            "Only {$roleName} can reject here."
         );
 
         $part = $request->filled('part') ? (int) $request->input('part') : null;
 
         if ($part === null) {
-            abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+            abort_unless($rfq->stage === $fromStage, 422, "This RFQ is not awaiting {$roleName} review.");
         } else {
             abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
-            abort_unless($rfq->partAwaitsHeadOfBdReview($part), 422, 'This part is not awaiting Head of Business Development review.');
+            $awaits = match ($fromStage) {
+                'senior_ops_review' => $rfq->partAwaitsSeniorOpsReview($part),
+                'head_of_bd_review' => $rfq->partAwaitsHeadOfBdReview($part),
+                'gm_review' => $rfq->partAwaitsGmApproval($part),
+            };
+            abort_unless($awaits, 422, "This part is not awaiting {$roleName} review.");
         }
 
         $validated = $request->validateWithBag('reject', [
-            'target_stage' => ['required', 'in:'.implode(',', Rfq::REJECT_TARGET_STAGES)],
+            'target_stage' => ['required', 'in:'.implode(',', Rfq::rejectTargetStages($fromStage))],
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
         if ($part === null) {
-            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user());
+            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user(), $fromStage);
 
             return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
         }
 
-        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $request->user());
+        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $request->user(), $fromStage);
 
         return redirect()->back()->with('status', "Sent {$rfq->partNumberLabel($part)} back to ".Rfq::stageLabel($validated['target_stage']).'.');
     }

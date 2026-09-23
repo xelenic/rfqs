@@ -236,8 +236,9 @@ it('sends a part back to Senior Operations\' review, leaving the rest as it was'
         // The RFQ isn't approved as a whole by Senior Operations any more.
         ->and($rfq->stage)->toBe('senior_ops_review')
         ->and($rfq->senior_ops_reviewed_at)->toBeNull()
-        ->and($rfq->head_of_bd_rejected_by)->toBe($head->id)
-        ->and($rfq->head_of_bd_reject_target_stage)->toBe('senior_ops_review')
+        ->and($rfq->rejected_by)->toBe($head->id)
+        ->and($rfq->reject_from_stage)->toBe('head_of_bd_review')
+        ->and($rfq->reject_target_stage)->toBe('senior_ops_review')
         // The rejection says which part it was about.
         ->and($comment->body)->toBe('Look again')
         ->and($comment->meta)->toBe(['stage' => 'Senior Operations (2nd review)', 'part' => 1, 'label' => 'RFQ1001-P1 of P2'])

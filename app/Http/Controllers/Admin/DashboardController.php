@@ -107,12 +107,14 @@ class DashboardController extends Controller
         $todayStart = now()->startOfDay();
         $since = fn (string $column) => Rfq::query()->where($column, '>=', $todayStart)->count();
 
-        // Each dated milestone: who did it, how it looks, and what to say.
+        // Each dated milestone: who did it, how it looks, and what to say —
+        // 'text' is either the fixed wording, or (rejected_at, sent back by
+        // whichever of the three stages it was) a closure given the RFQ.
         $milestones = [
             'created_at' => ['actor' => 'creator', 'icon' => 'bi-plus-circle', 'tone' => 'primary', 'text' => 'created'],
             'senior_ops_reviewed_at' => ['actor' => 'seniorOpsReviewedBy', 'icon' => 'bi-clipboard2-check', 'tone' => 'violet', 'text' => 'passed Senior Operations review'],
             'head_of_bd_approved_at' => ['actor' => 'headOfBdApprovedBy', 'icon' => 'bi-person-check', 'tone' => 'violet', 'text' => 'approved by Head of Business Development'],
-            'head_of_bd_rejected_at' => ['actor' => 'headOfBdRejectedBy', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'text' => 'sent back by Head of Business Development'],
+            'rejected_at' => ['actor' => 'rejectedBy', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'text' => fn (Rfq $rfq) => 'sent back by '.Rfq::stageLabel($rfq->reject_from_stage)],
             'gm_assistant_completed_at' => ['actor' => 'gmAssistantCompletedBy', 'icon' => 'bi-file-earmark-text', 'tone' => 'violet', 'text' => 'client details added by GM Assistant'],
             'gm_approved_at' => ['actor' => 'gmApprovedBy', 'icon' => 'bi-award', 'tone' => 'success', 'text' => 'approved by the General Manager — ready to close'],
             'bd_closed_at' => ['actor' => 'bdClosedBy', 'icon' => 'bi-flag-fill', 'tone' => 'success', 'text' => 'closed'],
@@ -134,7 +136,7 @@ class DashboardController extends Controller
                     'actor' => $rfq->{$milestone['actor']}?->name,
                     'icon' => $milestone['icon'],
                     'tone' => $milestone['tone'],
-                    'text' => $milestone['text'],
+                    'text' => is_callable($milestone['text']) ? $milestone['text']($rfq) : $milestone['text'],
                 ])
                 ->values())
             ->sortByDesc('at')
@@ -151,7 +153,7 @@ class DashboardController extends Controller
             'today' => [
                 'created' => $since('created_at'),
                 'approved' => $since('gm_approved_at'),
-                'sentBack' => $since('head_of_bd_rejected_at'),
+                'sentBack' => $since('rejected_at'),
                 'closed' => $since('bd_closed_at'),
             ],
             'feed' => $feed,

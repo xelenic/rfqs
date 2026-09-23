@@ -15,6 +15,23 @@
         default => 'RFQs',
     };
 
+    // The one shared reject modal (_reject_modal) works for whichever of the
+    // three review queues is showing — its route name and the stages it can
+    // send an RFQ back to (Rfq::rejectTargetStages()) both follow from which.
+    $rejectFromStage = match (true) {
+        $scopedToSeniorOpsReview => 'senior_ops_review',
+        $scopedToHeadOfBdReview => 'head_of_bd_review',
+        $scopedToGmReview => 'gm_review',
+        default => null,
+    };
+    $rejectRouteName = match ($rejectFromStage) {
+        'senior_ops_review' => 'admin.rfqs.reject-senior-ops',
+        'head_of_bd_review' => 'admin.rfqs.reject-head-of-bd',
+        'gm_review' => 'admin.rfqs.reject-gm',
+        default => null,
+    };
+    $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
+
     // Business Development can see that Sourcing/Operations assignment
     // exists on an RFQ, but the controls are blurred and inert for them —
     // that's a deliberate role-specific UI choice, not a permission gap.
@@ -206,8 +223,10 @@
                  its own (and only those: a part still with Sourcing or Data
                  Entry, or already approved, isn't listed). The RFQ escalates to
                  Head of Business Development once every part has been approved.
-                 An RFQ kept whole is one row. See RfqController::index()
-                 ($scopedToSeniorOpsReview) and Rfq::approveSeniorOpsPart(). --}}
+                 Rejecting sends it back to Senior Operations' own
+                 assignment/split step, to redo it. An RFQ kept whole is one row.
+                 See RfqController::index() ($scopedToSeniorOpsReview),
+                 Rfq::approveSeniorOpsPart() / rejectPartToStage(). --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -243,7 +262,8 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        {{-- Only this one part — see RfqController::approveSeniorOpsPart(). --}}
+                                        {{-- Only this one part — see
+                                             RfqController::approveSeniorOpsPart() and rejectSeniorOps(). --}}
                                         <form action="{{ route('admin.rfqs.approve-senior-ops-part', $rfq) }}" method="POST" class="d-inline"
                                               data-confirm="Approve {{ $rfq->partNumberLabel($assignee->pivot->part_number) }}?{{ $rfq->isSplit() ? ' The RFQ moves on to Head of Business Development once every part is approved.' : ' It moves on to Head of Business Development.' }}">
                                             @csrf
@@ -253,6 +273,14 @@
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
                                         </form>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}"
+                                                data-part="{{ $assignee->pivot->part_number }}"
+                                                data-label="{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -284,6 +312,12 @@
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
                                         </form>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endif
@@ -517,9 +551,11 @@
                  Assistant has finished adding client details/payment terms to,
                  each as it comes rather than once the whole RFQ has been.
                  Approving a part is on its own; the RFQ is ready for Business
-                 Development to close once every part has been approved. An RFQ
-                 kept whole is one row. See RfqController::index()
-                 ($scopedToGmReview), Rfq::approveGmPart(). --}}
+                 Development to close once every part has been approved.
+                 Rejecting sends it back to any earlier stage, all the way
+                 through GM Assistant. An RFQ kept whole is one row. See
+                 RfqController::index() ($scopedToGmReview),
+                 Rfq::approveGmPart() / rejectPartToStage(). --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -554,7 +590,8 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        {{-- Only this one part — see RfqController::approveGmPart(). --}}
+                                        {{-- Only this one part — see
+                                             RfqController::approveGmPart() and rejectGm(). --}}
                                         <form action="{{ route('admin.rfqs.approve-gm-part', $rfq) }}" method="POST" class="d-inline"
                                               data-confirm="Approve {{ $partLabel }}?{{ $rfq->isSplit() ? ' The RFQ moves on to Business Development to close once every part is approved.' : ' It moves on to Business Development to close.' }}">
                                             @csrf
@@ -564,6 +601,14 @@
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
                                         </form>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route('admin.rfqs.reject-gm', $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}"
+                                                data-part="{{ $assignee->pivot->part_number }}"
+                                                data-label="{{ $partLabel }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -594,6 +639,12 @@
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
                                         </form>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route('admin.rfqs.reject-gm', $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endif
@@ -987,8 +1038,8 @@
     @if ($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview))
         @include('admin.rfqs._complete_modal')
     @endif
-    @if ($scopedToHeadOfBdReview)
-        @include('admin.rfqs._reject_modal')
+    @if ($rejectFromStage)
+        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages])
     @endif
     @if ($scopedToGmAssistant)
         @include('admin.rfqs._gm_assistant_modal')
@@ -1011,14 +1062,14 @@
     {{-- A failed reject submission — reopen the modal with its action
          pointed back at the same RFQ (the form's action is set by JS per
          row, so there's nothing server-side to fall back on otherwise). --}}
-    @if ($errors->reject->any() && old('reject_rfq_id'))
+    @if ($rejectRouteName && $errors->reject->any() && old('reject_rfq_id'))
         @push('scripts')
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
                     var modalEl = document.getElementById('rejectRfqModal');
                     var form = document.getElementById('rejectRfqForm');
                     if (modalEl && form) {
-                        form.action = @json(route('admin.rfqs.reject-head-of-bd', ['rfq' => old('reject_rfq_id')]));
+                        form.action = @json(route($rejectRouteName, ['rfq' => old('reject_rfq_id')]));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

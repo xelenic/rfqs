@@ -98,12 +98,29 @@ class Rfq extends Model
     ];
 
     /**
-     * Stages Head of Business Development can reject an RFQ back to. See
-     * rejectToStage().
+     * Every stage, in pipeline order, that a reject can send an RFQ back
+     * to — from the very start (Senior Operations' own assignment/split
+     * step, to redo it or hand a part to someone else) through GM
+     * Assistant, just short of the General Manager's own review, which
+     * nothing rejects back to. Which of these a given reject-capable stage
+     * can actually use is whatever comes before its own position here —
+     * see rejectTargetStages().
      *
      * @var array<int, string>
      */
-    public const REJECT_TARGET_STAGES = ['sourcing', 'data_entry', 'senior_ops_review'];
+    public const REJECT_STAGE_ORDER = [
+        'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review',
+    ];
+
+    /**
+     * The stages that can reject an RFQ back to an earlier one — Senior
+     * Operations' second review, the Head of Business Development, and the
+     * General Manager. GM Assistant, the other stage in the chain, only
+     * ever forwards. See rejectTargetStages(), rejectToStage().
+     *
+     * @var array<int, string>
+     */
+    public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_review'];
 
     /**
      * activityTimeline() entry types belonging to the post-Data-Entry
@@ -117,7 +134,7 @@ class Rfq extends Model
      */
     public const APPROVAL_CHAIN_TIMELINE_TYPES = [
         'category_set', 'senior_ops_reviewed', 'head_of_bd_approved',
-        'head_of_bd_rejected', 'gm_assistant_completed', 'gm_approved', 'bd_closed',
+        'rejected', 'gm_assistant_completed', 'gm_approved', 'bd_closed',
     ];
 
     protected $fillable = [
@@ -137,10 +154,11 @@ class Rfq extends Model
         'senior_ops_reviewed_at',
         'head_of_bd_approved_by',
         'head_of_bd_approved_at',
-        'head_of_bd_rejected_by',
-        'head_of_bd_rejected_at',
-        'head_of_bd_reject_reason',
-        'head_of_bd_reject_target_stage',
+        'rejected_by',
+        'rejected_at',
+        'reject_reason',
+        'reject_from_stage',
+        'reject_target_stage',
         'client_details',
         'payment_terms',
         'gm_assistant_completed_by',
@@ -170,7 +188,7 @@ class Rfq extends Model
             'split_count' => 'integer',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
-            'head_of_bd_rejected_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'gm_assistant_completed_at' => 'datetime',
             'gm_approved_at' => 'datetime',
             'bd_closed_at' => 'datetime',
@@ -178,14 +196,32 @@ class Rfq extends Model
     }
 
     /**
+     * The stages $fromStage's own review can send an RFQ back to —
+     * everything earlier in REJECT_STAGE_ORDER. Senior Operations' second
+     * review only reaches back to their own assignment/split step; the
+     * Head of Business Development's review reaches back through Senior
+     * Operations'; the General Manager's reaches all the way back through
+     * GM Assistant. Empty for anything that isn't a REJECTABLE_STAGE.
+     *
+     * @return array<int, string>
+     */
+    public static function rejectTargetStages(string $fromStage): array
+    {
+        $index = array_search($fromStage, self::REJECT_STAGE_ORDER, true);
+
+        return $index === false ? [] : array_slice(self::REJECT_STAGE_ORDER, 0, $index);
+    }
+
+    /**
      * The human label for a stage value — used in the reject-target picker,
      * the activity timeline, and status messages. Covers both the stored
-     * `stage` values and the two implicit pre-Data-Entry "stages" Head of
-     * BD can reject back to.
+     * `stage` values and the two implicit pre-Data-Entry "stages" a reject
+     * can send an RFQ back to.
      */
     public static function stageLabel(?string $stage): string
     {
         return match ($stage) {
+            'operations' => 'Senior Operations (assignment)',
             'sourcing' => 'Sourcing',
             'data_entry' => 'Data Entry',
             'senior_ops_review' => 'Senior Operations (2nd review)',
@@ -336,12 +372,13 @@ class Rfq extends Model
     }
 
     /**
-     * The Head of Business Development member who last rejected this RFQ
-     * back to an earlier stage. See rejectToStage().
+     * Whoever last rejected this RFQ back to an earlier stage — Senior
+     * Operations, the Head of Business Development, or the General
+     * Manager; which one is reject_from_stage. See rejectToStage().
      */
-    public function headOfBdRejectedBy(): BelongsTo
+    public function rejectedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'head_of_bd_rejected_by');
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 
     /**
@@ -910,7 +947,7 @@ class Rfq extends Model
             ]);
         $this->load('assignees');
 
-        $this->update([
+        $this->update($this->clearedRejectRecord() + [
             'senior_ops_reviewed_by' => $reviewer->id,
             'senior_ops_reviewed_at' => now(),
             'stage' => 'head_of_bd_review',
@@ -993,103 +1030,77 @@ class Rfq extends Model
             ]);
         $this->load('assignees');
 
-        $this->update([
+        $this->update($this->clearedRejectRecord() + [
             'head_of_bd_approved_by' => $approver->id,
             'head_of_bd_approved_at' => now(),
-            'head_of_bd_rejected_by' => null,
-            'head_of_bd_rejected_at' => null,
-            'head_of_bd_reject_reason' => null,
-            'head_of_bd_reject_target_stage' => null,
             'stage' => 'gm_assistant',
         ]);
     }
 
     /**
-     * Head of Business Development rejects — sends the RFQ back to an
-     * earlier stage (Sourcing, Data Entry, or Senior Operations' own
-     * review) with a reason, undoing whatever downstream approval had
-     * already happened so it has to be earned again:
+     * The rfqs-table columns — the same names exist on the rfq_user pivot,
+     * see RfqAssignment::casts() — that record a stage's own approval or
+     * completion. Used to work out what a reject to a given stage has to
+     * clear: that stage's own marker and everything recorded after it,
+     * since nothing later can still stand once an earlier one is being
+     * redone. 'operations' and 'sourcing' aren't here — rejecting to
+     * either reopens the part itself rather than just clearing a marker,
+     * see rejectToStage().
      *
-     * - Sourcing: every assignee's split reopens — reuses
-     *   returnSourcingPart() per assignee unchanged, exactly as if Data
-     *   Entry had sent each of them back individually.
-     * - Data Entry: lighter reopen — only each assignee's own Data Entry
-     *   completion clears (their Sourcing work stays done), so the RFQ
-     *   reappears in Data Entry's existing "By Sourcing" queue untouched.
-     * - Senior Operations' review: nothing further to reopen below it —
-     *   every part is up for their review again.
-     *
-     * Also posts a comment recording the rejection, same convention as
-     * returnSourcingPart().
-     *
-     * Caller is responsible for verifying stage === 'head_of_bd_review' and
-     * $targetStage is one of REJECT_TARGET_STAGES.
+     * @var array<string, array<int, string>>
      */
-    public function rejectToStage(string $targetStage, string $reason, User $rejectedBy): void
+    private const REJECT_MARKER_COLUMNS = [
+        'data_entry' => ['data_entry_completed_at', 'data_entry_completed_by'],
+        'senior_ops_review' => ['senior_ops_reviewed_at', 'senior_ops_reviewed_by'],
+        'head_of_bd_review' => ['head_of_bd_approved_at', 'head_of_bd_approved_by'],
+        'gm_assistant' => ['gm_assistant_completed_at', 'gm_assistant_completed_by'],
+        'gm_review' => ['gm_approved_at', 'gm_approved_by'],
+    ];
+
+    /**
+     * The columns (rfqs-table mirror, and identically-named rfq_user pivot
+     * columns) a reject to $targetStage clears — that stage's own marker
+     * and every one after it, right through the General Manager's. See
+     * REJECT_MARKER_COLUMNS.
+     *
+     * @return array<int, string>
+     */
+    private static function markerColumnsFrom(string $targetStage): array
     {
-        // Whatever it's sent back to, every part's approvals — Senior
-        // Operations', the Head's own, and any that had got as far as GM
-        // Assistant or the General Manager — go with it; they have to be
-        // earned again. A part Business Development has already closed is
-        // done with, and left as it is.
-        DB::table('rfq_user')->where('rfq_id', $this->id)->whereNull('bd_closed_at')->update([
-            'senior_ops_reviewed_at' => null,
-            'senior_ops_reviewed_by' => null,
-            'head_of_bd_approved_at' => null,
-            'head_of_bd_approved_by' => null,
-            'gm_assistant_completed_at' => null,
-            'gm_assistant_completed_by' => null,
-            'gm_approved_at' => null,
-            'gm_approved_by' => null,
-        ]);
-        $this->load('assignees');
+        $index = array_search($targetStage, self::REJECT_STAGE_ORDER, true);
+        $stages = $index === false ? [] : array_slice(self::REJECT_STAGE_ORDER, $index);
 
-        $this->update([
-            'senior_ops_reviewed_by' => null,
-            'senior_ops_reviewed_at' => null,
-            'head_of_bd_approved_by' => null,
-            'head_of_bd_approved_at' => null,
-            'head_of_bd_rejected_by' => $rejectedBy->id,
-            'head_of_bd_rejected_at' => now(),
-            'head_of_bd_reject_reason' => $reason,
-            'head_of_bd_reject_target_stage' => $targetStage,
-            'stage' => $targetStage === 'senior_ops_review' ? 'senior_ops_review' : null,
-        ]);
-
-        if ($targetStage === 'sourcing') {
-            foreach ($this->assignees->reject(fn (User $assignee) => $assignee->pivot->isBdClosed()) as $assignee) {
-                $this->returnSourcingPart($assignee->pivot->part_number, $reason, $rejectedBy);
-            }
-        } elseif ($targetStage === 'data_entry') {
-            DB::table('rfq_user')->where('rfq_id', $this->id)->whereNull('bd_closed_at')->update([
-                'data_entry_completed_at' => null,
-                'data_entry_completed_by' => null,
-            ]);
-            $this->load('assignees');
-            $this->update([
-                'data_entry_completed_by' => null,
-                'data_entry_completed_at' => null,
-            ]);
-        }
-
-        $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
+        return collect($stages)->flatMap(fn (string $stage) => self::REJECT_MARKER_COLUMNS[$stage] ?? [])->all();
     }
 
     /**
-     * Head of Business Development rejects one part on its own — sends just
-     * that part back to an earlier stage (Sourcing, Data Entry, or Senior
-     * Operations' own review) with a reason, the same three places
-     * rejectToStage() sends a whole RFQ. Every other part, and any approval
-     * already given for it, is left as it was; only this part's approvals go,
-     * and with the part no longer approved by Senior Operations the RFQ as a
-     * whole no longer is either, so it drops back to wherever its parts now
-     * leave it. Also posts a comment recording the rejection, naming the
-     * part.
+     * The fields that retire a pending "sent back" record — merged into a
+     * forward-moving approval's own update() (completeSeniorOpsReview(),
+     * approveByHeadOfBd(), approveByGm()), since reaching that far again
+     * means whatever it was rejected over, by whichever of the three, no
+     * longer needs saying.
      *
-     * Caller is responsible for verifying partAwaitsHeadOfBdReview() and that
-     * $targetStage is one of REJECT_TARGET_STAGES.
+     * @return array<string, null>
      */
-    public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy): void
+    private function clearedRejectRecord(): array
+    {
+        return [
+            'rejected_by' => null,
+            'rejected_at' => null,
+            'reject_reason' => null,
+            'reject_from_stage' => null,
+            'reject_target_stage' => null,
+        ];
+    }
+
+    /**
+     * Frees one Sourcing part for Senior Operations to redo the assignment
+     * on — detached rather than merely reopened, so it can go to whoever
+     * they choose (the same person again, or someone else), exactly like a
+     * still-open part of a partly-assigned split. A no-op if nobody holds
+     * it. See rejectToStage()/rejectPartToStage()'s 'operations' target.
+     */
+    private function freePart(int $part): void
     {
         $assignee = $this->assigneeForPart($part);
 
@@ -1097,27 +1108,112 @@ class Rfq extends Model
             return;
         }
 
-        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
-            'senior_ops_reviewed_at' => null,
-            'senior_ops_reviewed_by' => null,
-            'head_of_bd_approved_at' => null,
-            'head_of_bd_approved_by' => null,
-            'gm_assistant_completed_at' => null,
-            'gm_assistant_completed_by' => null,
-            'gm_approved_at' => null,
-            'gm_approved_by' => null,
-            'bd_closed_at' => null,
-            'bd_closed_by' => null,
-        ]);
+        $this->assignees()->wherePivot('part_number', $part)->detach($assignee->id);
+        $this->load('assignees');
+    }
+
+    /**
+     * Senior Operations' second review, the Head of Business Development, or
+     * the General Manager rejects — sends the whole RFQ back to an earlier
+     * stage with a reason, undoing whatever came after that stage so it has
+     * to be earned again:
+     *
+     * - Senior Operations' own assignment/split step ('operations'): every
+     *   open Sourcing part is freed for them to redo the assignment — see
+     *   freePart().
+     * - Sourcing: every assignee's split reopens in place instead — reuses
+     *   returnSourcingPart() per assignee unchanged, exactly as if Data
+     *   Entry had sent each of them back individually.
+     * - Data Entry, Senior Operations' review, or GM Assistant: that
+     *   stage's own approval, and everything recorded after it, is
+     *   cleared — see markerColumnsFrom().
+     *
+     * A part Business Development has already closed is done with, and
+     * left as it is throughout. Also posts a comment recording the
+     * rejection, same convention as returnSourcingPart().
+     *
+     * Caller is responsible for verifying $fromStage is one of
+     * REJECTABLE_STAGES, stage === $fromStage, and $targetStage is one of
+     * rejectTargetStages($fromStage).
+     */
+    public function rejectToStage(string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
+    {
+        $columns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
+
+        DB::table('rfq_user')->where('rfq_id', $this->id)->whereNull('bd_closed_at')->update($columns);
         $this->load('assignees');
 
-        if ($targetStage === 'sourcing') {
+        $this->update($columns + [
+            'rejected_by' => $rejectedBy->id,
+            'rejected_at' => now(),
+            'reject_reason' => $reason,
+            'reject_from_stage' => $fromStage,
+            'reject_target_stage' => $targetStage,
+            'stage' => in_array($targetStage, self::STAGES, true) ? $targetStage : null,
+        ]);
+
+        $openParts = $this->assignees->reject(fn (User $assignee) => $assignee->pivot->isBdClosed());
+
+        if ($targetStage === 'operations') {
+            foreach ($openParts as $assignee) {
+                $this->freePart($assignee->pivot->part_number);
+            }
+            if ($this->isWithDataEntry()) {
+                $this->update(['sourcing_completed_by' => null, 'sourcing_completed_at' => null]);
+            }
+        } elseif ($targetStage === 'sourcing') {
+            foreach ($openParts as $assignee) {
+                $this->returnSourcingPart($assignee->pivot->part_number, $reason, $rejectedBy);
+            }
+        }
+
+        $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
+    }
+
+    /**
+     * Senior Operations' second review, the Head of Business Development, or
+     * the General Manager rejects one part on its own — sends just that part
+     * back to an earlier stage with a reason, the same stages
+     * rejectToStage() sends a whole RFQ to. Every other part, and any
+     * approval already given for it, is left as it was; only this part's
+     * approvals go, and with it no longer through $targetStage the RFQ as a
+     * whole no longer is either, so it drops back to wherever its parts now
+     * leave it. Also posts a comment recording the rejection, naming the
+     * part.
+     *
+     * Caller is responsible for verifying $fromStage is one of
+     * REJECTABLE_STAGES, the part actually awaits $fromStage's review, and
+     * $targetStage is one of rejectTargetStages($fromStage).
+     */
+    public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
+    {
+        if ($targetStage === 'operations') {
+            if (! $this->assigneeForPart($part)) {
+                return;
+            }
+
+            $this->freePart($part);
+
+            if ($this->isWithDataEntry()) {
+                $this->update(['sourcing_completed_by' => null, 'sourcing_completed_at' => null]);
+            }
+        } elseif ($targetStage === 'sourcing') {
+            if (! $this->assigneeForPart($part)) {
+                return;
+            }
+
             $this->returnSourcingPart($part, $reason, $rejectedBy);
-        } elseif ($targetStage === 'data_entry') {
-            $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
-                'data_entry_completed_at' => null,
-                'data_entry_completed_by' => null,
-            ]);
+        } else {
+            $assignee = $this->assigneeForPart($part);
+
+            if (! $assignee) {
+                return;
+            }
+
+            $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot(
+                $assignee->id,
+                array_fill_keys(self::markerColumnsFrom($targetStage), null)
+            );
             $this->load('assignees');
         }
 
@@ -1125,15 +1221,16 @@ class Rfq extends Model
         // that isn't means still the pipeline before it.
         $allThroughDataEntry = $this->allDataEntryPartsCompleted();
 
-        $this->update([
-            'senior_ops_reviewed_by' => null,
-            'senior_ops_reviewed_at' => null,
-            'head_of_bd_rejected_by' => $rejectedBy->id,
-            'head_of_bd_rejected_at' => now(),
-            'head_of_bd_reject_reason' => $reason,
-            'head_of_bd_reject_target_stage' => $targetStage,
-            'data_entry_completed_by' => $allThroughDataEntry ? $this->data_entry_completed_by : null,
-            'data_entry_completed_at' => $allThroughDataEntry ? $this->data_entry_completed_at : null,
+        $mirrorColumns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
+        $mirrorColumns['data_entry_completed_by'] = $allThroughDataEntry ? $this->data_entry_completed_by : null;
+        $mirrorColumns['data_entry_completed_at'] = $allThroughDataEntry ? $this->data_entry_completed_at : null;
+
+        $this->update($mirrorColumns + [
+            'rejected_by' => $rejectedBy->id,
+            'rejected_at' => now(),
+            'reject_reason' => $reason,
+            'reject_from_stage' => $fromStage,
+            'reject_target_stage' => $targetStage,
             'stage' => $allThroughDataEntry ? 'senior_ops_review' : null,
         ]);
 
@@ -1337,7 +1434,7 @@ class Rfq extends Model
             ]);
         $this->load('assignees');
 
-        $this->update([
+        $this->update($this->clearedRejectRecord() + [
             'gm_approved_by' => $approver->id,
             'gm_approved_at' => now(),
             'stage' => 'bd_closing',
@@ -1634,13 +1731,13 @@ class Rfq extends Model
             ];
         }
 
-        if ($this->head_of_bd_rejected_at) {
+        if ($this->rejected_at) {
             $entries[] = [
-                'type' => 'head_of_bd_rejected',
-                'at' => $this->head_of_bd_rejected_at,
-                'actor' => $this->headOfBdRejectedBy,
+                'type' => 'rejected',
+                'at' => $this->rejected_at,
+                'actor' => $this->rejectedBy,
                 'related' => null,
-                'detail' => 'Returned to '.self::stageLabel($this->head_of_bd_reject_target_stage).': '.$this->head_of_bd_reject_reason,
+                'detail' => 'By '.self::stageLabel($this->reject_from_stage).' — returned to '.self::stageLabel($this->reject_target_stage).': '.$this->reject_reason,
                 'comment' => null,
             ];
         }

@@ -36,8 +36,10 @@
 
     // Senior Operations' second review — only shown while the RFQ is
     // actually sitting in that stage, same as it only appears on the
-    // Review queue while it's there. See Rfq::completeSeniorOpsReview().
+    // Review queue while it's there. See Rfq::completeSeniorOpsReview() /
+    // rejectToStage().
     $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->stage === 'senior_ops_review';
+    $canRejectSeniorOps = $canApproveSeniorOpsReview;
 
     // Head of Business Development's own review — same "only while it's
     // actually theirs to decide" rule. See Rfq::approveByHeadOfBd() /
@@ -49,8 +51,27 @@
     $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->stage === 'gm_assistant';
 
     // General Manager's final approval — same rule again. See
-    // Rfq::approveByGm().
+    // Rfq::approveByGm() / rejectToStage().
     $canApproveGm = auth()->user()->hasAnyRole(['General Manager', 'Admin']) && $rfq->stage === 'gm_review';
+    $canRejectGm = $canApproveGm;
+
+    // The one shared reject modal (_reject_modal) works for whichever of
+    // the three is theirs to decide right now — its route name and the
+    // stages it can send the RFQ back to (Rfq::rejectTargetStages()) both
+    // follow from which.
+    $rejectFromStage = match (true) {
+        $canRejectSeniorOps => 'senior_ops_review',
+        $canDecideHeadOfBdReview => 'head_of_bd_review',
+        $canRejectGm => 'gm_review',
+        default => null,
+    };
+    $rejectRouteName = match ($rejectFromStage) {
+        'senior_ops_review' => 'admin.rfqs.reject-senior-ops',
+        'head_of_bd_review' => 'admin.rfqs.reject-head-of-bd',
+        'gm_review' => 'admin.rfqs.reject-gm',
+        default => null,
+    };
+    $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
 
     // Business Development's closing action — the true end of the
     // lifecycle. See Rfq::closeOut().
@@ -176,11 +197,16 @@
         $closedBy = $part?->bd_closed_at ? $part->bdClosedBy : $rfq->bdClosedBy;
         $dataEntryDone = $part ? $part->data_entry_completed_at !== null : $stepDone['data_entry'];
 
-        // Sent back by the Head: on every branch when it was the whole RFQ,
-        // on just the part's own when it was one part.
-        $headRejected = $rfq->head_of_bd_rejected_at !== null
-            && $headAt === null
+        // Sent back from here — Senior Operations' second review, the Head,
+        // or the General Manager — and not yet redone: on every branch when
+        // it was the whole RFQ, on just the part's own when it was one part.
+        $rejectedHere = fn (string $stage, $doneAt) => $rfq->reject_from_stage === $stage
+            && $rfq->rejected_at !== null
+            && $doneAt === null
             && ($part === null || $latestRejection === null || $latestRejection->concernsPart($part->part_number));
+        $seniorOpsRejected = $rejectedHere('senior_ops_review', $seniorOpsAt);
+        $headRejected = $rejectedHere('head_of_bd_review', $headAt);
+        $gmRejected = $rejectedHere('gm_review', $gmAt);
 
         $closed = [
             'name' => 'Closed',
@@ -197,10 +223,12 @@
             'name' => 'General Manager',
             'step' => 'gm_review',
             'rfq_number' => $rfqNumber,
-            'meta' => $gmAt
-                ? ['Approved by '.$maskIfBlurred($gmBy?->name, $restrictSourcingView), $gmAt->format('M d, Y g:i A')]
-                : [$assistantAt !== null ? 'Awaiting approval' : 'Not yet reached'],
-            'state' => $nodeState($gmAt !== null, $assistantAt !== null && $gmAt === null),
+            'meta' => match (true) {
+                $gmAt !== null => ['Approved by '.$maskIfBlurred($gmBy?->name, $restrictSourcingView), $gmAt->format('M d, Y g:i A')],
+                $gmRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
+                default => [$assistantAt !== null ? 'Awaiting approval' : 'Not yet reached'],
+            },
+            'state' => $nodeState($gmAt !== null, $assistantAt !== null && $gmAt === null, $gmRejected),
             'children' => [$closed],
         ];
 
@@ -221,7 +249,7 @@
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
                 $headAt !== null => ['Approved by '.$maskIfBlurred($headBy?->name, $restrictSourcingView), $headAt->format('M d, Y g:i A')],
-                $headRejected => ['Rejected by '.$maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage)],
+                $headRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
                 default => [$seniorOpsAt !== null ? 'Awaiting review' : 'Not yet reached'],
             },
             'state' => $nodeState($headAt !== null, $seniorOpsAt !== null && $headAt === null, $headRejected),
@@ -232,10 +260,12 @@
             'name' => 'Senior Operations Approval',
             'step' => 'senior_ops',
             'rfq_number' => $rfqNumber,
-            'meta' => $seniorOpsAt
-                ? [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->format('M d, Y g:i A')]
-                : [$dataEntryDone ? 'Awaiting review' : 'Not yet reached'],
-            'state' => $nodeState($seniorOpsAt !== null, $dataEntryDone && $seniorOpsAt === null),
+            'meta' => match (true) {
+                $seniorOpsAt !== null => [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->format('M d, Y g:i A')],
+                $seniorOpsRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
+                default => [$dataEntryDone ? 'Awaiting review' : 'Not yet reached'],
+            },
+            'state' => $nodeState($seniorOpsAt !== null, $dataEntryDone && $seniorOpsAt === null, $seniorOpsRejected),
             'children' => [$headOfBd],
         ];
     };
@@ -363,6 +393,12 @@
                         <i class="bi bi-check2-circle"></i> Approve
                     </button>
                 </form>
+                <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                        data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                        data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reject
+                </button>
             @endif
             @if ($canDecideHeadOfBdReview)
                 <form action="{{ route('admin.rfqs.approve-head-of-bd', $rfq) }}" method="POST"
@@ -397,6 +433,12 @@
                         <i class="bi bi-check2-circle"></i> Approve
                     </button>
                 </form>
+                <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                        data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                        data-action="{{ route('admin.rfqs.reject-gm', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reject
+                </button>
             @endif
             @if ($canCloseRfq)
                 <form action="{{ route('admin.rfqs.close', $rfq) }}" method="POST"
@@ -659,7 +701,34 @@
                                 <dd>{{ $rfq->senior_ops_reviewed_at->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
-                    @else
+                    @endif
+                    @if ($rfq->reject_from_stage === 'senior_ops_review' && $rfq->rejected_at && ! $rfq->senior_ops_reviewed_at)
+                        {{-- The latest thing sent back, and which part it was if it was one. --}}
+                        <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
+                            <div>
+                                <dt>Rejected by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Rejected at</dt>
+                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                            @if ($latestRejection?->meta['label'] ?? null)
+                                <div>
+                                    <dt>Part</dt>
+                                    <dd>{{ $latestRejection->meta['label'] }}</dd>
+                                </div>
+                            @endif
+                            <div>
+                                <dt>Returned to</dt>
+                                <dd>{{ \App\Models\Rfq::stageLabel($rfq->reject_target_stage) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Reason</dt>
+                                <dd>{{ $rfq->reject_reason }}</dd>
+                            </div>
+                        </dl>
+                    @elseif (! $rfq->isSplit() && ! $rfq->senior_ops_reviewed_at)
                         <p class="text-muted-soft mb-0">{{ $stepDone['data_entry'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
                     @endif
                 </div>
@@ -679,16 +748,16 @@
                             </div>
                         </dl>
                     @endif
-                    @if ($rfq->head_of_bd_rejected_at && ! $rfq->head_of_bd_approved_at)
+                    @if ($rfq->reject_from_stage === 'head_of_bd_review' && $rfq->rejected_at && ! $rfq->head_of_bd_approved_at)
                         {{-- The latest thing sent back, and which part it was if it was one. --}}
                         <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
                             <div>
                                 <dt>Rejected by</dt>
-                                <dd>{{ $maskIfBlurred($rfq->headOfBdRejectedBy?->name, $restrictSourcingView) }}</dd>
+                                <dd>{{ $maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView) }}</dd>
                             </div>
                             <div>
                                 <dt>Rejected at</dt>
-                                <dd>{{ $rfq->head_of_bd_rejected_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
                             </div>
                             @if ($latestRejection?->meta['label'] ?? null)
                                 <div>
@@ -698,11 +767,11 @@
                             @endif
                             <div>
                                 <dt>Returned to</dt>
-                                <dd>{{ \App\Models\Rfq::stageLabel($rfq->head_of_bd_reject_target_stage) }}</dd>
+                                <dd>{{ \App\Models\Rfq::stageLabel($rfq->reject_target_stage) }}</dd>
                             </div>
                             <div>
                                 <dt>Reason</dt>
-                                <dd>{{ $rfq->head_of_bd_reject_reason }}</dd>
+                                <dd>{{ $rfq->reject_reason }}</dd>
                             </div>
                         </dl>
                     @elseif (! $rfq->isSplit() && ! $rfq->head_of_bd_approved_at)
@@ -752,7 +821,34 @@
                                 <dd>{{ $rfq->gm_approved_at->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
-                    @else
+                    @endif
+                    @if ($rfq->reject_from_stage === 'gm_review' && $rfq->rejected_at && ! $rfq->gm_approved_at)
+                        {{-- The latest thing sent back, and which part it was if it was one. --}}
+                        <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
+                            <div>
+                                <dt>Rejected by</dt>
+                                <dd>{{ $maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Rejected at</dt>
+                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
+                            </div>
+                            @if ($latestRejection?->meta['label'] ?? null)
+                                <div>
+                                    <dt>Part</dt>
+                                    <dd>{{ $latestRejection->meta['label'] }}</dd>
+                                </div>
+                            @endif
+                            <div>
+                                <dt>Returned to</dt>
+                                <dd>{{ \App\Models\Rfq::stageLabel($rfq->reject_target_stage) }}</dd>
+                            </div>
+                            <div>
+                                <dt>Reason</dt>
+                                <dd>{{ $rfq->reject_reason }}</dd>
+                            </div>
+                        </dl>
+                    @elseif (! $rfq->isSplit() && ! $rfq->gm_approved_at)
                         <p class="text-muted-soft mb-0">{{ $stepDone['gm_assistant'] ? 'Awaiting approval.' : 'Not yet reached.' }}</p>
                     @endif
                 </div>
@@ -997,8 +1093,8 @@
     @if ($myOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty())
         @include('admin.rfqs._complete_modal')
     @endif
-    @if ($canDecideHeadOfBdReview)
-        @include('admin.rfqs._reject_modal')
+    @if ($rejectFromStage)
+        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages])
     @endif
     @if ($canSubmitGmAssistantDetails)
         @include('admin.rfqs._gm_assistant_modal')
@@ -1017,14 +1113,14 @@
         @endpush
     @endif
 
-    @if ($canDecideHeadOfBdReview && $errors->reject->any())
+    @if ($rejectRouteName && $errors->reject->any())
         @push('scripts')
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
                     var modalEl = document.getElementById('rejectRfqModal');
                     var form = document.getElementById('rejectRfqForm');
                     if (modalEl && form) {
-                        form.action = @json(route('admin.rfqs.reject-head-of-bd', $rfq));
+                        form.action = @json(route($rejectRouteName, $rfq));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

@@ -94,14 +94,14 @@ it('summarises today only', function () {
     // Yesterday's — none of it counts.
     Rfq::factory()->create([
         'created_at' => $yesterday, 'gm_approved_at' => $yesterday,
-        'head_of_bd_rejected_at' => $yesterday, 'bd_closed_at' => $yesterday,
+        'rejected_at' => $yesterday, 'bd_closed_at' => $yesterday,
         'status' => 'Completed', 'stage' => 'closed',
     ]);
 
     // Today's.
     Rfq::factory()->count(2)->create();
     Rfq::factory()->create(['created_at' => $yesterday, 'gm_approved_at' => now()->subHour(), 'stage' => 'bd_closing']);
-    Rfq::factory()->create(['created_at' => $yesterday, 'head_of_bd_rejected_at' => now()->subHour()]);
+    Rfq::factory()->create(['created_at' => $yesterday, 'rejected_at' => now()->subHour()]);
     Rfq::factory()->create(['created_at' => $yesterday, 'bd_closed_at' => now()->subHours(2), 'status' => 'Completed', 'stage' => 'closed']);
 
     businessDevelopmentDashboard()->assertViewHas('overview', function (array $overview) {

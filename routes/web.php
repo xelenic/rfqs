@@ -45,12 +45,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/complete-data-entry', [RfqController::class, 'completeDataEntry'])->name('rfqs.complete-data-entry');
     Route::patch('rfqs/{rfq}/complete-senior-ops-review', [RfqController::class, 'completeSeniorOpsReview'])->name('rfqs.complete-senior-ops-review');
     Route::patch('rfqs/{rfq}/approve-senior-ops-part', [RfqController::class, 'approveSeniorOpsPart'])->name('rfqs.approve-senior-ops-part');
+    Route::patch('rfqs/{rfq}/reject-senior-ops', [RfqController::class, 'rejectSeniorOps'])->name('rfqs.reject-senior-ops');
     Route::patch('rfqs/{rfq}/approve-head-of-bd', [RfqController::class, 'approveHeadOfBd'])->name('rfqs.approve-head-of-bd');
     Route::patch('rfqs/{rfq}/approve-head-of-bd-part', [RfqController::class, 'approveHeadOfBdPart'])->name('rfqs.approve-head-of-bd-part');
     Route::patch('rfqs/{rfq}/reject-head-of-bd', [RfqController::class, 'rejectHeadOfBd'])->name('rfqs.reject-head-of-bd');
     Route::patch('rfqs/{rfq}/gm-assistant-details', [RfqController::class, 'submitGmAssistantDetails'])->name('rfqs.gm-assistant-details');
     Route::patch('rfqs/{rfq}/approve-gm', [RfqController::class, 'approveGm'])->name('rfqs.approve-gm');
     Route::patch('rfqs/{rfq}/approve-gm-part', [RfqController::class, 'approveGmPart'])->name('rfqs.approve-gm-part');
+    Route::patch('rfqs/{rfq}/reject-gm', [RfqController::class, 'rejectGm'])->name('rfqs.reject-gm');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);

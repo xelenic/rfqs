@@ -72,7 +72,9 @@ it('lists each ready part of an RFQ separately, leaving out the ones with Sourci
 
     $html = test()->actingAs($ops)->get(reviewUrl())->assertOk()->getContent();
 
-    expect(substr_count($html, 'name="part" value="'))->toBe(2)
+    // Each ready part's own row has a numbered one; the shared reject
+    // modal's own hidden "part" field (blank until a row sets it) isn't one.
+    expect(preg_match_all('/name="part" value="\d+"/', $html))->toBe(2)
         ->and($html)->toContain('RFQ1001-P2 of P6')
         ->toContain('RFQ1001-P3 of P6')
         ->not->toContain('RFQ1001-P1 of P6')

@@ -1,12 +1,14 @@
 {{--
-    Reject modal — Head of Business Development sends an RFQ, or just one part
-    of it, back to an earlier stage with a reason. Shared across the index
-    (list) page, populated per-row via JS, see public/js/admin.js
+    Reject modal — Senior Operations (their own second review), the Head of
+    Business Development, or the General Manager sends an RFQ, or just one
+    part of it, back to an earlier stage with a reason. Shared across the
+    index (list) page, populated per-row via JS, see public/js/admin.js
     (.js-reject-rfq).
 
-    Expects: nothing extra — Rfq::REJECT_TARGET_STAGES/stageLabel() are
-    static, and the form's action, the part (none, for a whole RFQ) and its
-    label are set per-row by JS.
+    Expects: $rejectTargetStages — which of Rfq::REJECT_STAGE_ORDER this
+    page's own role can use, from Rfq::rejectTargetStages($fromStage); the
+    form's action, the part (none, for a whole RFQ) and its label are set
+    per-row by JS.
 --}}
 @php
     $isFailedReject = $errors->reject->any();
@@ -39,7 +41,7 @@
                     <div class="mb-3">
                         <label for="reject-target-stage" class="form-label">Send back to</label>
                         <select name="target_stage" id="reject-target-stage" class="form-select @error('target_stage', 'reject') is-invalid @enderror" required>
-                            @foreach (\App\Models\Rfq::REJECT_TARGET_STAGES as $stage)
+                            @foreach ($rejectTargetStages as $stage)
                                 <option value="{{ $stage }}" {{ old('target_stage') === $stage ? 'selected' : '' }}>
                                     {{ \App\Models\Rfq::stageLabel($stage) }}
                                 </option>

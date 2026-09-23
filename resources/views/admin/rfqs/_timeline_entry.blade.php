@@ -29,7 +29,7 @@
         'category_set' => ['bi-tag', 'secondary', 'Category Set'],
         'senior_ops_reviewed' => ['bi-clipboard2-check', 'success', 'Approved by Senior Operations (2nd review)'],
         'head_of_bd_approved' => ['bi-check-circle-fill', 'success', 'Approved by Head of Business Development'],
-        'head_of_bd_rejected' => ['bi-arrow-counterclockwise', 'danger', 'Rejected by Head of Business Development'],
+        'rejected' => ['bi-arrow-counterclockwise', 'danger', 'Rejected'],
         'gm_assistant_completed' => ['bi-file-earmark-text', 'info', 'Client Details Added'],
         'gm_approved' => ['bi-award', 'success', 'Approved by General Manager'],
         'bd_closed' => ['bi-flag-fill', 'success', 'RFQ Closed'],
@@ -37,9 +37,9 @@
         default => ['bi-dot', 'comment', ''],
     };
 
-    // head_of_bd_rejected's detail already reads "Returned to X: reason" —
-    // give it the same visual weight as sourcing_returned's reason.
-    $detailClass = $entry['type'] === 'head_of_bd_rejected' ? 'text-danger' : 'text-muted-soft';
+    // rejected's detail already reads "By X — returned to Y: reason" — give
+    // it the same visual weight as sourcing_returned's reason.
+    $detailClass = $entry['type'] === 'rejected' ? 'text-danger' : 'text-muted-soft';
 
     // Same blur rules as the Progress card above: Sourcing never sees who
     // created or routed the RFQ (unconditional — that's never "you"), and
