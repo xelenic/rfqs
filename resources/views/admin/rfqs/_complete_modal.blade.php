@@ -5,8 +5,10 @@
     the action by JS when it opens (see admin.js, .js-complete and
     _complete_button.blade.php). It asks for a comment for whoever's next in
     line, posted to the RFQ's thread along with the action — there's no
-    separate comment box in the quick-detail modal. See
-    RfqController::completeSourcing(), completeDataEntry() and returnSourcing().
+    separate comment box in the quick-detail modal. Admin also gets a "Done by"
+    here — Data Entry's members for Data Entry's actions, the part's assigned
+    member for a Sourcing Mark Complete. See RfqController::completeSourcing(),
+    completeDataEntry() and returnSourcing().
 --}}
 <div class="modal fade" id="completeModal" tabindex="-1" aria-labelledby="completeModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -17,6 +19,7 @@
             <input type="hidden" name="return_to" value="">
             <input type="hidden" name="redirect_status" value="">
             <input type="hidden" name="redirect_view" value="">
+            <input type="hidden" name="redirect_role" value="">
 
             <div class="modal-header">
                 <div>
@@ -42,6 +45,24 @@
                     <span class="text-nowrap" id="complete-count">0 / 2000</span>
                 </div>
                 <div class="text-danger small mt-2 d-none" id="complete-error" role="alert"></div>
+
+                {{-- Admin's "Done by" — JS shows whichever one the button that
+                     opened this asks for (data-actor-role) and lets only that
+                     one be sent. Data Entry's actions pick from its members; a
+                     Sourcing Mark Complete names the part's assigned member,
+                     filled in from the button. --}}
+                @if (auth()->user()->hasRole('Admin'))
+                    <div class="mt-3 d-none" id="complete-actor">
+                        @include('admin.rfqs._acting_as', ['role' => 'Data Entry', 'id' => 'complete-acting-as', 'label' => 'Done by', 'disabled' => true])
+                    </div>
+                    <div class="mt-3 d-none" id="complete-assignee">
+                        <label for="complete-assignee-select" class="form-label">
+                            Done by <span class="text-muted-soft fw-normal">(Sourcing)</span>
+                        </label>
+                        <select name="acting_user_id" id="complete-assignee-select" class="form-select" disabled></select>
+                        <div class="form-text">The Sourcing member this part is assigned to — recorded as completing it.</div>
+                    </div>
+                @endif
             </div>
 
             <div class="modal-footer">

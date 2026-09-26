@@ -225,6 +225,35 @@ h6, .h6 { font-size: 0.85rem; }
   display: inline-flex;
 }
 
+/* The tree's root, "Role Stages": its heading is set a little above the role
+   nodes under it, which hang off a guide down its left edge with a short
+   elbow into each. */
+.sidebar-group-root > .sidebar-group-title {
+  margin-top: 0.75rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+}
+
+.sidebar-group-children {
+  margin-left: 0.8rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--rfq-tree-line-soft);
+}
+
+.sidebar-group-children > .sidebar-group > .sidebar-group-title {
+  position: relative;
+}
+
+.sidebar-group-children > .sidebar-group > .sidebar-group-title::before {
+  content: "";
+  position: absolute;
+  left: -0.35rem;
+  top: 50%;
+  width: 0.35rem;
+  border-top: 1px solid var(--rfq-tree-line-soft);
+  pointer-events: none;
+}
+
 /* The branch: the pages sit a step smaller than the top-level links, indented
    under their role. A guide runs down the node's left edge (under its caret)
    with a short elbow into each page, and the last page's guide stops at its

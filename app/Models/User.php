@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -77,6 +78,36 @@ class User extends Authenticatable
     public function sentMessages(): HasMany
     {
         return $this->hasMany(PrivateMessage::class, 'sender_id');
+    }
+
+    /**
+     * Narrows to the people who hold a role. Unlike Spatie's role() it never
+     * throws for a role that doesn't exist — there's just nobody in it.
+     *
+     * @param  Builder<User>  $query
+     */
+    public function scopeHoldingRole(Builder $query, string $role): void
+    {
+        $query->whereHas('roles', fn (Builder $roles) => $roles->where('name', $role));
+    }
+
+    /**
+     * The people who hold a role, by name — for the "Done by" pickers on
+     * Admin's forms. Looked up once per request per role, since a page can
+     * carry one on every row. See RfqController::doneBy().
+     *
+     * @return Collection<int, User>
+     */
+    public static function roleMembers(string $role): Collection
+    {
+        $request = request();
+        $key = "role_members.{$role}";
+
+        if (! $request->attributes->has($key)) {
+            $request->attributes->set($key, static::holdingRole($role)->orderBy('name')->get(['id', 'name']));
+        }
+
+        return $request->attributes->get($key);
     }
 
     /**

@@ -268,6 +268,12 @@
                             </section>
                         </div>
 
+                        {{-- Admin can put the assignment down as Senior Operations' own
+                             (RfqController::assign() / doneBy()). --}}
+                        <div class="mt-3">
+                            @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'assign-acting-as', 'label' => 'Assigned by'])
+                        </div>
+
                         <div class="text-danger small mt-2 d-none" id="assign-step-4-error" role="alert"></div>
                     </div>
 

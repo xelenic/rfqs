@@ -1,8 +1,9 @@
 {{--
     Admin's view of Sourcing's queues (?role=sourcing) — every member's open
-    parts, one row per part, rather than the signed-in person's own. Read-only:
-    completing a part is its assignee's call, and sending one back is Data
-    Entry's. See RfqController::index() ($sourcingOverview).
+    parts, one row per part, rather than the signed-in person's own. Admin can
+    mark a part complete here, done as its assigned member (the prompt names
+    them); sending one back is Data Entry's. See RfqController::index()
+    ($sourcingOverview) and completeSourcing().
 
     Expects: $rfqs, $scopedToReturns (Returns rather than all pending parts).
 --}}
@@ -45,10 +46,16 @@
                         <td class="text-muted-soft">
                             {{ ($scopedToReturns ? $partAssignment->pivot->returned_at : $partAssignment->pivot->created_at)?->format('M d, Y g:i A') ?? '—' }}
                         </td>
-                        <td class="text-end">
+                        <td class="text-end text-nowrap">
                             <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                 <i class="bi bi-eye"></i>
                             </a>
+                            @include('admin.rfqs._complete_button', [
+                                'rfq' => $rfq,
+                                'part' => $partAssignment->pivot->part_number,
+                                'redirectRole' => 'sourcing',
+                                'redirectView' => $scopedToReturns ? 'returns' : '',
+                            ])
                         </td>
                     </tr>
                 @endforeach

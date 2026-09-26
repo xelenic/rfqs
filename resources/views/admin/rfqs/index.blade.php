@@ -31,6 +31,12 @@
         default => null,
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
+    $rejectRole = match ($rejectFromStage) {
+        'senior_ops_review' => 'Senior Operations',
+        'head_of_bd_review' => 'Head of Business Development',
+        'gm_review' => 'General Manager',
+        default => null,
+    };
 
     // Business Development can see that Sourcing/Operations assignment
     // exists on an RFQ, but the controls are blurred and inert for them —
@@ -45,7 +51,9 @@
     // Operations doesn't need a separate "Assign Operations" picker — when
     // they assign Sourcing, they're implicitly recorded as the one routing
     // it (see RfqController::assign()), so just the one button is shown.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Senior Operations');
+    // Admin isn't offered it either: it's only a way to name someone in
+    // Operations, which is Operations' own call.
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
 @endphp
 
 @extends('layouts.app')
@@ -269,6 +277,7 @@
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
+                                            @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -308,6 +317,7 @@
                                               data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
                                             @csrf
                                             @method('PATCH')
+                                            @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -387,6 +397,7 @@
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
+                                            @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -425,6 +436,7 @@
                                               data-confirm="Approve this RFQ? It moves on to GM Assistant.">
                                             @csrf
                                             @method('PATCH')
+                                            @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -597,6 +609,7 @@
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
+                                            @include('admin.rfqs._acting_as', ['role' => 'General Manager'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -635,6 +648,7 @@
                                               data-confirm="Approve this RFQ? It moves on to Business Development to close.">
                                             @csrf
                                             @method('PATCH')
+                                            @include('admin.rfqs._acting_as', ['role' => 'General Manager'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-check2-circle"></i> Approve
                                             </button>
@@ -705,6 +719,7 @@
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
+                                            @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-flag"></i> Close
                                             </button>
@@ -734,6 +749,7 @@
                                               data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
                                             @csrf
                                             @method('PATCH')
+                                            @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
                                             <button type="submit" class="btn btn-sm btn-success">
                                                 <i class="bi bi-flag"></i> Close
                                             </button>
@@ -1022,6 +1038,10 @@
                     </div>
                     <div class="modal-body">
                         @include('admin.rfqs._form', ['mode' => 'create', 'idPrefix' => 'create', 'priorities' => $priorities, 'nextRfqNumber' => $nextRfqNumber])
+                        {{-- Admin can put the RFQ down as created by one of Business Development. --}}
+                        <div class="mt-3">
+                            @include('admin.rfqs._acting_as', ['role' => 'Business Development', 'id' => 'create-acting-as', 'label' => 'Created by'])
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1035,11 +1055,11 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter])
-    @if ($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview))
+    @if ($scopedToDataEntry || $scopedToMe || $scopedToReturns)
         @include('admin.rfqs._complete_modal')
     @endif
     @if ($rejectFromStage)
-        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages])
+        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
     @endif
     @if ($scopedToGmAssistant)
         @include('admin.rfqs._gm_assistant_modal')

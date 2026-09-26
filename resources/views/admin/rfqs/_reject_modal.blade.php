@@ -6,7 +6,8 @@
     (.js-reject-rfq).
 
     Expects: $rejectTargetStages — which of Rfq::REJECT_STAGE_ORDER this
-    page's own role can use, from Rfq::rejectTargetStages($fromStage); the
+    page's own role can use, from Rfq::rejectTargetStages($fromStage) — and
+    $rejectRole, that role's name, for Admin's "Rejected by" picker; the
     form's action, the part (none, for a whole RFQ) and its label are set
     per-row by JS.
 --}}
@@ -58,6 +59,11 @@
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </div>
+                    @isset($rejectRole)
+                        <div class="mt-3">
+                            @include('admin.rfqs._acting_as', ['role' => $rejectRole, 'id' => 'reject-acting-as', 'label' => 'Rejected by'])
+                        </div>
+                    @endisset
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

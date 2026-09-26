@@ -24,6 +24,13 @@
     // than the reappearing Mark Complete button being the only clue.
     $myReturnedParts = $myOpenParts->whereNotNull('pivot.returned_at');
 
+    // Admin can mark any open part complete too — as its assigned member,
+    // who the prompt names — see RfqController::completeSourcing(). Not the
+    // ones already offered above, if Admin also holds Sourcing.
+    $adminOpenParts = auth()->user()->hasRole('Admin')
+        ? $rfq->assignees->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
+        : collect();
+
     // Sourcing never gets access to the assign controls at all — it's a
     // receiving role, not an assigning one — enforced server-side too, see
     // RfqController::assign()/assignOperations().
@@ -32,7 +39,9 @@
     // Operations doesn't need a separate "Assign Operations" picker — when
     // they assign Sourcing, they're implicitly recorded as the one routing
     // it (see RfqController::assign()), so just the one button is shown.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasRole('Senior Operations');
+    // Admin isn't offered it either: it's only a way to name someone in
+    // Operations, which is Operations' own call.
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
 
     // Senior Operations' second review — only shown while the RFQ is
     // actually sitting in that stage, same as it only appears on the
@@ -72,6 +81,12 @@
         default => null,
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
+    $rejectRole = match ($rejectFromStage) {
+        'senior_ops_review' => 'Senior Operations',
+        'head_of_bd_review' => 'Head of Business Development',
+        'gm_review' => 'General Manager',
+        default => null,
+    };
 
     // Business Development's closing action — the true end of the
     // lifecycle. See Rfq::closeOut().
@@ -384,11 +399,20 @@
                     'label' => 'Mark '.($rfq->isSplit() ? 'P'.$myPart->pivot->part_number.' ' : '').'Complete',
                 ])
             @endforeach
+            @foreach ($adminOpenParts as $adminPart)
+                @include('admin.rfqs._complete_button', [
+                    'rfq' => $rfq,
+                    'part' => $adminPart->pivot->part_number,
+                    'returnTo' => 'show',
+                    'label' => 'Mark '.($rfq->isSplit() ? 'P'.$adminPart->pivot->part_number.' ' : '').'Complete',
+                ])
+            @endforeach
             @if ($canApproveSeniorOpsReview)
                 <form action="{{ route('admin.rfqs.complete-senior-ops-review', $rfq) }}" method="POST"
                       data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
                     @csrf
                     @method('PATCH')
+                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-check2-circle"></i> Approve
                     </button>
@@ -405,6 +429,7 @@
                       data-confirm="Approve this RFQ? It moves on to GM Assistant.">
                     @csrf
                     @method('PATCH')
+                    @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-check2-circle"></i> Approve
                     </button>
@@ -429,6 +454,7 @@
                       data-confirm="Approve this RFQ? It moves on to Business Development to close.">
                     @csrf
                     @method('PATCH')
+                    @include('admin.rfqs._acting_as', ['role' => 'General Manager'])
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-check2-circle"></i> Approve
                     </button>
@@ -445,6 +471,7 @@
                       data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
                     @csrf
                     @method('PATCH')
+                    @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-flag"></i> Close
                     </button>
@@ -1090,11 +1117,11 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
-    @if ($myOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty())
+    @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty())
         @include('admin.rfqs._complete_modal')
     @endif
     @if ($rejectFromStage)
-        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages])
+        @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
     @endif
     @if ($canSubmitGmAssistantDetails)
         @include('admin.rfqs._gm_assistant_modal')

@@ -52,6 +52,9 @@
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </div>
+                    <div class="mt-3">
+                        @include('admin.rfqs._acting_as', ['role' => 'GM Assistant', 'id' => 'gm-assistant-acting-as', 'label' => 'Added by'])
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

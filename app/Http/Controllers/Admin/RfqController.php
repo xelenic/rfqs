@@ -435,7 +435,7 @@ class RfqController extends Controller implements HasMiddleware
             ...$validator->validated(),
             'rfq_number' => Rfq::nextRfqNumber(),
             'status' => 'Pending',
-            'created_by' => $request->user()->id,
+            'created_by' => $this->doneBy($request, 'Business Development')->id,
         ]);
 
         // Created from the Closed list, the new (Pending) RFQ would land out
@@ -531,8 +531,9 @@ class RfqController extends Controller implements HasMiddleware
             return back()->with('error', implode(' ', $validator->errors()->all()));
         }
 
-        DB::transaction(function () use ($request, $rfq, $planning, $newCategory, $totalParts, $assignments) {
-            $user = $request->user();
+        $user = $this->doneBy($request, 'Senior Operations');
+
+        DB::transaction(function () use ($user, $request, $rfq, $planning, $newCategory, $totalParts, $assignments) {
 
             if ($planning) {
                 $category = JobCategory::findOrCreateByName(
@@ -592,7 +593,8 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * A Sourcing member marks one of their own parts of this RFQ done, with
      * a comment for Data Entry that's posted to the RFQ's thread. Only the
-     * part's assignee may do this, and only once per part — the button
+     * part's assignee may do this — or Admin, on their behalf, naming that
+     * member (acting_user_id) — and only once per part — the button
      * disappears once it's set. Someone holding several parts of a split
      * completes each on its own. Only once every part has been completed
      * does the RFQ actually hand off to Data Entry (see
@@ -607,11 +609,19 @@ class RfqController extends Controller implements HasMiddleware
         ]);
 
         $assignee = $rfq->assigneeForPart((int) $validated['part']);
+        $isAdminActing = $user->hasRole('Admin') && $assignee !== null;
 
         abort_unless(
-            $user->hasRole('Sourcing') && $assignee?->id === $user->id,
+            ($user->hasRole('Sourcing') && $assignee?->id === $user->id) || $isAdminActing,
             403,
             'Only the Sourcing member assigned to this part can mark it complete.'
+        );
+
+        // Recorded as the assignee either way; Admin's pick just has to be them.
+        abort_if(
+            $isAdminActing && $request->filled('acting_user_id') && (int) $request->input('acting_user_id') !== $assignee->id,
+            422,
+            "That person isn't the Sourcing member assigned to this part."
         );
 
         $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
@@ -660,7 +670,7 @@ class RfqController extends Controller implements HasMiddleware
             return $reason;
         }
 
-        $rfq->returnSourcingPart((int) $validated['part'], $reason, $request->user());
+        $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry'));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part back to Sourcing.");
     }
@@ -695,7 +705,7 @@ class RfqController extends Controller implements HasMiddleware
             return $comment;
         }
 
-        $rfq->completeDataEntryPart((int) $validated['part'], $request->user(), $comment);
+        $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment);
 
         return redirect()->back()->with('status', "Marked {$assignee->name}'s part complete.");
     }
@@ -723,7 +733,7 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsSeniorOpsReview($part), 422, 'This part is not awaiting Senior Operations review.');
 
-        $rfq->approveSeniorOpsPart($part, $request->user());
+        $rfq->approveSeniorOpsPart($part, $this->doneBy($request, 'Senior Operations'));
 
         return redirect()->back()->with('status', $rfq->stage === 'head_of_bd_review'
             ? 'Approved — every part is through, escalated to Head of Business Development.'
@@ -745,7 +755,7 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->stage === 'senior_ops_review', 422, 'This RFQ is not awaiting Senior Operations review.');
 
-        $rfq->completeSeniorOpsReview($request->user());
+        $rfq->completeSeniorOpsReview($this->doneBy($request, 'Senior Operations'));
 
         return redirect()->back()->with('status', 'Approved — escalated to Head of Business Development.');
     }
@@ -785,7 +795,7 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsHeadOfBdReview($part), 422, 'This part is not awaiting Head of Business Development review.');
 
-        $rfq->approveHeadOfBdPart($part, $request->user());
+        $rfq->approveHeadOfBdPart($part, $this->doneBy($request, 'Head of Business Development'));
 
         return redirect()->back()->with('status', $rfq->stage === 'gm_assistant'
             ? 'Approved — every part is through, escalated to GM Assistant.'
@@ -806,7 +816,7 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
 
-        $rfq->approveByHeadOfBd($request->user());
+        $rfq->approveByHeadOfBd($this->doneBy($request, 'Head of Business Development'));
 
         return redirect()->back()->with('status', 'Approved — escalated to GM Assistant.');
     }
@@ -833,6 +843,29 @@ class RfqController extends Controller implements HasMiddleware
     public function rejectGm(Request $request, Rfq $rfq): RedirectResponse
     {
         return $this->reject($request, $rfq, 'gm_review', 'General Manager');
+    }
+
+    /**
+     * Who a stage's action is recorded as done by. Whoever does it — except
+     * that Admin, who can act at every stage, may name one of the people who
+     * hold that stage's role instead (the "Done by" dropdown on Admin's forms
+     * and modals), so the record reads as the role's own person and not as
+     * Admin. Nobody else can: the choice is ignored unless it comes from
+     * Admin, and only someone who really holds $role is ever accepted.
+     */
+    private function doneBy(Request $request, string $role): User
+    {
+        $user = $request->user();
+
+        if (! $user->hasRole('Admin') || ! $request->filled('acting_user_id')) {
+            return $user;
+        }
+
+        $chosen = User::holdingRole($role)->find($request->input('acting_user_id'));
+
+        abort_unless($chosen, 422, "That person doesn't hold the {$role} role.");
+
+        return $chosen;
     }
 
     /**
@@ -869,12 +902,12 @@ class RfqController extends Controller implements HasMiddleware
         ]);
 
         if ($part === null) {
-            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $request->user(), $fromStage);
+            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage);
 
             return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
         }
 
-        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $request->user(), $fromStage);
+        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage);
 
         return redirect()->back()->with('status', "Sent {$rfq->partNumberLabel($part)} back to ".Rfq::stageLabel($validated['target_stage']).'.');
     }
@@ -908,12 +941,12 @@ class RfqController extends Controller implements HasMiddleware
         ]);
 
         if ($part === null) {
-            $rfq->recordGmAssistantDetails($request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
+            $rfq->recordGmAssistantDetails($this->doneBy($request, 'GM Assistant'), $validated['client_details'], $validated['payment_terms'] ?? null);
 
             return redirect()->back()->with('status', 'Forwarded to General Manager.');
         }
 
-        $rfq->recordGmAssistantPart($part, $request->user(), $validated['client_details'], $validated['payment_terms'] ?? null);
+        $rfq->recordGmAssistantPart($part, $this->doneBy($request, 'GM Assistant'), $validated['client_details'], $validated['payment_terms'] ?? null);
 
         return redirect()->back()->with('status', $rfq->stage === 'gm_review'
             ? 'Details added — every part is through, forwarded to General Manager.'
@@ -943,7 +976,7 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsGmApproval($part), 422, 'This part is not awaiting General Manager approval.');
 
-        $rfq->approveGmPart($part, $request->user());
+        $rfq->approveGmPart($part, $this->doneBy($request, 'General Manager'));
 
         return redirect()->back()->with('status', $rfq->stage === 'bd_closing'
             ? 'Approved — every part is through, ready for Business Development to close.'
@@ -964,7 +997,7 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->stage === 'gm_review', 422, 'This RFQ is not awaiting General Manager approval.');
 
-        $rfq->approveByGm($request->user());
+        $rfq->approveByGm($this->doneBy($request, 'General Manager'));
 
         return redirect()->back()->with('status', 'Approved — ready for Business Development to close.');
     }
@@ -991,7 +1024,7 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsBdClosing($part), 422, 'This part is not ready to close.');
 
-        $rfq->closePart($part, $request->user());
+        $rfq->closePart($part, $this->doneBy($request, 'Business Development'));
 
         // Fireworks: a modest show for a part, a grand one when that was the
         // last and the RFQ itself is closed.
@@ -1026,7 +1059,7 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->stage === 'bd_closing', 422, 'This RFQ is not ready to close.');
 
-        $rfq->closeOut($request->user());
+        $rfq->closeOut($this->doneBy($request, 'Business Development'));
 
         return redirect()->back()
             ->with('celebrate', $this->celebration($rfq->rfq_number, "It's now in Closed RFQs.", grand: true))

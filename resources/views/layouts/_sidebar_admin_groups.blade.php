@@ -5,11 +5,12 @@
     ?role=<slug> so Admin sees it as that role does — see
     RfqController::index() ($lensRole).
 
-    Laid out as a tree: each role is a node that collapses and expands, with
-    its pages hanging off it on branch lines (see .sidebar-group-links in
-    admin.css). The nodes left collapsed are remembered in this browser, and a
-    collapsed node's heading carries its queue's count so nothing waiting is
-    hidden.
+    Laid out as a tree: every role is a node under one parent, "Role Stages",
+    and each collapses and expands, with its pages hanging off it on branch
+    lines (see .sidebar-group-links in admin.css). The nodes left collapsed —
+    the parent included — are remembered in this browser, and a collapsed
+    node's heading carries its queue's count (the parent's, all of them added
+    up) so nothing waiting is hidden.
 --}}
 @php
     $counts = \App\Models\Rfq::queueCounts();
@@ -69,49 +70,69 @@
             ],
         ],
     ];
+
+    // The parent's heading, while it's collapsed, holds every group's count
+    // added up.
+    $allGroupsCount = collect($groups)->sum(fn (array $group) => collect($group['badge'])->sum(fn (string $key) => $counts[$key]));
 @endphp
 
-@foreach ($groups as $group)
-    @php
-        $groupSlug = \Illuminate\Support\Str::slug($group['role']);
-        $groupCount = collect($group['badge'])->sum(fn (string $key) => $counts[$key]);
-    @endphp
-    <div class="sidebar-group" data-sidebar-group="{{ $groupSlug }}">
-        <button type="button" class="sidebar-section-title sidebar-group-title"
-                data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $groupSlug }}"
-                aria-expanded="true" aria-controls="sidebar-group-{{ $groupSlug }}">
-            <i class="bi bi-chevron-right sidebar-group-chevron"></i>
-            <i class="bi {{ $group['icon'] }}"></i>
-            <span class="sidebar-group-name">{{ $group['role'] }}</span>
-            @if ($groupCount > 0)
-                <span class="nav-link-count sidebar-group-count" title="{{ $groupCount }} waiting">{{ $groupCount }}</span>
-            @endif
-        </button>
-        <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
-            @foreach ($group['links'] as $link)
-                @php
-                    // Closed RFQs is company-wide, not a role's own queue — no
-                    // role on its link, and it's active whichever group it
-                    // sits under.
-                    $isCompanyWide = $link['status'] === 'Completed';
-                    $isActive = $onRfqList
-                        && request('status') === $link['status']
-                        && $currentView === $link['view']
-                        && ($isCompanyWide || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development'));
-                    $count = $link['count'] ? $counts[$link['count']] : 0;
-                @endphp
-                <a href="{{ route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug])) }}"
-                   class="nav-link {{ $isActive ? 'active' : '' }}">
-                    <i class="bi {{ $link['icon'] }}"></i>
-                    <span class="nav-link-label">{{ $link['label'] }}</span>
-                    @if ($count > 0)
-                        <span class="nav-link-count" title="{{ $count }} {{ $link['hint'] }}">{{ $count }}</span>
+{{-- The root of the tree: one node, "Role Stages", with each role's group under
+     it. --}}
+<div class="sidebar-group sidebar-group-root" data-sidebar-group="role-stages">
+    <button type="button" class="sidebar-section-title sidebar-group-title"
+            data-bs-toggle="collapse" data-bs-target="#sidebar-group-role-stages"
+            aria-expanded="true" aria-controls="sidebar-group-role-stages">
+        <i class="bi bi-chevron-right sidebar-group-chevron"></i>
+        <i class="bi bi-layers"></i>
+        <span class="sidebar-group-name">Role Stages</span>
+        @if ($allGroupsCount > 0)
+            <span class="nav-link-count sidebar-group-count" title="{{ $allGroupsCount }} waiting">{{ $allGroupsCount }}</span>
+        @endif
+    </button>
+    <div class="collapse show sidebar-group-children" id="sidebar-group-role-stages">
+        @foreach ($groups as $group)
+            @php
+                $groupSlug = \Illuminate\Support\Str::slug($group['role']);
+                $groupCount = collect($group['badge'])->sum(fn (string $key) => $counts[$key]);
+            @endphp
+            <div class="sidebar-group" data-sidebar-group="{{ $groupSlug }}">
+                <button type="button" class="sidebar-section-title sidebar-group-title"
+                        data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $groupSlug }}"
+                        aria-expanded="true" aria-controls="sidebar-group-{{ $groupSlug }}">
+                    <i class="bi bi-chevron-right sidebar-group-chevron"></i>
+                    <i class="bi {{ $group['icon'] }}"></i>
+                    <span class="sidebar-group-name">{{ $group['role'] }}</span>
+                    @if ($groupCount > 0)
+                        <span class="nav-link-count sidebar-group-count" title="{{ $groupCount }} waiting">{{ $groupCount }}</span>
                     @endif
-                </a>
-            @endforeach
-        </div>
+                </button>
+                <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
+                    @foreach ($group['links'] as $link)
+                        @php
+                            // Closed RFQs is company-wide, not a role's own queue — no
+                            // role on its link, and it's active whichever group it
+                            // sits under.
+                            $isCompanyWide = $link['status'] === 'Completed';
+                            $isActive = $onRfqList
+                                && request('status') === $link['status']
+                                && $currentView === $link['view']
+                                && ($isCompanyWide || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development'));
+                            $count = $link['count'] ? $counts[$link['count']] : 0;
+                        @endphp
+                        <a href="{{ route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug])) }}"
+                           class="nav-link {{ $isActive ? 'active' : '' }}">
+                            <i class="bi {{ $link['icon'] }}"></i>
+                            <span class="nav-link-label">{{ $link['label'] }}</span>
+                            @if ($count > 0)
+                                <span class="nav-link-count" title="{{ $count }} {{ $link['hint'] }}">{{ $count }}</span>
+                            @endif
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        @endforeach
     </div>
-@endforeach
+</div>
 
 {{-- Inline, straight after the groups, so the ones left collapsed last time
      are already collapsed on first paint rather than snapping shut once

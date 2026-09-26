@@ -788,6 +788,31 @@ function rfqmsBoot() {
             form.elements.return_to.value = button.dataset.returnTo || '';
             form.elements.redirect_status.value = button.dataset.redirectStatus || '';
             form.elements.redirect_view.value = button.dataset.redirectView || '';
+            form.elements.redirect_role.value = button.dataset.redirectRole || '';
+
+            // Admin's "Done by" (only in the page for Admin): Data Entry's
+            // actions pick from its members, a Sourcing Mark Complete names the
+            // part's assigned member. Whichever isn't wanted is hidden and
+            // disabled, so it isn't sent.
+            var actor = document.getElementById('complete-actor');
+            if (actor) {
+                var namesActor = button.dataset.actorRole === 'Data Entry';
+                var actorSelect = actor.querySelector('select');
+                actor.classList.toggle('d-none', !namesActor);
+                if (actorSelect) actorSelect.disabled = !namesActor;
+            }
+
+            var assignee = document.getElementById('complete-assignee');
+            if (assignee) {
+                var namesAssignee = button.dataset.actorRole === 'Sourcing' && !!button.dataset.assigneeId;
+                var assigneeSelect = assignee.querySelector('select');
+                assigneeSelect.innerHTML = '';
+                if (namesAssignee) {
+                    assigneeSelect.add(new Option(button.dataset.assigneeName, button.dataset.assigneeId, true, true));
+                }
+                assignee.classList.toggle('d-none', !namesAssignee);
+                assigneeSelect.disabled = !namesAssignee;
+            }
 
             document.getElementById('completeModalLabel').textContent = kind.title;
             document.getElementById('complete-subtitle').textContent =

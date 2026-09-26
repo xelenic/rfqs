@@ -25,7 +25,8 @@ it('groups the workflow by role in the Admin sidebar', function () {
         ->get(indexUrl(['status' => 'Pending']))
         ->assertOk();
 
-    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES));
+    // A node for each role, and the "Role Stages" parent they all hang from.
+    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 1);
 
     foreach ([
         ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development'],
@@ -40,6 +41,27 @@ it('groups the workflow by role in the Admin sidebar', function () {
     ] as $query) {
         $response->assertSee(e(indexUrl($query)), false);
     }
+});
+
+it('hangs every role\'s group under one "Role Stages" parent node', function () {
+    $html = test()->actingAs(userWithRole('Admin'))
+        ->get(indexUrl(['status' => 'Pending']))
+        ->assertOk()
+        ->assertSee('Role Stages')
+        ->getContent();
+
+    // The parent is one collapsible node of its own…
+    expect($html)->toContain('data-bs-target="#sidebar-group-role-stages"')
+        ->toContain('<div class="collapse show sidebar-group-children" id="sidebar-group-role-stages">');
+
+    // …with every role's group inside it, and nothing else of the sidebar's.
+    $parent = Str::between($html, 'id="sidebar-group-role-stages">', '<script>');
+
+    foreach (Rfq::WORKFLOW_ROLES as $role) {
+        expect($parent)->toContain('data-sidebar-group="'.Str::slug($role).'"');
+    }
+    expect($parent)->not->toContain('href="'.route('admin.dashboard').'"')
+        ->not->toContain('href="'.route('admin.messages.index').'"');
 });
 
 it('makes each group collapsible, showing its queue count on the heading', function () {
@@ -63,9 +85,11 @@ it('makes each group collapsible, showing its queue count on the heading', funct
     // are still unassigned, and two of them are in review — while Head of
     // Business Development's one is its own. A group with nothing waiting
     // shows no count.
+    // Role Stages, the parent, adds all of them up: 5 and 1 make 6.
     $response->assertSee('class="nav-link-count sidebar-group-count" title="5 waiting"', false)
-        ->assertSee('class="nav-link-count sidebar-group-count" title="1 waiting"', false);
-    expect(substr_count($response->getContent(), 'sidebar-group-count'))->toBe(2);
+        ->assertSee('class="nav-link-count sidebar-group-count" title="1 waiting"', false)
+        ->assertSee('class="nav-link-count sidebar-group-count" title="6 waiting"', false);
+    expect(substr_count($response->getContent(), 'sidebar-group-count'))->toBe(3);
 });
 
 it('leaves every other role\'s sidebar as it was', function () {
@@ -126,8 +150,10 @@ it('shows Admin every Sourcing member\'s open parts on the Sourcing page', funct
         // (Names also sit in the Assign Sourcing modal's pick-list, so match the table cell.)
         ->assertSee('<td>'.e($riley->name).'</td>', false)
         ->assertDontSee('<td>'.e($sam->name).'</td>', false)
-        // Read-only: completing a part is its assignee's call.
-        ->assertDontSee('Mark Complete');
+        // Admin can mark each open part complete, as its assigned member —
+        // Riley's two, not Sam's finished one (see AdminSourcingCompleteTest).
+        ->assertSee('data-assignee-id="'.$riley->id.'"', false)
+        ->assertDontSee('data-assignee-id="'.$sam->id.'"', false);
 });
 
 it('shows Admin the parts sent back on the Sourcing returns page', function () {
@@ -235,4 +261,21 @@ it('sends Admin back to the role page a save came from', function () {
             'redirect_role' => 'sourcing',
         ])
         ->assertRedirect(indexUrl(['status' => 'Pending']));
+});
+
+it('leaves Assign Operations off Admin\'s list and RFQ pages, but not off everyone else\'s', function () {
+    $rfq = Rfq::factory()->create(['status' => 'Pending']);
+    $urls = [indexUrl(['status' => 'Pending']), route('admin.rfqs.show', $rfq)];
+
+    // Admin — including through a role's lens — isn't offered it.
+    foreach ([...$urls, indexUrl(['status' => 'Pending', 'role' => 'senior-operations'])] as $url) {
+        test()->actingAs(userWithRole('Admin'))->get($url)->assertOk()
+            ->assertDontSee('js-assign-operations-rfq', false);
+    }
+
+    // Business Development still is (blurred for them, as ever).
+    foreach ($urls as $url) {
+        test()->actingAs(userWithRole('Business Development'))->get($url)->assertOk()
+            ->assertSee('js-assign-operations-rfq', false);
+    }
 });
