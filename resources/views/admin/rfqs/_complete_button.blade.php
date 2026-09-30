@@ -1,8 +1,10 @@
 {{--
     A button that asks for a comment before it does anything: Mark Complete —
-    Sourcing on their own part, or (kind "data_entry") Data Entry on a Sourcing
-    part — or (kind "return") Data Entry sending a part back to Sourcing, where
-    the comment is the reason. It doesn't act itself: it opens the prompt
+    Sourcing on their own part — or (kind "data_entry") Data Entry's Send to
+    Finalize on a Sourcing part — or (kind "return") Data Entry sending a part back to Sourcing, where
+    the comment is the reason — or (kind "return_data_entry") the Sourcing
+    member sending a part Data Entry sent to finalize back to Data Entry
+    instead, again with a reason. It doesn't act itself: it opens the prompt
     (_complete_modal.blade.php), pointing it at the right route and part and at
     where to come back to.
 
@@ -16,17 +18,19 @@
     $backModal (id of the modal this sits in, which Back returns to), $label
     (the button's text), $class (its classes).
 
-    For Admin, a Sourcing Mark Complete names the part's assigned member —
-    the prompt shows them as who it's recorded as done by. See
-    RfqController::completeSourcing().
+    For Admin, a Sourcing Mark Complete or Return to Data Entry names the
+    part's assigned member — the prompt shows them as who it's recorded as
+    done by. See RfqController::completeSourcing() and returnDataEntry().
 --}}
 @php
     $kind = $kind ?? 'sourcing';
     $isSplit = $rfq->isSplit();
     $name = $who ?? 'them';
 
-    // Admin has no part of their own: completing one is done as its assignee.
-    $forAssignee = $kind === 'sourcing' && auth()->user()->hasRole('Admin') ? $rfq->assigneeForPart((int) $part) : null;
+    // The Sourcing member's own actions. Admin has no part of their own:
+    // doing one is done as its assignee.
+    $isSourcingAction = in_array($kind, ['sourcing', 'return_data_entry'], true);
+    $forAssignee = $isSourcingAction && auth()->user()->hasRole('Admin') ? $rfq->assigneeForPart((int) $part) : null;
 
     [$route, $audience, $heading, $hint, $placeholder, $defaultLabel, $defaultClass, $icon] = match ($kind) {
         'return' => [
@@ -39,17 +43,27 @@
             'btn btn-sm btn-outline-danger',
             'bi-arrow-counterclockwise',
         ],
+        // "Send to Finalize": back to the part's Sourcing member, whose
+        // Finalize sends it on to Senior Operations' review.
+        'return_data_entry' => [
+            route('admin.rfqs.return-data-entry', $rfq),
+            'Data Entry',
+            'Tell Data Entry what needs to change',
+            'Sent back to Data Entry instead of being finalized. Your reason is posted to the RFQ\'s comments and shown with the part on their queue.',
+            'What\'s wrong or missing in what Data Entry entered?',
+            'Return to Data Entry',
+            'btn btn-sm btn-outline-danger',
+            'bi-arrow-counterclockwise',
+        ],
         'data_entry' => [
             route('admin.rfqs.complete-data-entry', $rfq),
-            'Senior Operations',
-            'Leave a comment for Senior Operations',
-            $isSplit
-                ? 'Posted to the RFQ\'s comments. The RFQ only moves on to Senior Operations\' review once Data Entry has completed every part.'
-                : 'Posted to the RFQ\'s comments as it moves on to Senior Operations\' review.',
-            'What did you check or enter, and is there anything Senior Operations should know?',
-            'Mark Complete',
+            $who ?? 'the Sourcing member',
+            'Leave a comment for '.$name,
+            'Posted to the RFQ\'s comments. It goes back to '.($who ?? 'the Sourcing member').' to finalize, and on to Senior Operations\' review once they have.',
+            'What did you check or enter, and is there anything '.$name.' should know before finalizing?',
+            'Send to Finalize',
             'btn btn-sm btn-success',
-            'bi-check2-circle',
+            'bi-send-check',
         ],
         default => [
             route('admin.rfqs.complete-sourcing', $rfq),
@@ -70,7 +84,7 @@
 <button type="button" class="{{ $class ?? $defaultClass }} js-complete"
         data-bs-toggle="modal" data-bs-target="#completeModal"
         data-kind="{{ $kind }}"
-        data-actor-role="{{ $kind === 'sourcing' ? ($forAssignee ? 'Sourcing' : '') : 'Data Entry' }}"
+        data-actor-role="{{ $isSourcingAction ? ($forAssignee ? 'Sourcing' : '') : 'Data Entry' }}"
         data-assignee-id="{{ $forAssignee?->id }}"
         data-assignee-name="{{ $forAssignee?->name }}"
         data-action="{{ $route }}"
@@ -83,7 +97,7 @@
         data-hint="{{ $hint }}"
         data-placeholder="{{ $placeholder }}"
         data-return-to="{{ $returnTo ?? '' }}"
-        data-redirect-status="{{ $kind === 'sourcing' && ! ($returnTo ?? null) ? 'Pending' : '' }}"
+        data-redirect-status="{{ $isSourcingAction && ! ($returnTo ?? null) ? 'Pending' : '' }}"
         data-redirect-view="{{ $kind === 'sourcing' ? ($redirectView ?? '') : '' }}"
         data-redirect-role="{{ $redirectRole ?? '' }}"
         data-back-modal="{{ $backModal ?? '' }}">

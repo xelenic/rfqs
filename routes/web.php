@@ -40,9 +40,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::resource('permissions', PermissionController::class)->except('show');
     Route::patch('rfqs/{rfq}/assign', [RfqController::class, 'assign'])->name('rfqs.assign');
     Route::patch('rfqs/{rfq}/assign-operations', [RfqController::class, 'assignOperations'])->name('rfqs.assign-operations');
+    Route::patch('rfqs/{rfq}/request-details', [RfqController::class, 'requestDetails'])->name('rfqs.request-details');
     Route::patch('rfqs/{rfq}/complete-sourcing', [RfqController::class, 'completeSourcing'])->name('rfqs.complete-sourcing');
     Route::patch('rfqs/{rfq}/return-sourcing', [RfqController::class, 'returnSourcing'])->name('rfqs.return-sourcing');
     Route::patch('rfqs/{rfq}/complete-data-entry', [RfqController::class, 'completeDataEntry'])->name('rfqs.complete-data-entry');
+    Route::patch('rfqs/{rfq}/finalize', [RfqController::class, 'finalize'])->name('rfqs.finalize');
+    Route::patch('rfqs/{rfq}/return-data-entry', [RfqController::class, 'returnDataEntry'])->name('rfqs.return-data-entry');
     Route::patch('rfqs/{rfq}/complete-senior-ops-review', [RfqController::class, 'completeSeniorOpsReview'])->name('rfqs.complete-senior-ops-review');
     Route::patch('rfqs/{rfq}/approve-senior-ops-part', [RfqController::class, 'approveSeniorOpsPart'])->name('rfqs.approve-senior-ops-part');
     Route::patch('rfqs/{rfq}/reject-senior-ops', [RfqController::class, 'rejectSeniorOps'])->name('rfqs.reject-senior-ops');

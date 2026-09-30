@@ -18,8 +18,9 @@ class RfqComment extends Model
      */
     public const ACTIONS = [
         'sourcing_completed' => ['label' => 'Marked complete', 'icon' => 'bi-check-circle-fill', 'tone' => 'success'],
-        'data_entry_completed' => ['label' => 'Completed in Data Entry', 'icon' => 'bi-check2-circle', 'tone' => 'success'],
+        'data_entry_completed' => ['label' => 'Sent to Finalize', 'icon' => 'bi-send-check', 'tone' => 'success'],
         'returned_to_sourcing' => ['label' => 'Returned to Sourcing', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
+        'returned_to_data_entry' => ['label' => 'Returned to Data Entry', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
         'rejected' => ['label' => 'Rejected', 'icon' => 'bi-x-octagon-fill', 'tone' => 'danger'],
     ];
 

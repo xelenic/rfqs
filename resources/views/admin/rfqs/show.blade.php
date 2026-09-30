@@ -3,7 +3,10 @@
 @php
     // Business Development can see that Sourcing/Operations assignment and
     // the comment thread exist on an RFQ, but they're blurred and inert —
-    // a deliberate role-specific UI choice, not a permission gap.
+    // a deliberate role-specific UI choice, not a permission gap. That holds
+    // even on an RFQ sent back to them (Rfq::isReturnedToBusinessDevelopment()):
+    // they can fix its details there, but re-assigning it is Senior
+    // Operations' job — see RfqController::assign().
     $restrictAssignment = auth()->user()->hasRole('Business Development');
 
     // Sourcing can work their assigned task without seeing who created it
@@ -29,6 +32,14 @@
     // ones already offered above, if Admin also holds Sourcing.
     $adminOpenParts = auth()->user()->hasRole('Admin')
         ? $rfq->assignees->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
+        : collect();
+
+    // Parts Data Entry has sent to finalize (Send to Finalize), waiting on
+    // their Sourcing member's Finalize — this viewer's own, or, for Admin,
+    // every one of them, finalized as its member. See
+    // RfqController::finalize().
+    $finalizableParts = $rfq->status === 'Pending'
+        ? (auth()->user()->hasRole('Admin') ? $rfq->assignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize())
         : collect();
 
     // Sourcing never gets access to the assign controls at all — it's a
@@ -109,6 +120,7 @@
         'operations' => $rfq->operationsAssignee !== null,
         'sourcing' => $rfq->assignees->isNotEmpty() && $rfq->allSourcingPartsCompleted(),
         'data_entry' => $rfq->data_entry_completed_at !== null,
+        'finalize' => $rfq->finalized_at !== null,
         'senior_ops' => $rfq->senior_ops_reviewed_at !== null,
         'head_of_bd' => $rfq->head_of_bd_approved_at !== null,
         'gm_assistant' => $rfq->gm_assistant_completed_at !== null,
@@ -123,6 +135,7 @@
     $stepPartColumns = [
         'sourcing' => 'completed_at',
         'data_entry' => 'data_entry_completed_at',
+        'finalize' => 'finalized_at',
         'senior_ops' => 'senior_ops_reviewed_at',
         'head_of_bd' => 'head_of_bd_approved_at',
         'gm_assistant' => 'gm_assistant_completed_at',
@@ -148,6 +161,7 @@
         'operations' => ['label' => 'Operations', 'icon' => 'bi-diagram-2'],
         'sourcing' => ['label' => 'Sourcing', 'icon' => 'bi-people'],
         'data_entry' => ['label' => 'Data Entry', 'icon' => 'bi-keyboard'],
+        'finalize' => ['label' => 'Finalize', 'icon' => 'bi-check2-all'],
         'senior_ops' => ['label' => 'Senior Ops', 'icon' => 'bi-clipboard2-check'],
         'head_of_bd' => ['label' => 'Head of BD', 'icon' => 'bi-person-check'],
         'gm_assistant' => ['label' => 'GM Assistant', 'icon' => 'bi-file-earmark-text'],
@@ -210,7 +224,8 @@
         // closing recorded on its parts — it's the RFQ's own.
         $closedAt = $part?->bd_closed_at ?? $rfq->bd_closed_at;
         $closedBy = $part?->bd_closed_at ? $part->bdClosedBy : $rfq->bdClosedBy;
-        $dataEntryDone = $part ? $part->data_entry_completed_at !== null : $stepDone['data_entry'];
+        // Senior Operations' review is reached once the part's been finalized.
+        $finalized = $part ? $part->finalized_at !== null : $stepDone['finalize'];
 
         // Sent back from here — Senior Operations' second review, the Head,
         // or the General Manager — and not yet redone: on every branch when
@@ -278,9 +293,9 @@
             'meta' => match (true) {
                 $seniorOpsAt !== null => [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->format('M d, Y g:i A')],
                 $seniorOpsRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
-                default => [$dataEntryDone ? 'Awaiting review' : 'Not yet reached'],
+                default => [$finalized ? 'Awaiting review' : 'Not yet reached'],
             },
-            'state' => $nodeState($seniorOpsAt !== null, $dataEntryDone && $seniorOpsAt === null, $seniorOpsRejected),
+            'state' => $nodeState($seniorOpsAt !== null, $finalized && $seniorOpsAt === null, $seniorOpsRejected),
             'children' => [$headOfBd],
         ];
     };
@@ -309,7 +324,15 @@
                     'rfq_number' => $rfqNumber,
                     'meta' => ['Awaiting Sourcing'],
                     'state' => 'pending',
-                    'children' => [$buildTailChain($rfqNumber)],
+                    'children' => [[
+                        'name' => 'Unassigned',
+                        'role' => 'Finalize',
+                        'step' => 'finalize',
+                        'rfq_number' => $rfqNumber,
+                        'meta' => ['Not yet reached'],
+                        'state' => 'pending',
+                        'children' => [$buildTailChain($rfqNumber)],
+                    ]],
                 ]],
             ];
 
@@ -326,12 +349,33 @@
         $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
         $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
 
+        // Its Sourcing member sent it back instead of finalizing it.
+        $deIsReturnedBySourcing = ! $deIsDone && $assignee->pivot->data_entry_returned_at !== null;
+
         $deMeta = match (true) {
             $deIsDone => [$deActorName, $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
             $deIsReturned => ['Returned — rework needed'],
+            $deIsReturnedBySourcing => ['Returned by Sourcing'],
             $sourcingDone => ['Awaiting review'],
             default => ['Awaiting Sourcing'],
         };
+
+        // The part's Sourcing member finalizes it once Data Entry has sent it
+        // to finalize — see Rfq::finalizePart().
+        $finalizedAt = $assignee->pivot->finalized_at;
+        $finalizeNode = [
+            'name' => $nameLabel,
+            'role' => 'Finalize',
+            'step' => 'finalize',
+            'rfq_number' => $rfqNumber,
+            'meta' => match (true) {
+                $finalizedAt !== null => ['Finalized', $finalizedAt->format('M d, Y g:i A')],
+                $deIsDone => ['Awaiting Finalize'],
+                default => ['Not yet reached'],
+            },
+            'state' => $nodeState($finalizedAt !== null, $deIsDone && $finalizedAt === null),
+            'children' => [$buildTailChain($rfqNumber, $assignee->pivot)],
+        ];
 
         $dataEntryNode = [
             'name' => $nameLabel,
@@ -339,8 +383,8 @@
             'step' => 'data_entry',
             'rfq_number' => $rfqNumber,
             'meta' => $deMeta,
-            'state' => $nodeState($deIsDone, returned: $deIsReturned),
-            'children' => [$buildTailChain($rfqNumber, $assignee->pivot)],
+            'state' => $nodeState($deIsDone, returned: $deIsReturned || $deIsReturnedBySourcing),
+            'children' => [$finalizeNode],
         ];
 
         $sourcingBranches[] = [
@@ -405,6 +449,15 @@
                     'part' => $adminPart->pivot->part_number,
                     'returnTo' => 'show',
                     'label' => 'Mark '.($rfq->isSplit() ? 'P'.$adminPart->pivot->part_number.' ' : '').'Complete',
+                ])
+            @endforeach
+            @foreach ($finalizableParts as $finalizablePart)
+                @include('admin.rfqs._finalize_actions', [
+                    'rfq' => $rfq,
+                    'part' => $finalizablePart->pivot->part_number,
+                    'returnTo' => 'show',
+                    'finalizeLabel' => 'Finalize'.($rfq->isSplit() ? ' P'.$finalizablePart->pivot->part_number : ''),
+                    'returnLabel' => 'Return '.($rfq->isSplit() ? 'P'.$finalizablePart->pivot->part_number.' ' : '').'to Data Entry',
                 ])
             @endforeach
             @if ($canApproveSeniorOpsReview)
@@ -492,7 +545,7 @@
                     @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment, 'showLabel' => true])
                 @endif
             @endcan
-            @if (auth()->user()->hasRole('Admin'))
+            @if (auth()->user()->hasRole('Admin') || (auth()->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment()))
                 <button type="button" class="btn btn-sm btn-primary js-edit-rfq"
                         data-bs-toggle="modal" data-bs-target="#editRfqModal"
                         data-action="{{ route('admin.rfqs.update', $rfq) }}"
@@ -518,6 +571,21 @@
             </div>
         </div>
     @endforeach
+
+    @if ($rfq->isReturnedToBusinessDevelopment())
+        <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+            <i class="bi bi-arrow-counterclockwise fs-5"></i>
+            <div>
+                <div class="fw-bold">
+                    Sent back to Business Development
+                    @if ($rfq->bd_return_count > 1)
+                        — {{ \App\Models\Rfq::ordinal($rfq->bd_return_count) }} time
+                    @endif
+                </div>
+                <div>By {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}</div>
+            </div>
+        </div>
+    @endif
 
     <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -553,7 +621,7 @@
             <noscript><p class="text-muted-soft mb-0">Enable JavaScript to see the progress chart.</p></noscript>
         </div>
 
-        {{-- One tab per lifecycle stage — the same 9 stages the Progress
+        {{-- One tab per lifecycle stage — the same 10 stages the Progress
              chart above draws as nodes, but here as a compact read-out of
              exactly what happened (or is still pending) at each one,
              without needing to zoom/pan the chart to read a node's text.
@@ -692,6 +760,8 @@
                                                         <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</span>
                                                     @elseif ($tabDeIsReturned)
                                                         <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
+                                                    @elseif ($tabAssignee->pivot->data_entry_returned_at !== null)
+                                                        <span class="badge bg-danger-subtle text-danger-emphasis">Returned by Sourcing</span>
                                                     @elseif ($tabAssignee->pivot->completed_at !== null)
                                                         <span class="badge bg-secondary-subtle text-secondary-emphasis">Awaiting review</span>
                                                     @else
@@ -711,12 +781,22 @@
                     @endif
                 </div>
 
+                {{-- Each part's Sourcing member finalizes it once Data Entry has sent
+                     it to finalize — one line per part, kept whole or split. --}}
+                <div class="tab-pane fade {{ $activeStep === 'finalize' ? 'show active' : '' }}" id="step-pane-finalize" role="tabpanel" aria-labelledby="step-tab-finalize">
+                    @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
+                        <p class="text-muted-soft mb-0">Not yet assigned.</p>
+                    @else
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'finalized_at', 'byRelation' => 'finalizedBy', 'reachedColumn' => 'data_entry_completed_at', 'awaiting' => 'Awaiting Finalize'])
+                    @endif
+                </div>
+
                 {{-- Senior Operations Approval, the Head, GM Assistant and the General
                      Manager each take a split part by part (_step_parts) — an RFQ
                      kept whole has just the one record of each. --}}
                 <div class="tab-pane fade {{ $activeStep === 'senior_ops' ? 'show active' : '' }}" id="step-pane-senior_ops" role="tabpanel" aria-labelledby="step-tab-senior_ops">
                     @if ($rfq->isSplit())
-                        @include('admin.rfqs._step_parts', ['doneColumn' => 'senior_ops_reviewed_at', 'byRelation' => 'seniorOpsReviewedBy', 'reachedColumn' => 'data_entry_completed_at', 'awaiting' => 'Awaiting review'])
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'senior_ops_reviewed_at', 'byRelation' => 'seniorOpsReviewedBy', 'reachedColumn' => 'finalized_at', 'awaiting' => 'Awaiting review'])
                     @elseif ($rfq->senior_ops_reviewed_at)
                         <dl class="rfq-detail-grid mb-0">
                             <div>
@@ -756,7 +836,7 @@
                             </div>
                         </dl>
                     @elseif (! $rfq->isSplit() && ! $rfq->senior_ops_reviewed_at)
-                        <p class="text-muted-soft mb-0">{{ $stepDone['data_entry'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
+                        <p class="text-muted-soft mb-0">{{ $stepDone['finalize'] ? 'Awaiting review.' : 'Not yet reached.' }}</p>
                     @endif
                 </div>
 
@@ -1117,7 +1197,7 @@
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
-    @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty())
+    @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty() || $finalizableParts->isNotEmpty())
         @include('admin.rfqs._complete_modal')
     @endif
     @if ($rejectFromStage)

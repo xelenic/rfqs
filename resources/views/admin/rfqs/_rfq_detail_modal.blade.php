@@ -48,6 +48,7 @@
     $canOpenFullRfq = ! auth()->user()->hasRole('Sourcing');
 
     $canCompleteAsSourcing = $isMe && ! $isDone;
+    $canFinalize = $isMe && $rfq->partAwaitsFinalize($part);
     $canCompleteAsDataEntry = $isDone
         && $assignee->pivot->data_entry_completed_at === null
         && auth()->user()->hasAnyRole(['Data Entry', 'Admin']);
@@ -127,6 +128,8 @@
                      there comes back here. --}}
                 @if ($canCompleteAsSourcing)
                     @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
+                @elseif ($canFinalize)
+                    @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
                 @elseif ($canCompleteAsDataEntry)
                     {{-- Only this one part — see RfqController::completeDataEntry()
                          and returnSourcing(), which never touch any other part on the

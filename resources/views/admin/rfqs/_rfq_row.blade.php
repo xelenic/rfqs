@@ -11,6 +11,10 @@
     Optional: $groupedParts — this row heads a group whose parts follow it
     (see _rfq_parts.blade.php), so it gets the button that folds them away
     and a one-line summary of how far along they are.
+    Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
+    an RFQ can be sent back to Business Development for details
+    (_request_details_modal.blade.php) — or, once it has been, is marked as
+    being with them.
 --}}
 <tr @class(['rfq-group-head' => $groupedParts ?? false])>
     <td class="fw-semibold">
@@ -44,7 +48,15 @@
     @unless ($statusFilter)
         <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
     @endunless
-    <td>{{ $rfq->subject }}</td>
+    <td>
+        {{ $rfq->subject }}
+        @if (($canRequestDetails ?? false) && $rfq->isReturnedToBusinessDevelopment())
+            <div class="rfq-list-subnote rfq-list-subnote-returned">
+                <i class="bi bi-arrow-counterclockwise"></i>
+                With Business Development: {{ $rfq->reject_reason }}
+            </div>
+        @endif
+    </td>
     <td class="text-muted-soft">
         {{ $rfq->created_at->format('M d, Y') }}
         @if ($rfq->creator)
@@ -97,8 +109,18 @@
             @if ($canSeeAssignButtons && $rfq->hasUnassignedParts())
                 @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment])
             @endif
+            @if (($canRequestDetails ?? false) && ! $rfq->isReturnedToBusinessDevelopment())
+                <button type="button" class="btn btn-sm btn-outline-danger js-request-details"
+                        data-bs-toggle="modal" data-bs-target="#requestDetailsModal"
+                        data-action="{{ route('admin.rfqs.request-details', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}"
+                        data-label="{{ $rfq->rfq_number }} — {{ $rfq->subject }}"
+                        title="Send back to Business Development for details">
+                    <i class="bi bi-arrow-counterclockwise"></i> Get Details Again
+                </button>
+            @endif
         @endcan
-        @if (auth()->user()->hasRole('Admin'))
+        @if (auth()->user()->hasRole('Admin') || (auth()->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment()))
             <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
                     data-bs-toggle="modal" data-bs-target="#editRfqModal"
                     data-action="{{ route('admin.rfqs.update', $rfq) }}"

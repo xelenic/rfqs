@@ -19,7 +19,8 @@
         'sourcing_completed' => ['bi-check-circle-fill', 'success', 'Marked Complete by Sourcing'],
         'sourcing_returned' => ['bi-arrow-counterclockwise', 'danger', 'Returned to Sourcing'],
         'sourcing_handoff' => ['bi-clipboard-check', 'info', 'Handed off to Data Entry'],
-        'data_entry_part_completed' => ['bi-check2-circle', 'success', 'Marked Complete by Data Entry'],
+        'data_entry_part_completed' => ['bi-send-check', 'success', 'Sent to Finalize by Data Entry'],
+        'sourcing_finalized' => ['bi-check2-all', 'success', 'Finalized by Sourcing'],
         'data_entry_all_completed' => ['bi-clipboard-check', 'success', 'All Splits Completed by Data Entry'],
         'senior_ops_part_reviewed' => ['bi-clipboard2-check', 'success', 'Part approved by Senior Operations'],
         'head_of_bd_part_approved' => ['bi-check-circle-fill', 'success', 'Part approved by Head of Business Development'],
@@ -46,7 +47,7 @@
     // never sees another Sourcing partner's identity (only their own).
     $shouldBlur = match ($entry['type']) {
         'created', 'operations_assigned' => $restrictSourcingView,
-        'sourcing_assigned', 'sourcing_completed', 'sourcing_handoff' => $isOtherSourcingPartner,
+        'sourcing_assigned', 'sourcing_completed', 'sourcing_handoff', 'sourcing_finalized' => $isOtherSourcingPartner,
         default => false,
     };
 
@@ -133,7 +134,7 @@
             <div class="rfq-timeline-title">{{ $title }}</div>
             <div class="rfq-timeline-meta">
                 <span class="fw-semibold {{ $isOtherSourcingPartner ? 'rfq-blurred' : '' }}">{{ $entry['related']->name }}</span>'s part
-                &middot; completed by {{ $actorName }}
+                &middot; sent to finalize by {{ $actorName }}
                 &middot; {{ $entry['at']->format('M d, Y g:i A') }}
             </div>
             @if ($entry['detail'])

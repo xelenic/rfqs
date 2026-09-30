@@ -26,7 +26,7 @@
             ->where('rfq_user.user_id', auth()->id())
             ->whereNull('rfq_user.completed_at')
             ->whereNull('rfq_user.returned_at')
-            ->count(),
+            ->count() + \App\Models\Rfq::awaitingFinalizeCount(auth()->id()),
         auth()->user()->hasRole('Data Entry') => \Illuminate\Support\Facades\DB::table('rfq_user')
             ->whereNotNull('completed_at')
             ->whereNull('data_entry_completed_at')
@@ -38,7 +38,7 @@
     };
     $pendingBadgeTitle = match (true) {
         auth()->user()->hasRole('Senior Operations') => "{$pendingBadgeCount} not yet assigned to Sourcing",
-        auth()->user()->hasRole('Sourcing') => "{$pendingBadgeCount} not marked complete",
+        auth()->user()->hasRole('Sourcing') => "{$pendingBadgeCount} to complete or finalize",
         auth()->user()->hasRole('Data Entry') => "{$pendingBadgeCount} not marked complete",
         auth()->user()->hasRole('Head of Business Development') => "{$pendingBadgeCount} awaiting your review",
         auth()->user()->hasRole('GM Assistant') => "{$pendingBadgeCount} awaiting client details",
@@ -93,6 +93,28 @@
         <span class="nav-link-label">Review</span>
         @if ($reviewCount > 0)
             <span class="nav-link-count" title="{{ $reviewCount }} awaiting your approval">{{ $reviewCount }}</span>
+        @endif
+    </a>
+    {{-- RFQs sent back to them by a reviewer, still waiting on them — one per
+         row on the Returns page — as a red count, like the queues above. --}}
+    @php $opsReturnsCount = \App\Models\Rfq::seniorOpsReturnsCount(); @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($opsReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $opsReturnsCount }} sent back by a reviewer">{{ $opsReturnsCount }}</span>
+        @endif
+    </a>
+@endif
+@if (auth()->user()->hasRole('Business Development'))
+    {{-- RFQs sent all the way back to them by a reviewer — one per row on
+         the Returns page — as a red count, like the queues above. --}}
+    @php $bdReturnsCount = \App\Models\Rfq::bdReturnsCount(); @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($bdReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $bdReturnsCount }} sent back by a reviewer">{{ $bdReturnsCount }}</span>
         @endif
     </a>
 @endif

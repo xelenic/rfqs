@@ -36,6 +36,12 @@
                     <span class="rfq-part-status">
                         <span class="badge {{ $pivot->progressBadgeClass() }}">{{ $pivot->progressLabel() }}</span>
                         @switch ($pivot->progressState())
+                            @case ('finalized')
+                                <span class="rfq-part-detail">
+                                    Data Entry {{ $pivot->data_entry_completed_at?->format('M d, g:i A') }}
+                                    · Finalized {{ $pivot->finalized_at->format('M d, g:i A') }}
+                                </span>
+                                @break
                             @case ('data_entry_done')
                                 <span class="rfq-part-detail">
                                     Sourcing done {{ $pivot->completed_at?->format('M d, g:i A') }}

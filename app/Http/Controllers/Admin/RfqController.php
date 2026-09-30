@@ -103,11 +103,19 @@ class RfqController extends Controller implements HasMiddleware
         // pattern as Sourcing's "Returns".
         $scopedToSeniorOpsReview = $status === 'Pending' && $actsAs('Senior Operations') && $request->query('view') === 'review';
 
+        // Senior Operations' Returns page — RFQs sent back to them, to their
+        // assignment step or their second review, by that review itself, the
+        // Head of Business Development, or the General Manager, while still
+        // waiting on them (Rfq::scopeReturnedToSeniorOperations()). A third
+        // lens on their Pending status, via ?view=returns, same pattern as
+        // Business Development's Returns.
+        $scopedToSeniorOpsReturns = $status === 'Pending' && $actsAs('Senior Operations') && $request->query('view') === 'returns';
+
         // Operations' Pending list is just their actionable backlog — RFQs
         // nobody's assigned to Sourcing yet — not every Pending RFQ in the
         // company regardless of stage. Matches the red count badge in the
         // sidebar (layouts/app.blade.php).
-        $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview;
+        $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
 
         // Head of Business Development's Pending list — one row per part
         // Senior Operations has approved, waiting on their own approve/reject
@@ -136,6 +144,13 @@ class RfqController extends Controller implements HasMiddleware
         // second lens via ?view=closing, same pattern as Sourcing's
         // "Returns" and Senior Operations' "Review".
         $scopedToBdClosing = $status === 'Pending' && $actsAs('Business Development') && $request->query('view') === 'closing';
+
+        // Business Development's Returns page — RFQs Senior Operations'
+        // second review, the Head of Business Development, or the General
+        // Manager has sent all the way back to them (Rfq::rejectToStage()/
+        // rejectPartToStage() targeting 'business_development'). A third
+        // lens on their Pending status, same pattern as "Closing" above.
+        $scopedToBdReturns = $status === 'Pending' && $actsAs('Business Development') && $request->query('view') === 'returns';
 
         $search = $request->string('search')->trim()->toString();
 
@@ -171,12 +186,17 @@ class RfqController extends Controller implements HasMiddleware
             // scoped to one assignee — only worth the extra eager load on
             // those two views.
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
+            ->when($scopedToBdReturns || $scopedToSeniorOpsReturns, fn ($query) => $query->with('rejectedBy'))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // Not the parts Data Entry has sent back: those are on the
                 // Returns list (below) until they're completed again.
+                // Admin's overview also lists the parts waiting on their
+                // member's Finalize, which are Sourcing's to act on too.
                 $query->whereHas('assignees', fn ($q) => $sourcingOverview
-                    ? $q->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at')
+                    ? $q->where(fn ($parts) => $parts
+                        ->where(fn ($open) => $open->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at'))
+                        ->orWhere(fn ($finalizing) => RfqAssignment::whereAwaitingFinalize($finalizing)))
                     : $q->whereKey($user->id)->tap(fn ($q) => RfqAssignment::whereNotReturned($q)));
             })
             ->when($scopedToReturns, function ($query) use ($user, $sourcingOverview) {
@@ -192,6 +212,8 @@ class RfqController extends Controller implements HasMiddleware
             ->when($scopedToGmAssistant, fn ($query) => $query->awaitingGmAssistant())
             ->when($scopedToGmReview, fn ($query) => $query->awaitingGmApproval())
             ->when($scopedToBdClosing, fn ($query) => $query->awaitingBdClosing())
+            ->when($scopedToBdReturns, fn ($query) => $query->where('reject_target_stage', 'business_development'))
+            ->when($scopedToSeniorOpsReturns, fn ($query) => $query->returnedToSeniorOperations())
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
             ->paginate(10)
@@ -291,6 +313,8 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToGmAssistant' => $scopedToGmAssistant,
             'scopedToGmReview' => $scopedToGmReview,
             'scopedToBdClosing' => $scopedToBdClosing,
+            'scopedToBdReturns' => $scopedToBdReturns,
+            'scopedToSeniorOpsReturns' => $scopedToSeniorOpsReturns,
             'lensRole' => $lensRole,
             'sourcingOverview' => $sourcingOverview,
             'opsFilters' => $opsFilters,
@@ -447,17 +471,46 @@ class RfqController extends Controller implements HasMiddleware
         return $this->redirectToIndex($request)->with('status', 'RFQ created successfully.');
     }
 
+    /**
+     * Edits an RFQ's own details (WC/RFQ number, priority, subject,
+     * description, status). The Edit button itself is only ever shown to
+     * Admin, and to Business Development on an RFQ currently sent back to
+     * them (Rfq::isReturnedToBusinessDevelopment()) — that's when
+     * something about it needs fixing before it can go on. In that one
+     * case, whatever status is submitted is overridden back to Pending:
+     * closing it out is still the very end of the approval chain, not
+     * theirs to skip to from here.
+     *
+     * Saving an edit to an RFQ sent back to Business Development — by them,
+     * or by Admin, who can act at every stage — counts as fixing it: it
+     * comes off their Returns page (Rfq::resolveBusinessDevelopmentReturn()).
+     */
     public function update(Request $request, Rfq $rfq): RedirectResponse
     {
+        $isBdReturn = $request->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment();
+        $resolvesBdReturn = $rfq->isReturnedToBusinessDevelopment() && $request->user()->hasAnyRole(['Business Development', 'Admin']);
+
         $validator = Validator::make($request->all(), $this->rules());
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'edit')->withInput();
         }
 
-        $rfq->update($validator->validated());
+        $validated = $validator->validated();
 
-        return $this->redirectAfterSave($request, $rfq)->with('status', 'RFQ updated successfully.');
+        if ($isBdReturn) {
+            $validated['status'] = 'Pending';
+        }
+
+        $rfq->update($validated);
+
+        if ($resolvesBdReturn) {
+            $rfq->resolveBusinessDevelopmentReturn();
+        }
+
+        return $this->redirectAfterSave($request, $rfq)->with('status', $resolvesBdReturn
+            ? 'RFQ updated — it\'s been taken off the Returns list.'
+            : 'RFQ updated successfully.');
     }
 
     /**
@@ -479,14 +532,21 @@ class RfqController extends Controller implements HasMiddleware
      * shown, worked and completed separately. Sourcing itself never has
      * access to this — it's a receiving role, not an assigning one.
      *
-     * An Operations member assigning Sourcing directly is implicitly the
-     * one routing this RFQ — if nobody's recorded as the Operations
-     * assignee yet, record them, so Operations doesn't need a separate
-     * "Assign Operations" step just to name themselves.
+     * Whoever assigns Sourcing directly is implicitly the one routing this
+     * RFQ — if nobody's recorded as the Operations assignee yet, record
+     * them (Admin's own pick, via doneBy(), if they made one), so Operations
+     * doesn't need a separate "Assign Operations" step just to name
+     * themselves.
+     *
+     * Business Development never has access either — not even on an RFQ
+     * sent back to them (Rfq::isReturnedToBusinessDevelopment()): they fix
+     * its details, and Senior Operations re-assigns it from their
+     * Unassigned queue.
      */
     public function assign(Request $request, Rfq $rfq): RedirectResponse
     {
         abort_if($request->user()->hasRole('Sourcing'), 403, 'Sourcing cannot assign RFQs — that\'s Operations\' or a coordinator\'s call.');
+        abort_if($request->user()->hasRole('Business Development'), 403, 'Business Development cannot assign Sourcing — Senior Operations re-assigns a returned RFQ.');
 
         $planning = $rfq->split_count === null;
 
@@ -548,7 +608,7 @@ class RfqController extends Controller implements HasMiddleware
 
             $rfq->assignSourcingParts($assignments->all());
 
-            if ($user->hasRole('Senior Operations') && ! $rfq->operations_assigned_by) {
+            if (! $rfq->operations_assigned_by) {
                 $rfq->update([
                     'operations_assigned_by' => $user->id,
                     'operations_assigned_at' => now(),
@@ -561,6 +621,40 @@ class RfqController extends Controller implements HasMiddleware
         return $this->redirectAfterSave($request, $rfq)->with('status', $remaining === 0
             ? 'Sourcing assigned.'
             : 'Saved — '.($totalParts - $remaining).' of '.$totalParts.' parts assigned, '.$remaining.' still to assign.');
+    }
+
+    /**
+     * "Get Details Again" — Senior Operations, looking at an RFQ on their
+     * Unassigned queue, finds it's missing what they need to route it, and
+     * sends it back to Business Development's Returns page with a reason.
+     * The same whole-RFQ send-back Senior Operations' second review can do
+     * (Rfq::rejectToStage() to 'business_development'), only from their
+     * assignment step: any Sourcing part already assigned on a partly
+     * assigned split is freed, and the wizard starts over once it's back.
+     * Business Development fixing it (RfqController::update()) puts it back
+     * in front of Senior Operations.
+     */
+    public function requestDetails(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless(
+            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            403,
+            'Only Senior Operations can ask Business Development for details again.'
+        );
+        abort_unless(
+            $rfq->status === 'Pending' && Rfq::whereKey($rfq->id)->needingSourcing()->exists(),
+            422,
+            'This RFQ is not waiting on Sourcing assignment.'
+        );
+        abort_if($rfq->isReturnedToBusinessDevelopment(), 422, 'This RFQ is already with Business Development.');
+
+        $validated = $request->validateWithBag('requestDetails', [
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $rfq->rejectToStage('business_development', $validated['reason'], $this->doneBy($request, 'Senior Operations'), 'operations');
+
+        return redirect()->back()->with('status', "Sent {$rfq->rfq_number} back to Business Development for details.");
     }
 
     /**
@@ -676,12 +770,12 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Data Entry finishes processing one Sourcing part — only that part,
-     * never the others on the same RFQ (even other parts held by the same
-     * person) — with a comment for Senior Operations that's posted to the
-     * RFQ's thread. The RFQ as a whole only moves on to Senior Operations'
-     * review once every part has been completed here. See
-     * Rfq::completeDataEntryPart().
+     * Data Entry's "Send to Finalize" — finishes processing one Sourcing part
+     * (only that part, never the others on the same RFQ, even other parts
+     * held by the same person) and sends it back to its Sourcing member to
+     * finalize, with a comment that's posted to the RFQ's thread. It's their
+     * Finalize (finalize()) that sends it on to Senior Operations' review.
+     * See Rfq::completeDataEntryPart().
      */
     public function completeDataEntry(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -699,7 +793,7 @@ class RfqController extends Controller implements HasMiddleware
 
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
 
-        $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
+        $comment = $this->requiredComment($request, 'comment', 'Add a comment to send this part to finalize.');
 
         if ($comment instanceof RedirectResponse) {
             return $comment;
@@ -707,7 +801,78 @@ class RfqController extends Controller implements HasMiddleware
 
         $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment);
 
-        return redirect()->back()->with('status', "Marked {$assignee->name}'s part complete.");
+        return redirect()->back()->with('status', "Sent {$assignee->name}'s part to finalize.");
+    }
+
+    /**
+     * The Sourcing member's Finalize — on a part Data Entry has sent to
+     * finalize, it sends that part on to Senior Operations' review. Only the
+     * part's own assignee can, or Admin on their behalf (recorded as the
+     * assignee either way). See Rfq::finalizePart().
+     */
+    public function finalize(Request $request, Rfq $rfq): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless(
+            ($user->hasRole('Sourcing') && $assignee?->id === $user->id) || ($user->hasRole('Admin') && $assignee !== null),
+            403,
+            'Only the Sourcing member assigned to this part can finalize it.'
+        );
+        abort_unless($rfq->partAwaitsFinalize($part), 422, 'This part is not waiting to be finalized.');
+
+        $rfq->finalizePart($part);
+
+        return $this->redirectAfterSave($request, $rfq)->with('status', "Finalized {$rfq->partNumberLabel($part)} — sent to Senior Operations' review.");
+    }
+
+    /**
+     * The Sourcing member's Return to Data Entry — on a part Data Entry has
+     * sent to finalize, instead of finalizing it, sends it back to Data
+     * Entry with a required reason. Only the part's own assignee can, or
+     * Admin on their behalf (recorded as the assignee either way). See
+     * Rfq::returnToDataEntry().
+     */
+    public function returnDataEntry(Request $request, Rfq $rfq): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+        $assignee = $rfq->assigneeForPart($part);
+        $isAdminActing = $user->hasRole('Admin') && $assignee !== null;
+
+        abort_unless(
+            ($user->hasRole('Sourcing') && $assignee?->id === $user->id) || $isAdminActing,
+            403,
+            'Only the Sourcing member assigned to this part can send it back to Data Entry.'
+        );
+        abort_if(
+            $isAdminActing && $request->filled('acting_user_id') && (int) $request->input('acting_user_id') !== $assignee->id,
+            422,
+            "That person isn't the Sourcing member assigned to this part."
+        );
+        abort_unless($rfq->partAwaitsFinalize($part), 422, 'This part is not waiting to be finalized.');
+
+        $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back to Data Entry.', 1000);
+
+        if ($reason instanceof RedirectResponse) {
+            return $reason;
+        }
+
+        $rfq->returnToDataEntry($part, $reason);
+
+        return $this->redirectAfterSave($request, $rfq)->with('status', "Sent {$rfq->partNumberLabel($part)} back to Data Entry.");
     }
 
     /**
@@ -836,9 +1001,9 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * General Manager rejects — sends the RFQ (or, with a part, just that
      * part) back to an earlier stage with a reason, all the way back
-     * through GM Assistant. With a part, just that one part goes back —
-     * see Rfq::rejectPartToStage() — otherwise the whole RFQ, which has to
-     * be at their review stage — see Rfq::rejectToStage().
+     * through Business Development itself. With a part, just that one part
+     * goes back — see Rfq::rejectPartToStage() — otherwise the whole RFQ,
+     * which has to be at their review stage — see Rfq::rejectToStage().
      */
     public function rejectGm(Request $request, Rfq $rfq): RedirectResponse
     {

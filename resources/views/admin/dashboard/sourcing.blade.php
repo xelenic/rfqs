@@ -17,7 +17,7 @@
             [
                 'label' => 'Assigned to You', 'value' => $overview['assigned'], 'icon' => 'bi-inboxes', 'iconClass' => '',
                 'url' => route('admin.rfqs.index', ['status' => 'Pending']),
-                'caption' => $overview['done'].' finished by Data Entry',
+                'caption' => $overview['toFinalize'] > 0 ? $overview['toFinalize'].' to finalize' : $overview['done'].' finalized',
                 'alert' => false,
             ],
             [
@@ -97,6 +97,8 @@
                                             </a>
                                             @if ($assignment->completed_at === null)
                                                 @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
+                                            @elseif ($assignment->isAwaitingFinalize())
+                                                @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
                                             @endif
                                         </td>
                                     </tr>
@@ -122,7 +124,8 @@
                             'in_progress' => $overview['inProgress'],
                             'returned' => $overview['returned'],
                             'with_data_entry' => $overview['inReview'],
-                            'data_entry_done' => $overview['done'],
+                            'data_entry_done' => $overview['toFinalize'],
+                            'finalized' => $overview['done'],
                         ];
                     @endphp
 

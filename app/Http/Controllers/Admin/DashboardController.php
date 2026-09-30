@@ -213,12 +213,12 @@ class DashboardController extends Controller
      * front of them: what they were given most recently, what Data Entry
      * sent back, and what's with Data Entry now.
      *
-     * "Pending" is what's still theirs to complete, leaving out what Data Entry
-     * sent back (that's "Returned", and their Returns list) — the same count
-     * as the badge on their sidebar link.
+     * "Pending" is what's still theirs to complete or finalize, leaving out
+     * what Data Entry sent back (that's "Returned", and their Returns list) —
+     * the same count as the badge on their sidebar link.
      *
      * @return array{
-     *     assigned: int, pending: int, urgent: int, returned: int, inReview: int, done: int, inProgress: int,
+     *     assigned: int, pending: int, urgent: int, returned: int, inReview: int, toFinalize: int, done: int, inProgress: int,
      *     recent: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>,
      *     returnedParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>,
      *     inReviewParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>
@@ -244,7 +244,11 @@ class DashboardController extends Controller
             ->values();
 
         $inState = fn (string $state) => $parts->where('state', $state);
-        $stillTheirs = $parts->filter(fn (array $part) => $part['assignment']->completed_at === null && $part['state'] !== 'returned');
+        // Theirs to act on: not yet completed (and not sent back — that's a
+        // return), or sent to finalize by Data Entry and waiting on their
+        // Finalize. Matches the badge on their sidebar's Pending link.
+        $stillTheirs = $parts->filter(fn (array $part) => ($part['assignment']->completed_at === null && $part['state'] !== 'returned')
+            || $part['state'] === 'data_entry_done');
 
         return [
             'assigned' => $parts->count(),
@@ -252,7 +256,8 @@ class DashboardController extends Controller
             'urgent' => $stillTheirs->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
             'returned' => $inState('returned')->count(),
             'inReview' => $inState('with_data_entry')->count(),
-            'done' => $inState('data_entry_done')->count(),
+            'toFinalize' => $inState('data_entry_done')->count(),
+            'done' => $inState('finalized')->count(),
             'inProgress' => $inState('in_progress')->count(),
             'recent' => $parts->sortByDesc(fn (array $part) => $part['assignment']->created_at)->take(6)->values(),
             'returnedParts' => $inState('returned')->sortByDesc(fn (array $part) => $part['assignment']->returned_at)->take(5)->values(),

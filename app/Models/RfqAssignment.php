@@ -11,11 +11,12 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  * (so a person holding three parts has three rows), tracking which part it
  * is, when it was assigned, when it was completed, whether Data Entry sent
  * it back for rework, whether Data Entry has completed its own processing of
- * it, and how far it has come since — approved by Senior Operations, then by
+ * it (sending it to finalize), whether its Sourcing member has finalized it,
+ * and how far it has come since — approved by Senior Operations, then by
  * the Head of Business Development, then completed by GM Assistant, then
  * approved by the General Manager, then closed by Business Development. See
  * Rfq::assignees() / completeSourcingPart() / returnSourcingPart() /
- * completeDataEntryPart() / approveSeniorOpsPart() / approveHeadOfBdPart() /
+ * completeDataEntryPart() / finalizePart() / approveSeniorOpsPart() / approveHeadOfBdPart() /
  * recordGmAssistantPart() / approveGmPart() / closePart().
  */
 class RfqAssignment extends Pivot
@@ -30,6 +31,7 @@ class RfqAssignment extends Pivot
         'with_data_entry' => 'With Data Entry',
         'returned' => 'Returned',
         'data_entry_done' => 'Data Entry done',
+        'finalized' => 'Finalized',
     ];
 
     /**
@@ -42,6 +44,8 @@ class RfqAssignment extends Pivot
             'completed_at' => 'datetime',
             'returned_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
+            'finalized_at' => 'datetime',
+            'data_entry_returned_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'gm_assistant_completed_at' => 'datetime',
@@ -52,13 +56,15 @@ class RfqAssignment extends Pivot
 
     /**
      * Where this part stands, for showing next to whoever holds it:
-     * 'data_entry_done' (Data Entry has processed it), 'with_data_entry'
+     * 'finalized' (its Sourcing member has finalized it after Data Entry),
+     * 'data_entry_done' (Data Entry has sent it to finalize), 'with_data_entry'
      * (Sourcing finished it, Data Entry hasn't yet), 'returned' (sent back
      * to Sourcing for rework) or 'in_progress'.
      */
     public function progressState(): string
     {
         return match (true) {
+            $this->finalized_at !== null => 'finalized',
             $this->data_entry_completed_at !== null => 'data_entry_done',
             $this->completed_at !== null => 'with_data_entry',
             $this->returned_at !== null => 'returned',
@@ -84,7 +90,8 @@ class RfqAssignment extends Pivot
     public static function wherePartIs(Builder $query, string $state): void
     {
         match ($state) {
-            'data_entry_done' => $query->whereNotNull('rfq_user.data_entry_completed_at'),
+            'finalized' => $query->whereNotNull('rfq_user.finalized_at'),
+            'data_entry_done' => $query->whereNotNull('rfq_user.data_entry_completed_at')->whereNull('rfq_user.finalized_at'),
             'with_data_entry' => $query->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at'),
             'returned' => $query->whereNotNull('rfq_user.returned_at')->whereNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at'),
             default => $query->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at')->whereNull('rfq_user.data_entry_completed_at'),
@@ -113,7 +120,8 @@ class RfqAssignment extends Pivot
     public function progressBadgeClass(): string
     {
         return match ($this->progressState()) {
-            'data_entry_done' => 'badge-soft-success',
+            'finalized' => 'badge-soft-success',
+            'data_entry_done' => 'badge-soft-info',
             'with_data_entry' => 'badge-soft-primary',
             'returned' => 'badge-soft-danger',
             default => 'badge-soft-warning',
@@ -129,13 +137,35 @@ class RfqAssignment extends Pivot
     }
 
     /**
-     * Whether this part has been through both Sourcing and Data Entry and is
-     * waiting on Senior Operations' review.
+     * Whether Data Entry has sent this part to finalize and it's waiting on
+     * its Sourcing member's Finalize.
+     */
+    public function isAwaitingFinalize(): bool
+    {
+        return $this->data_entry_completed_at !== null && $this->finalized_at === null;
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts waiting on their
+     * Sourcing member's Finalize — the SQL twin of isAwaitingFinalize().
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     */
+    public static function whereAwaitingFinalize(Builder $query): void
+    {
+        $query->whereNotNull('rfq_user.data_entry_completed_at')
+            ->whereNull('rfq_user.finalized_at');
+    }
+
+    /**
+     * Whether this part has been through Sourcing, Data Entry and its
+     * Sourcing member's Finalize, and is waiting on Senior Operations' review.
      */
     public function isAwaitingSeniorOpsReview(): bool
     {
         return $this->completed_at !== null
             && $this->data_entry_completed_at !== null
+            && $this->finalized_at !== null
             && $this->senior_ops_reviewed_at === null;
     }
 
@@ -149,6 +179,7 @@ class RfqAssignment extends Pivot
     {
         $query->whereNotNull('rfq_user.completed_at')
             ->whereNotNull('rfq_user.data_entry_completed_at')
+            ->whereNotNull('rfq_user.finalized_at')
             ->whereNull('rfq_user.senior_ops_reviewed_at');
     }
 
@@ -323,5 +354,14 @@ class RfqAssignment extends Pivot
     public function dataEntryCompletedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'data_entry_completed_by');
+    }
+
+    /**
+     * Who finalized this part after Data Entry sent it to finalize — its
+     * Sourcing member (Admin finalizes as them). See Rfq::finalizePart().
+     */
+    public function finalizedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'finalized_by');
     }
 }

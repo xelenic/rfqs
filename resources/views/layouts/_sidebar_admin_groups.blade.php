@@ -24,9 +24,10 @@
     // page's "view" is the role's second queue; its first has none.
     $groups = [
         [
-            'role' => 'Business Development', 'icon' => 'bi-briefcase', 'badge' => ['closing'],
+            'role' => 'Business Development', 'icon' => 'bi-briefcase', 'badge' => ['closing', 'bd_returns'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => null, 'hint' => ''],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'bd_returns', 'hint' => 'sent back by a reviewer'],
                 ['label' => 'Ready to Close', 'icon' => 'bi-flag', 'status' => 'Pending', 'view' => 'closing', 'count' => 'closing', 'hint' => 'approved by the General Manager, waiting to be closed'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
@@ -36,12 +37,15 @@
             'links' => [
                 ['label' => 'Unassigned RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'unassigned', 'hint' => 'not fully assigned to Sourcing'],
                 ['label' => 'Review', 'icon' => 'bi-clipboard2-check', 'status' => 'Pending', 'view' => 'review', 'count' => 'ops_review', 'hint' => 'awaiting second review'],
+                // Not in the heading's badge: every one of these is already
+                // counted in Unassigned or Review above.
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'sent back by a reviewer'],
             ],
         ],
         [
             'role' => 'Sourcing', 'icon' => 'bi-people', 'badge' => ['sourcing_pending', 'sourcing_returns'],
             'links' => [
-                ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts not marked complete'],
+                ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts to complete or finalize'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry'],
             ],
         ],

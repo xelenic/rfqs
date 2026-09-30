@@ -51,19 +51,28 @@
     </div>
 
     @if ($mode === 'edit')
-        <div class="col-md-6">
-            <label for="{{ $idPrefix }}-status" class="form-label">Status</label>
-            <select name="status" id="{{ $idPrefix }}-status" class="form-select @error('status', $idPrefix) is-invalid @enderror" required>
-                @foreach ($statuses as $status)
-                    <option value="{{ $status }}" {{ ($showOld ? old('status', 'Pending') : 'Pending') === $status ? 'selected' : '' }}>
-                        {{ $status === 'Completed' ? 'Closed' : $status }}
-                    </option>
-                @endforeach
-            </select>
-            @error('status', $idPrefix)
-                <div class="invalid-feedback">{{ $message }}</div>
-            @enderror
-        </div>
+        {{-- Business Development only ever opens this while fixing an RFQ
+             that's been sent back to them (RfqController::update()) —
+             always Pending, and not theirs to close from here regardless
+             of what's submitted, so there's nothing to choose: a hidden
+             field carries it instead of the picker everyone else gets. --}}
+        @if (auth()->user()->hasRole('Business Development'))
+            <input type="hidden" name="status" value="Pending">
+        @else
+            <div class="col-md-6">
+                <label for="{{ $idPrefix }}-status" class="form-label">Status</label>
+                <select name="status" id="{{ $idPrefix }}-status" class="form-select @error('status', $idPrefix) is-invalid @enderror" required>
+                    @foreach ($statuses as $status)
+                        <option value="{{ $status }}" {{ ($showOld ? old('status', 'Pending') : 'Pending') === $status ? 'selected' : '' }}>
+                            {{ $status === 'Completed' ? 'Closed' : $status }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('status', $idPrefix)
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+        @endif
     @endif
 
     <div class="col-12">

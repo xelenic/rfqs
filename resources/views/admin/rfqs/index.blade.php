@@ -1,6 +1,8 @@
 @php
     $pageTitle = match (true) {
         $scopedToReturns => 'Returns',
+        $scopedToBdReturns => 'Returns',
+        $scopedToSeniorOpsReturns => 'Returns',
         $scopedToSeniorOpsReview => 'Review',
         $sourcingOverview && $scopedToMe => 'Pending RFQs',
         $statusFilter === 'Pending' && $scopedToMe => 'My Pending RFQs',
@@ -124,7 +126,17 @@
                                 <tr class="js-de-sourcing-row" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        {{-- Its Sourcing member sent it back instead of finalizing it
+                                             (Rfq::returnToDataEntry()). --}}
+                                        @if ($assignee->pivot->data_entry_returned_at)
+                                            <div class="rfq-list-subnote rfq-list-subnote-returned">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
+                                            </div>
+                                        @endif
+                                    </td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">{{ $assignee->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
@@ -565,8 +577,8 @@
                  Approving a part is on its own; the RFQ is ready for Business
                  Development to close once every part has been approved.
                  Rejecting sends it back to any earlier stage, all the way
-                 through GM Assistant. An RFQ kept whole is one row. See
-                 RfqController::index() ($scopedToGmReview),
+                 through Business Development itself. An RFQ kept whole is
+                 one row. See RfqController::index() ($scopedToGmReview),
                  Rfq::approveGmPart() / rejectPartToStage(). --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
@@ -666,6 +678,157 @@
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
                                     Nothing's waiting on your approval right now.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToSeniorOpsReturns)
+            {{-- Senior Operations' Returns page — RFQs sent back to them by
+                 their own second review, the Head of Business Development,
+                 or the General Manager, with who, why, and to which of their
+                 steps: the assignment (parts freed — Assign Sourcing again,
+                 right here) or the second review (approve it again from the
+                 Review page). A row leaves once that's done — see
+                 Rfq::scopeReturnedToSeniorOperations(), RfqController::index()
+                 ($scopedToSeniorOpsReturns). --}}
+            @php
+                $reviewPageUrl = route('admin.rfqs.index', array_filter([
+                    'status' => 'Pending',
+                    'view' => 'review',
+                    'role' => $lensRole ? \Illuminate\Support\Str::slug($lensRole) : null,
+                ]));
+            @endphp
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Sent back to</th>
+                            <th>Returned At</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            @php $backToAssignment = $rfq->reject_target_stage === 'operations'; @endphp
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
+                                <td>
+                                    {{ $rfq->subject }}
+                                    <div class="rfq-list-subnote rfq-list-subnote-returned">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                        Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                    </div>
+                                </td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td>
+                                    <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
+                                </td>
+                                <td class="text-muted-soft">{{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    @can('rfqs.edit')
+                                        @if ($backToAssignment)
+                                            @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => false, 'showLabel' => true])
+                                        @else
+                                            <a href="{{ $reviewPageUrl }}" class="btn btn-sm btn-outline-secondary" title="Approve it again from the Review page">
+                                                <i class="bi bi-clipboard2-check"></i> Review
+                                            </a>
+                                        @endif
+                                    @endcan
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="text-center text-muted-soft py-4">
+                                    Nothing's been sent back to Senior Operations.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @elseif ($scopedToBdReturns)
+            {{-- Business Development's Returns page — RFQs Senior
+                 Operations' second review, the Head of Business
+                 Development, or the General Manager has sent all the way
+                 back to them, with the reason. Whole-RFQ, not per-part: a
+                 return to Business Development isn't a per-part state the
+                 way approvals are (see Rfq::rejectToStage() and its
+                 'business_development' target). Fix it right here — Edit
+                 (subject/description/priority/etc.) is live for them on a
+                 row here (see Rfq::isReturnedToBusinessDevelopment(),
+                 RfqController::update()). No Assign Sourcing: re-assigning
+                 it is Senior Operations' job, from their Unassigned queue
+                 (see RfqController::assign()). A row that's bounced
+                 back more than once says so. Saving an Edit fixes it and
+                 takes it off this list (Rfq::resolveBusinessDevelopmentReturn());
+                 so does it being carried past Senior Operations' review. See
+                 RfqController::index() ($scopedToBdReturns). --}}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>WC Number</th>
+                            <th>RFQ Number</th>
+                            <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Returned At</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rfqs as $rfq)
+                            <tr>
+                                <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
+                                <td>
+                                    {{ $rfq->subject }}
+                                    @if ($rfq->bd_return_count > 1)
+                                        <span class="badge badge-soft-danger" title="Sent back to Business Development {{ \App\Models\Rfq::ordinal($rfq->bd_return_count) }} time">
+                                            {{ \App\Models\Rfq::ordinal($rfq->bd_return_count) }} time
+                                        </span>
+                                    @endif
+                                    <div class="rfq-list-subnote rfq-list-subnote-returned">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                        Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                    </div>
+                                </td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td class="text-muted-soft">{{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    @can('rfqs.edit')
+                                        <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#editRfqModal"
+                                                data-action="{{ route('admin.rfqs.update', $rfq) }}"
+                                                data-id="{{ $rfq->id }}"
+                                                data-wc-number="{{ $rfq->wc_number }}"
+                                                data-rfq-number="{{ $rfq->rfq_number }}"
+                                                data-priority-level="{{ $rfq->priority_level }}"
+                                                data-status="{{ $rfq->status }}"
+                                                data-subject="{{ $rfq->subject }}"
+                                                data-description="{{ $rfq->description }}"
+                                                title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                    @endcan
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                    Nothing's been sent back to Business Development.
                                 </td>
                             </tr>
                         @endforelse
@@ -792,7 +955,8 @@
                             {{-- One row per part assigned to me — someone holding
                                  several parts of a split RFQ sees each one on its
                                  own, with its own part number and its own Mark
-                                 Complete. --}}
+                                 Complete — and, once Data Entry has sent it to
+                                 finalize, its own Finalize. --}}
                             @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)
                                 @php
                                     $myPart = $myAssignment->pivot->part_number;
@@ -809,7 +973,13 @@
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($myPart) }}</td>
                                     <td>
                                         {{ $rfq->subject }}
-                                        @if ($rfq->isWithDataEntry())
+                                        @if ($myAssignment->pivot->isAwaitingFinalize())
+                                            {{-- Data Entry's Send to Finalize — theirs to finalize now. --}}
+                                            <div class="rfq-list-subnote">
+                                                <i class="bi bi-send-check"></i>
+                                                Sent to finalize by Data Entry
+                                            </div>
+                                        @elseif ($rfq->isWithDataEntry())
                                             <div class="rfq-list-subnote">
                                                 <i class="bi bi-check2-circle"></i>
                                                 Handed off to Data Entry
@@ -824,6 +994,8 @@
                                     <td class="text-end text-nowrap">
                                         @if (! $iHaveCompletedMyPart)
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart])
+                                        @elseif ($rfq->partAwaitsFinalize($myPart))
+                                            @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $myPart])
                                         @endif
                                     </td>
                                 </tr>
@@ -895,7 +1067,7 @@
                             </thead>
                             <tbody>
                                 @forelse ($rfqs as $rfq)
-                                    @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons])
+                                    @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'canRequestDetails' => true])
                                 @empty
                                     <tr>
                                         <td colspan="6" class="text-center text-muted-soft py-4">
@@ -1064,6 +1236,9 @@
     @if ($scopedToGmAssistant)
         @include('admin.rfqs._gm_assistant_modal')
     @endif
+    @if ($scopedToUnassigned)
+        @include('admin.rfqs._request_details_modal')
+    @endif
 
     @if ($errors->create->any() || $errors->edit->any())
         @push('scripts')
@@ -1106,6 +1281,22 @@
                     var form = document.getElementById('gmAssistantForm');
                     if (modalEl && form) {
                         form.action = @json(route('admin.rfqs.gm-assistant-details', ['rfq' => old('gm_assistant_rfq_id')]));
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
+
+    {{-- Same idea, for a failed "Get Details Again" submission. --}}
+    @if ($errors->requestDetails->any() && old('request_details_rfq_id'))
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById('requestDetailsModal');
+                    var form = document.getElementById('requestDetailsForm');
+                    if (modalEl && form) {
+                        form.action = @json(route('admin.rfqs.request-details', ['rfq' => old('request_details_rfq_id')]));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

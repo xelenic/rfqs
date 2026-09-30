@@ -62,9 +62,11 @@ class Rfq extends Model
     ];
 
     /**
-     * The ?view= values the RFQ list understands, each a second queue for a
-     * role alongside its default one — Sourcing's returns, Senior
-     * Operations' review, Business Development's ready-to-close.
+     * The ?view= values the RFQ list understands, each a second (or third)
+     * queue for a role alongside its default one — Sourcing's and Business
+     * Development's returns (the same value, one page each, scoped by who's
+     * looking), Senior Operations' review, Business Development's
+     * ready-to-close.
      *
      * @var array<int, string>
      */
@@ -99,17 +101,18 @@ class Rfq extends Model
 
     /**
      * Every stage, in pipeline order, that a reject can send an RFQ back
-     * to — from the very start (Senior Operations' own assignment/split
-     * step, to redo it or hand a part to someone else) through GM
-     * Assistant, just short of the General Manager's own review, which
-     * nothing rejects back to. Which of these a given reject-capable stage
-     * can actually use is whatever comes before its own position here —
-     * see rejectTargetStages().
+     * to — from the very start (Business Development itself, if it needs
+     * fixing there before anything else can be redone) through Senior
+     * Operations' own assignment/split step and GM Assistant, just short
+     * of the General Manager's own review, which nothing rejects back to.
+     * Which of these a given reject-capable stage can actually use is
+     * whatever comes before its own position here — see
+     * rejectTargetStages().
      *
      * @var array<int, string>
      */
     public const REJECT_STAGE_ORDER = [
-        'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review',
+        'business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review',
     ];
 
     /**
@@ -145,6 +148,8 @@ class Rfq extends Model
         'sourcing_completed_at',
         'data_entry_completed_by',
         'data_entry_completed_at',
+        'finalized_by',
+        'finalized_at',
         'category',
         'category_set_by',
         'category_set_at',
@@ -159,6 +164,7 @@ class Rfq extends Model
         'reject_reason',
         'reject_from_stage',
         'reject_target_stage',
+        'bd_return_count',
         'client_details',
         'payment_terms',
         'gm_assistant_completed_by',
@@ -184,8 +190,10 @@ class Rfq extends Model
             'operations_assigned_at' => 'datetime',
             'sourcing_completed_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
+            'finalized_at' => 'datetime',
             'category_set_at' => 'datetime',
             'split_count' => 'integer',
+            'bd_return_count' => 'integer',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'rejected_at' => 'datetime',
@@ -198,10 +206,11 @@ class Rfq extends Model
     /**
      * The stages $fromStage's own review can send an RFQ back to —
      * everything earlier in REJECT_STAGE_ORDER. Senior Operations' second
-     * review only reaches back to their own assignment/split step; the
-     * Head of Business Development's review reaches back through Senior
-     * Operations'; the General Manager's reaches all the way back through
-     * GM Assistant. Empty for anything that isn't a REJECTABLE_STAGE.
+     * review reaches back through their own assignment/split step to
+     * Business Development itself; the Head of Business Development's
+     * review reaches back through Senior Operations'; the General
+     * Manager's reaches all the way back through GM Assistant. Empty for
+     * anything that isn't a REJECTABLE_STAGE.
      *
      * @return array<int, string>
      */
@@ -221,6 +230,7 @@ class Rfq extends Model
     public static function stageLabel(?string $stage): string
     {
         return match ($stage) {
+            'business_development' => 'Business Development',
             'operations' => 'Senior Operations (assignment)',
             'sourcing' => 'Sourcing',
             'data_entry' => 'Data Entry',
@@ -232,6 +242,37 @@ class Rfq extends Model
             'closed' => 'Closed',
             default => $stage ?? 'Unknown',
         };
+    }
+
+    /**
+     * Whether this RFQ is currently sitting on Business Development's
+     * Returns page — sent all the way back to them and not yet fixed by
+     * them (resolveBusinessDevelopmentReturn()) or carried past Senior
+     * Operations' review again. Business Development can only edit an RFQ's
+     * own details while this is true — see RfqController::update().
+     * Re-assigning it is still Senior Operations' job, never theirs — see
+     * RfqController::assign().
+     */
+    public function isReturnedToBusinessDevelopment(): bool
+    {
+        return $this->reject_target_stage === 'business_development';
+    }
+
+    /**
+     * Business Development has fixed an RFQ sent back to them — it comes off
+     * their Returns page, and the "sent back" banner and note go with it.
+     * The rejection's reason stays in the comment thread, where
+     * rejectToStage() posted it, and bd_return_count still counts it. A
+     * no-op for an RFQ that isn't sitting with them. See
+     * RfqController::update().
+     */
+    public function resolveBusinessDevelopmentReturn(): void
+    {
+        if (! $this->isReturnedToBusinessDevelopment()) {
+            return;
+        }
+
+        $this->update($this->clearedRejectRecord());
     }
 
     /**
@@ -285,7 +326,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -342,6 +383,16 @@ class Rfq extends Model
     public function dataEntryCompletedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'data_entry_completed_by');
+    }
+
+    /**
+     * The Sourcing member whose Finalize was the last one needed — every
+     * part finalized, the RFQ as a whole moved on to Senior Operations'
+     * review. See finalizePart().
+     */
+    public function finalizedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'finalized_by');
     }
 
     /**
@@ -459,6 +510,18 @@ class Rfq extends Model
         return $this->assignees->isNotEmpty()
             && $this->allPartsAssigned()
             && $this->assignees->every(fn (User $assignee) => $assignee->pivot->data_entry_completed_at !== null);
+    }
+
+    /**
+     * Whether every Sourcing part has been finalized by its Sourcing member —
+     * the condition that moves the RFQ as a whole on to Senior Operations'
+     * review. Same conditions as allDataEntryPartsCompleted().
+     */
+    public function allPartsFinalized(): bool
+    {
+        return $this->assignees->isNotEmpty()
+            && $this->allPartsAssigned()
+            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->finalized_at !== null);
     }
 
     /**
@@ -640,6 +703,27 @@ class Rfq extends Model
     }
 
     /**
+     * What's on Senior Operations' Returns page: an RFQ sent back to them —
+     * by their own second review, the Head of Business Development, or the
+     * General Manager (rejectToStage()/rejectPartToStage()) — that's still
+     * waiting on them. Sent back to their assignment step ('operations'),
+     * that's while a part is still unassigned; once they've re-assigned it,
+     * it's done with here. Sent back to their second review, it's while a
+     * part still awaits that review; approving it clears the record (see
+     * clearedRejectRecord()).
+     */
+    public function scopeReturnedToSeniorOperations(Builder $query): void
+    {
+        $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
+            ->where(fn (Builder $toAssignment) => $toAssignment
+                ->where('rfqs.reject_target_stage', 'operations')
+                ->needingSourcing())
+            ->orWhere(fn (Builder $toReview) => $toReview
+                ->where('rfqs.reject_target_stage', 'senior_ops_review')
+                ->awaitingSeniorOpsReview()));
+    }
+
+    /**
      * Whether any planned Sourcing part is still waiting for someone —
      * what keeps "Assign Sourcing" available to Operations after a partial
      * assignment.
@@ -773,6 +857,10 @@ class Rfq extends Model
             'returned_by' => $returnedBy->id,
             'data_entry_completed_at' => null,
             'data_entry_completed_by' => null,
+            'finalized_at' => null,
+            'finalized_by' => null,
+            'data_entry_returned_at' => null,
+            'data_entry_return_reason' => null,
             'senior_ops_reviewed_at' => null,
             'senior_ops_reviewed_by' => null,
             'head_of_bd_approved_at' => null,
@@ -803,11 +891,13 @@ class Rfq extends Model
         // review or later. Also drops status back to Pending, covering the
         // rarer case of a return reaching this method after the RFQ had
         // actually been fully closed out.
-        if ($this->data_entry_completed_at !== null || $this->isDataEntryCompleted()) {
+        if ($this->data_entry_completed_at !== null || $this->finalized_at !== null || $this->isDataEntryCompleted()) {
             $this->update([
                 'status' => 'Pending',
                 'data_entry_completed_by' => null,
                 'data_entry_completed_at' => null,
+                'finalized_by' => null,
+                'finalized_at' => null,
             ]);
         }
 
@@ -815,15 +905,15 @@ class Rfq extends Model
     }
 
     /**
-     * Data Entry finishes processing one Sourcing part — independent of
-     * every other part on the same RFQ, so completing one never touches
+     * Data Entry finishes processing one Sourcing part and sends it to
+     * finalize — back to its Sourcing member, whose Finalize (finalizePart())
+     * is what sends it on to Senior Operations' second review. Independent
+     * of every other part on the same RFQ, so completing one never touches
      * another (even another held by the same person). Idempotent —
-     * completing an already-completed part is a no-op. Only once every
-     * part has been completed here does the RFQ as a whole move on to
-     * Senior Operations' second review — status stays Pending all the way
-     * through that approval chain; see closeOut() for what actually
-     * closes it out. A $comment, if given, is posted to the RFQ's thread
-     * as $completedBy's.
+     * completing an already-completed part is a no-op. Once every part has
+     * been through here, that's recorded on the RFQ too, but it doesn't
+     * move on until every part has also been finalized. A $comment, if
+     * given, is posted to the RFQ's thread as $completedBy's.
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
@@ -835,9 +925,13 @@ class Rfq extends Model
             return;
         }
 
+        // Sending it to finalize again puts any return from its Sourcing
+        // member (returnToDataEntry()) behind it.
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
             'data_entry_completed_at' => now(),
             'data_entry_completed_by' => $completedBy->id,
+            'data_entry_returned_at' => null,
+            'data_entry_return_reason' => null,
         ]);
         $this->load('assignees');
 
@@ -851,9 +945,91 @@ class Rfq extends Model
             $this->update([
                 'data_entry_completed_by' => $completedBy->id,
                 'data_entry_completed_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Whether $part is waiting on its Sourcing member's Finalize: the RFQ is
+     * still open, and Data Entry has sent the part to finalize.
+     */
+    public function partAwaitsFinalize(int $part): bool
+    {
+        return $this->status === 'Pending'
+            && $this->assigneeForPart($part)?->pivot->isAwaitingFinalize() === true;
+    }
+
+    /**
+     * The Sourcing member finalizes one part Data Entry has sent to finalize
+     * — on its own, and it goes straight on to Senior Operations' review,
+     * without waiting for the rest of a split. Once every part has been
+     * finalized the RFQ as a whole moves on to that review (stage
+     * senior_ops_review). Recorded as the part's own assignee, whoever
+     * clicks it (Admin can, on their behalf). Idempotent — a part that isn't
+     * waiting on it is left alone.
+     *
+     * Caller is responsible for verifying who's finalizing it.
+     */
+    public function finalizePart(int $part): void
+    {
+        if (! $this->partAwaitsFinalize($part)) {
+            return;
+        }
+
+        $assignee = $this->assigneeForPart($part);
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+            'finalized_at' => now(),
+            'finalized_by' => $assignee->id,
+        ]);
+        $this->load('assignees');
+
+        if ($this->allPartsFinalized()) {
+            $this->update([
+                'finalized_by' => $assignee->id,
+                'finalized_at' => now(),
                 'stage' => 'senior_ops_review',
             ]);
         }
+    }
+
+    /**
+     * The Sourcing member sends a part Data Entry has sent to finalize back
+     * to Data Entry instead, with a reason — undoing Data Entry's Send to
+     * Finalize on just that part, so it's on their Ready for Data Entry queue
+     * again, the reason shown with it until they send it to finalize again.
+     * If every part had been through Data Entry, the RFQ's own record of that
+     * goes too. The reason is posted to the RFQ's thread as the member's,
+     * marked as this return. Recorded as the part's own assignee, whoever
+     * clicks it (Admin can, on their behalf). Idempotent — a part that isn't
+     * waiting on its member's Finalize is left alone.
+     *
+     * Caller is responsible for verifying who's returning it.
+     */
+    public function returnToDataEntry(int $part, string $reason): void
+    {
+        if (! $this->partAwaitsFinalize($part)) {
+            return;
+        }
+
+        $assignee = $this->assigneeForPart($part);
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+            'data_entry_completed_at' => null,
+            'data_entry_completed_by' => null,
+            'data_entry_returned_at' => now(),
+            'data_entry_return_reason' => $reason,
+        ]);
+        $this->load('assignees');
+
+        if ($this->data_entry_completed_at !== null) {
+            $this->update([
+                'data_entry_completed_by' => null,
+                'data_entry_completed_at' => null,
+            ]);
+        }
+
+        $this->postActionComment($assignee, 'returned_to_data_entry', $reason, $this->partContext($part));
     }
 
     /**
@@ -939,7 +1115,7 @@ class Rfq extends Model
 
         DB::table('rfq_user')
             ->where('rfq_id', $this->id)
-            ->whereNotNull('data_entry_completed_at')
+            ->whereNotNull('finalized_at')
             ->whereNull('senior_ops_reviewed_at')
             ->update([
                 'senior_ops_reviewed_at' => now(),
@@ -1050,7 +1226,8 @@ class Rfq extends Model
      * @var array<string, array<int, string>>
      */
     private const REJECT_MARKER_COLUMNS = [
-        'data_entry' => ['data_entry_completed_at', 'data_entry_completed_by'],
+        // Redoing Data Entry means finalizing it again too.
+        'data_entry' => ['data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by'],
         'senior_ops_review' => ['senior_ops_reviewed_at', 'senior_ops_reviewed_by'],
         'head_of_bd_review' => ['head_of_bd_approved_at', 'head_of_bd_approved_by'],
         'gm_assistant' => ['gm_assistant_completed_at', 'gm_assistant_completed_by'],
@@ -1118,6 +1295,11 @@ class Rfq extends Model
      * stage with a reason, undoing whatever came after that stage so it has
      * to be earned again:
      *
+     * - Business Development itself ('business_development'), further back
+     *   than Operations' own step: the same as 'operations' below, and
+     *   also clears who in Operations is routing it — going back this far
+     *   means even that has to be picked up again, same as a brand new
+     *   RFQ.
      * - Senior Operations' own assignment/split step ('operations'): every
      *   open Sourcing part is freed for them to redo the assignment — see
      *   freePart().
@@ -1154,12 +1336,23 @@ class Rfq extends Model
 
         $openParts = $this->assignees->reject(fn (User $assignee) => $assignee->pivot->isBdClosed());
 
-        if ($targetStage === 'operations') {
+        if (in_array($targetStage, ['business_development', 'operations'], true)) {
             foreach ($openParts as $assignee) {
                 $this->freePart($assignee->pivot->part_number);
             }
             if ($this->isWithDataEntry()) {
                 $this->update(['sourcing_completed_by' => null, 'sourcing_completed_at' => null]);
+            }
+            if ($targetStage === 'business_development') {
+                // Further back than a redo of the assignment: the whole
+                // Assign Sourcing wizard opens again for whoever picks this
+                // up, category step included, not just "fill the same
+                // split back in" — split_count null is what makes assign()
+                // treat it as unplanned again. The category itself is left
+                // as it was, a sensible starting point that step 1 still
+                // lets be changed.
+                $this->update(['operations_assigned_by' => null, 'operations_assigned_at' => null, 'split_count' => null]);
+                $this->increment('bd_return_count');
             }
         } elseif ($targetStage === 'sourcing') {
             foreach ($openParts as $assignee) {
@@ -1184,10 +1377,15 @@ class Rfq extends Model
      * Caller is responsible for verifying $fromStage is one of
      * REJECTABLE_STAGES, the part actually awaits $fromStage's review, and
      * $targetStage is one of rejectTargetStages($fromStage).
+     *
+     * 'business_development' behaves the same as 'operations' here — just
+     * this part is freed. Unlike the whole-RFQ rejectToStage(), it doesn't
+     * clear who in Operations is routing the RFQ: that's a whole-RFQ fact,
+     * and any other part of a split may still legitimately be theirs.
      */
     public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
     {
-        if ($targetStage === 'operations') {
+        if (in_array($targetStage, ['business_development', 'operations'], true)) {
             if (! $this->assigneeForPart($part)) {
                 return;
             }
@@ -1196,6 +1394,9 @@ class Rfq extends Model
 
             if ($this->isWithDataEntry()) {
                 $this->update(['sourcing_completed_by' => null, 'sourcing_completed_at' => null]);
+            }
+            if ($targetStage === 'business_development') {
+                $this->increment('bd_return_count');
             }
         } elseif ($targetStage === 'sourcing') {
             if (! $this->assigneeForPart($part)) {
@@ -1217,13 +1418,17 @@ class Rfq extends Model
             $this->load('assignees');
         }
 
-        // Every part through Data Entry means Senior Operations' review; any
-        // that isn't means still the pipeline before it.
+        // Every part through Data Entry and finalized means Senior
+        // Operations' review; any that isn't means still the pipeline before
+        // it.
         $allThroughDataEntry = $this->allDataEntryPartsCompleted();
+        $allFinalized = $this->allPartsFinalized();
 
         $mirrorColumns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
         $mirrorColumns['data_entry_completed_by'] = $allThroughDataEntry ? $this->data_entry_completed_by : null;
         $mirrorColumns['data_entry_completed_at'] = $allThroughDataEntry ? $this->data_entry_completed_at : null;
+        $mirrorColumns['finalized_by'] = $allFinalized ? $this->finalized_by : null;
+        $mirrorColumns['finalized_at'] = $allFinalized ? $this->finalized_at : null;
 
         $this->update($mirrorColumns + [
             'rejected_by' => $rejectedBy->id,
@@ -1231,7 +1436,7 @@ class Rfq extends Model
             'reject_reason' => $reason,
             'reject_from_stage' => $fromStage,
             'reject_target_stage' => $targetStage,
-            'stage' => $allThroughDataEntry ? 'senior_ops_review' : null,
+            'stage' => $allFinalized ? 'senior_ops_review' : null,
         ]);
 
         $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
@@ -1617,6 +1822,17 @@ class Rfq extends Model
                 ];
             }
 
+            if ($assignee->pivot->finalized_at) {
+                $entries[] = [
+                    'type' => 'sourcing_finalized',
+                    'at' => $assignee->pivot->finalized_at,
+                    'actor' => $assignee->pivot->finalizedBy,
+                    'related' => $assignee,
+                    'detail' => $this->partNumberLabel($assignee->pivot->part_number),
+                    'comment' => null,
+                ];
+            }
+
             // Only on a split — an RFQ kept whole has just the one approval at
             // each step, its own (senior_ops_reviewed / head_of_bd_approved
             // below).
@@ -1826,6 +2042,7 @@ class Rfq extends Model
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhere('rfqs.stage', 'senior_ops_review'))
             ->whereNotNull('rfq_user.completed_at')
             ->whereNotNull('rfq_user.data_entry_completed_at')
+            ->whereNotNull('rfq_user.finalized_at')
             ->whereNull('rfq_user.senior_ops_reviewed_at')
             ->count();
 
@@ -1938,11 +2155,74 @@ class Rfq extends Model
     }
 
     /**
+     * How many RFQs are sitting on Business Development's Returns page —
+     * sent back to them by Senior Operations' second review, the Head of
+     * Business Development, or the General Manager (rejectToStage()/
+     * rejectPartToStage() targeting 'business_development'), and not yet
+     * fixed by them or carried past Senior Operations' review again. What the badge on
+     * their sidebar's Returns link counts. Unlike the other queue counts
+     * above, this isn't a per-part state — reject_target_stage lives on
+     * the RFQ itself — so it's just a flat count.
+     */
+    public static function bdReturnsCount(): int
+    {
+        return static::where('status', 'Pending')->where('reject_target_stage', 'business_development')->count();
+    }
+
+    /**
+     * How many RFQs are sitting on Senior Operations' Returns page — see
+     * scopeReturnedToSeniorOperations(). What the badge on their sidebar's
+     * Returns link counts. A flat count, same as bdReturnsCount().
+     */
+    public static function seniorOpsReturnsCount(): int
+    {
+        return static::returnedToSeniorOperations()->count();
+    }
+
+    /**
+     * The English ordinal for $n — "1st", "2nd", "3rd", "4th", … including
+     * the 11th/12th/13th exception. Used on Business Development's Returns
+     * page to flag a second, third, … time an RFQ has bounced back to them
+     * (bd_return_count) differently from a first.
+     */
+    public static function ordinal(int $n): string
+    {
+        if ($n % 100 >= 11 && $n % 100 <= 13) {
+            return $n.'th';
+        }
+
+        return $n.match ($n % 10) {
+            1 => 'st',
+            2 => 'nd',
+            3 => 'rd',
+            default => 'th',
+        };
+    }
+
+    /**
+     * How many parts are waiting on a Sourcing member's Finalize — Data Entry
+     * has sent them to finalize (see RfqAssignment::isAwaitingFinalize()).
+     * $userId narrows it to one member's own parts; null counts everyone's.
+     * Counted with their pending parts, since both are theirs to act on.
+     */
+    public static function awaitingFinalizeCount(?int $userId = null): int
+    {
+        return DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->when($userId, fn ($query) => $query->where('rfq_user.user_id', $userId))
+            ->whereNotNull('rfq_user.data_entry_completed_at')
+            ->whereNull('rfq_user.finalized_at')
+            ->count();
+    }
+
+    /**
      * How many items sit in each role's queue company-wide — what the
      * badges on Admin's grouped sidebar show. Mirrors what each role's own
      * sidebar badge counts (see layouts/app.blade.php), except Sourcing's,
      * which counts everyone's parts rather than one person's — pending ones
-     * leaving out those sent back, which are the returns.
+     * leaving out those sent back, which are the returns, and counting those
+     * waiting on their Finalize.
      *
      * @return array<string, int>
      */
@@ -1955,9 +2235,11 @@ class Rfq extends Model
 
         return [
             'closing' => static::bdClosingCount(),
+            'bd_returns' => static::bdReturnsCount(),
             'unassigned' => static::where('status', 'Pending')->needingSourcing()->count(),
             'ops_review' => static::seniorOpsReviewCount(),
-            'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count(),
+            'ops_returns' => static::seniorOpsReturnsCount(),
+            'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count() + static::awaitingFinalizeCount(),
             'sourcing_returns' => $sourcingParts()->whereNotNull('rfq_user.returned_at')->count(),
             'data_entry' => DB::table('rfq_user')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->count(),
             'head_of_bd' => static::headOfBdReviewCount(),

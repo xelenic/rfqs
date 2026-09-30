@@ -880,6 +880,11 @@ h6, .h6 { font-size: 0.85rem; }
 
 .workload-seg[data-state="data_entry_done"],
 .workload-dot[data-state="data_entry_done"] {
+  background: #0e7c86;
+}
+
+.workload-seg[data-state="finalized"],
+.workload-dot[data-state="finalized"] {
   background: #157347;
 }
 
@@ -1481,6 +1486,10 @@ h6, .h6 { font-size: 0.85rem; }
 }
 
 .rfq-seg[data-state="data_entry_done"] {
+  background: #0e7c86;
+}
+
+.rfq-seg[data-state="finalized"] {
   background: #157347;
 }
 
@@ -1702,6 +1711,14 @@ h6, .h6 { font-size: 0.85rem; }
 .badge-soft-success {
   background: #e6f7ee;
   color: #157347;
+  font-weight: 600;
+  padding: 0.3em 0.6em;
+  font-size: 0.72rem;
+}
+
+.badge-soft-info {
+  background: #e0f4f5;
+  color: #0e7c86;
   font-weight: 600;
   padding: 0.3em 0.6em;
   font-size: 0.72rem;

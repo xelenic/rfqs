@@ -109,7 +109,10 @@ function rfqmsBoot() {
             form.querySelector('#edit-wc_number').value = button.dataset.wcNumber || '';
             form.querySelector('#edit-rfq_number').value = button.dataset.rfqNumber || '';
             form.querySelector('#edit-priority_level').value = button.dataset.priorityLevel || 'Medium';
-            form.querySelector('#edit-status').value = button.dataset.status || 'Pending';
+            // Business Development gets a hidden, fixed "Pending" here instead
+            // of the status picker everyone else does — see _form.blade.php.
+            var statusField = form.querySelector('#edit-status');
+            if (statusField) statusField.value = button.dataset.status || 'Pending';
             form.querySelector('#edit-subject').value = button.dataset.subject || '';
             form.querySelector('#edit-description').value = button.dataset.description || '';
         });
@@ -751,9 +754,19 @@ function rfqmsBoot() {
                 title: 'Mark complete', icon: 'bi-check2-circle', field: 'comment', label: 'Comment', max: 2000,
                 submit: 'Mark Complete', submitClass: 'btn-success', missing: 'Add a comment to mark this part complete.',
             },
+            // Data Entry's — it goes back to the part's Sourcing member to finalize.
+            data_entry: {
+                title: 'Send to Finalize', icon: 'bi-send-check', field: 'comment', label: 'Comment', max: 2000,
+                submit: 'Send to Finalize', submitClass: 'btn-success', missing: 'Add a comment to send this part to finalize.',
+            },
             'return': {
                 title: 'Return to Sourcing', icon: 'bi-arrow-counterclockwise', field: 'reason', label: 'Reason', max: 1000,
                 submit: 'Return to Sourcing', submitClass: 'btn-danger', missing: 'Add a reason to send this part back.',
+            },
+            // The Sourcing member's, on a part Data Entry sent to finalize.
+            return_data_entry: {
+                title: 'Return to Data Entry', icon: 'bi-arrow-counterclockwise', field: 'reason', label: 'Reason', max: 1000,
+                submit: 'Return to Data Entry', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Data Entry.',
             },
         };
 
@@ -1241,6 +1254,20 @@ function rfqmsBoot() {
             form.dataset.confirm = isPart
                 ? 'Send this part back? Any approval already given for it is undone.'
                 : 'Send this RFQ back? Any approval already given for it is undone.';
+        });
+    });
+
+    // Senior Operations' "Get Details Again" modal — same shared-modal-
+    // populated-per-row pattern as the Reject modal above.
+    document.querySelectorAll('.js-request-details').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('requestDetailsForm');
+            if (!form) return;
+
+            form.action = button.dataset.action;
+            form.querySelector('[name="request_details_rfq_id"]').value = button.dataset.rfqId || '';
+            form.querySelector('[name="request_details_label"]').value = button.dataset.label || '';
+            document.getElementById('requestDetailsTarget').textContent = button.dataset.label || '';
         });
     });
 
