@@ -65,6 +65,7 @@ it('counts only their own parts, by where each stands', function () {
     $split = splitAmong(sourcingRfq('Split job'), [1 => $riley, 2 => $riley, 3 => $riley, 4 => $sam]);
     $split->completeSourcingPart(1);
     $split->refresh()->completeDataEntryPart(1, $dataEntry);
+    $split->refresh()->finalizePart(1);
     $split->refresh()->completeSourcingPart(2);
     $split->refresh()->completeSourcingPart(3);
     $split->refresh()->returnSourcingPart(3, 'Prices missing', $dataEntry);

@@ -63,7 +63,7 @@ it('knows how each action reads, looks and is toned', function (string $action, 
         ->and($comment->actionTone())->toBe($tone);
 })->with([
     'a completion' => ['sourcing_completed', 'Marked complete', 'bi-check-circle-fill', 'success'],
-    'Data Entry\'s completion' => ['data_entry_completed', 'Completed in Data Entry', 'bi-check2-circle', 'success'],
+    'Data Entry\'s Send to Finalize' => ['data_entry_completed', 'Sent to Finalize', 'bi-send-check', 'success'],
     'a return' => ['returned_to_sourcing', 'Returned to Sourcing', 'bi-arrow-counterclockwise', 'danger'],
     'a rejection' => ['rejected', 'Rejected', 'bi-x-octagon-fill', 'danger'],
 ]);

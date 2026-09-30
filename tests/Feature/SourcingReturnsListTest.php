@@ -124,7 +124,7 @@ it('counts what was sent back on the Returns link, and leaves it out of the pend
     // Riley: one part still to complete; two sent back.
     $html = test()->actingAs($riley)->get(myPendingUrl())->assertOk()->getContent();
 
-    expect($html)->toContain($badge(1, 'not marked complete'))
+    expect($html)->toContain($badge(1, 'to complete or finalize'))
         ->toContain('<span class="nav-link-label">Returns</span>')
         ->toContain($badge(2, 'sent back by Data Entry'));
 
@@ -133,7 +133,7 @@ it('counts what was sent back on the Returns link, and leaves it out of the pend
 
     expect($samsHtml)->toContain($badge(1, 'sent back by Data Entry'))
         // Nothing left to complete, so no pending badge.
-        ->not->toContain('not marked complete');
+        ->not->toContain('to complete or finalize');
 
     // The badge is on every page, so it's seen wherever they are.
     test()->actingAs($riley)->get(myReturnsUrl())->assertOk()->assertSee($badge(2, 'sent back by Data Entry'), false);
@@ -147,7 +147,7 @@ it('drops the Returns count away when there is nothing sent back', function () {
 
     expect($html)->toContain('<span class="nav-link-label">Returns</span>')
         ->not->toContain('sent back by Data Entry')
-        ->toContain('title="1 not marked complete"');
+        ->toContain('title="1 to complete or finalize"');
 });
 
 it('keeps the pending and returned counts apart on Admin\'s tree, adding them on the Sourcing heading', function () {

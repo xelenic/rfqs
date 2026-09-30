@@ -74,6 +74,7 @@ it('lets a seeded General Manager account work the approvals, part by part', fun
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry);
+        $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $ops);
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
     }

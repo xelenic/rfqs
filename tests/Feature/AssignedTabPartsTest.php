@@ -105,5 +105,6 @@ it('reads where a part stands from its dates', function (array $dates, string $s
     'just assigned' => [[], 'in_progress', 'In progress', 'badge-soft-warning'],
     'Sourcing done' => [['completed_at' => '2026-09-19 10:00:00'], 'with_data_entry', 'With Data Entry', 'badge-soft-primary'],
     'sent back' => [['returned_at' => '2026-09-19 10:00:00'], 'returned', 'Returned', 'badge-soft-danger'],
-    'Data Entry done' => [['completed_at' => '2026-09-19 10:00:00', 'data_entry_completed_at' => '2026-09-19 11:00:00'], 'data_entry_done', 'Data Entry done', 'badge-soft-success'],
+    'Data Entry done' => [['completed_at' => '2026-09-19 10:00:00', 'data_entry_completed_at' => '2026-09-19 11:00:00'], 'data_entry_done', 'Data Entry done', 'badge-soft-info'],
+    'Finalized' => [['completed_at' => '2026-09-19 10:00:00', 'data_entry_completed_at' => '2026-09-19 11:00:00', 'finalized_at' => '2026-09-19 12:00:00'], 'finalized', 'Finalized', 'badge-soft-success'],
 ]);

@@ -41,6 +41,26 @@ it('categorizes, splits and assigns some parts while leaving others empty', func
         ->and($rfq->sourcingParts()->whereNotNull('assignee')->pluck('part')->all())->toBe([1, 3]);
 });
 
+it('records Admin themselves as who routed it when they assign Sourcing without picking anyone', function () {
+    $admin = userWithRole('Admin');
+    $riley = userWithRole('Sourcing');
+    $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1006']);
+    JobCategory::factory()->create(['name' => 'Electrical Works']);
+
+    assignSourcing($admin, $rfq, [
+        'category' => 'Electrical Works',
+        'assignments' => [1 => $riley->id],
+    ])->assertSessionHasNoErrors();
+
+    // Admin isn't a Senior Operations person, but the assignment still
+    // happened and the progress chart needs someone to point to — see
+    // RfqController::assign() and the "Assigned by Operations" node on
+    // show.blade.php, which otherwise never advances past this step.
+    expect($rfq->refresh())
+        ->operations_assigned_by->toBe($admin->id)
+        ->operations_assigned_at->not->toBeNull();
+});
+
 it('stores a category typed in by hand, reusing an existing one regardless of case', function () {
     $ops = userWithRole('Senior Operations');
     $sourcing = userWithRole('Sourcing');
@@ -292,7 +312,7 @@ it('has Data Entry process and return parts one at a time, even ones held by the
         ->and($rfq->isWithDataEntry())->toBeFalse();
 });
 
-it('moves to Senior Operations\' review only once Data Entry has finished every part', function () {
+it('moves to Senior Operations\' review only once every part is through Data Entry and finalized', function () {
     $ops = userWithRole('Senior Operations');
     $dataEntry = userWithRole('Data Entry');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
@@ -315,6 +335,15 @@ it('moves to Senior Operations\' review only once Data Entry has finished every 
     }
 
     test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 3, 'comment' => 'Entered']);
+    expect($rfq->refresh()->stage)->toBeNull();
+
+    // Each part's own Sourcing member finalizes it — Riley holds two.
+    foreach ([1 => $riley, 2 => $sam] as $part => $member) {
+        test()->actingAs($member)->patch(route('admin.rfqs.finalize', $rfq), ['part' => $part]);
+        expect($rfq->refresh()->stage)->toBeNull();
+    }
+
+    test()->actingAs($riley)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 3]);
     expect($rfq->refresh()->stage)->toBe('senior_ops_review');
 });
 

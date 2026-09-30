@@ -58,6 +58,7 @@ function splitWithPartOneApprovedByGm(): array
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $people['dataEntry']);
+        $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
         $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
         $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd', null);
@@ -105,6 +106,7 @@ it('has nothing to close until the General Manager has approved a part', functio
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'Not approved yet']), [1 => $people['sourcing']]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $people['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $people['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $people['head']);
     $rfq->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);
@@ -205,6 +207,7 @@ it('takes an RFQ kept whole from Ready to Close to Closed RFQs as one row', func
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $people['sourcing']]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $people['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $people['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $people['head']);
     $rfq->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);
@@ -307,6 +310,7 @@ it('counts each thing ready to close — a row on the page — and shows it as a
         foreach ($parts as $part) {
             $rfq->refresh()->completeSourcingPart($part);
             $rfq->refresh()->completeDataEntryPart($part, $people['dataEntry']);
+            $rfq->refresh()->finalizePart($part);
             $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
             $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
             $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd', null);
@@ -377,6 +381,7 @@ it('leaves a part Business Development has closed alone when the Head sends the 
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $people['dataEntry']);
+        $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
     }
     // Part 1 all the way to closed; part 2 with the Head.
@@ -423,6 +428,7 @@ it('records each part\'s closing on a split\'s timeline, and none but the RFQ\'s
     $whole = splitAmong(Rfq::factory()->create(), [1 => $people['sourcing']]);
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $people['dataEntry']);
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $people['ops']);
     $whole->refresh()->approveHeadOfBdPart(1, $people['head']);
     $whole->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);
@@ -458,6 +464,7 @@ it('sends the parts of RFQs closed before this was part by part through along wi
     $waiting = splitAmong(Rfq::factory()->create(), [1 => $people['sourcing']]);
     $waiting->completeSourcingPart(1);
     $waiting->refresh()->completeDataEntryPart(1, $people['dataEntry']);
+    $waiting->refresh()->finalizePart(1);
     $waiting->refresh()->approveSeniorOpsPart(1, $people['ops']);
     $waiting->refresh()->approveHeadOfBdPart(1, $people['head']);
     $waiting->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);

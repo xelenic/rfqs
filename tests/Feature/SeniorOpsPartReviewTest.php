@@ -34,6 +34,7 @@ function splitWithPartOneThrough(): array
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Replace exit signs', 'priority_level' => 'Medium']), [1 => $riley, 2 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     return [$rfq->refresh(), $ops, $dataEntry, $riley];
 }
@@ -66,6 +67,7 @@ it('lists each ready part of an RFQ separately, leaving out the ones with Sourci
     }
     foreach ([1, 2, 3] as $part) {
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry);
+        $rfq->refresh()->finalizePart($part);
     }
     $rfq->refresh()->returnSourcingPart(6, 'Missing prices', $dataEntry);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
@@ -95,6 +97,7 @@ it('leaves an RFQ out until one of its parts has been through both', function ()
         ->assertSee('Nothing\'s waiting on your review right now.', false);
 
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     test()->actingAs($ops)->get(reviewUrl())->assertSee('Not there yet');
 });
@@ -123,6 +126,7 @@ it('approves a part on its own, and the RFQ moves on once every part has been ap
     // …until the last part comes through Sourcing and Data Entry, and is the only row.
     $rfq->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(2, $dataEntry);
+    $rfq->refresh()->finalizePart(2);
 
     test()->actingAs($ops)->get(reviewUrl())->assertOk()
         ->assertSee('RFQ1001-P2 of P2')
@@ -147,6 +151,7 @@ it('approves the parts still waiting when the whole RFQ is approved', function (
     $rfq->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(2, $dataEntry);
+    $rfq->refresh()->finalizePart(2);
 
     test()->actingAs($ops)
         ->patch(route('admin.rfqs.complete-senior-ops-review', $rfq->refresh()))
@@ -165,6 +170,7 @@ it('lists an RFQ kept whole as one row, whose Approve moves it on', function () 
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     $html = test()->actingAs($ops)->get(reviewUrl())->assertOk()->assertSee('One piece of work')->getContent();
 
@@ -242,6 +248,7 @@ it('won\'t escalate a split while a part is still unassigned', function () {
     $rfq->assignSourcingParts([1 => $riley->id]);
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
 
@@ -257,6 +264,7 @@ it('counts an approval for the Review queue once a part is waiting, and not once
     $past = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $past->completeSourcingPart(1);
     $past->refresh()->completeDataEntryPart(1, $dataEntry);
+    $past->refresh()->finalizePart(1);
     $past->refresh()->approveSeniorOpsPart(1, $ops);
 
     expect($past->refresh()->stage)->toBe('head_of_bd_review');
@@ -265,6 +273,7 @@ it('counts an approval for the Review queue once a part is waiting, and not once
     $legacy = splitAmong(Rfq::factory()->create(['status' => 'Completed']), [1 => userWithRole('Sourcing')]);
     $legacy->completeSourcingPart(1);
     $legacy->refresh()->completeDataEntryPart(1, $dataEntry);
+    $legacy->refresh()->finalizePart(1);
 
     expect(Rfq::queueCounts()['ops_review'])->toBe(1)
         ->and(Rfq::awaitingSeniorOpsReview()->pluck('id')->all())->toBe([$rfq->id]);
@@ -284,9 +293,11 @@ it('counts each approval waiting — a row on the Review page — and shows it a
     foreach ([1, 2, 3] as $part) {
         $split->refresh()->completeSourcingPart($part);
         $split->refresh()->completeDataEntryPart($part, $dataEntry);
+        $split->refresh()->finalizePart($part);
     }
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $dataEntry);
+    $whole->refresh()->finalizePart(1);
 
     expect(Rfq::seniorOpsReviewCount())->toBe(5)
         ->and(Rfq::queueCounts()['ops_review'])->toBe(5);
@@ -323,6 +334,7 @@ it('leaves the Review badge to Senior Operations', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending']))
         ->assertOk()
@@ -343,7 +355,9 @@ it('takes back a part\'s approval when it is sent back, and every part\'s when t
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->completeDataEntryPart(2, $dataEntry);
+    $rfq->refresh()->finalizePart(2);
     $rfq->refresh()->completeSeniorOpsReview($ops);
 
     expect($rfq->refresh()->stage)->toBe('head_of_bd_review')
@@ -373,6 +387,7 @@ it('records each part\'s approval on a split\'s timeline, and none for an RFQ ke
     $whole = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $ops);
 
     test()->actingAs($ops)->get(route('admin.rfqs.show', $whole).'?status=Pending')
@@ -384,12 +399,14 @@ it('approves the parts of RFQs approved before this was part by part', function 
     [$rfq, $ops, $dataEntry] = splitWithPartOneThrough();
     $rfq->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(2, $dataEntry);
+    $rfq->refresh()->finalizePart(2);
     $migration = require database_path('migrations/2026_09_20_045936_add_senior_ops_review_to_rfq_user_table.php');
 
     // Another, not approved, with a part through Data Entry.
     $waiting = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $waiting->completeSourcingPart(1);
     $waiting->refresh()->completeDataEntryPart(1, $dataEntry);
+    $waiting->refresh()->finalizePart(1);
 
     // As it was: the approval on the RFQ alone.
     $migration->down();

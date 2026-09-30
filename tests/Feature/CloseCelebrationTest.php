@@ -33,6 +33,7 @@ function rfqReadyToCelebrate(array $holders = []): Rfq
     foreach (array_keys($holders) as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry);
+        $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $ops);
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
         $rfq->refresh()->recordGmAssistantPart($part, $assistant, 'Acme Ltd', null);
@@ -159,6 +160,7 @@ it('is not part of the other approvals\' flash messages', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     test()->actingAs($ops)->from(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))
         ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1])

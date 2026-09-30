@@ -32,12 +32,20 @@ beforeEach(function () {
 });
 
 it('has no status to choose when creating, but still does when editing', function () {
-    $response = test()->actingAs(userWhoCanCreateRfqs())
+    $response = test()->actingAs(userWithRole('Admin'))
         ->get(route('admin.rfqs.index'))
         ->assertOk();
 
     $response->assertDontSee('id="create-status"', false)
         ->assertSee('id="edit-status"', false);
+});
+
+it('gives Business Development no status to choose even when editing — always Pending, see RfqController::update()', function () {
+    test()->actingAs(userWhoCanCreateRfqs())
+        ->get(route('admin.rfqs.index'))
+        ->assertOk()
+        ->assertDontSee('id="create-status"', false)
+        ->assertDontSee('id="edit-status"', false);
 });
 
 it('creates every RFQ as Pending without being given a status', function () {

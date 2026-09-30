@@ -36,6 +36,7 @@ function splitWithPartOneApprovedBySeniorOps(): array
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry);
+        $rfq->refresh()->finalizePart($part);
     }
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
 
@@ -68,6 +69,7 @@ it('has nothing for the Head until Senior Operations has approved a part', funct
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'Not approved yet']), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
 
     test()->actingAs($head)->get(headReviewUrl())->assertOk()
         ->assertDontSee('Not approved yet')
@@ -141,6 +143,7 @@ it('lists an RFQ kept whole as one row, whose Approve moves it on', function () 
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
 
     $html = test()->actingAs($head)->get(headReviewUrl())->assertOk()->assertSee('One piece of work')->getContent();
@@ -347,16 +350,19 @@ it('counts each approval waiting — a row on the Review page — and shows it a
     foreach ([1, 2, 3] as $part) {
         $split->refresh()->completeSourcingPart($part);
         $split->refresh()->completeDataEntryPart($part, $dataEntry);
+        $split->refresh()->finalizePart($part);
         $split->refresh()->approveSeniorOpsPart($part, $ops);
     }
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $dataEntry);
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $ops);
 
     // And one Senior Operations hasn't got to yet, which isn't the Head's.
     $notYet = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $notYet->completeSourcingPart(1);
     $notYet->refresh()->completeDataEntryPart(1, $dataEntry);
+    $notYet->refresh()->finalizePart(1);
 
     expect(Rfq::headOfBdReviewCount())->toBe(5)
         ->and(Rfq::queueCounts()['head_of_bd'])->toBe(5);
@@ -397,6 +403,7 @@ it('records each part\'s approval on a split\'s timeline, and none for an RFQ ke
     $whole = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $dataEntry);
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $ops);
     $whole->refresh()->approveHeadOfBdPart(1, $head);
 
@@ -414,6 +421,7 @@ it('approves the parts of RFQs approved by the Head before this was part by part
     $waiting = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $waiting->completeSourcingPart(1);
     $waiting->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
+    $waiting->refresh()->finalizePart(1);
     $waiting->refresh()->approveSeniorOpsPart(1, $ops);
 
     // As it was: the Head's approval on the RFQ alone.

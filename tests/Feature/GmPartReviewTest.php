@@ -52,6 +52,7 @@ function splitWithPartOneApprovedByHead(): array
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $chain['dataEntry']);
+        $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $chain['ops']);
     }
     $rfq->refresh()->approveHeadOfBdPart(1, $chain['head']);
@@ -84,6 +85,7 @@ it('has nothing for GM Assistant until the Head has approved a part', function (
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'Not with the Head yet']), [1 => $chain['sourcing']]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $chain['ops']);
 
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
@@ -233,6 +235,7 @@ it('takes an RFQ kept whole through GM Assistant and the General Manager as one 
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $chain['sourcing']]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $chain['head']);
 
@@ -373,6 +376,7 @@ it('takes back everything a part had been through when the Head sends the RFQ ba
     // And the Head sending the whole RFQ back takes every part's.
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $chain['head']);
     $rfq->refresh()->recordGmAssistantPart(2, $chain['assistant'], 'Acme Ltd', null);
@@ -399,11 +403,13 @@ it('counts each approval waiting — a row on each page — and shows it as a re
     foreach ([1, 2, 3] as $part) {
         $split->refresh()->completeSourcingPart($part);
         $split->refresh()->completeDataEntryPart($part, $chain['dataEntry']);
+        $split->refresh()->finalizePart($part);
         $split->refresh()->approveSeniorOpsPart($part, $chain['ops']);
         $split->refresh()->approveHeadOfBdPart($part, $chain['head']);
     }
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $whole->refresh()->approveHeadOfBdPart(1, $chain['head']);
 
@@ -450,6 +456,7 @@ it('records each part\'s step on a split\'s timeline, and none for an RFQ kept w
     $whole = splitAmong(Rfq::factory()->create(), [1 => $chain['sourcing']]);
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $whole->refresh()->approveHeadOfBdPart(1, $chain['head']);
     $whole->refresh()->recordGmAssistantPart(1, $chain['assistant'], 'Acme Ltd', null);
@@ -471,6 +478,7 @@ it('sends the parts of RFQs that got this far before it was part by part through
     $waiting = splitAmong(Rfq::factory()->create(), [1 => $chain['sourcing']]);
     $waiting->completeSourcingPart(1);
     $waiting->refresh()->completeDataEntryPart(1, $chain['dataEntry']);
+    $waiting->refresh()->finalizePart(1);
     $waiting->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $waiting->refresh()->approveHeadOfBdPart(1, $chain['head']);
 

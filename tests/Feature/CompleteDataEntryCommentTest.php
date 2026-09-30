@@ -70,7 +70,7 @@ it('completes the part and posts the comment as Data Entry\'s', function () {
         ->and($comment->meta)->toBe(['who' => $rfq->assigneeForPart(1)->name]);
 });
 
-it('names the part on a split, and moves the RFQ on to review once every part is done', function () {
+it('names the part on a split, and sends each part to finalize rather than on to review', function () {
     $dataEntry = userWithRole('Data Entry');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = readyForDataEntry([1 => $riley, 2 => $sam], ['rfq_number' => 'RFQ1001']);
@@ -78,9 +78,15 @@ it('names the part on a split, and moves the RFQ on to review once every part is
     dataEntryCompletes($dataEntry, $rfq, ['part' => 1, 'comment' => 'First part entered']);
     expect($rfq->refresh()->stage)->toBeNull();
 
-    dataEntryCompletes($dataEntry, $rfq, ['part' => 2, 'comment' => 'Second part entered']);
+    dataEntryCompletes($dataEntry, $rfq, ['part' => 2, 'comment' => 'Second part entered'])
+        ->assertSessionHas('status', "Sent {$sam->name}'s part to finalize.");
 
-    expect($rfq->refresh()->stage)->toBe('senior_ops_review')
+    // Every part through Data Entry, but each still waits on its Sourcing
+    // member's Finalize before Senior Operations sees it.
+    expect($rfq->refresh()->stage)->toBeNull()
+        ->and($rfq->data_entry_completed_at)->not->toBeNull()
+        ->and($rfq->partAwaitsFinalize(1))->toBeTrue()
+        ->and($rfq->partAwaitsFinalize(2))->toBeTrue()
         ->and($rfq->comments()->pluck('body')->all())->toBe(['First part entered', 'Second part entered'])
         ->and($rfq->comments()->get()->map(fn ($comment) => $comment->meta['label'] ?? null)->all())->toBe(['RFQ1001-P1 of P2', 'RFQ1001-P2 of P2'])
         ->and($rfq->comments()->pluck('action')->unique()->all())->toBe(['data_entry_completed']);
@@ -124,7 +130,7 @@ it('goes back to the page it was done from', function () {
         ->assertRedirect(route('admin.rfqs.index', ['status' => 'Pending']));
 });
 
-it('gives Data Entry a Mark Complete that asks, and no comment box of their own, on Ready for Data Entry', function () {
+it('gives Data Entry a Send to Finalize that asks, and no comment box of their own, on Ready for Data Entry', function () {
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = readyForDataEntry([1 => $riley, 2 => $sam], ['rfq_number' => 'RFQ1001']);
     $rfq->comments()->create(['user_id' => $riley->id, 'body' => 'Quotes attached to the RFQ']);
@@ -144,13 +150,16 @@ it('gives Data Entry a Mark Complete that asks, and no comment box of their own,
         ->not->toContain('data-confirm="Mark ')
         ->toContain('id="completeModal"');
 
-    // Mark Complete and Return to Sourcing for each part, on its row and in its modal — which Back returns to.
+    // Send to Finalize and Return to Sourcing for each part, on its row and in its modal — which Back returns to.
+    // Each asks for a comment for the part's own Sourcing member, who finalizes it next.
     expect(substr_count($html, 'js-complete"'))->toBe(8)
         ->and(substr_count($html, 'data-action="'.route('admin.rfqs.complete-data-entry', $rfq).'"'))->toBe(4)
         ->and(substr_count($html, 'data-action="'.route('admin.rfqs.return-sourcing', $rfq).'"'))->toBe(4)
         ->and($html)->toContain('data-who="'.e($riley->name).'"')
         ->toContain('data-who="'.e($sam->name).'"')
-        ->toContain('data-audience="Senior Operations"')
+        ->toContain('data-audience="'.e($riley->name).'"')
+        ->toContain('Send to Finalize')
+        ->not->toContain('data-audience="Senior Operations"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p1"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p2"')
         // They can reach the whole RFQ to reply.
@@ -166,11 +175,12 @@ it('words each prompt for whoever is next in line', function () {
         ->assertSee('data-audience="Data Entry"', false)
         ->assertDontSee('data-audience="Senior Operations"', false);
 
-    // …and Data Entry to hand on to Senior Operations.
+    // …and Data Entry to send back to them to finalize.
     $rfq->refresh()->completeSourcingPart(1);
     test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->assertSee('data-audience="Senior Operations"', false)
-        ->assertDontSee('data-audience="Data Entry"', false);
+        ->assertSee('data-audience="'.e($riley->name).'"', false)
+        ->assertDontSee('data-audience="Data Entry"', false)
+        ->assertDontSee('data-audience="Senior Operations"', false);
 });
 
 it('lets Sourcing read what Data Entry said on completing', function () {
@@ -190,10 +200,10 @@ it('asks on the RFQ\'s own page too, leaving the comment box there', function ()
 
     $html = test()->actingAs($dataEntry)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
-    // Each part has its Return to Sourcing beside its Mark Complete, and the RFQ's own comment box stays.
+    // Each part has its Return to Sourcing beside its Send to Finalize, and the RFQ's own comment box stays.
     expect(substr_count($html, 'js-complete"'))->toBe(4)
         ->and($html)->toContain('id="completeModal"')
-        ->toContain('data-audience="Senior Operations"')
+        ->toContain('data-audience="'.e($riley->name).'"')
         ->toContain('data-kind="return"')
         ->toContain('data-kind="data_entry"')
         ->not->toContain('data-confirm="Mark '.$riley->name)

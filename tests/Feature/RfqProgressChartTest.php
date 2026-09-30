@@ -50,6 +50,7 @@ function rfqThroughDataEntry(array $holders, User $dataEntry): Rfq
     foreach (array_keys($holders) as $part) {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry);
+        $rfq->refresh()->finalizePart($part);
     }
 
     return $rfq->refresh();
@@ -146,6 +147,7 @@ it('keeps a part that is still with Sourcing or Data Entry pending all the way d
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(1, $people['dataEntry']);
+    $rfq->refresh()->finalizePart(1);
 
     [$one, $two, $three] = progressBranches($rfq->refresh(), $people['admin']);
 
@@ -234,6 +236,7 @@ it('shows a part the Head sent back as returned on its own branch, and the whole
 
     // The whole RFQ, from where it's with the Head.
     $rfq->refresh()->completeDataEntryPart(2, $people['dataEntry']);
+    $rfq->refresh()->finalizePart(2);
     $rfq->refresh()->approveSeniorOpsPart(2, $people['ops']);
     $rfq->refresh()->rejectToStage('senior_ops_review', 'All of it, again', $people['head']);
 

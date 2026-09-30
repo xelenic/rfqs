@@ -30,6 +30,7 @@ it('groups the workflow by role in the Admin sidebar', function () {
 
     foreach ([
         ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development'],
+        ['status' => 'Pending', 'view' => 'returns', 'role' => 'business-development'],
         ['status' => 'Pending', 'role' => 'senior-operations'],
         ['status' => 'Pending', 'view' => 'review', 'role' => 'senior-operations'],
         ['status' => 'Pending', 'role' => 'sourcing'],
@@ -119,9 +120,11 @@ it('counts each role\'s queue company-wide', function () {
 
     expect(Rfq::queueCounts())->toBe([
         'closing' => 1,
+        'bd_returns' => 0,
         // The five stage RFQs have no Sourcing assignees, and neither does anything else…
         'unassigned' => 5,
         'ops_review' => 1,
+        'ops_returns' => 0,
         // Riley's part was sent back, so it's a return rather than a pending part; Sam's is with Data Entry.
         'sourcing_pending' => 0,
         'sourcing_returns' => 1,

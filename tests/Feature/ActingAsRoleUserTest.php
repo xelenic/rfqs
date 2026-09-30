@@ -54,6 +54,7 @@ function actingRfqAt(string $stage, array $people): Rfq
 
         if ($level >= 1) {
             $rfq->refresh()->completeDataEntryPart($part, $people['dataEntry']);
+            $rfq->refresh()->finalizePart($part);
         }
         if ($level >= 2) {
             $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
