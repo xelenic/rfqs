@@ -5,12 +5,15 @@
     ?role=<slug> so Admin sees it as that role does — see
     RfqController::index() ($lensRole).
 
-    Laid out as a tree: every role is a node under one parent, "Role Stages",
-    and each collapses and expands, with its pages hanging off it on branch
-    lines (see .sidebar-group-links in admin.css). The nodes left collapsed —
-    the parent included — are remembered in this browser, and a collapsed
-    node's heading carries its queue's count (the parent's, all of them added
-    up) so nothing waiting is hidden.
+    Laid out as a numbered timeline under one parent, "Role Stages": every
+    role is a step, numbered in workflow order, with a line running down from
+    one step's number to the next and its pages beside it (see
+    .sidebar-step-number in admin.css). A step's number is highlighted while
+    its queues have something waiting, and filled in while one of its pages is
+    open. Each step collapses and expands; the ones left collapsed — the
+    parent included — are remembered in this browser, and a collapsed
+    heading carries its queue's count (the parent's, all of them added up) so
+    nothing waiting is hidden.
 --}}
 @php
     $counts = \App\Models\Rfq::queueCounts();
@@ -24,7 +27,7 @@
     // page's "view" is the role's second queue; its first has none.
     $groups = [
         [
-            'role' => 'Business Development', 'icon' => 'bi-briefcase', 'badge' => ['closing', 'bd_returns'],
+            'role' => 'Business Development', 'badge' => ['closing', 'bd_returns'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => null, 'hint' => ''],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'bd_returns', 'hint' => 'sent back by a reviewer'],
@@ -33,7 +36,7 @@
             ],
         ],
         [
-            'role' => 'Senior Operations', 'icon' => 'bi-diagram-3', 'badge' => ['unassigned', 'ops_review'],
+            'role' => 'Senior Operations', 'badge' => ['unassigned', 'ops_review'],
             'links' => [
                 ['label' => 'Unassigned RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'unassigned', 'hint' => 'not fully assigned to Sourcing'],
                 ['label' => 'Review', 'icon' => 'bi-clipboard2-check', 'status' => 'Pending', 'view' => 'review', 'count' => 'ops_review', 'hint' => 'awaiting second review'],
@@ -43,32 +46,34 @@
             ],
         ],
         [
-            'role' => 'Sourcing', 'icon' => 'bi-people', 'badge' => ['sourcing_pending', 'sourcing_returns'],
+            'role' => 'Sourcing', 'badge' => ['sourcing_pending', 'sourcing_returns'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts to complete or finalize'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry'],
             ],
         ],
         [
-            'role' => 'Data Entry', 'icon' => 'bi-keyboard', 'badge' => ['data_entry'],
+            'role' => 'Data Entry', 'badge' => ['data_entry'],
             'links' => [
                 ['label' => 'Ready for Data Entry', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'data_entry', 'hint' => 'parts not marked complete'],
             ],
         ],
         [
-            'role' => 'Head of Business Development', 'icon' => 'bi-person-check', 'badge' => ['head_of_bd'],
+            'role' => 'Head of Business Development', 'badge' => ['head_of_bd', 'head_of_bd_returns'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'head_of_bd', 'hint' => 'awaiting approval'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'head_of_bd_returns', 'hint' => 'sent back by the General Manager'],
             ],
         ],
         [
-            'role' => 'GM Assistant', 'icon' => 'bi-file-earmark-text', 'badge' => ['gm_assistant'],
+            'role' => 'GM Assistant', 'badge' => ['gm_assistant', 'gm_assistant_returns'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting client details'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'gm_assistant_returns', 'hint' => 'sent back by the General Manager'],
             ],
         ],
         [
-            'role' => 'General Manager', 'icon' => 'bi-award', 'badge' => ['gm_review'],
+            'role' => 'General Manager', 'badge' => ['gm_review'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_review', 'hint' => 'awaiting final approval'],
             ],
@@ -78,10 +83,18 @@
     // The parent's heading, while it's collapsed, holds every group's count
     // added up.
     $allGroupsCount = collect($groups)->sum(fn (array $group) => collect($group['badge'])->sum(fn (string $key) => $counts[$key]));
+
+    // Whether a page is the one being viewed. Closed RFQs is company-wide,
+    // not a role's own queue — no role on its link, and it's active whichever
+    // group it sits under.
+    $isLinkActive = fn (array $group, array $link) => $onRfqList
+        && request('status') === $link['status']
+        && $currentView === $link['view']
+        && ($link['status'] === 'Completed' || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development'));
 @endphp
 
-{{-- The root of the tree: one node, "Role Stages", with each role's group under
-     it. --}}
+{{-- The root: one node, "Role Stages", with each role's group under it as a
+     numbered step of the timeline. --}}
 <div class="sidebar-group sidebar-group-root" data-sidebar-group="role-stages">
     <button type="button" class="sidebar-section-title sidebar-group-title"
             data-bs-toggle="collapse" data-bs-target="#sidebar-group-role-stages"
@@ -98,29 +111,29 @@
             @php
                 $groupSlug = \Illuminate\Support\Str::slug($group['role']);
                 $groupCount = collect($group['badge'])->sum(fn (string $key) => $counts[$key]);
+                $isCurrentStep = collect($group['links'])->contains(fn (array $link) => $isLinkActive($group, $link));
+                $stepState = match (true) {
+                    $isCurrentStep => 'is-current',
+                    $groupCount > 0 => 'is-waiting',
+                    default => '',
+                };
             @endphp
             <div class="sidebar-group" data-sidebar-group="{{ $groupSlug }}">
-                <button type="button" class="sidebar-section-title sidebar-group-title"
+                <button type="button" class="sidebar-section-title sidebar-group-title sidebar-step-title"
                         data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $groupSlug }}"
                         aria-expanded="true" aria-controls="sidebar-group-{{ $groupSlug }}">
-                    <i class="bi bi-chevron-right sidebar-group-chevron"></i>
-                    <i class="bi {{ $group['icon'] }}"></i>
-                    <span class="sidebar-group-name">{{ $group['role'] }}</span>
+                    <span class="sidebar-step-number {{ $stepState }}" aria-hidden="true">{{ $loop->iteration }}</span>
+                    <span class="sidebar-group-name"><span class="visually-hidden">Stage {{ $loop->iteration }}: </span>{{ $group['role'] }}</span>
                     @if ($groupCount > 0)
                         <span class="nav-link-count sidebar-group-count" title="{{ $groupCount }} waiting">{{ $groupCount }}</span>
                     @endif
+                    <i class="bi bi-chevron-right sidebar-group-chevron"></i>
                 </button>
                 <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
                     @foreach ($group['links'] as $link)
                         @php
-                            // Closed RFQs is company-wide, not a role's own queue — no
-                            // role on its link, and it's active whichever group it
-                            // sits under.
                             $isCompanyWide = $link['status'] === 'Completed';
-                            $isActive = $onRfqList
-                                && request('status') === $link['status']
-                                && $currentView === $link['view']
-                                && ($isCompanyWide || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development'));
+                            $isActive = $isLinkActive($group, $link);
                             $count = $link['count'] ? $counts[$link['count']] : 0;
                         @endphp
                         <a href="{{ route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug])) }}"

@@ -174,9 +174,9 @@ it('refuses the Senior Operations reject to anyone but Senior Operations', funct
 
 it('sends the whole RFQ back to Sourcing from Senior Operations\' review, reopening every part', function () {
     $people = chainPeople();
-    // Every part through Data Entry already parks the RFQ at
+    // Every part through Data Entry and finalized already parks the RFQ at
     // stage=senior_ops_review, ready for their whole-RFQ review — see
-    // Rfq::completeDataEntryPart().
+    // Rfq::finalizePart().
     $rfq = rfqReadyForSeniorOps($people);
     expect($rfq->stage)->toBe('senior_ops_review');
 

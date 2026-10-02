@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -124,6 +125,19 @@ class Rfq extends Model
      * @var array<int, string>
      */
     public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_review'];
+
+    /**
+     * The stages with a Returns page of their own that holds what's sent back
+     * to them — the Head of Business Development's review and GM Assistant's
+     * step, which only the General Manager sends RFQs back to. An RFQ sent
+     * back to one is listed and dealt with there, and only there: not on that
+     * role's own Review page, nor on any other role's, whichever of its parts,
+     * until they've dealt with it — see scopeNotHeldOnAReturnsPage(),
+     * isHeldOnAnotherReturnsPage() and resolveReturnOnceDealtWith().
+     *
+     * @var array<int, string>
+     */
+    public const RETURNS_PAGE_STAGES = ['head_of_bd_review', 'gm_assistant'];
 
     /**
      * activityTimeline() entry types belonging to the post-Data-Entry
@@ -273,6 +287,17 @@ class Rfq extends Model
         }
 
         $this->update($this->clearedRejectRecord());
+    }
+
+    /**
+     * Whether this RFQ is held on a Returns page (RETURNS_PAGE_STAGES) other
+     * than $ownStage's — sent back there and not yet dealt with. While it
+     * is, no other review stage can act on any part of it.
+     */
+    public function isHeldOnAnotherReturnsPage(?string $ownStage = null): bool
+    {
+        return in_array($this->reject_target_stage, self::RETURNS_PAGE_STAGES, true)
+            && $this->reject_target_stage !== $ownStage;
     }
 
     /**
@@ -724,6 +749,54 @@ class Rfq extends Model
     }
 
     /**
+     * What's on the Head of Business Development's Returns page: an RFQ the
+     * General Manager sent back to their review (rejectToStage()/
+     * rejectPartToStage() targeting 'head_of_bd_review' — nobody else can)
+     * that's still waiting on it. Approving it again clears the record (see
+     * clearedRejectRecord()); sending it further back retargets it.
+     */
+    public function scopeReturnedToHeadOfBd(Builder $query): void
+    {
+        $query->where('rfqs.reject_target_stage', 'head_of_bd_review')->awaitingHeadOfBdReview();
+    }
+
+    /**
+     * What's on GM Assistant's Returns page: an RFQ the General Manager sent
+     * back to their step (rejectToStage()/rejectPartToStage() targeting
+     * 'gm_assistant' — nobody else can) that's still waiting on them. Adding
+     * the details again resolves it (resolveReturnOnceDealtWith()); being
+     * sent further back by the General Manager retargets it.
+     */
+    public function scopeReturnedToGmAssistant(Builder $query): void
+    {
+        $query->where('rfqs.reject_target_stage', 'gm_assistant')->awaitingGmAssistant();
+    }
+
+    /**
+     * Leaves out what's held on a Returns page (RETURNS_PAGE_STAGES) — an
+     * RFQ sent back to the Head of Business Development or GM Assistant is
+     * dealt with there, and only there: not on that role's own Review page,
+     * and not on any other role's review page either (Senior Operations',
+     * the Head's, GM Assistant's, the General Manager's), whatever its other
+     * parts are up to, until it's been dealt with.
+     */
+    public function scopeNotHeldOnAReturnsPage(Builder $query): void
+    {
+        static::excludeHeldOnAReturnsPage($query);
+    }
+
+    /**
+     * The condition behind scopeNotHeldOnAReturnsPage(), for the review
+     * counts' plain rfq_user/rfqs queries too.
+     */
+    private static function excludeHeldOnAReturnsPage(Builder|QueryBuilder $query): void
+    {
+        $query->where(fn ($q) => $q
+            ->whereNull('rfqs.reject_target_stage')
+            ->orWhereNotIn('rfqs.reject_target_stage', self::RETURNS_PAGE_STAGES));
+    }
+
+    /**
      * Whether any planned Sourcing part is still waiting for someone —
      * what keeps "Assign Sourcing" available to Operations after a partial
      * assignment.
@@ -1056,6 +1129,7 @@ class Rfq extends Model
     {
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review'], true)
+            && ! $this->isHeldOnAnotherReturnsPage()
             && $this->assigneeForPart($part)?->pivot->isAwaitingSeniorOpsReview() === true;
     }
 
@@ -1139,6 +1213,7 @@ class Rfq extends Model
     {
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review'], true)
+            && ! $this->isHeldOnAnotherReturnsPage('head_of_bd_review')
             && $this->assigneeForPart($part)?->pivot->isAwaitingHeadOfBdReview() === true;
     }
 
@@ -1180,6 +1255,8 @@ class Rfq extends Model
         if ($this->allHeadOfBdPartsApproved()) {
             $this->approveByHeadOfBd($approver);
         }
+
+        $this->resolveReturnOnceDealtWith('head_of_bd_review');
     }
 
     /**
@@ -1418,9 +1495,9 @@ class Rfq extends Model
             $this->load('assignees');
         }
 
-        // Every part through Data Entry and finalized means Senior
-        // Operations' review; any that isn't means still the pipeline before
-        // it.
+        // The RFQ's own Data Entry and Finalize records stand only while
+        // every part's still through them; its stage is the furthest one
+        // every part has reached (stageEveryPartHasReached()).
         $allThroughDataEntry = $this->allDataEntryPartsCompleted();
         $allFinalized = $this->allPartsFinalized();
 
@@ -1436,10 +1513,32 @@ class Rfq extends Model
             'reject_reason' => $reason,
             'reject_from_stage' => $fromStage,
             'reject_target_stage' => $targetStage,
-            'stage' => $allFinalized ? 'senior_ops_review' : null,
+            'stage' => $this->stageEveryPartHasReached(),
         ]);
 
         $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
+    }
+
+    /**
+     * The furthest stage every part of this RFQ has reached — what its
+     * `stage` should read once one part's been sent back on its own
+     * (rejectPartToStage()), the same way every other step only moves the
+     * RFQ on once all its parts are through: null while any part is still
+     * short of Finalize, then each review in turn. A part sent back by the
+     * General Manager to the Head of Business Development leaves the RFQ at
+     * the Head's review, not back at Senior Operations', where none of it
+     * is waiting.
+     */
+    private function stageEveryPartHasReached(): ?string
+    {
+        return match (true) {
+            ! $this->allPartsFinalized() => null,
+            ! $this->allSeniorOpsPartsReviewed() => 'senior_ops_review',
+            ! $this->allHeadOfBdPartsApproved() => 'head_of_bd_review',
+            ! $this->allGmAssistantPartsCompleted() => 'gm_assistant',
+            ! $this->allGmPartsApproved() => 'gm_review',
+            default => 'bd_closing',
+        };
     }
 
     /**
@@ -1481,6 +1580,7 @@ class Rfq extends Model
     {
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'], true)
+            && ! $this->isHeldOnAnotherReturnsPage('gm_assistant')
             && $this->assigneeForPart($part)?->pivot->isAwaitingGmAssistant() === true;
     }
 
@@ -1493,6 +1593,7 @@ class Rfq extends Model
     {
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review'], true)
+            && ! $this->isHeldOnAnotherReturnsPage()
             && $this->assigneeForPart($part)?->pivot->isAwaitingGmApproval() === true;
     }
 
@@ -1558,6 +1659,8 @@ class Rfq extends Model
                 'stage' => 'gm_review',
             ]);
         }
+
+        $this->resolveReturnOnceDealtWith('gm_assistant');
     }
 
     /**
@@ -1587,6 +1690,32 @@ class Rfq extends Model
             'gm_assistant_completed_at' => now(),
             'stage' => 'gm_review',
         ]);
+
+        $this->resolveReturnOnceDealtWith('gm_assistant');
+    }
+
+    /**
+     * An RFQ held on $stage's Returns page (RETURNS_PAGE_STAGES) is resolved
+     * once that stage has nothing of it left to deal with — every part it
+     * was sent back for is through again — even while other parts are still
+     * on their way: it comes off that Returns page, and back onto everyone
+     * else's review pages. Without this it would stay held until the whole
+     * RFQ went past the stage, which a part still in Sourcing, say, would put
+     * off indefinitely. Nothing to do while anything's still waiting on
+     * $stage, or if it isn't $stage's return.
+     */
+    private function resolveReturnOnceDealtWith(string $stage): void
+    {
+        $stillWaiting = match ($stage) {
+            'head_of_bd_review' => fn (User $assignee) => $assignee->pivot->isAwaitingHeadOfBdReview(),
+            'gm_assistant' => fn (User $assignee) => $assignee->pivot->isAwaitingGmAssistant(),
+        };
+
+        if ($this->reject_target_stage !== $stage || $this->assignees->contains($stillWaiting)) {
+            return;
+        }
+
+        $this->update($this->clearedRejectRecord());
     }
 
     /**
@@ -2040,6 +2169,7 @@ class Rfq extends Model
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhere('rfqs.stage', 'senior_ops_review'))
+            ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.completed_at')
             ->whereNotNull('rfq_user.data_entry_completed_at')
             ->whereNotNull('rfq_user.finalized_at')
@@ -2048,6 +2178,7 @@ class Rfq extends Model
 
         $wholeRfqs = static::where('status', 'Pending')
             ->where('stage', 'senior_ops_review')
+            ->notHeldOnAReturnsPage()
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingSeniorOpsReview($assignees))
             ->count();
 
@@ -2058,8 +2189,10 @@ class Rfq extends Model
      * How many approvals are waiting on the Head of Business Development —
      * the rows on their Review page: each part Senior Operations has approved
      * and they haven't yet, plus any RFQ at their review stage with no such
-     * part of its own, listed whole (see scopeAwaitingHeadOfBdReview()). What
-     * the badge on their sidebar's Review link counts.
+     * part of its own, listed whole (see scopeAwaitingHeadOfBdReview()) — but
+     * none the General Manager sent back to them, which are on their Returns
+     * page instead (see headOfBdReturnsCount()). What the badge on their
+     * sidebar's Review link counts.
      */
     public static function headOfBdReviewCount(): int
     {
@@ -2067,12 +2200,14 @@ class Rfq extends Model
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review']))
+            ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.senior_ops_reviewed_at')
             ->whereNull('rfq_user.head_of_bd_approved_at')
             ->count();
 
         $wholeRfqs = static::where('status', 'Pending')
             ->where('stage', 'head_of_bd_review')
+            ->notHeldOnAReturnsPage()
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingHeadOfBdReview($assignees))
             ->count();
 
@@ -2092,12 +2227,14 @@ class Rfq extends Model
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant']))
+            ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.head_of_bd_approved_at')
             ->whereNull('rfq_user.gm_assistant_completed_at')
             ->count();
 
         $wholeRfqs = static::where('status', 'Pending')
             ->where('stage', 'gm_assistant')
+            ->notHeldOnAReturnsPage()
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingGmAssistant($assignees))
             ->count();
 
@@ -2117,12 +2254,14 @@ class Rfq extends Model
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review']))
+            ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.gm_assistant_completed_at')
             ->whereNull('rfq_user.gm_approved_at')
             ->count();
 
         $wholeRfqs = static::where('status', 'Pending')
             ->where('stage', 'gm_review')
+            ->notHeldOnAReturnsPage()
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingGmApproval($assignees))
             ->count();
 
@@ -2177,6 +2316,26 @@ class Rfq extends Model
     public static function seniorOpsReturnsCount(): int
     {
         return static::returnedToSeniorOperations()->count();
+    }
+
+    /**
+     * How many RFQs are sitting on the Head of Business Development's Returns
+     * page — see scopeReturnedToHeadOfBd(). What the badge on their
+     * sidebar's Returns link counts. A flat count, same as bdReturnsCount().
+     */
+    public static function headOfBdReturnsCount(): int
+    {
+        return static::returnedToHeadOfBd()->count();
+    }
+
+    /**
+     * How many RFQs are sitting on GM Assistant's Returns page — see
+     * scopeReturnedToGmAssistant(). What the badge on their sidebar's Returns
+     * link counts. A flat count, same as bdReturnsCount().
+     */
+    public static function gmAssistantReturnsCount(): int
+    {
+        return static::returnedToGmAssistant()->count();
     }
 
     /**
@@ -2243,7 +2402,9 @@ class Rfq extends Model
             'sourcing_returns' => $sourcingParts()->whereNotNull('rfq_user.returned_at')->count(),
             'data_entry' => DB::table('rfq_user')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->count(),
             'head_of_bd' => static::headOfBdReviewCount(),
+            'head_of_bd_returns' => static::headOfBdReturnsCount(),
             'gm_assistant' => static::gmAssistantReviewCount(),
+            'gm_assistant_returns' => static::gmAssistantReturnsCount(),
             'gm_review' => static::gmReviewCount(),
         ];
     }

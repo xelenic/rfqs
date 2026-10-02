@@ -93,6 +93,30 @@ it('makes each group collapsible, showing its queue count on the heading', funct
     expect(substr_count($response->getContent(), 'sidebar-group-count'))->toBe(3);
 });
 
+it('numbers each role\'s step in workflow order, marking the one open and the ones with work waiting', function () {
+    Rfq::factory()->create(['stage' => 'head_of_bd_review']);
+
+    $html = test()->actingAs(userWithRole('Admin'))
+        ->get(indexUrl(['status' => 'Pending', 'role' => 'sourcing']))
+        ->assertOk()
+        ->getContent();
+
+    // 1 to 7, in the workflow's order.
+    $positions = collect(Rfq::WORKFLOW_ROLES)->map(function (string $role, int $index) use ($html) {
+        expect($html)->toContain('<span class="visually-hidden">Stage '.($index + 1).': </span>'.$role.'</span>');
+
+        return strpos($html, 'data-sidebar-group="'.Str::slug($role).'"');
+    });
+    expect($positions->all())->toBe($positions->sort()->values()->all());
+
+    // Sourcing's page is open; Senior Operations (the RFQ is unassigned) and
+    // the Head of Business Development have something waiting; the rest don't.
+    expect($html)->toContain('<span class="sidebar-step-number is-current" aria-hidden="true">3</span>')
+        ->toContain('<span class="sidebar-step-number is-waiting" aria-hidden="true">2</span>')
+        ->toContain('<span class="sidebar-step-number is-waiting" aria-hidden="true">5</span>')
+        ->toContain('<span class="sidebar-step-number " aria-hidden="true">4</span>');
+});
+
 it('leaves every other role\'s sidebar as it was', function () {
     foreach (['Sourcing', 'Senior Operations', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))
@@ -130,7 +154,9 @@ it('counts each role\'s queue company-wide', function () {
         'sourcing_returns' => 1,
         'data_entry' => 1,
         'head_of_bd' => 1,
+        'head_of_bd_returns' => 0,
         'gm_assistant' => 1,
+        'gm_assistant_returns' => 0,
         'gm_review' => 1,
     ]);
 });

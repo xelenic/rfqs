@@ -117,19 +117,31 @@ class RfqController extends Controller implements HasMiddleware
         // sidebar (layouts/app.blade.php).
         $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
 
+        // Head of Business Development's Returns page — RFQs the General
+        // Manager sent back to their review, while still waiting on it
+        // (Rfq::scopeReturnedToHeadOfBd()), decided right there and listed
+        // only there, not on their Review page as well. A second lens on
+        // their Pending status via ?view=returns.
+        $scopedToHeadOfBdReturns = $status === 'Pending' && $actsAs('Head of Business Development') && $request->query('view') === 'returns';
+
         // Head of Business Development's Pending list — one row per part
         // Senior Operations has approved, waiting on their own approve/reject
         // decision, each part as it comes rather than once the whole RFQ has
-        // been approved. Unlike Senior Operations (which also has
-        // "Unassigned"), this is Head of BD's only queue, so it's their whole
-        // Pending page rather than a ?view= toggle.
-        $scopedToHeadOfBdReview = $status === 'Pending' && $actsAs('Head of Business Development');
+        // been approved. Their main queue — the whole Pending page, but for
+        // their Returns (above).
+        $scopedToHeadOfBdReview = $status === 'Pending' && $actsAs('Head of Business Development') && ! $scopedToHeadOfBdReturns;
+
+        // GM Assistant's Returns page — RFQs the General Manager sent back to
+        // their step, while still waiting on them (Rfq::scopeReturnedToGmAssistant()),
+        // dealt with right there and listed only there. A second lens on their
+        // Pending status via ?view=returns, same as the Head's.
+        $scopedToGmAssistantReturns = $status === 'Pending' && $actsAs('GM Assistant') && $request->query('view') === 'returns';
 
         // GM Assistant's Pending list — one row per part Head of Business
         // Development has approved, waiting on client details and payment
         // terms before going on to the General Manager, each part as it comes.
-        // Their only queue, same as Head of Business Development above.
-        $scopedToGmAssistant = $status === 'Pending' && $actsAs('GM Assistant');
+        // Their main queue — the whole Pending page, but for their Returns.
+        $scopedToGmAssistant = $status === 'Pending' && $actsAs('GM Assistant') && ! $scopedToGmAssistantReturns;
 
         // General Manager's Pending list — one row per part GM Assistant has
         // finished adding client details/payment terms to, waiting on final
@@ -186,7 +198,7 @@ class RfqController extends Controller implements HasMiddleware
             // scoped to one assignee — only worth the extra eager load on
             // those two views.
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
-            ->when($scopedToBdReturns || $scopedToSeniorOpsReturns, fn ($query) => $query->with('rejectedBy'))
+            ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with('rejectedBy'))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // Not the parts Data Entry has sent back: those are on the
@@ -208,12 +220,17 @@ class RfqController extends Controller implements HasMiddleware
             })
             ->when($scopedToDataEntry, fn ($query) => $query->whereNotNull('sourcing_completed_at'))
             ->when($scopedToUnassigned, fn ($query) => $query->needingSourcing())
-            ->when($scopedToHeadOfBdReview, fn ($query) => $query->awaitingHeadOfBdReview())
-            ->when($scopedToGmAssistant, fn ($query) => $query->awaitingGmAssistant())
-            ->when($scopedToGmReview, fn ($query) => $query->awaitingGmApproval())
+            ->when($scopedToHeadOfBdReview, fn ($query) => $query->awaitingHeadOfBdReview()->notHeldOnAReturnsPage())
+            // An RFQ sent back to the Head of Business Development or GM
+            // Assistant is on their Returns page and nobody's review page
+            // until they've dealt with it — see Rfq::scopeNotHeldOnAReturnsPage().
+            ->when($scopedToGmAssistant, fn ($query) => $query->awaitingGmAssistant()->notHeldOnAReturnsPage())
+            ->when($scopedToGmReview, fn ($query) => $query->awaitingGmApproval()->notHeldOnAReturnsPage())
             ->when($scopedToBdClosing, fn ($query) => $query->awaitingBdClosing())
             ->when($scopedToBdReturns, fn ($query) => $query->where('reject_target_stage', 'business_development'))
             ->when($scopedToSeniorOpsReturns, fn ($query) => $query->returnedToSeniorOperations())
+            ->when($scopedToHeadOfBdReturns, fn ($query) => $query->returnedToHeadOfBd())
+            ->when($scopedToGmAssistantReturns, fn ($query) => $query->returnedToGmAssistant())
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
             ->paginate(10)
@@ -264,6 +281,7 @@ class RfqController extends Controller implements HasMiddleware
             ? Rfq::query()
                 ->with(['assignees', 'creator', 'operationsAssignee', 'dataEntryCompletedBy'])
                 ->awaitingSeniorOpsReview()
+                ->notHeldOnAReturnsPage()
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(10, ['*'], 'review_page')
@@ -283,8 +301,8 @@ class RfqController extends Controller implements HasMiddleware
             : collect();
 
         $dataEntryNames = $namesOfWhoDid($seniorOpsReviewRfqs, 'data_entry_completed_by');
-        $seniorOpsNames = $namesOfWhoDid($scopedToHeadOfBdReview ? $rfqs : null, 'senior_ops_reviewed_by');
-        $headOfBdNames = $namesOfWhoDid($scopedToGmAssistant ? $rfqs : null, 'head_of_bd_approved_by');
+        $seniorOpsNames = $namesOfWhoDid($scopedToHeadOfBdReview || $scopedToHeadOfBdReturns ? $rfqs : null, 'senior_ops_reviewed_by');
+        $headOfBdNames = $namesOfWhoDid($scopedToGmAssistant || $scopedToGmAssistantReturns ? $rfqs : null, 'head_of_bd_approved_by');
         $gmAssistantNames = $namesOfWhoDid($scopedToGmReview ? $rfqs : null, 'gm_assistant_completed_by');
         $gmNames = $namesOfWhoDid($scopedToBdClosing ? $rfqs : null, 'gm_approved_by');
         $bdClosedNames = $namesOfWhoDid($status === 'Completed' ? $rfqs : null, 'bd_closed_by');
@@ -315,6 +333,8 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToBdClosing' => $scopedToBdClosing,
             'scopedToBdReturns' => $scopedToBdReturns,
             'scopedToSeniorOpsReturns' => $scopedToSeniorOpsReturns,
+            'scopedToHeadOfBdReturns' => $scopedToHeadOfBdReturns,
+            'scopedToGmAssistantReturns' => $scopedToGmAssistantReturns,
             'lensRole' => $lensRole,
             'sourcingOverview' => $sourcingOverview,
             'opsFilters' => $opsFilters,

@@ -106,6 +106,32 @@
         @endif
     </a>
 @endif
+@if (auth()->user()->hasRole('Head of Business Development'))
+    {{-- RFQs the General Manager sent back to their review, still waiting on
+         it — one per row on the Returns page — as a red count, like the
+         queue above. --}}
+    @php $headOfBdReturnsCount = \App\Models\Rfq::headOfBdReturnsCount(); @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($headOfBdReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $headOfBdReturnsCount }} sent back by the General Manager">{{ $headOfBdReturnsCount }}</span>
+        @endif
+    </a>
+@endif
+@if (auth()->user()->hasRole('GM Assistant'))
+    {{-- RFQs the General Manager sent back to them, still waiting on them —
+         one per row on the Returns page — as a red count, like the queue
+         above. --}}
+    @php $gmAssistantReturnsCount = \App\Models\Rfq::gmAssistantReturnsCount(); @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($gmAssistantReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $gmAssistantReturnsCount }} sent back by the General Manager">{{ $gmAssistantReturnsCount }}</span>
+        @endif
+    </a>
+@endif
 @if (auth()->user()->hasRole('Business Development'))
     {{-- RFQs sent all the way back to them by a reviewer — one per row on
          the Returns page — as a red count, like the queues above. --}}

@@ -43,7 +43,7 @@ it('shows the empty state until a reviewer sends something back, then lists it w
     expect($html)->toContain('RFQ2001')
         ->toContain('Server room chillers')
         ->toContain('Sent back by Senior Operations (2nd review)')
-        ->toContain($people['ops']->name)
+        ->toContain(e($people['ops']->name))
         ->toContain('Wrong building entirely');
 
     // Not on Business Development's own Pending or Ready to Close lists —

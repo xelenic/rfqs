@@ -3,6 +3,8 @@
         $scopedToReturns => 'Returns',
         $scopedToBdReturns => 'Returns',
         $scopedToSeniorOpsReturns => 'Returns',
+        $scopedToHeadOfBdReturns => 'Returns',
+        $scopedToGmAssistantReturns => 'Returns',
         $scopedToSeniorOpsReview => 'Review',
         $sourcingOverview && $scopedToMe => 'Pending RFQs',
         $statusFilter === 'Pending' && $scopedToMe => 'My Pending RFQs',
@@ -22,7 +24,7 @@
     // send an RFQ back to (Rfq::rejectTargetStages()) both follow from which.
     $rejectFromStage = match (true) {
         $scopedToSeniorOpsReview => 'senior_ops_review',
-        $scopedToHeadOfBdReview => 'head_of_bd_review',
+        $scopedToHeadOfBdReview, $scopedToHeadOfBdReturns => 'head_of_bd_review',
         $scopedToGmReview => 'gm_review',
         default => null,
     };
@@ -359,7 +361,7 @@
                     {{ $seniorOpsReviewRfqs->links() }}
                 </div>
             @endif
-        @elseif ($scopedToHeadOfBdReview)
+        @elseif ($scopedToHeadOfBdReview || $scopedToHeadOfBdReturns)
             {{-- Head of Business Development's approval queue — one row per part
                  Senior Operations has approved, each as it comes rather than once
                  the whole RFQ has been. Approving a part is on its own; the RFQ
@@ -367,7 +369,12 @@
                  Rejecting sends just that part back to an earlier stage with a
                  reason. An RFQ kept whole is one row. See RfqController::index()
                  ($scopedToHeadOfBdReview), Rfq::approveHeadOfBdPart() /
-                 rejectPartToStage(). --}}
+                 rejectPartToStage().
+
+                 Their Returns page is the same queue for what the General Manager
+                 sent back to them, decided the same way — listed there, with who,
+                 why and when, and only there ($scopedToHeadOfBdReturns,
+                 Rfq::scopeReturnedToHeadOfBd()). --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -377,7 +384,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sourcing</th>
-                            <th>Approved by Senior Operations</th>
+                            <th>{{ $scopedToHeadOfBdReturns ? 'Returned At' : 'Approved by Senior Operations' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -389,13 +396,22 @@
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $partLabel }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        @if ($scopedToHeadOfBdReturns)
+                                            @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
+                                        @endif
+                                    </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->senior_ops_reviewed_at->format('M d, Y g:i A') }}
-                                        @if ($seniorOpsNames->has($assignee->pivot->senior_ops_reviewed_by))
-                                            <div class="text-muted-soft small">by {{ $seniorOpsNames->get($assignee->pivot->senior_ops_reviewed_by) }}</div>
+                                        @if ($scopedToHeadOfBdReturns)
+                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                        @else
+                                            {{ $assignee->pivot->senior_ops_reviewed_at->format('M d, Y g:i A') }}
+                                            @if ($seniorOpsNames->has($assignee->pivot->senior_ops_reviewed_by))
+                                                <div class="text-muted-soft small">by {{ $seniorOpsNames->get($assignee->pivot->senior_ops_reviewed_by) }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -431,13 +447,22 @@
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        @if ($scopedToHeadOfBdReturns)
+                                            @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
+                                        @endif
+                                    </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
-                                        {{ $rfq->senior_ops_reviewed_at?->format('M d, Y g:i A') ?? '—' }}
-                                        @if ($rfq->seniorOpsReviewedBy)
-                                            <div class="text-muted-soft small">by {{ $rfq->seniorOpsReviewedBy->name }}</div>
+                                        @if ($scopedToHeadOfBdReturns)
+                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                        @else
+                                            {{ $rfq->senior_ops_reviewed_at?->format('M d, Y g:i A') ?? '—' }}
+                                            @if ($rfq->seniorOpsReviewedBy)
+                                                <div class="text-muted-soft small">by {{ $rfq->seniorOpsReviewedBy->name }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -465,14 +490,18 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    Nothing's waiting on your review right now.
+                                    @if ($scopedToHeadOfBdReturns)
+                                        Nothing's been sent back to the Head of Business Development.
+                                    @else
+                                        Nothing's waiting on your review right now.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-        @elseif ($scopedToGmAssistant)
+        @elseif ($scopedToGmAssistant || $scopedToGmAssistantReturns)
             {{-- GM Assistant's queue — one row per part Head of Business
                  Development has approved, each as it comes rather than once the
                  whole RFQ has been, waiting on client details and payment terms
@@ -481,7 +510,12 @@
                  RFQ goes on to the General Manager once every part has been
                  through. An RFQ kept whole is one row. See
                  RfqController::index() ($scopedToGmAssistant),
-                 Rfq::recordGmAssistantPart(). --}}
+                 Rfq::recordGmAssistantPart().
+
+                 Their Returns page is the same queue for what the General Manager
+                 sent back to them, dealt with the same way — listed there, with
+                 who, why and when, and only there ($scopedToGmAssistantReturns,
+                 Rfq::scopeReturnedToGmAssistant()). --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -491,7 +525,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sourcing</th>
-                            <th>Approved by Head of BD</th>
+                            <th>{{ $scopedToGmAssistantReturns ? 'Returned At' : 'Approved by Head of BD' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -503,13 +537,22 @@
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $partLabel }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        @if ($scopedToGmAssistantReturns)
+                                            @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
+                                        @endif
+                                    </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->head_of_bd_approved_at->format('M d, Y g:i A') }}
-                                        @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
-                                            <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
+                                        @if ($scopedToGmAssistantReturns)
+                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                        @else
+                                            {{ $assignee->pivot->head_of_bd_approved_at->format('M d, Y g:i A') }}
+                                            @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
+                                                <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -536,13 +579,22 @@
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        @if ($scopedToGmAssistantReturns)
+                                            @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
+                                        @endif
+                                    </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
-                                        {{ $rfq->head_of_bd_approved_at?->format('M d, Y g:i A') ?? '—' }}
-                                        @if ($rfq->headOfBdApprovedBy)
-                                            <div class="text-muted-soft small">by {{ $rfq->headOfBdApprovedBy->name }}</div>
+                                        @if ($scopedToGmAssistantReturns)
+                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                        @else
+                                            {{ $rfq->head_of_bd_approved_at?->format('M d, Y g:i A') ?? '—' }}
+                                            @if ($rfq->headOfBdApprovedBy)
+                                                <div class="text-muted-soft small">by {{ $rfq->headOfBdApprovedBy->name }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -563,7 +615,11 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    Nothing's waiting on you right now.
+                                    @if ($scopedToGmAssistantReturns)
+                                        Nothing's been sent back to GM Assistant.
+                                    @else
+                                        Nothing's waiting on you right now.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse
@@ -1233,7 +1289,7 @@
     @if ($rejectFromStage)
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
     @endif
-    @if ($scopedToGmAssistant)
+    @if ($scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._gm_assistant_modal')
     @endif
     @if ($scopedToUnassigned)

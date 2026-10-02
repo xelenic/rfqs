@@ -166,10 +166,11 @@ h6, .h6 { font-size: 0.85rem; }
   font-weight: 700;
 }
 
-/* Admin's sidebar is a tree of the workflow: each role a node, its pages
-   hanging off it. A node's heading is the button that collapses it — a caret
-   leads, then the role's icon and name, and — only while collapsed — the
-   node's queue count at the end. */
+/* Admin's sidebar is the workflow, role by role: each role a numbered step,
+   its pages under it. A heading is the button that collapses it — the step's
+   number (or, on the "Role Stages" root, a caret and icon) leads, then the
+   name, and — only while collapsed — the queue count, with a caret at the end
+   on a step. */
 .sidebar-group-title {
   display: flex;
   align-items: center;
@@ -225,72 +226,91 @@ h6, .h6 { font-size: 0.85rem; }
   display: inline-flex;
 }
 
-/* The tree's root, "Role Stages": its heading is set a little above the role
-   nodes under it, which hang off a guide down its left edge with a short
-   elbow into each. */
+/* The root, "Role Stages": its heading is set a little above the role steps
+   under it. */
 .sidebar-group-root > .sidebar-group-title {
   margin-top: 0.75rem;
   font-size: 0.66rem;
   letter-spacing: 0.06em;
 }
 
+/* The role steps read as a numbered timeline: each step's number sits on a
+   line that runs down to the next step's number, with the step's pages
+   beside the line. The last step's line ends at its number. --step-center is
+   how far down a step its number's centre sits (the heading's top margin and
+   padding, plus half the number), so the line joins one centre to the next. */
 .sidebar-group-children {
-  margin-left: 0.8rem;
-  padding-left: 0.35rem;
-  border-left: 1px solid var(--rfq-tree-line-soft);
+  margin-left: 0.15rem;
 }
 
-.sidebar-group-children > .sidebar-group > .sidebar-group-title {
+.sidebar-group-children > .sidebar-group {
+  --step-size: 1.25rem;
+  --step-center: calc(0.2rem + 0.4rem + var(--step-size) / 2);
   position: relative;
 }
 
-.sidebar-group-children > .sidebar-group > .sidebar-group-title::before {
+.sidebar-group-children > .sidebar-group::before {
   content: "";
   position: absolute;
-  left: -0.35rem;
-  top: 50%;
-  width: 0.35rem;
-  border-top: 1px solid var(--rfq-tree-line-soft);
+  left: calc(0.5rem + var(--step-size) / 2 - 1px);
+  top: var(--step-center);
+  bottom: calc(-1 * var(--step-center));
+  border-left: 2px solid var(--rfq-tree-line-soft);
   pointer-events: none;
 }
 
-/* The branch: the pages sit a step smaller than the top-level links, indented
-   under their role. A guide runs down the node's left edge (under its caret)
-   with a short elbow into each page, and the last page's guide stops at its
-   elbow. */
-.sidebar-group-links {
-  margin-left: 0.8rem;
+.sidebar-group-children > .sidebar-group:last-child::before {
+  display: none;
+}
+
+.sidebar-step-title {
+  margin-top: 0.2rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.35rem;
+  gap: 0.5rem;
+}
+
+/* A step's number: plain by default, highlighted while its queues have
+   something waiting, filled in while one of its pages is open. It sits over
+   the line, so the line runs into it rather than through it. */
+.sidebar-step-number {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--step-size);
+  height: var(--step-size);
+  border-radius: 50%;
+  border: 1.5px solid var(--rfq-tree-line);
+  background: var(--rfq-sidebar-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-step-number.is-waiting {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+}
+
+.sidebar-step-number.is-current {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary);
+  color: #fff;
+}
+
+/* A step's pages sit to the right of the line, lined up under its name. */
+.sidebar-group-children .sidebar-group-links {
+  margin-left: calc(0.5rem + var(--step-size) + 0.1rem);
 }
 
 .sidebar-nav .sidebar-group .nav-link {
-  position: relative;
-  margin-left: 0.85rem;
   font-size: 0.75rem;
-}
-
-.sidebar-nav .sidebar-group .nav-link::before,
-.sidebar-nav .sidebar-group .nav-link::after {
-  content: "";
-  position: absolute;
-  left: -0.85rem;
-  border: 0 solid var(--rfq-tree-line-soft);
-  pointer-events: none;
-}
-
-.sidebar-nav .sidebar-group .nav-link::before {
-  top: 0;
-  bottom: -0.1rem;
-  border-left-width: 1px;
-}
-
-.sidebar-nav .sidebar-group .nav-link:last-child::before {
-  bottom: 50%;
-}
-
-.sidebar-nav .sidebar-group .nav-link::after {
-  top: 50%;
-  width: 0.7rem;
-  border-top-width: 1px;
 }
 
 .sidebar-nav .sidebar-group .nav-link i {
