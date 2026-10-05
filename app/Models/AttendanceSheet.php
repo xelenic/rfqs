@@ -78,39 +78,6 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * The working time tracked as each person's on $date ("Y-m-d", in the
-     * working hours' own zone), user id => seconds — shown beside them on the
-     * sheet, so it's plain whose time a mark decides.
-     *
-     * @return array<int, int>
-     */
-    public static function trackedOn(string $date): array
-    {
-        $zone = Setting::timezone();
-        $dayStart = CarbonImmutable::parse($date, $zone)->startOfDay();
-        $dayEnd = $dayStart->addDay();
-        $now = CarbonImmutable::now();
-        $people = [];
-
-        // The database keeps the app's own time zone.
-        $stretches = RfqStep::query()
-            ->whereNotNull('worked_by')
-            ->where('started_at', '<', $dayEnd->setTimezone(config('app.timezone')))
-            ->where(fn ($query) => $query->whereNull('ended_at')->orWhere('ended_at', '>', $dayStart->setTimezone(config('app.timezone'))))
-            ->get();
-
-        foreach ($stretches as $stretch) {
-            $seconds = Setting::workingSecondsBetween(max($stretch->started_at, $dayStart), min($stretch->ended_at ?? $now, $dayEnd));
-
-            if ($seconds > 0) {
-                $people[$stretch->worked_by] = ($people[$stretch->worked_by] ?? 0) + $seconds;
-            }
-        }
-
-        return $people;
-    }
-
-    /**
      * Everyone's line on the sheet.
      */
     public function attendances(): HasMany

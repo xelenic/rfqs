@@ -154,10 +154,11 @@
 
             @php
                 // The page body is what live updates swap (see public/js/live.js),
-                // except on the pages for users, roles, permissions and settings,
-                // which aren't live. Its hash lets a refresh tell whether anything
+                // except on the pages for users, roles, permissions, settings and
+                // attendance, which aren't live — a refresh mid-way would wipe
+                // what's being filled in. Its hash lets a refresh tell whether anything
                 // in it actually changed.
-                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*');
+                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*', 'admin.attendance.*');
                 $pageContent = $__env->yieldContent('content');
             @endphp
             <main class="page-body" id="live-main" data-live="{{ $liveBody ? 'on' : 'off' }}" data-live-hash="{{ md5($pageContent) }}">

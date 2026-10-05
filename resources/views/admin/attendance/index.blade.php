@@ -1,15 +1,19 @@
 {{--
-    The daily attendance sheet (see AttendanceController): for one day — today,
-    or an earlier one since attendance started — either the button to make
-    its sheet, or the sheet itself: every Sourcing, Data Entry and GM Assistant
-    person, with the time tracked as theirs that day, Present or Absent, and
-    why when absent. A person's time only counts on a day the sheet has them
-    present. Beside it, the working days still without a sheet, and the last
-    few made.
+    The attendance page (see AttendanceController): every day's submitted sheet,
+    newest first — who was present, who was absent and why, who submitted it —
+    and the working days still without one. A new sheet, or a correction to
+    one, is filled in the popup below (#attendanceModal): every Sourcing, Data
+    Entry and GM Assistant person, Present or Absent, with why when absent. A
+    person's time only counts on a day the sheet has them present.
 
-    Expects: $date, $today, $since (Setting::attendanceSince()), $sheet (or
-    null), $marks (user id => Attendance), $people, $tracked (user id =>
-    seconds that day), $missingDays, $recentSheets.
+    One sheet a day: New attendance sheet opens on the newest day still without
+    one ($newSheetDate), and is off once every day has one; the popup turns a
+    day that already has one away before it's submitted ($sheetDates, see
+    admin.js).
+
+    Expects: $sheets (paginated, with attendances.user, createdBy, updatedBy),
+    $people (AttendanceSheet::people()), $missingDays, $sheetDates,
+    $newSheetDate, $today, $since (Setting::attendanceSince()).
 --}}
 @extends('layouts.app')
 
@@ -17,8 +21,7 @@
 
 @section('content')
     @php
-        $isToday = $date === $today;
-        $dayLabel = $isToday ? 'Today' : \Carbon\CarbonImmutable::parse($date)->format('D, M j, Y');
+        $dayLabel = fn (string $date) => $date === $today ? 'Today' : \Carbon\CarbonImmutable::parse($date)->format('D, M j, Y');
     @endphp
 
     @if ($since === null)
@@ -37,155 +40,236 @@
         <div class="col-lg-9">
             <div class="card">
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <form method="GET" class="d-flex align-items-center gap-2">
-                        <label for="attendance-date" class="small text-muted-soft mb-0">Day</label>
-                        <input type="date" name="date" id="attendance-date" class="form-control form-control-sm w-auto"
-                               value="{{ $date }}" @if ($since) min="{{ $since }}" @endif max="{{ $today }}" onchange="this.form.submit()">
-                        <span class="fw-semibold">{{ $dayLabel }}</span>
-                    </form>
-                    @if ($sheet)
-                        <span class="text-muted-soft small">
-                            Made by {{ $sheet->createdBy?->name ?? 'Unknown' }}
-                            @if ($sheet->updatedBy)
-                                · last saved by {{ $sheet->updatedBy->name }} {{ $sheet->updated_at->diffForHumans() }}
-                            @endif
+                    <span>Attendance sheets</span>
+                    @if ($newSheetDate)
+                        <button type="button" class="btn btn-sm btn-primary js-attendance-open"
+                                data-bs-toggle="modal" data-bs-target="#attendanceModal"
+                                data-action="{{ route('admin.attendance.store') }}" data-date="{{ $newSheetDate }}">
+                            <i class="bi bi-plus-lg"></i> New attendance sheet
+                        </button>
+                    @else
+                        {{-- Today's is done, and every day before it — one sheet a day. --}}
+                        <span class="d-inline-block" tabindex="0" title="Today's sheet is done — edit it from the list">
+                            <button type="button" class="btn btn-sm btn-primary" disabled>
+                                <i class="bi bi-check2-all"></i> Today's sheet is done
+                            </button>
                         </span>
                     @endif
                 </div>
 
-                @if ($sheet === null)
-                    <div class="card-body text-center py-5">
-                        <i class="bi bi-clipboard-plus display-6 text-muted-soft"></i>
-                        <p class="mt-2 mb-3">No attendance sheet for {{ $isToday ? 'today' : $dayLabel }} yet. Until there is, nobody's time {{ $isToday ? 'today' : 'that day' }} counts.</p>
-                        <form method="POST" action="{{ route('admin.attendance.store') }}">
-                            @csrf
-                            <input type="hidden" name="date" value="{{ $date }}">
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-clipboard-check"></i> Make attendance sheet</button>
-                        </form>
-                        <div class="form-text">Everyone starts present — then mark who's absent.</div>
-                    </div>
-                @else
-                    <form method="POST" action="{{ route('admin.attendance.update', $sheet) }}" novalidate>
-                        @csrf
-                        @method('PUT')
-                        <div class="table-responsive">
-                            <table class="table align-middle mb-0 attendance-table">
-                                <thead>
-                                    <tr>
-                                        <th>Person</th>
-                                        <th>Role</th>
-                                        <th class="text-end">Time tracked</th>
-                                        <th>Attendance</th>
-                                        <th>If absent</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @forelse ($people as $person)
-                                        @php
-                                            $mark = $marks->get($person->id);
-                                            $field = fn (string $name) => "attendance.{$person->id}.{$name}";
-                                            $status = old($field('status'), $mark?->status ?? \App\Models\Attendance::PRESENT);
-                                        @endphp
-                                        <tr data-attendance-user="{{ $person->id }}" @class(['is-absent' => $status === 'absent'])>
-                                            <td class="fw-semibold">
-                                                {{ $person->name }}
-                                                @if ($mark === null)
-                                                    <span class="badge badge-soft-warning" title="Not on the sheet yet — saving adds them">New</span>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Present</th>
+                                <th>Absent</th>
+                                <th>Submitted by</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($sheets as $sheet)
+                                @php
+                                    $date = $sheet->date->toDateString();
+                                    $absentees = $sheet->attendances->where('status', \App\Models\Attendance::ABSENT)->sortBy(fn ($line) => $line->user?->name);
+                                    $presentCount = $sheet->attendances->where('status', \App\Models\Attendance::PRESENT)->count();
+                                    $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'reason' => $line->reason, 'note' => $line->note]]);
+                                @endphp
+                                <tr data-attendance-sheet="{{ $date }}">
+                                    <td class="fw-semibold text-nowrap">{{ $dayLabel($date) }}</td>
+                                    <td><span class="badge badge-soft-success">{{ $presentCount }} present</span></td>
+                                    <td>
+                                        @forelse ($absentees as $line)
+                                            <div class="small">
+                                                <span class="fw-semibold">{{ $line->user?->name ?? 'Unknown' }}</span>
+                                                <span class="badge badge-soft-danger">{{ $line->reason }}</span>
+                                                @if ($line->note)
+                                                    <span class="text-muted-soft">— {{ $line->note }}</span>
                                                 @endif
-                                            </td>
-                                            <td>
-                                                @foreach ($person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) as $roleName)
-                                                    <span class="badge badge-soft-secondary">{{ $roleName }}</span>
-                                                @endforeach
-                                            </td>
-                                            <td class="text-end text-nowrap">{{ \App\Models\Setting::durationLabel($tracked[$person->id] ?? 0) }}</td>
-                                            <td>
-                                                <div class="btn-group btn-group-sm" role="group" aria-label="{{ $person->name }}'s attendance">
-                                                    @foreach (['present' => ['Present', 'btn-outline-success', 'bi-check2'], 'absent' => ['Absent', 'btn-outline-danger', 'bi-x-lg']] as $value => [$label, $class, $icon])
-                                                        <input type="radio" class="btn-check js-attendance-status" name="attendance[{{ $person->id }}][status]"
-                                                               id="attendance-{{ $person->id }}-{{ $value }}" value="{{ $value }}" autocomplete="off" @checked($status === $value)>
-                                                        <label class="btn {{ $class }}" for="attendance-{{ $person->id }}-{{ $value }}"><i class="bi {{ $icon }}"></i> {{ $label }}</label>
-                                                    @endforeach
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="d-flex gap-2 attendance-absence">
-                                                    <select name="attendance[{{ $person->id }}][reason]" class="form-select form-select-sm w-auto @error($field('reason'), 'attendance') is-invalid @enderror"
-                                                            aria-label="Why {{ $person->name }} was absent">
-                                                        <option value="">Why…</option>
-                                                        @foreach (\App\Models\Attendance::REASONS as $reason)
-                                                            <option value="{{ $reason }}" @selected(old($field('reason'), $mark?->reason) === $reason)>{{ $reason }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                    <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm"
-                                                           value="{{ old($field('note'), $mark?->note) }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s absence">
-                                                </div>
-                                                @error($field('reason'), 'attendance')
-                                                    <div class="text-danger small">{{ $message }}</div>
-                                                @enderror
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr>
-                                            <td colspan="5" class="text-center text-muted-soft py-4">Nobody holds the Sourcing, Data Entry or GM Assistant role yet.</td>
-                                        </tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                        @if ($people->isNotEmpty())
-                            <div class="card-body border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                <span class="text-muted-soft small">A person's time {{ $isToday ? 'today' : 'that day' }} only counts if they're marked present.</span>
-                                <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save attendance</button>
-                            </div>
-                        @endif
-                    </form>
+                                            </div>
+                                        @empty
+                                            <span class="text-muted-soft small">Nobody</span>
+                                        @endforelse
+                                    </td>
+                                    <td class="text-muted-soft small text-nowrap">
+                                        {{ $sheet->createdBy?->name ?? 'Unknown' }}
+                                        <div>{{ $sheet->created_at->format('M d, g:i A') }}</div>
+                                        @if ($sheet->updatedBy && $sheet->updated_at->gt($sheet->created_at))
+                                            <div>edited by {{ $sheet->updatedBy->name }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary js-attendance-open"
+                                                data-bs-toggle="modal" data-bs-target="#attendanceModal"
+                                                data-action="{{ route('admin.attendance.update', $sheet) }}"
+                                                data-sheet-id="{{ $sheet->id }}" data-date="{{ $date }}"
+                                                data-date-label="{{ $dayLabel($date) }}"
+                                                data-marks="{{ $marks->toJson() }}">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </button>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted-soft py-4">No attendance submitted yet — start with today's.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                @if ($sheets->hasPages())
+                    <div class="card-footer bg-white">
+                        {{ $sheets->links() }}
+                    </div>
                 @endif
             </div>
         </div>
 
         <div class="col-lg-3">
-            @if ($since)
-                <div class="card mb-3">
-                    <div class="card-header d-flex align-items-center justify-content-between">
-                        <span>No sheet yet</span>
-                        @if ($missingDays)
-                            <span class="badge badge-soft-warning">{{ count($missingDays) }}</span>
-                        @endif
-                    </div>
-                    <div class="list-group list-group-flush">
-                        @forelse ($missingDays as $day)
-                            <a href="{{ route('admin.attendance.index', ['date' => $day]) }}"
-                               @class(['list-group-item list-group-item-action', 'active' => $day === $date])>
-                                {{ $day === $today ? 'Today' : \Carbon\CarbonImmutable::parse($day)->format('D, M j') }}
-                            </a>
-                        @empty
-                            <div class="list-group-item text-muted-soft small">Every working day has its sheet.</div>
-                        @endforelse
-                    </div>
-                </div>
-            @endif
-
             <div class="card">
-                <div class="card-header">Recent sheets</div>
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <span>No sheet yet</span>
+                    @if ($missingDays)
+                        <span class="badge badge-soft-warning">{{ count($missingDays) }}</span>
+                    @endif
+                </div>
                 <div class="list-group list-group-flush">
-                    @forelse ($recentSheets as $recent)
-                        @php $recentDate = $recent->date->toDateString(); @endphp
-                        <a href="{{ route('admin.attendance.index', ['date' => $recentDate]) }}"
-                           @class(['list-group-item list-group-item-action d-flex justify-content-between align-items-center', 'active' => $recentDate === $date])>
-                            {{ $recentDate === $today ? 'Today' : $recent->date->format('D, M j') }}
-                            <span class="small">
-                                <span class="text-success">{{ $recent->present_count }} in</span>
-                                @if ($recent->absent_count > 0)
-                                    · <span class="text-danger">{{ $recent->absent_count }} off</span>
-                                @endif
-                            </span>
-                        </a>
+                    @forelse ($missingDays as $day)
+                        <div class="list-group-item d-flex align-items-center justify-content-between" data-missing-day="{{ $day }}">
+                            {{ $day === $today ? 'Today' : \Carbon\CarbonImmutable::parse($day)->format('D, M j') }}
+                            <button type="button" class="btn btn-sm btn-outline-primary js-attendance-open"
+                                    data-bs-toggle="modal" data-bs-target="#attendanceModal"
+                                    data-action="{{ route('admin.attendance.store') }}" data-date="{{ $day }}">
+                                <i class="bi bi-plus-lg"></i> Add
+                            </button>
+                        </div>
                     @empty
-                        <div class="list-group-item text-muted-soft small">No sheets made yet.</div>
+                        <div class="list-group-item text-muted-soft small">
+                            {{ $since === null ? 'Attendance isn\'t being counted.' : 'Every working day has its sheet.' }}
+                        </div>
                     @endforelse
                 </div>
             </div>
         </div>
     </div>
+
+    {{-- The sheet popup — a new day's, or a submitted one to correct. The
+         buttons that open it say which (data-action, data-sheet-id,
+         data-marks); admin.js fills it in. After a refused submission it
+         comes back filled with what was sent. --}}
+    @php
+        $failed = $errors->attendance->any();
+        $failedSheet = $failed && old('sheet_id') ? \App\Models\AttendanceSheet::query()->find(old('sheet_id')) : null;
+    @endphp
+    <div class="modal fade" id="attendanceModal" tabindex="-1" aria-labelledby="attendanceModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <form method="POST" id="attendanceForm" novalidate class="modal-content"
+                  action="{{ $failedSheet ? route('admin.attendance.update', $failedSheet) : route('admin.attendance.store') }}"
+                  data-sheet-dates="{{ json_encode($sheetDates) }}">
+                @csrf
+                <input type="hidden" name="_method" value="PUT" @disabled(! $failedSheet)>
+                <input type="hidden" name="sheet_id" value="{{ $failedSheet?->id }}">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="attendanceModalLabel">{{ $failedSheet ? 'Edit attendance' : 'New attendance sheet' }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="d-flex align-items-end flex-wrap gap-3 mb-3">
+                        <div>
+                            <label for="attendance-date" class="form-label">Day</label>
+                            <input type="date" name="date" id="attendance-date"
+                                   class="form-control @error('date', 'attendance') is-invalid @enderror"
+                                   value="{{ $failed ? old('date') : $today }}" data-today="{{ $today }}"
+                                   @if ($since) min="{{ $since }}" @endif max="{{ $today }}" @readonly($failedSheet)>
+                            @error('date', 'attendance')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
+                        </div>
+                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as absent, and why. Their time that day won't count.</p>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0 attendance-table">
+                            <thead>
+                                <tr>
+                                    <th>Person</th>
+                                    <th>Role</th>
+                                    <th>Attendance</th>
+                                    <th>If absent</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($people as $person)
+                                    @php
+                                        $field = fn (string $name) => "attendance.{$person->id}.{$name}";
+                                        $status = $failed ? old($field('status'), 'present') : 'present';
+                                    @endphp
+                                    <tr data-attendance-user="{{ $person->id }}" @class(['is-absent' => $status === 'absent'])>
+                                        <td class="fw-semibold">{{ $person->name }}</td>
+                                        <td>
+                                            @foreach ($person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) as $roleName)
+                                                <span class="badge badge-soft-secondary">{{ $roleName }}</span>
+                                            @endforeach
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="{{ $person->name }}'s attendance">
+                                                @foreach (['present' => ['Present', 'btn-outline-success', 'bi-check2'], 'absent' => ['Absent', 'btn-outline-danger', 'bi-x-lg']] as $value => [$label, $class, $icon])
+                                                    <input type="radio" class="btn-check js-attendance-status" name="attendance[{{ $person->id }}][status]"
+                                                           id="attendance-{{ $person->id }}-{{ $value }}" value="{{ $value }}" autocomplete="off" @checked($status === $value)>
+                                                    <label class="btn {{ $class }}" for="attendance-{{ $person->id }}-{{ $value }}"><i class="bi {{ $icon }}"></i> {{ $label }}</label>
+                                                @endforeach
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex gap-2 attendance-absence">
+                                                <select name="attendance[{{ $person->id }}][reason]" class="form-select form-select-sm w-auto @error($field('reason'), 'attendance') is-invalid @enderror"
+                                                        aria-label="Why {{ $person->name }} was absent">
+                                                    <option value="">Why…</option>
+                                                    @foreach (\App\Models\Attendance::REASONS as $reason)
+                                                        <option value="{{ $reason }}" @selected($failed && old($field('reason')) === $reason)>{{ $reason }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm"
+                                                       value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s absence">
+                                            </div>
+                                            @error($field('reason'), 'attendance')
+                                                <div class="text-danger small attendance-error">{{ $message }}</div>
+                                            @enderror
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted-soft py-4">Nobody holds the Sourcing, Data Entry or GM Assistant role yet.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="attendance-submit" @disabled($people->isEmpty())>
+                        <i class="bi bi-check2"></i> <span>{{ $failedSheet ? 'Save attendance' : 'Submit attendance' }}</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- A refused submission — back in the popup, as it was sent. --}}
+    @if ($failed)
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('attendanceModal')).show();
+                });
+            </script>
+        @endpush
+    @endif
 @endsection

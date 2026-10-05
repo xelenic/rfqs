@@ -1592,21 +1592,83 @@ function rfqmsBoot() {
         window.__rfqmsCountdownTimer = setInterval(tickCountdowns, 15000);
     }
 
-    // The attendance sheet: marking someone absent tints their row and opens
-    // up why; marking them present greys it out again — it's only kept for
-    // an absence (see AttendanceController::update()).
+    // The attendance popup (admin/attendance): marking someone absent tints
+    // their row and opens up why; present greys it out again — it's only kept
+    // for an absence (see AttendanceController). The button that opens it
+    // says whether it's a new day's sheet or a submitted one to correct, and
+    // with what marks; one with no button (a refused submission coming back)
+    // is left as the server filled it.
+    var syncAttendanceRow = function (row) {
+        var absent = row.querySelector('.js-attendance-status[value="absent"]').checked;
+        row.classList.toggle('is-absent', absent);
+        row.querySelectorAll('.attendance-absence select, .attendance-absence input').forEach(function (field) {
+            field.disabled = !absent;
+        });
+    };
+
     document.querySelectorAll('.js-attendance-status').forEach(function (radio) {
-        var row = radio.closest('tr');
-        var sync = function () {
-            var absent = row.querySelector('.js-attendance-status[value="absent"]').checked;
-            row.classList.toggle('is-absent', absent);
-            row.querySelectorAll('.attendance-absence select, .attendance-absence input').forEach(function (field) {
-                field.disabled = !absent;
-            });
-        };
-        radio.addEventListener('change', sync);
-        sync();
+        radio.addEventListener('change', function () {
+            syncAttendanceRow(radio.closest('tr'));
+        });
     });
+    document.querySelectorAll('[data-attendance-user]').forEach(syncAttendanceRow);
+
+    // One sheet a day: a new sheet for a day that already has one is turned
+    // away as soon as the day's picked, rather than on submitting.
+    var checkAttendanceDate = function () {
+        var form = document.getElementById('attendanceForm');
+        if (!form) return;
+
+        var date = form.querySelector('[name="date"]');
+        var isNew = form.querySelector('[name="_method"]').disabled;
+        var taken = isNew && JSON.parse(form.dataset.sheetDates || '[]').indexOf(date.value) !== -1;
+
+        date.classList.toggle('is-invalid', taken);
+        document.getElementById('attendance-date-taken').classList.toggle('d-block', taken);
+        document.getElementById('attendance-submit').disabled = taken || !form.querySelector('[data-attendance-user]');
+    };
+
+    var attendanceDate = document.getElementById('attendance-date');
+    if (attendanceDate) {
+        attendanceDate.addEventListener('change', checkAttendanceDate);
+        attendanceDate.addEventListener('input', checkAttendanceDate);
+    }
+
+    var attendanceModal = document.getElementById('attendanceModal');
+    if (attendanceModal) {
+        attendanceModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-attendance-open')) return;
+
+            var form = document.getElementById('attendanceForm');
+            var editing = !!button.dataset.sheetId;
+            var marks = button.dataset.marks ? JSON.parse(button.dataset.marks) : {};
+            var date = form.querySelector('[name="date"]');
+
+            form.action = button.dataset.action;
+            form.querySelector('[name="_method"]').disabled = !editing;
+            form.querySelector('[name="sheet_id"]').value = button.dataset.sheetId || '';
+            date.value = button.dataset.date || date.dataset.today;
+            date.readOnly = editing;
+            document.getElementById('attendanceModalLabel').textContent = editing
+                ? 'Edit attendance — ' + button.dataset.dateLabel
+                : 'New attendance sheet';
+            document.querySelector('#attendance-submit span').textContent = editing ? 'Save attendance' : 'Submit attendance';
+
+            form.querySelectorAll('.is-invalid').forEach(function (field) { field.classList.remove('is-invalid'); });
+            form.querySelectorAll('.invalid-feedback:not(#attendance-date-taken), .attendance-error').forEach(function (message) { message.remove(); });
+
+            checkAttendanceDate();
+
+            form.querySelectorAll('[data-attendance-user]').forEach(function (row) {
+                var mark = marks[row.dataset.attendanceUser] || { status: 'present' };
+                row.querySelector('.js-attendance-status[value="' + mark.status + '"]').checked = true;
+                row.querySelector('.attendance-absence select').value = mark.reason || '';
+                row.querySelector('.attendance-absence input').value = mark.note || '';
+                syncAttendanceRow(row);
+            });
+        });
+    }
 
     // Settings: keep the open tab in the address (?tab=), so a reload — or
     // coming back to the page — opens it again. See settings/edit.blade.php.

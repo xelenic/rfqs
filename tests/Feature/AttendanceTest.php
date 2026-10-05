@@ -6,6 +6,7 @@ use App\Models\Rfq;
 use App\Models\Setting;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -46,9 +47,19 @@ function rileysMorning(): array
     return ['riley' => $riley, 'rfq' => $rfq->refresh()];
 }
 
-function makeSheet($by, string $date)
+/**
+ * Submits a new day's sheet from the popup: everyone who belongs on it
+ * present, but those in $absent (user id => reason).
+ *
+ * @param  array<int, string>  $absent
+ */
+function makeSheet($by, string $date, array $absent = [])
 {
-    return test()->actingAs($by)->post(route('admin.attendance.store'), ['date' => $date]);
+    $attendance = AttendanceSheet::people()->mapWithKeys(fn ($person) => [$person->id => array_key_exists($person->id, $absent)
+        ? ['status' => 'absent', 'reason' => $absent[$person->id]]
+        : ['status' => 'present']])->all();
+
+    return test()->actingAs($by)->post(route('admin.attendance.store'), ['date' => $date, 'attendance' => $attendance]);
 }
 
 /**
@@ -78,48 +89,97 @@ it('is kept by Senior Operations and Admin alone', function () {
 
     foreach (['Sourcing', 'Data Entry', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.attendance.index'))->assertForbidden();
-        test()->actingAs(userWithRole($role))->post(route('admin.attendance.store'), ['date' => '2026-10-05'])->assertForbidden();
+        test()->actingAs(userWithRole($role))->post(route('admin.attendance.store'), ['date' => '2026-10-05', 'attendance' => []])->assertForbidden();
     }
 });
 
-it('makes the day\'s sheet with every Sourcing, Data Entry and GM Assistant person present', function () {
+it('fills a new sheet in a popup, everyone present to start', function () {
     ['riley' => $riley] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
     $assistant = userWithRole('GM Assistant');
     userWithRole('General Manager');
     $ops = userWithRole('Senior Operations');
 
-    test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()
-        ->assertSee('No attendance sheet for today yet')
-        ->assertSee('Make attendance sheet');
+    $html = test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()
+        ->assertSee('No attendance submitted yet')
+        ->assertSee('New attendance sheet')
+        ->assertSee('id="attendanceModal"', false)
+        ->assertSee('data-action="'.route('admin.attendance.store').'" data-date="2026-10-05"', false)
+        // Not a live page: a refresh would wipe a half-filled sheet.
+        ->assertSee('id="live-main" data-live="off"', false)
+        ->getContent();
 
-    makeSheet($ops, '2026-10-05')
+    // Everyone who belongs on it, present; nobody else.
+    $popup = Str::betweenFirst($html, 'id="attendanceModal"', '</form>');
+    foreach ([$riley, $dataEntry, $assistant] as $person) {
+        expect(Str::betweenFirst($popup, 'data-attendance-user="'.$person->id.'"', '</tr>'))->toContain('value="present" autocomplete="off" checked');
+    }
+    expect(substr_count($popup, 'data-attendance-user='))->toBe(3);
+});
+
+it('submits the day\'s sheet with everyone\'s attendance at once', function () {
+    ['riley' => $riley] = rileysMorning();
+    $dataEntry = userWithRole('Data Entry');
+    $ops = userWithRole('Senior Operations');
+
+    makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Sick leave'])
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('admin.attendance.index', ['date' => '2026-10-05']))
-        ->assertSessionHas('status', "Attendance sheet made for today — everyone's present until you mark them absent.");
+        ->assertRedirect(route('admin.attendance.index'))
+        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 absent.');
 
     $sheet = AttendanceSheet::query()->sole();
     expect($sheet->created_by)->toBe($ops->id)
-        ->and($sheet->attendances->pluck('user_id')->sort()->values()->all())->toBe(collect([$riley->id, $dataEntry->id, $assistant->id])->sort()->values()->all())
-        ->and($sheet->attendances->pluck('status')->unique()->all())->toBe(['present']);
+        ->and($sheet->attendances()->where('user_id', $riley->id)->value('status'))->toBe('present')
+        ->and($sheet->attendances()->where('user_id', $dataEntry->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave']);
 
-    // Making it again just opens it.
-    makeSheet($ops, '2026-10-05')->assertSessionHas('status', 'There\'s already a sheet for today.');
+    // A second for the same day is refused — that one's edited instead.
+    makeSheet($ops, '2026-10-05')
+        ->assertSessionHasErrorsIn('attendance', ['date' => 'There\'s already a sheet for that day — only one per day. Edit it from the list.']);
     expect(AttendanceSheet::query()->count())->toBe(1);
 });
 
-it('shows each person\'s time that day on the sheet', function () {
+it('lists each day\'s submitted sheet, with who was absent and why, and an Edit that opens it', function () {
+    ['riley' => $riley] = rileysMorning();
+    $dataEntry = userWithRole('Data Entry');
+    $ops = userWithRole('Senior Operations');
+    makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Casual leave']);
+
+    test()->travelTo(atLk('2026-10-06 10:00'));
+    makeSheet($ops, '2026-10-06');
+
+    $html = test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()->getContent();
+    $monday = Str::betweenFirst($html, 'data-attendance-sheet="2026-10-05"', '</tr>');
+    $sheet = AttendanceSheet::query()->where('date', '2026-10-05')->sole();
+
+    // Newest first.
+    expect(strpos($html, 'data-attendance-sheet="2026-10-06"'))->toBeLessThan(strpos($html, 'data-attendance-sheet="2026-10-05"'))
+        ->and($monday)->toContain('1 present')
+        ->toContain(e($dataEntry->name))
+        ->toContain('Casual leave')
+        ->toContain($ops->name)
+        ->toContain('data-action="'.route('admin.attendance.update', $sheet).'"')
+        ->toContain('data-sheet-id="'.$sheet->id.'"')
+        ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'reason' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'reason' => 'Casual leave', 'note' => null]])));
+});
+
+it('brings a refused submission back in the popup, as it was sent', function () {
     ['riley' => $riley] = rileysMorning();
     $ops = userWithRole('Senior Operations');
-    makeSheet($ops, '2026-10-05');
 
-    $html = test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()
-        ->assertSee('Save attendance')
+    $html = test()->actingAs($ops)
+        ->from(route('admin.attendance.index'))
+        ->followingRedirects()
+        ->post(route('admin.attendance.store'), ['date' => '2026-10-05', 'attendance' => [$riley->id => ['status' => 'absent', 'note' => 'Called in']]])
+        ->assertOk()
         ->getContent();
 
-    expect(Str::betweenFirst($html, 'data-attendance-user="'.$riley->id.'"', '</tr>'))
-        ->toContain('2h')
-        ->toContain('value="present" autocomplete="off" checked');
+    $row = Str::betweenFirst(Str::betweenFirst($html, 'id="attendanceModal"', '</form>'), 'data-attendance-user="'.$riley->id.'"', '</tr>');
+
+    expect($html)->toContain('bootstrap.Modal.getOrCreateInstance(document.getElementById(\'attendanceModal\')).show()')
+        ->and($row)->toContain('value="absent" autocomplete="off" checked')
+        ->toContain('value="Called in"')
+        ->toContain('Say why they were absent.');
+    expect(AttendanceSheet::query()->count())->toBe(0);
 });
 
 it('marks someone absent, with why, and back again', function () {
@@ -130,6 +190,7 @@ it('marks someone absent, with why, and back again', function () {
 
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']))
         ->assertSessionHasNoErrors()
+        ->assertRedirect(route('admin.attendance.index'))
         ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 absent.');
 
     expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave'])
@@ -170,8 +231,9 @@ it('adds someone who joined after the sheet was made when it\'s saved', function
 
     $newcomer = userWithRole('Data Entry');
 
-    expect(Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), 'data-attendance-user="'.$newcomer->id.'"', '</tr>'))
-        ->toContain('New');
+    // The popup has a line for them — not on the sheet's own marks yet.
+    expect(Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), 'id="attendanceModal"', '</form>'))
+        ->toContain('data-attendance-user="'.$newcomer->id.'"');
 
     $payload = marks($sheet);
     $payload['attendance'][$newcomer->id] = ['status' => 'absent', 'reason' => 'Personal leave'];
@@ -183,6 +245,8 @@ it('adds someone who joined after the sheet was made when it\'s saved', function
 
 it('only makes sheets for days since attendance started, up to today', function (string $date) {
     test()->travelTo(atLk('2026-10-06 10:00'));
+
+    userWithRole('Sourcing');
 
     makeSheet(userWithRole('Senior Operations'), $date)->assertSessionHasErrorsIn('attendance', ['date']);
 
@@ -301,4 +365,56 @@ it('turns attendance on and off from Settings', function () {
 
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.attendance.index'))->assertOk()
         ->assertSee('Attendance isn\'t counted yet', false);
+});
+
+it('leaves no sheet behind when a new one has someone on it who doesn\'t belong', function () {
+    $riley = userWithRole('Sourcing');
+
+    test()->actingAs(userWithRole('Senior Operations'))->post(route('admin.attendance.store'), [
+        'date' => '2026-10-05',
+        'attendance' => [
+            $riley->id => ['status' => 'present'],
+            userWithRole('General Manager')->id => ['status' => 'present'],
+        ],
+    ])->assertStatus(422);
+
+    expect(AttendanceSheet::query()->count())->toBe(0);
+});
+
+it('opens New attendance sheet on the newest day without one, and turns it off once every day has one', function () {
+    userWithRole('Sourcing');
+    $ops = userWithRole('Senior Operations');
+
+    // Wednesday: Monday's done, Tuesday's and today's aren't.
+    test()->travelTo(atLk('2026-10-07 10:00'));
+    makeSheet($ops, '2026-10-05');
+
+    $newButton = fn () => Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), '<span>Attendance sheets</span>', '</div>');
+
+    expect($newButton())->toContain('data-date="2026-10-07"')->toContain('New attendance sheet');
+
+    makeSheet($ops, '2026-10-07');
+    expect($newButton())->toContain('data-date="2026-10-06"');
+
+    makeSheet($ops, '2026-10-06');
+    expect($newButton())->toContain('Today\'s sheet is done')->toContain('disabled')
+        ->not->toContain('js-attendance-open');
+});
+
+it('tells the popup which days already have a sheet, so a second is turned away before it\'s sent', function () {
+    userWithRole('Sourcing');
+    $ops = userWithRole('Senior Operations');
+    test()->travelTo(atLk('2026-10-06 10:00'));
+    makeSheet($ops, '2026-10-05');
+
+    test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()
+        ->assertSee('data-sheet-dates="'.e(json_encode(['2026-10-05'])).'"', false)
+        ->assertSee('id="attendance-date-taken"', false);
+});
+
+it('keeps one sheet a day in the database too', function () {
+    AttendanceSheet::factory()->create(['date' => '2026-10-05']);
+
+    expect(fn () => AttendanceSheet::factory()->create(['date' => '2026-10-05']))
+        ->toThrow(UniqueConstraintViolationException::class);
 });
