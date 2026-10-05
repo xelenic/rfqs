@@ -50,6 +50,17 @@
         @enderror
     </div>
 
+    <div class="col-md-6">
+        <label for="{{ $idPrefix }}-number_of_items" class="form-label">Number of items</label>
+        <input type="number" name="number_of_items" id="{{ $idPrefix }}-number_of_items" class="form-control @error('number_of_items', $idPrefix) is-invalid @enderror"
+               value="{{ $showOld ? old('number_of_items') : '' }}" min="1" max="100000" step="1" inputmode="numeric" required>
+        @error('number_of_items', $idPrefix)
+            <div class="invalid-feedback">{{ $message }}</div>
+        @else
+            <div class="form-text">How many items this RFQ asks for.</div>
+        @enderror
+    </div>
+
     @if ($mode === 'edit')
         {{-- Business Development only ever opens this while fixing an RFQ
              that's been sent back to them (RfqController::update()) —

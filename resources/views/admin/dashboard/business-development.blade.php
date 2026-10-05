@@ -148,26 +148,12 @@
                                     Approved {{ $item['approved_at']?->diffForHumans() ?? '—' }}@if ($item['approved_by']) by {{ $item['approved_by'] }}@endif
                                 </div>
                             </div>
-                            @if ($item['part'] !== null)
-                                <form action="{{ route('admin.rfqs.close-part', $item['rfq']) }}" method="POST"
-                                      data-confirm="Close {{ $item['rfq_number'] }}? It moves into Closed RFQs.">
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="part" value="{{ $item['part'] }}">
-                                    <button type="submit" class="btn btn-sm btn-success">
-                                        <i class="bi bi-flag"></i> Close
-                                    </button>
-                                </form>
-                            @else
-                                <form action="{{ route('admin.rfqs.close', $item['rfq']) }}" method="POST"
-                                      data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
-                                    @csrf
-                                    @method('PATCH')
-                                    <button type="submit" class="btn btn-sm btn-success">
-                                        <i class="bi bi-flag"></i> Close
-                                    </button>
-                                </form>
-                            @endif
+                            @include('admin.rfqs._close_button', [
+                                'rfq' => $item['rfq'],
+                                'part' => $item['part'],
+                                'label' => $item['rfq_number'],
+                                'hint' => $item['part'] !== null ? 'It moves into Closed RFQs.' : 'It moves out of Pending into Closed RFQs.',
+                            ])
                         </div>
                     @empty
                         <p class="text-muted-soft small mb-0">Nothing is waiting to be closed.</p>
@@ -176,6 +162,7 @@
             </div>
 
             @include('admin.dashboard._notifications')
+            @include('admin.rfqs._close_modal')
         </div>
     </div>
 @endsection

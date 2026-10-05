@@ -211,7 +211,7 @@ it('ends a part\'s stretch when it\'s taken off its member, and every stretch on
     $other = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     test()->actingAs(userWithRole('Admin'))->put(route('admin.rfqs.update', $other), [
         'wc_number' => $other->wc_number, 'rfq_number' => $other->rfq_number,
-        'priority_level' => 'Medium', 'status' => 'Completed', 'subject' => $other->subject,
+        'priority_level' => 'Medium', 'number_of_items' => 5, 'status' => 'Completed', 'subject' => $other->subject,
     ])->assertSessionHasNoErrors();
     expect(RfqStep::query()->where('rfq_id', $other->id)->whereNull('ended_at')->count())->toBe(0);
 });

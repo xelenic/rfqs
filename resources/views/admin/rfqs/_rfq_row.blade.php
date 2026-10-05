@@ -69,6 +69,9 @@
             @if ($rfq->bdClosedBy)
                 <div class="small">by {{ $rfq->bdClosedBy->name }}</div>
             @endif
+            @if ($rfq->bd_reference_code)
+                <div class="small">Ref: <span class="fw-semibold text-body">{{ $rfq->bd_reference_code }}</span></div>
+            @endif
         </td>
     @endif
     <td class="text-end">
@@ -128,6 +131,7 @@
                     data-wc-number="{{ $rfq->wc_number }}"
                     data-rfq-number="{{ $rfq->rfq_number }}"
                     data-priority-level="{{ $rfq->priority_level }}"
+                    data-number-of-items="{{ $rfq->number_of_items }}"
                     data-status="{{ $rfq->status }}"
                     data-subject="{{ $rfq->subject }}"
                     data-description="{{ $rfq->description }}">

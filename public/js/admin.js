@@ -109,6 +109,7 @@ function rfqmsBoot() {
             form.querySelector('#edit-wc_number').value = button.dataset.wcNumber || '';
             form.querySelector('#edit-rfq_number').value = button.dataset.rfqNumber || '';
             form.querySelector('#edit-priority_level').value = button.dataset.priorityLevel || 'Medium';
+            form.querySelector('#edit-number_of_items').value = button.dataset.numberOfItems || '';
             // Business Development gets a hidden, fixed "Pending" here instead
             // of the status picker everyone else does — see _form.blade.php.
             var statusField = form.querySelector('#edit-status');
@@ -1256,6 +1257,33 @@ function rfqmsBoot() {
                 : 'Send this RFQ back? Any approval already given for it is undone.';
         });
     });
+
+    // Business Development's Close popup — same shared-modal-populated-per-row
+    // pattern as the Reject modal: which RFQ, and which part of it (none for a
+    // whole RFQ), with the reference code it asks for left empty to fill in.
+    document.querySelectorAll('.js-close-rfq').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('closeRfqForm');
+            if (!form) return;
+
+            var code = form.querySelector('[name="reference_code"]');
+            form.action = button.dataset.action;
+            form.querySelector('[name="close_rfq_id"]').value = button.dataset.rfqId || '';
+            form.querySelector('[name="part"]').value = button.dataset.part || '';
+            form.querySelector('[name="close_label"]').value = button.dataset.label || '';
+            document.getElementById('closeRfqTarget').textContent = button.dataset.label || '';
+            document.getElementById('closeRfqHint').textContent = button.dataset.hint || '';
+            code.value = '';
+            code.classList.remove('is-invalid');
+        });
+    });
+
+    var closeRfqModal = document.getElementById('closeRfqModal');
+    if (closeRfqModal) {
+        closeRfqModal.addEventListener('shown.bs.modal', function () {
+            closeRfqModal.querySelector('[name="reference_code"]').focus();
+        });
+    }
 
     // Senior Operations' "Get Details Again" modal — same shared-modal-
     // populated-per-row pattern as the Reject modal above.

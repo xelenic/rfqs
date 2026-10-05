@@ -87,11 +87,13 @@ it('lists a part on Ready to Close as its own row as soon as the General Manager
         ->assertSee('by '.e($people['gm']->name), false)
         ->getContent();
 
-    // Closing is for this part alone.
-    expect($html)->toContain(route('admin.rfqs.close-part', $rfq))
-        ->toContain('<input type="hidden" name="part" value="1">')
-        ->not->toContain('<input type="hidden" name="part" value="2">')
-        ->not->toContain('action="'.route('admin.rfqs.close', $rfq).'"');
+    // Closing is for this part alone — its Close opens the popup that asks
+    // for the reference code (_close_modal).
+    expect($html)->toContain('data-action="'.route('admin.rfqs.close-part', $rfq).'"')
+        ->toContain('data-part="1"')
+        ->not->toContain('data-part="2"')
+        ->not->toContain('data-action="'.route('admin.rfqs.close', $rfq).'"')
+        ->toContain('id="closeRfqModal"');
 
     // Business Development doesn't see who holds a part: not in the list itself
     // (the page's hidden Assign modal is another matter, and not theirs to use).
@@ -124,7 +126,7 @@ it('closes a part on its own and shows it on Closed RFQs while the rest of the R
     [$rfq, $people] = splitWithPartOneApprovedByGm();
 
     test()->actingAs($people['closer'])->from(closingUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertRedirect(closingUrl())
         ->assertSessionHas('status', 'Closed RFQ1001-P1 of P2 — it\'s now in Closed RFQs.');
 
@@ -167,7 +169,7 @@ it('closes the RFQ once every part has been closed, and it stays on Closed RFQs 
     expect($rfq->refresh()->stage)->toBe('bd_closing');
 
     test()->actingAs($people['closer'])->from(closingUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 2])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 2, 'reference_code' => 'PO-1001'])
         ->assertSessionHas('status', 'Closed RFQ1001-P2 of P2 — every part is closed, so the RFQ is closed.');
 
     $rfq->refresh();
@@ -190,7 +192,7 @@ it('closes the parts not yet closed when the whole RFQ is closed', function () {
     $firstClosing = $rfq->refresh()->assigneeForPart(1)->pivot->bd_closed_at;
 
     test()->travel(5)->minutes();
-    test()->actingAs($people['closer'])->patch(route('admin.rfqs.close', $rfq->refresh()))
+    test()->actingAs($people['closer'])->patch(route('admin.rfqs.close', $rfq->refresh()), ['reference_code' => 'PO-1001'])
         ->assertSessionHas('status', 'RFQ closed.');
 
     $rfq->refresh();
@@ -218,7 +220,7 @@ it('takes an RFQ kept whole from Ready to Close to Closed RFQs as one row', func
         ->assertSee(numberCell($rfq->rfq_number), false);
 
     test()->actingAs($people['closer'])->from(closingUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertSessionHas('status', 'RFQ closed.');
 
     expect($rfq->refresh()->status)->toBe('Completed');
@@ -261,7 +263,7 @@ it('lets Admin work Ready to Close as Business Development would', function () {
         ->assertOk()
         ->assertSee(numberCell('RFQ1001-P1 of P2'), false);
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1]);
+    test()->actingAs($admin)->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001']);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->bd_closed_by)->toBe($admin->id);
 });
@@ -271,8 +273,8 @@ it('refuses a closing that isn\'t Business Development\'s to give', function () 
     $close = fn (User $user, array $data) => test()->actingAs($user)->patch(route('admin.rfqs.close-part', $rfq), $data);
 
     // Only Business Development (and Admin).
-    $close($people['gm'], ['part' => 1])->assertForbidden();
-    $close($people['head'], ['part' => 1])->assertForbidden();
+    $close($people['gm'], ['part' => 1, 'reference_code' => 'PO-1001'])->assertForbidden();
+    $close($people['head'], ['part' => 1, 'reference_code' => 'PO-1001'])->assertForbidden();
 
     // A part the General Manager hasn't approved, one that doesn't exist, none at all.
     $close($people['closer'], ['part' => 2])->assertStatus(422);
@@ -280,8 +282,8 @@ it('refuses a closing that isn\'t Business Development\'s to give', function () 
     $close($people['closer'], [])->assertSessionHasErrors('part');
 
     // And a part already closed.
-    $close($people['closer'], ['part' => 1])->assertSessionHas('status');
-    $close($people['closer'], ['part' => 1])->assertStatus(422);
+    $close($people['closer'], ['part' => 1, 'reference_code' => 'PO-1001'])->assertSessionHas('status');
+    $close($people['closer'], ['part' => 1, 'reference_code' => 'PO-1001'])->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(2)->pivot->bd_closed_at)->toBeNull();
 });
@@ -332,7 +334,7 @@ it('counts each thing ready to close — a row on the page — and shows it as a
 
     // Five rows on the page, five on the badge.
     $html = $page();
-    expect(substr_count($html, 'data-confirm="Close '))->toBe(5)
+    expect(substr_count($html, 'js-close-rfq"'))->toBe(5)
         ->and($html)->toContain($badge(5));
 
     $split->refresh()->closePart(1, $people['closer']);
@@ -357,7 +359,8 @@ it('offers the dashboard\'s Ready to close list part by part, each with its own 
     $dashboard = test()->actingAs($people['closer'])->get(route('admin.dashboard'))->assertOk();
 
     $dashboard->assertSee(route('admin.rfqs.close-part', $rfq))
-        ->assertSee('data-confirm="Close RFQ1001-P1 of P2?', false)
+        ->assertSee('data-label="RFQ1001-P1 of P2"', false)
+        ->assertSee('id="closeRfqModal"', false)
         ->assertSee(route('admin.rfqs.close', $whole))
         ->assertViewHas('overview', function (array $overview) {
             // Longest-waiting first: the whole RFQ has waited longest.
@@ -369,7 +372,7 @@ it('offers the dashboard\'s Ready to close list part by part, each with its own 
 
     // Closing a part from the dashboard lands back on it.
     test()->actingAs($people['closer'])->from(route('admin.dashboard'))
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertRedirect(route('admin.dashboard'));
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->bd_closed_at)->not->toBeNull();
@@ -482,4 +485,84 @@ it('sends the parts of RFQs closed before this was part by part through along wi
     expect($closed->pluck('bd_closed_by')->all())->toBe([$people['closer']->id, $people['closer']->id])
         ->and($closed->every(fn ($part) => $part->bd_closed_at !== null))->toBeTrue()
         ->and($open->pluck('bd_closed_at')->all())->toBe([null]);
+});
+
+// ---- The reference code -------------------------------------------------------------
+
+it('won\'t close a part without a reference code', function (?string $code) {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+
+    test()->actingAs($people['closer'])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => $code])
+        ->assertSessionHasErrorsIn('close', ['reference_code']);
+
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->bd_closed_at)->toBeNull();
+})->with([
+    'none' => [null],
+    'blank' => ['   '],
+    'too long' => [str_repeat('X', 101)],
+]);
+
+it('keeps the reference code with the part, and with the RFQ when the last part closes it', function () {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+
+    test()->actingAs($people['closer'])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-7001'])
+        ->assertSessionHasNoErrors();
+
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->bd_reference_code)->toBe('PO-7001')
+        ->and($rfq->bd_reference_code)->toBeNull();
+
+    $rfq->refresh()->approveGmPart(2, $people['gm']);
+    test()->actingAs($people['closer'])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 2, 'reference_code' => 'PO-7002'])
+        ->assertSessionHasNoErrors();
+
+    expect($rfq->refresh()->status)->toBe('Completed')
+        ->and($rfq->assigneeForPart(2)->pivot->bd_reference_code)->toBe('PO-7002')
+        ->and($rfq->bd_reference_code)->toBe('PO-7002');
+
+    // Each part's own code on the RFQ's page, and on Closed RFQs.
+    test()->actingAs($people['closer'])->get(route('admin.rfqs.show', $rfq))->assertOk()
+        ->assertSee('Reference code')
+        ->assertSee('PO-7001')
+        ->assertSee('PO-7002');
+
+    test()->actingAs($people['closer'])->get(closedUrl())->assertOk()
+        ->assertSee('Ref: <span class="fw-semibold text-body">PO-7001</span>', false)
+        ->assertSee('Ref: <span class="fw-semibold text-body">PO-7002</span>', false);
+});
+
+it('keeps one reference code for a whole RFQ closed at once, on every part it closes', function () {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+    $rfq->refresh()->approveGmPart(2, $people['gm']);
+
+    test()->actingAs($people['closer'])
+        ->patch(route('admin.rfqs.close', $rfq->refresh()), ['reference_code' => 'INV-55'])
+        ->assertSessionHasNoErrors();
+
+    expect($rfq->refresh()->bd_reference_code)->toBe('INV-55')
+        ->and($rfq->assignees->pluck('pivot.bd_reference_code')->unique()->all())->toBe(['INV-55']);
+
+    // And needs it too.
+    $whole = Rfq::factory()->create(['stage' => 'bd_closing']);
+    test()->actingAs($people['closer'])->patch(route('admin.rfqs.close', $whole), [])
+        ->assertSessionHasErrorsIn('close', ['reference_code' => 'Give the reference code to close it.']);
+    expect($whole->refresh()->status)->toBe('Pending');
+});
+
+it('brings a close with no reference code back in the popup, pointed at the same part', function () {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+
+    $html = test()->actingAs($people['closer'])
+        ->from(closingUrl())
+        ->followingRedirects()
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => '', 'close_rfq_id' => $rfq->id, 'close_label' => 'RFQ1001-P1 of P2'])
+        ->assertOk()
+        ->getContent();
+
+    expect($html)->toContain('getElementById(\'closeRfqModal\')).show()')
+        ->toContain('action="'.route('admin.rfqs.close-part', $rfq).'"')
+        ->toContain('Give the reference code to close it.')
+        ->toContain('id="closeRfqTarget">RFQ1001-P1 of P2');
 });

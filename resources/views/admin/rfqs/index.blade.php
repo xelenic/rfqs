@@ -872,6 +872,7 @@
                                                 data-wc-number="{{ $rfq->wc_number }}"
                                                 data-rfq-number="{{ $rfq->rfq_number }}"
                                                 data-priority-level="{{ $rfq->priority_level }}"
+                                                data-number-of-items="{{ $rfq->number_of_items }}"
                                                 data-status="{{ $rfq->status }}"
                                                 data-subject="{{ $rfq->subject }}"
                                                 data-description="{{ $rfq->description }}"
@@ -932,17 +933,14 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        {{-- Only this one part — see RfqController::closePart(). --}}
-                                        <form action="{{ route('admin.rfqs.close-part', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Close {{ $partLabel }}? It moves into Closed RFQs.{{ $rfq->isSplit() ? ' The RFQ closes once every part is closed.' : '' }}">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
-                                            @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-flag"></i> Close
-                                            </button>
-                                        </form>
+                                        {{-- Only this one part — see RfqController::closePart(). Asks
+                                             for the reference code first (_close_modal). --}}
+                                        @include('admin.rfqs._close_button', [
+                                            'rfq' => $rfq,
+                                            'part' => $assignee->pivot->part_number,
+                                            'label' => $partLabel,
+                                            'hint' => 'It moves into Closed RFQs.'.($rfq->isSplit() ? ' The RFQ closes once every part is closed.' : ''),
+                                        ])
                                     </td>
                                 </tr>
                             @endforeach
@@ -964,15 +962,12 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <form action="{{ route('admin.rfqs.close', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
-                                            @csrf
-                                            @method('PATCH')
-                                            @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-flag"></i> Close
-                                            </button>
-                                        </form>
+                                        @include('admin.rfqs._close_button', [
+                                            'rfq' => $rfq,
+                                            'part' => null,
+                                            'label' => $rfq->rfq_number,
+                                            'hint' => 'It moves out of Pending into Closed RFQs.',
+                                        ])
                                     </td>
                                 </tr>
                             @endif
@@ -1314,6 +1309,9 @@
     @endif
     @if ($scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._gm_assistant_modal')
+    @endif
+    @if ($scopedToBdClosing)
+        @include('admin.rfqs._close_modal')
     @endif
     @if ($scopedToUnassigned)
         @include('admin.rfqs._request_details_modal')

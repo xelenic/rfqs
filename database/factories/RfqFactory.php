@@ -21,6 +21,7 @@ class RfqFactory extends Factory
             'wc_number' => 'WC'.fake()->unique()->numerify('####'),
             'rfq_number' => 'RFQ'.fake()->unique()->numerify('####'),
             'priority_level' => fake()->randomElement(Rfq::PRIORITIES),
+            'number_of_items' => fake()->numberBetween(1, 50),
             'status' => 'Pending',
             'subject' => fake()->sentence(4),
             'description' => fake()->paragraph(),

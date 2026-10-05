@@ -188,9 +188,11 @@ class Rfq extends Model
         'gm_approved_at',
         'bd_closed_by',
         'bd_closed_at',
+        'bd_reference_code',
         'wc_number',
         'rfq_number',
         'priority_level',
+        'number_of_items',
         'status',
         'subject',
         'description',
@@ -209,6 +211,7 @@ class Rfq extends Model
             'category_set_at' => 'datetime',
             'split_count' => 'integer',
             'bd_return_count' => 'integer',
+            'number_of_items' => 'integer',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'rejected_at' => 'datetime',
@@ -352,7 +355,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -2098,11 +2101,14 @@ class Rfq extends Model
      * approved — on its own, without waiting for the rest of a split. Once
      * every part has been closed the RFQ as a whole is, exactly as closeOut()
      * does. Idempotent — a part that isn't ready to close (not approved by the
-     * General Manager yet, or already closed) is left alone.
+     * General Manager yet, or already closed) is left alone. $referenceCode —
+     * which Business Development must give to close anything, see
+     * RfqController::closePart() — is kept with the part, and with the RFQ
+     * when this is the part that closes it.
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function closePart(int $part, User $closedBy): void
+    public function closePart(int $part, User $closedBy, ?string $referenceCode = null): void
     {
         if (! $this->partAwaitsBdClosing($part)) {
             return;
@@ -2111,11 +2117,12 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
             'bd_closed_at' => now(),
             'bd_closed_by' => $closedBy->id,
+            'bd_reference_code' => $referenceCode,
         ]);
         $this->load('assignees');
 
         if ($this->allBdPartsClosed()) {
-            $this->closeOut($closedBy);
+            $this->closeOut($closedBy, $referenceCode);
         }
     }
 
@@ -2123,11 +2130,12 @@ class Rfq extends Model
      * Business Development formally closes this whole RFQ out — closing any
      * part not yet closed on its own — the true end of the lifecycle.
      * Idempotent. Reuses the existing 'Completed' status value (see
-     * statusLabel() for why the display text says "Closed").
+     * statusLabel() for why the display text says "Closed"). $referenceCode is
+     * kept with the RFQ, and with every part closed along with it.
      *
      * Caller is responsible for verifying stage === 'bd_closing'.
      */
-    public function closeOut(User $closedBy): void
+    public function closeOut(User $closedBy, ?string $referenceCode = null): void
     {
         if ($this->stage === 'closed') {
             return;
@@ -2140,12 +2148,14 @@ class Rfq extends Model
             ->update([
                 'bd_closed_at' => now(),
                 'bd_closed_by' => $closedBy->id,
+                'bd_reference_code' => $referenceCode,
             ]);
         $this->load('assignees');
 
         $this->update([
             'bd_closed_by' => $closedBy->id,
             'bd_closed_at' => now(),
+            'bd_reference_code' => $referenceCode,
             'stage' => 'closed',
             'status' => 'Completed',
         ]);

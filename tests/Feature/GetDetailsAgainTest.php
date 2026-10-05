@@ -66,6 +66,7 @@ it('marks it as with Business Development on the Unassigned queue, without the b
         'wc_number' => $rfq->wc_number,
         'rfq_number' => $rfq->rfq_number,
         'priority_level' => 'Medium',
+        'number_of_items' => 5,
         'status' => 'Pending',
         'subject' => 'Now with the site address',
     ])->assertSessionHasNoErrors();

@@ -1201,8 +1201,9 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * Business Development closes one Sourcing part the General Manager has
-     * approved — without waiting for the rest of a split. The RFQ closes once
-     * every part has been. See Rfq::closePart().
+     * approved — without waiting for the rest of a split — giving the
+     * reference code that's required to close anything, kept with the part.
+     * The RFQ closes once every part has been. See Rfq::closePart().
      */
     public function closePart(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1221,7 +1222,9 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsBdClosing($part), 422, 'This part is not ready to close.');
 
-        $rfq->closePart($part, $this->doneBy($request, 'Business Development'));
+        $referenceCode = $request->validateWithBag('close', $this->referenceCodeRules(), $this->referenceCodeMessages())['reference_code'];
+
+        $rfq->closePart($part, $this->doneBy($request, 'Business Development'), $referenceCode);
 
         // Fireworks: a modest show for a part, a grand one when that was the
         // last and the RFQ itself is closed.
@@ -1244,7 +1247,8 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * Business Development formally closes this whole RFQ out — any part not
-     * yet closed on its own included — the true end of the lifecycle. See
+     * yet closed on its own included — the true end of the lifecycle, giving
+     * the reference code that's required to close it, kept with it. See
      * Rfq::closeOut().
      */
     public function close(Request $request, Rfq $rfq): RedirectResponse
@@ -1256,11 +1260,35 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->stage === 'bd_closing', 422, 'This RFQ is not ready to close.');
 
-        $rfq->closeOut($this->doneBy($request, 'Business Development'));
+        $validated = $request->validateWithBag('close', $this->referenceCodeRules(), $this->referenceCodeMessages());
+
+        $rfq->closeOut($this->doneBy($request, 'Business Development'), $validated['reference_code']);
 
         return redirect()->back()
             ->with('celebrate', $this->celebration($rfq->rfq_number, "It's now in Closed RFQs.", grand: true))
             ->with('status', 'RFQ closed.');
+    }
+
+    /**
+     * The reference code Business Development must give to close a part or an
+     * RFQ — kept with it (Rfq::closePart(), closeOut()).
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function referenceCodeRules(): array
+    {
+        return ['reference_code' => ['required', 'string', 'max:100']];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function referenceCodeMessages(): array
+    {
+        return [
+            'reference_code.required' => 'Give the reference code to close it.',
+            'reference_code.max' => 'Keep the reference code under 100 characters.',
+        ];
     }
 
     /**
@@ -1359,6 +1387,7 @@ class RfqController extends Controller implements HasMiddleware
             'wc_number' => ['required', 'string', 'max:255'],
             'rfq_number' => [$requireRfqNumber ? 'required' : 'nullable', 'string', 'max:255'],
             'priority_level' => ['required', 'string', 'in:'.implode(',', Rfq::PRIORITIES)],
+            'number_of_items' => ['required', 'integer', 'min:1', 'max:100000'],
             'status' => ['required', 'string', 'in:'.implode(',', Rfq::STATUSES)],
             'subject' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],

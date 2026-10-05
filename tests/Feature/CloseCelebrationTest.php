@@ -53,7 +53,7 @@ it('sets off a modest show when a part is closed and the RFQ carries on', functi
     $closer = userWithRole('Business Development');
 
     test()->actingAs($closer)->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertSessionHas('celebrate', [
             'title' => 'Closed!',
             'label' => 'RFQ1001-P1 of P2',
@@ -79,7 +79,7 @@ it('sets off the grand show when the last part is closed and with it the RFQ', f
     $rfq->closePart(1, $closer);
 
     test()->actingAs($closer)->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq->refresh()), ['part' => 2])
+        ->patch(route('admin.rfqs.close-part', $rfq->refresh()), ['part' => 2, 'reference_code' => 'PO-1001'])
         ->assertSessionHas('celebrate', fn (array $celebrate) => $celebrate['grand'] === true
             && $celebrate['title'] === 'RFQ closed!'
             && $celebrate['label'] === 'RFQ1001'
@@ -95,7 +95,7 @@ it('sets off the grand show for an RFQ kept whole, from either way of closing it
     $whole = rfqReadyToCelebrate([1 => userWithRole('Sourcing')]);
 
     test()->actingAs($closer)->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close-part', $whole), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $whole), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertSessionHas('celebrate', fn (array $celebrate) => $celebrate['grand'] === true && $celebrate['label'] === 'RFQ1001' && $celebrate['message'] === 'It\'s now in Closed RFQs.');
 
     // The whole RFQ, from its own Close.
@@ -103,7 +103,7 @@ it('sets off the grand show for an RFQ kept whole, from either way of closing it
     $another->update(['rfq_number' => 'RFQ2002']);
 
     test()->actingAs($closer)->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close', $another->refresh()))
+        ->patch(route('admin.rfqs.close', $another->refresh()), ['reference_code' => 'PO-1001'])
         ->assertSessionHas('celebrate', fn (array $celebrate) => $celebrate['grand'] === true && $celebrate['label'] === 'RFQ2002');
 });
 
@@ -113,7 +113,7 @@ it('shows it wherever the close was made from', function () {
 
     // From the dashboard: back to the dashboard, with the show.
     test()->actingAs($closer)->from(route('admin.dashboard'))
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertRedirect(route('admin.dashboard'));
 
     test()->actingAs($closer)->get(route('admin.dashboard'))->assertOk()
@@ -125,7 +125,7 @@ it('goes off once, not on the next page too', function () {
     $rfq = rfqReadyToCelebrate();
     $closer = userWithRole('Business Development');
 
-    test()->actingAs($closer)->from(celebrationUrl())->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1]);
+    test()->actingAs($closer)->from(celebrationUrl())->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001']);
 
     test()->actingAs($closer)->get(celebrationUrl())->assertSee('id="celebration"', false);
     test()->actingAs($closer)->get(celebrationUrl())->assertDontSee('id="celebration"', false)->assertDontSee('js/fireworks.js');
@@ -139,17 +139,17 @@ it('stays quiet unless something was closed', function () {
     test()->actingAs($closer)->get(celebrationUrl())->assertOk()->assertDontSee('id="celebration"', false);
 
     test()->actingAs(userWithRole('General Manager'))->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertForbidden()
         ->assertSessionMissing('celebrate');
 
     // A part that isn't ready to close, and one closed already.
-    test()->actingAs($closer)->patch(route('admin.rfqs.close-part', $rfq), ['part' => 9])->assertNotFound()->assertSessionMissing('celebrate');
+    test()->actingAs($closer)->patch(route('admin.rfqs.close-part', $rfq), ['part' => 9, 'reference_code' => 'PO-1001'])->assertNotFound()->assertSessionMissing('celebrate');
 
-    test()->actingAs($closer)->from(celebrationUrl())->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1]);
+    test()->actingAs($closer)->from(celebrationUrl())->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001']);
     test()->actingAs($closer)->get(celebrationUrl());
     test()->actingAs($closer)->from(celebrationUrl())
-        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001'])
         ->assertStatus(422)
         ->assertSessionMissing('celebrate');
 });

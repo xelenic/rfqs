@@ -47,6 +47,7 @@ it('lets Business Development edit a returned RFQ\'s own details, always leaving
             'wc_number' => $rfq->wc_number,
             'rfq_number' => $rfq->rfq_number,
             'priority_level' => 'High',
+            'number_of_items' => 5,
             'status' => 'Completed', // ignored — see RfqController::update()
             'subject' => 'Correct building: Tower B',
             'description' => 'Client confirmed it\'s Tower B, not Tower A.',
@@ -70,6 +71,7 @@ it('takes a returned RFQ off the Returns page once Business Development saves an
             'wc_number' => $rfq->wc_number,
             'rfq_number' => $rfq->rfq_number,
             'priority_level' => 'Medium',
+            'number_of_items' => 5,
             'status' => 'Pending',
             'subject' => 'Correct building: Tower B',
         ])
@@ -104,6 +106,7 @@ it('takes a returned RFQ off the Returns page when Admin saves an edit too', fun
             'wc_number' => $rfq->wc_number,
             'rfq_number' => $rfq->rfq_number,
             'priority_level' => 'Medium',
+            'number_of_items' => 5,
             'status' => 'Pending',
             'subject' => 'Correct building: Tower B',
         ])
@@ -120,6 +123,7 @@ it('leaves a rejection to any other stage alone when the RFQ is edited', functio
             'wc_number' => $rfq->wc_number,
             'rfq_number' => $rfq->rfq_number,
             'priority_level' => 'Medium',
+            'number_of_items' => 5,
             'status' => 'Pending',
             'subject' => 'Anything',
         ])

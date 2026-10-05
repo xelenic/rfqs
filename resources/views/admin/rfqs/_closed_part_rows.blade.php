@@ -13,6 +13,7 @@
         $isClosed = $assignee->pivot->bd_closed_at !== null || $rfq->status === 'Completed';
         $closedAt = $assignee->pivot->bd_closed_at ?? $rfq->bd_closed_at;
         $closedByName = $bdClosedNames->get($assignee->pivot->bd_closed_by) ?? ($assignee->pivot->bd_closed_at === null ? $rfq->bdClosedBy?->name : null);
+        $referenceCode = $assignee->pivot->bd_reference_code ?? ($assignee->pivot->bd_closed_at === null ? $rfq->bd_reference_code : null);
     @endphp
     @continue(! $isClosed)
     <tr>
@@ -30,6 +31,9 @@
             {{ $closedAt?->format('M d, Y g:i A') ?? '—' }}
             @if ($closedByName)
                 <div class="small">by {{ $closedByName }}</div>
+            @endif
+            @if ($referenceCode)
+                <div class="small">Ref: <span class="fw-semibold text-body">{{ $referenceCode }}</span></div>
             @endif
         </td>
         <td class="text-end">

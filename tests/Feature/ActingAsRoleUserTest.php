@@ -81,7 +81,7 @@ it('records an RFQ as created by the Business Development person Admin picks', f
     $people['admin']->givePermissionTo('rfqs.create');
 
     test()->actingAs($people['admin'])
-        ->post(route('admin.rfqs.store'), ['wc_number' => 'WC1234', 'priority_level' => 'High', 'subject' => 'Replace the lobby lighting', 'acting_user_id' => $people['bd']->id])
+        ->post(route('admin.rfqs.store'), ['wc_number' => 'WC1234', 'priority_level' => 'High', 'number_of_items' => 5, 'subject' => 'Replace the lobby lighting', 'acting_user_id' => $people['bd']->id])
         ->assertSessionHasNoErrors();
 
     expect(Rfq::sole()->created_by)->toBe($people['bd']->id);
@@ -129,7 +129,7 @@ it('records each approval, and the closing, as the person Admin picks for that s
     $rfq = actingRfqAt($stage, $people);
 
     test()->actingAs($people['admin'])
-        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id])
+        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id, 'reference_code' => 'PO-1001'])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->{$column})->toBe($people[$person]->id, "recorded as the {$role}");
@@ -151,7 +151,7 @@ it('records the whole-RFQ approval and close as the person Admin picks too', fun
 
     $rfq = Rfq::factory()->create(['stage' => 'bd_closing']);
     test()->actingAs($people['admin'])
-        ->patch(route('admin.rfqs.close', $rfq), ['acting_user_id' => $people['bd']->id]);
+        ->patch(route('admin.rfqs.close', $rfq), ['acting_user_id' => $people['bd']->id, 'reference_code' => 'PO-1001']);
     expect($rfq->refresh()->bd_closed_by)->toBe($people['bd']->id);
 });
 
@@ -243,7 +243,7 @@ it('offers Admin the Business Development people in the Add RFQ modal, and no on
         ->assertDontSee('acting_user_id', false);
 });
 
-it('offers Admin each stage\'s own people beside its Approve and Close buttons, and no one else', function (array $query, string $stage, string $role, string $person) {
+it('offers Admin each stage\'s own people beside its Approve and Close buttons, and no one else', function (array $query, string $stage, string $role, string $person, string $picker) {
     $people = actingPeople();
     $rfq = actingRfqAt($stage, $people);
 
@@ -251,8 +251,8 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
         ->get(route('admin.rfqs.index', ['status' => 'Pending'] + $query))
         ->assertOk()->getContent();
 
-    expect($html)->toContain('aria-label="Done by ('.$role.')"')
-        ->toContain('<option value="'.$people[$person]->id.'">'.e($people[$person]->name).'</option>');
+    expect($html)->toContain($picker)
+        ->toMatch('/<option value="'.$people[$person]->id.'"\s*>'.preg_quote(e($people[$person]->name), '/').'<\/option>/');
 
     // The stage's own people, in their own sidebar view, see nothing of it.
     test()->actingAs($people[$person])
@@ -260,10 +260,11 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
         ->assertOk()
         ->assertDontSee('acting_user_id', false);
 })->with([
-    'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops'],
-    'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head'],
-    'the General Manager\'s Review' => [['role' => 'general-manager'], 'assistant_done', 'General Manager', 'gm'],
-    'Ready to Close' => [['role' => 'business-development', 'view' => 'closing'], 'gm_approved', 'Business Development', 'bd'],
+    'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops', 'aria-label="Done by (Senior Operations)"'],
+    'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head', 'aria-label="Done by (Head of Business Development)"'],
+    'the General Manager\'s Review' => [['role' => 'general-manager'], 'assistant_done', 'General Manager', 'gm', 'aria-label="Done by (General Manager)"'],
+    // Closing asks for the reference code in a popup — the picker's there.
+    'Ready to Close' => [['role' => 'business-development', 'view' => 'closing'], 'gm_approved', 'Business Development', 'bd', 'id="close-acting-as"'],
 ]);
 
 it('puts the picker in each stage\'s modal too — rejecting, GM Assistant\'s details, assigning, Data Entry\'s prompt', function () {

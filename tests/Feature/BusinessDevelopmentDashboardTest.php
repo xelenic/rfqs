@@ -155,7 +155,7 @@ it('offers the RFQs ready to close, longest-waiting first, with a Close button',
     // Closing from the dashboard works, and lands back on it.
     test()->actingAs(userWithRole('Business Development'))
         ->from(route('admin.dashboard'))
-        ->patch(route('admin.rfqs.close', $waiting))
+        ->patch(route('admin.rfqs.close', $waiting), ['reference_code' => 'PO-1001'])
         ->assertRedirect(route('admin.dashboard'));
 
     expect($waiting->refresh()->status)->toBe('Completed');

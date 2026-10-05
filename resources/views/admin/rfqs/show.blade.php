@@ -520,15 +520,12 @@
                 </button>
             @endif
             @if ($canCloseRfq)
-                <form action="{{ route('admin.rfqs.close', $rfq) }}" method="POST"
-                      data-confirm="Close this RFQ? It moves out of Pending into Closed RFQs.">
-                    @csrf
-                    @method('PATCH')
-                    @include('admin.rfqs._acting_as', ['role' => 'Business Development'])
-                    <button type="submit" class="btn btn-sm btn-success">
-                        <i class="bi bi-flag"></i> Close
-                    </button>
-                </form>
+                @include('admin.rfqs._close_button', [
+                    'rfq' => $rfq,
+                    'part' => null,
+                    'label' => $rfq->rfq_number,
+                    'hint' => 'It moves out of Pending into Closed RFQs.',
+                ])
             @endif
             @can('rfqs.edit')
                 @if ($rfq->assignees->isEmpty() && $canSeeAssignOperationsButton)
@@ -553,6 +550,7 @@
                         data-wc-number="{{ $rfq->wc_number }}"
                         data-rfq-number="{{ $rfq->rfq_number }}"
                         data-priority-level="{{ $rfq->priority_level }}"
+                        data-number-of-items="{{ $rfq->number_of_items }}"
                         data-status="{{ $rfq->status }}"
                         data-subject="{{ $rfq->subject }}"
                         data-description="{{ $rfq->description }}">
@@ -1002,6 +1000,32 @@
                             <dt>RFQ Number</dt>
                             <dd>{{ $displayRfqNumber }}</dd>
                         </div>
+                        <div>
+                            <dt>Number of items</dt>
+                            <dd>{{ $rfq->number_of_items ?? '—' }}</dd>
+                        </div>
+                        {{-- The reference code Business Development gave to close it —
+                             one for the RFQ, or each closed part's on a split closed
+                             part by part with different ones. --}}
+                        @php
+                            $closingCodes = $rfq->assignees
+                                ->filter(fn ($assignee) => filled($assignee->pivot->bd_reference_code))
+                                ->mapWithKeys(fn ($assignee) => [$rfq->partNumberLabel($assignee->pivot->part_number) => $assignee->pivot->bd_reference_code]);
+                        @endphp
+                        @if ($rfq->bd_reference_code || $closingCodes->isNotEmpty())
+                            <div>
+                                <dt>Reference code</dt>
+                                <dd>
+                                    @if ($closingCodes->unique()->count() > 1)
+                                        @foreach ($closingCodes as $partLabel => $code)
+                                            <div>{{ $code }} <span class="text-muted-soft small">· {{ $partLabel }}</span></div>
+                                        @endforeach
+                                    @else
+                                        {{ $rfq->bd_reference_code ?? $closingCodes->first() }}
+                                    @endif
+                                </dd>
+                            </div>
+                        @endif
                         @if ($rfq->category)
                             <div>
                                 <dt>Category</dt>
@@ -1204,6 +1228,9 @@
     @endif
     @if ($rejectFromStage)
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
+    @endif
+    @if ($canCloseRfq)
+        @include('admin.rfqs._close_modal')
     @endif
     @if ($canSubmitGmAssistantDetails)
         @include('admin.rfqs._gm_assistant_modal')
