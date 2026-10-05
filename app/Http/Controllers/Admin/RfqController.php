@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\RfqAssignment;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -199,6 +200,9 @@ class RfqController extends Controller implements HasMiddleware
             // those two views.
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
             ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with('rejectedBy'))
+            // A Sourcing member's own Pending list counts each part down —
+            // only the stretches still open matter (Rfq::sourcingCountdown()).
+            ->when($scopedToMe && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // Not the parts Data Entry has sent back: those are on the
@@ -335,6 +339,11 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToSeniorOpsReturns' => $scopedToSeniorOpsReturns,
             'scopedToHeadOfBdReturns' => $scopedToHeadOfBdReturns,
             'scopedToGmAssistantReturns' => $scopedToGmAssistantReturns,
+            // What the countdowns there tick against in the browser: the
+            // server's clock, and the working periods of the next two weeks.
+            'countdownSchedule' => $scopedToMe && ! $sourcingOverview
+                ? ['now' => now()->getTimestamp(), 'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14))]
+                : null,
             'lensRole' => $lensRole,
             'sourcingOverview' => $sourcingOverview,
             'opsFilters' => $opsFilters,
@@ -454,7 +463,7 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return view('admin.rfqs.show', [
-            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles']),
+            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles', 'steps']),
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
@@ -523,6 +532,9 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         $rfq->update($validated);
+
+        // Admin can close it from here — any step still timed on it ends.
+        $rfq->syncSteps();
 
         if ($resolvesBdReturn) {
             $rfq->resolveBusinessDevelopmentReturn();

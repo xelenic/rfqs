@@ -3781,6 +3781,150 @@ h6, .h6 { font-size: 0.85rem; }
 
 /* ---------- Settings page ---------- */
 
+/* Settings → Working Hours: two times either side of "to" per range, and a
+   day switched off greyed out (see admin.js). */
+.working-hours-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.working-hours-range .form-control {
+  width: 7.5rem;
+}
+
+.working-hours-table tr.is-off td:not(:first-child):not(:nth-child(2)) {
+  opacity: 0.45;
+}
+
+.working-hours-table tr.is-off .js-day-hours {
+  font-style: italic;
+}
+
+.working-hours-timezone {
+  max-width: 22rem;
+}
+
+/* Sourcing's Pending list: a part's countdown, dimmed while it's paused
+   outside working hours (see admin.js). */
+.sourcing-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sourcing-countdown.is-paused {
+  opacity: 0.7;
+}
+
+/* The attendance sheet: an absent person's row tinted, and the reason and
+   note only usable for someone marked absent (see admin.js). Time on the
+   Time Spent sheet that waits on a sheet, or was a day absent. */
+.attendance-table tr.is-absent td {
+  background: #fdf2f2;
+}
+
+.attendance-table tr:not(.is-absent) .attendance-absence {
+  opacity: 0.4;
+}
+
+.time-awaiting-note {
+  color: #0e7c86;
+}
+
+/* The Time Spent report's tabs: one row, scrolling sideways when it doesn't
+   fit, each with its count. */
+.time-spent-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.time-spent-tabs .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.time-spent-tabs .nav-link.active {
+  color: var(--rfq-primary-dark);
+  font-weight: 600;
+}
+
+/* Work done out of working hours — a step its role finished outside them —
+   picked out on the Time Spent report and the RFQ page's Time spent card. */
+.time-out-of-hours {
+  background: #fff6e5;
+}
+
+.table .time-out-of-hours {
+  --bs-table-bg: #fff6e5;
+  box-shadow: inset 3px 0 0 #f0a04b;
+}
+
+.time-spent-role.time-out-of-hours {
+  margin-left: -0.6rem;
+  margin-right: -0.6rem;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+  border-radius: var(--rfq-radius);
+  box-shadow: inset 3px 0 0 #f0a04b;
+}
+
+.time-out-of-hours-note,
+.time-out-of-hours-key {
+  color: #b45309;
+}
+
+.stat-card-out-of-hours {
+  box-shadow: inset 0 0 0 1px #f0a04b;
+}
+
+/* The RFQ page's "Time spent" card: one block per role, divided by a hairline. */
+.time-spent-role + .time-spent-role {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rfq-border);
+}
+
+/* Settings: the tabs in one row across the top — scrolling sideways when
+   they don't fit — with the Admin's own after a divider. */
+.settings-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.settings-tabs .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.settings-tabs .nav-link.active {
+  color: var(--rfq-primary-dark);
+  font-weight: 600;
+}
+
+.settings-tabs-divider {
+  display: flex;
+  align-items: center;
+  margin: 0 0.35rem 0 0.6rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--rfq-border);
+}
+
 .settings-identity {
   display: flex;
   align-items: center;

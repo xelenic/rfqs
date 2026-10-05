@@ -1,18 +1,65 @@
 {{--
-    The Settings page (see SettingsController). Four independent forms, each
-    with its own error bag: Profile and Password on the left, Preferences and —
-    for an Admin — Application on the right.
+    The Settings page (see SettingsController), one tab per part: Profile,
+    Password and Preferences for everyone, and for an Admin the Application
+    settings, the Working Hours and the Sourcing Targets. Each tab is its own
+    form with its own error bag. The tab that opens is the one a form was
+    just saved from (session settings_tab) or failed on, else ?tab=, else
+    Profile — and switching tabs keeps ?tab= in the address (see admin.js),
+    so a reload stays put.
 
     Expects: $user, $closesRfqs, $isAdmin, $companyName, $liveInterval,
-    $liveIntervalRange.
+    $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
+    (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
+    $attendanceSince (Setting::attendanceSince()).
 --}}
 @extends('layouts.app')
 
 @section('title', 'Settings')
 
 @section('content')
-    <div class="row g-4">
-        <div class="col-xl-7">
+    @php
+        $accountTabs = [
+            'profile' => ['label' => 'Profile', 'icon' => 'bi-person', 'bag' => 'profile'],
+            'password' => ['label' => 'Password', 'icon' => 'bi-key', 'bag' => 'password'],
+            'preferences' => ['label' => 'Preferences', 'icon' => 'bi-sliders', 'bag' => null],
+        ];
+        $adminTabs = $isAdmin ? [
+            'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
+            'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
+            'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
+        ] : [];
+        $allTabs = $accountTabs + $adminTabs;
+        $hasErrors = fn (array $tab) => $tab['bag'] !== null && $errors->getBag($tab['bag'])->any();
+
+        $activeTab = collect($allTabs)->search($hasErrors) ?: session('settings_tab') ?: request('tab');
+        $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
+    @endphp
+
+    {{-- Tabs across the top — the Admin's own after a divider — and the open
+         one's form below, full width. On a narrow screen the row scrolls. --}}
+    <ul class="nav nav-tabs settings-tabs mb-3" role="tablist" aria-label="Settings">
+        @foreach ($allTabs as $slug => $tab)
+            @if ($slug === array_key_first($adminTabs))
+                <li class="settings-tabs-divider" role="presentation">
+                    <span class="badge badge-soft-primary">Admin</span>
+                </li>
+            @endif
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link {{ $activeTab === $slug ? 'active' : '' }}" id="settings-tab-{{ $slug }}"
+                        data-bs-toggle="tab" data-bs-target="#settings-pane-{{ $slug }}" data-settings-tab="{{ $slug }}"
+                        role="tab" aria-controls="settings-pane-{{ $slug }}" aria-selected="{{ $activeTab === $slug ? 'true' : 'false' }}">
+                    <i class="bi {{ $tab['icon'] }}"></i>
+                    {{ $tab['label'] }}
+                    @if ($hasErrors($tab))
+                        <i class="bi bi-exclamation-circle-fill text-danger" title="Something here needs fixing"></i>
+                    @endif
+                </button>
+            </li>
+        @endforeach
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade {{ $activeTab === 'profile' ? 'show active' : '' }}" id="settings-pane-profile" role="tabpanel" aria-labelledby="settings-tab-profile" tabindex="0">
             <div class="card mb-4">
                 <div class="card-header">Profile</div>
                 <div class="card-body">
@@ -62,7 +109,9 @@
                     </form>
                 </div>
             </div>
+        </div>
 
+        <div class="tab-pane fade {{ $activeTab === 'password' ? 'show active' : '' }}" id="settings-pane-password" role="tabpanel" aria-labelledby="settings-tab-password" tabindex="0">
             <div class="card mb-4">
                 <div class="card-header">Password</div>
                 <div class="card-body">
@@ -106,7 +155,7 @@
             </div>
         </div>
 
-        <div class="col-xl-5">
+        <div class="tab-pane fade {{ $activeTab === 'preferences' ? 'show active' : '' }}" id="settings-pane-preferences" role="tabpanel" aria-labelledby="settings-tab-preferences" tabindex="0">
             <div class="card mb-4">
                 <div class="card-header">Preferences</div>
                 <div class="card-body">
@@ -136,8 +185,10 @@
                     </form>
                 </div>
             </div>
+        </div>
 
-            @if ($isAdmin)
+        @if ($isAdmin)
+            <div class="tab-pane fade {{ $activeTab === 'application' ? 'show active' : '' }}" id="settings-pane-application" role="tabpanel" aria-labelledby="settings-tab-application" tabindex="0">
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center gap-2">
                         Application
@@ -178,7 +229,171 @@
                         </form>
                     </div>
                 </div>
-            @endif
-        </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'working-hours' ? 'show active' : '' }}" id="settings-pane-working-hours" role="tabpanel" aria-labelledby="settings-tab-working-hours" tabindex="0">
+                {{-- The working week: one row per day, Sunday first — a switch for
+                     whether it's worked, its working hours and its lunch, and the hours
+                     that leaves. A day switched off keeps its times, greyed out (see
+                     admin.js), for when it's switched back on. --}}
+                @php
+                    $hasWorkingHoursErrors = $errors->working_hours->any();
+                    $weekMinutes = collect($workingHours)->sum(fn (array $day) => \App\Models\Setting::workingMinutes($day));
+                @endphp
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Working Hours
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <form method="POST" action="{{ route('admin.settings.working-hours') }}" novalidate>
+                        @csrf
+                        @method('PATCH')
+
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0 working-hours-table" id="working-hours-table">
+                                <thead>
+                                    <tr>
+                                        <th>Day</th>
+                                        <th>Working</th>
+                                        <th>Working hours</th>
+                                        <th>Lunch <span class="text-muted-soft fw-normal text-lowercase">(optional)</span></th>
+                                        <th class="text-end">Hours</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($workingHours as $day => $hours)
+                                        @php
+                                            $field = fn (string $name) => "days.{$day}.{$name}";
+                                            $isWorking = $hasWorkingHoursErrors ? old($field('working')) === '1' : $hours['working'];
+                                            $time = fn (string $name) => $hasWorkingHoursErrors && $isWorking ? old($field($name)) : $hours[$name];
+                                            $dayErrors = collect(['start', 'end', 'lunch_start', 'lunch_end'])->flatMap(fn (string $name) => $errors->working_hours->get($field($name)));
+                                        @endphp
+                                        <tr data-working-day="{{ $day }}" @class(['is-off' => ! $isWorking])>
+                                            <td class="fw-semibold">{{ ucfirst($day) }}</td>
+                                            <td>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input type="hidden" name="days[{{ $day }}][working]" value="0">
+                                                    <input class="form-check-input js-working-day" type="checkbox" role="switch"
+                                                           name="days[{{ $day }}][working]" value="1" id="working-{{ $day }}"
+                                                           aria-label="{{ ucfirst($day) }} is a working day" @checked($isWorking)>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="working-hours-range">
+                                                    @foreach (['start' => 'starts', 'end' => 'finishes'] as $name => $label)
+                                                        <input type="time" name="days[{{ $day }}][{{ $name }}]" data-time="{{ $name }}"
+                                                               class="form-control form-control-sm @if ($errors->working_hours->has($field($name))) is-invalid @endif"
+                                                               value="{{ $time($name) }}" aria-label="{{ ucfirst($day) }} {{ $label }}" @disabled(! $isWorking)>
+                                                        @if ($name === 'start')
+                                                            <span class="text-muted-soft">to</span>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="working-hours-range">
+                                                    @foreach (['lunch_start' => 'lunch starts', 'lunch_end' => 'lunch ends'] as $name => $label)
+                                                        <input type="time" name="days[{{ $day }}][{{ $name }}]" data-time="{{ $name }}"
+                                                               class="form-control form-control-sm @if ($errors->working_hours->has($field($name))) is-invalid @endif"
+                                                               value="{{ $time($name) }}" aria-label="{{ ucfirst($day) }} {{ $label }}" @disabled(! $isWorking)>
+                                                        @if ($name === 'lunch_start')
+                                                            <span class="text-muted-soft">to</span>
+                                                        @endif
+                                                    @endforeach
+                                                </div>
+                                            </td>
+                                            <td class="text-end text-nowrap js-day-hours">
+                                                {{ $isWorking ? \App\Models\Setting::hoursLabel(\App\Models\Setting::workingMinutes($hours)) : 'Day off' }}
+                                            </td>
+                                        </tr>
+                                        @if ($dayErrors->isNotEmpty())
+                                            <tr class="working-hours-errors">
+                                                <td colspan="5" class="text-danger small pt-0">
+                                                    @foreach ($dayErrors as $message)
+                                                        <div>{{ $message }}</div>
+                                                    @endforeach
+                                                </td>
+                                            </tr>
+                                        @endif
+                                    @endforeach
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4" class="text-end text-muted-soft">Working week</td>
+                                        <td class="text-end fw-semibold text-nowrap" id="working-hours-week">{{ \App\Models\Setting::hoursLabel($weekMinutes) }}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="card-body border-top">
+                            <div class="mb-3 working-hours-timezone">
+                                <label for="settings-timezone" class="form-label">Time zone</label>
+                                <select name="timezone" id="settings-timezone" class="form-select @error('timezone', 'working_hours') is-invalid @enderror">
+                                    @foreach (timezone_identifiers_list() as $zone)
+                                        <option value="{{ $zone }}" @selected(old('timezone', $timezone) === $zone)>{{ $zone }}</option>
+                                    @endforeach
+                                </select>
+                                @error('timezone', 'working_hours')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @else
+                                    <div class="form-text">The times above are in this zone. Time spent on RFQs only counts these hours.</div>
+                                @enderror
+                            </div>
+                            <div class="mb-3 working-hours-timezone">
+                                <label for="settings-attendance-since" class="form-label">Attendance from</label>
+                                <input type="date" name="attendance_since" id="settings-attendance-since"
+                                       class="form-control @error('attendance_since', 'working_hours') is-invalid @enderror"
+                                       value="{{ old('attendance_since', $attendanceSince) }}">
+                                @error('attendance_since', 'working_hours')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @else
+                                    <div class="form-text">From this day, a person's time only counts on a day Senior Operations' attendance sheet has them present. Leave empty to count all time straight away.</div>
+                                @enderror
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save working hours</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'sourcing-targets' ? 'show active' : '' }}" id="settings-pane-sourcing-targets" role="tabpanel" aria-labelledby="settings-tab-sourcing-targets" tabindex="0">
+                {{-- How long Sourcing has to complete a part, by its RFQ's priority —
+                     what the countdown on their Pending list runs from. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Sourcing Targets
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.sourcing-targets') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">Working hours Sourcing has to mark a part complete. Their Pending list counts each part down, only during working hours.</p>
+
+                            <div class="row g-3 mb-3">
+                                @foreach (array_reverse($sourcingTargets, true) as $priority => $minutes)
+                                    <div class="col-sm-6">
+                                        <label for="target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <div class="input-group">
+                                            <input type="number" name="targets[{{ $priority }}]" id="target-{{ \Illuminate\Support\Str::slug($priority) }}"
+                                                   class="form-control @error('targets.'.$priority, 'sourcing_targets') is-invalid @enderror"
+                                                   value="{{ old('targets.'.$priority, $minutes / 60) }}" min="0.25" step="0.25" required>
+                                            <span class="input-group-text">hours</span>
+                                            @error('targets.'.$priority, 'sourcing_targets')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Sourcing targets</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 @endsection

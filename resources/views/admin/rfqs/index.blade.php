@@ -1002,6 +1002,7 @@
                             <th>RFQ Number</th>
                             <th>Subject</th>
                             <th>Priority</th>
+                            <th title="Working time left to mark it complete — see Settings → Sourcing Targets">Time left</th>
                             <th>Assigned At</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -1046,6 +1047,23 @@
                                         @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td class="text-nowrap">
+                                        {{-- Counts down this round's working time against its
+                                             priority's target, ticking in admin.js — paused
+                                             outside working hours. --}}
+                                        @php $countdown = $iHaveCompletedMyPart ? null : $rfq->sourcingCountdown($myPart); @endphp
+                                        @if ($countdown)
+                                            @php $isPaused = ! \App\Models\Setting::isWorkingTime(now()); @endphp
+                                            <span class="badge sourcing-countdown {{ \App\Models\Setting::countdownBadgeClass($countdown['remaining'], $countdown['target']) }} @if ($isPaused) is-paused @endif"
+                                                  data-countdown data-remaining="{{ $countdown['remaining'] }}" data-target="{{ $countdown['target'] }}"
+                                                  title="{{ $isPaused ? 'Paused — outside working hours' : 'Working time left to mark it complete' }}">
+                                                <i class="bi {{ $isPaused ? 'bi-pause-circle' : 'bi-stopwatch' }}"></i>
+                                                <span class="sourcing-countdown-label">{{ \App\Models\Setting::countdownLabel($countdown['remaining']) }}</span>
+                                            </span>
+                                        @else
+                                            <span class="text-muted-soft">—</span>
+                                        @endif
+                                    </td>
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         @if (! $iHaveCompletedMyPart)
@@ -1058,7 +1076,7 @@
                             @endforeach
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                <td colspan="7" class="text-center text-muted-soft py-4">
                                     No pending RFQs are assigned to you right now.
                                 </td>
                             </tr>
@@ -1066,6 +1084,11 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- What the countdowns above tick against — see admin.js. --}}
+            @if ($countdownSchedule)
+                <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
+            @endif
 
             @foreach ($rfqs as $rfq)
                 @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)

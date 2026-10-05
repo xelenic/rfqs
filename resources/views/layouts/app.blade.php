@@ -51,6 +51,24 @@
                     @endif
                 @endcan
 
+                @if (auth()->user()->canViewTimeSpentReport())
+                    <div class="sidebar-section-title">Reports</div>
+                    @if (auth()->user()->canManageAttendance())
+                        {{-- The working days still without an attendance sheet, as a red count. --}}
+                        @php $daysWithoutSheet = count(\App\Models\AttendanceSheet::missingDays()); @endphp
+                        <a href="{{ route('admin.attendance.index') }}" class="nav-link {{ request()->routeIs('admin.attendance.*') ? 'active' : '' }}">
+                            <i class="bi bi-person-check"></i>
+                            <span class="nav-link-label">Attendance</span>
+                            @if ($daysWithoutSheet > 0)
+                                <span class="nav-link-count" title="{{ $daysWithoutSheet }} working {{ \Illuminate\Support\Str::plural('day', $daysWithoutSheet) }} without a sheet">{{ $daysWithoutSheet }}</span>
+                            @endif
+                        </a>
+                    @endif
+                    <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
+                        <i class="bi bi-stopwatch"></i> Time Spent
+                    </a>
+                @endif
+
                 @canany(['users.view', 'roles.view', 'permissions.view'])
                     <div class="sidebar-section-title">Access Control</div>
                 @endcanany

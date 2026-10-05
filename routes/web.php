@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\MessageController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Admin\RfqCommentController;
 use App\Http\Controllers\Admin\RfqController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\TimeSpentReportController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Middleware\CaptureLiveVersion;
@@ -33,6 +35,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::put('settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
     Route::patch('settings/preferences', [SettingsController::class, 'updatePreferences'])->name('settings.preferences');
     Route::patch('settings/application', [SettingsController::class, 'updateApplication'])->name('settings.application');
+    Route::patch('settings/working-hours', [SettingsController::class, 'updateWorkingHours'])->name('settings.working-hours');
+    Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
+
+    Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
+
+    Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
+    Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
+    Route::put('attendance/{sheet}', [AttendanceController::class, 'update'])->name('attendance.update');
 
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');

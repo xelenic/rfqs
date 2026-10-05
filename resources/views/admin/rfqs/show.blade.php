@@ -1101,6 +1101,8 @@
                     @endif
                 </div>
             </div>
+
+            @include('admin.rfqs._time_spent', ['rfq' => $rfq])
         </div>
     </div>
 

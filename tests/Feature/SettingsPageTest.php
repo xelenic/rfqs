@@ -5,6 +5,7 @@ use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -286,4 +287,63 @@ it('keeps the check interval within reason whatever was stored', function (strin
 
 it('starts at three seconds', function () {
     expect(Setting::liveIntervalSeconds())->toBe(3);
+});
+
+// ---- tabs -------------------------------------------------------------------------
+
+/**
+ * The tab the Settings page opens on.
+ */
+function openSettingsTab(string $html): ?string
+{
+    return preg_match('/<button type="button" class="nav-link active" id="settings-tab-([a-z-]+)"/', $html, $match) ? $match[1] : null;
+}
+
+it('splits the page into tabs: three for everyone, three more for an Admin', function () {
+    $tabs = fn (string $html) => preg_match_all('/data-settings-tab="([a-z-]+)"/', $html, $matches) ? $matches[1] : [];
+
+    expect($tabs(test()->actingAs(userWithRole('Sourcing'))->get(route('admin.settings.edit'))->getContent()))
+        ->toBe(['profile', 'password', 'preferences']);
+
+    expect($tabs(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit'))->getContent()))
+        ->toBe(['profile', 'password', 'preferences', 'application', 'working-hours', 'sourcing-targets']);
+});
+
+it('opens on Profile, or on the tab asked for — one that\'s theirs to see', function () {
+    expect(openSettingsTab(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit'))->getContent()))->toBe('profile')
+        ->and(openSettingsTab(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit', ['tab' => 'working-hours']))->getContent()))->toBe('working-hours')
+        ->and(openSettingsTab(test()->actingAs(userWithRole('Sourcing'))->get(route('admin.settings.edit', ['tab' => 'working-hours']))->getContent()))->toBe('profile')
+        ->and(openSettingsTab(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit', ['tab' => 'nowhere']))->getContent()))->toBe('profile');
+
+    test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit', ['tab' => 'working-hours']))
+        ->assertSee('class="tab-pane fade show active" id="settings-pane-working-hours"', false);
+});
+
+it('comes back to the tab a form was saved from', function () {
+    $admin = userWithRole('Admin');
+
+    test()->actingAs($admin)
+        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Low' => 24, 'Medium' => 16, 'High' => 8, 'Urgent' => 4]])
+        ->assertRedirect(route('admin.settings.edit'))
+        ->assertSessionHas('settings_tab', 'sourcing-targets');
+
+    expect(openSettingsTab(test()->actingAs($admin)->get(route('admin.settings.edit'))->getContent()))->toBe('sourcing-targets');
+
+    test()->actingAs($admin)->patch(route('admin.settings.preferences'), ['live_updates' => '1'])
+        ->assertSessionHas('settings_tab', 'preferences');
+});
+
+it('comes back to the tab a form failed on, marked as needing a fix', function () {
+    $admin = userWithRole('Admin');
+
+    $html = test()->actingAs($admin)
+        ->from(route('admin.settings.edit'))
+        ->followingRedirects()
+        ->patch(route('admin.settings.application'), ['company_name' => 'Acme', 'live_interval' => 999])
+        ->assertOk()
+        ->getContent();
+
+    expect(openSettingsTab($html))->toBe('application')
+        ->and(Str::betweenFirst($html, 'id="settings-tab-application"', '</button>'))->toContain('bi-exclamation-circle-fill')
+        ->and(Str::betweenFirst($html, 'id="settings-tab-profile"', '</button>'))->not->toContain('bi-exclamation-circle-fill');
 });

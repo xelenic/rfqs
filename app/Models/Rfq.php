@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -385,6 +386,15 @@ class Rfq extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(RfqComment::class)->whereNull('parent_id')->oldest()->oldest('id');
+    }
+
+    /**
+     * Every stretch this RFQ's parts have spent at a timed step, round by
+     * round, oldest first — see RfqStep, syncSteps() and timeSpent().
+     */
+    public function steps(): HasMany
+    {
+        return $this->hasMany(RfqStep::class)->oldest('started_at')->oldest('id');
     }
 
     /**
@@ -849,6 +859,8 @@ class Rfq extends Model
         }
 
         $this->load('assignees');
+
+        $this->syncSteps();
     }
 
     /**
@@ -891,6 +903,8 @@ class Rfq extends Model
                 'sourcing_completed_at' => now(),
             ]);
         }
+
+        $this->syncSteps();
     }
 
     /**
@@ -975,6 +989,8 @@ class Rfq extends Model
         }
 
         $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]);
+
+        $this->syncSteps();
     }
 
     /**
@@ -1020,6 +1036,8 @@ class Rfq extends Model
                 'data_entry_completed_at' => now(),
             ]);
         }
+
+        $this->syncSteps();
     }
 
     /**
@@ -1064,6 +1082,8 @@ class Rfq extends Model
                 'stage' => 'senior_ops_review',
             ]);
         }
+
+        $this->syncSteps();
     }
 
     /**
@@ -1103,6 +1123,8 @@ class Rfq extends Model
         }
 
         $this->postActionComment($assignee, 'returned_to_data_entry', $reason, $this->partContext($part));
+
+        $this->syncSteps();
     }
 
     /**
@@ -1257,6 +1279,8 @@ class Rfq extends Model
         }
 
         $this->resolveReturnOnceDealtWith('head_of_bd_review');
+
+        $this->syncSteps();
     }
 
     /**
@@ -1288,6 +1312,8 @@ class Rfq extends Model
             'head_of_bd_approved_at' => now(),
             'stage' => 'gm_assistant',
         ]);
+
+        $this->syncSteps();
     }
 
     /**
@@ -1438,6 +1464,8 @@ class Rfq extends Model
         }
 
         $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
+
+        $this->syncSteps();
     }
 
     /**
@@ -1517,6 +1545,8 @@ class Rfq extends Model
         ]);
 
         $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
+
+        $this->syncSteps();
     }
 
     /**
@@ -1539,6 +1569,265 @@ class Rfq extends Model
             ! $this->allGmPartsApproved() => 'gm_review',
             default => 'bd_closing',
         };
+    }
+
+    /**
+     * Brings the step log up to date with where each part is now: a part
+     * that's left the step it was logged at has that stretch ended, and one
+     * that's reached a timed step has a new stretch started — both now. A
+     * part that's been freed has its stretch ended too, and on a closed RFQ
+     * every stretch is. Called at the end of every workflow action that moves
+     * a part; safe to call any time, since a part still where it was logged
+     * is left alone.
+     */
+    public function syncSteps(): void
+    {
+        $this->load('assignees');
+
+        $current = $this->status === 'Pending'
+            ? $this->assignees
+                ->mapWithKeys(fn (User $assignee) => [$assignee->pivot->part_number => [
+                    'assignee_id' => $assignee->id,
+                    'step' => $this->timedStepFor($assignee->pivot),
+                ]])
+                ->filter(fn (array $now) => $now['step'] !== null)
+            : collect();
+
+        foreach (RfqStep::query()->where('rfq_id', $this->id)->whereNull('ended_at')->get() as $open) {
+            $now = $current->get($open->part_number);
+
+            if ($now !== null && $now['step'] === $open->step && $now['assignee_id'] === $open->assignee_id) {
+                $current->forget($open->part_number);
+            } else {
+                $part = $this->assignees->first(fn (User $assignee) => $assignee->pivot->part_number === $open->part_number
+                    && $assignee->id === $open->assignee_id)?->pivot;
+
+                $endedByRole = $this->status === 'Pending' && $part !== null && $this->roleFinished($open->step, $part);
+
+                $open->update([
+                    'ended_at' => now(),
+                    'ended_by_role' => $endedByRole,
+                    'worked_by' => $open->worked_by ?? ($endedByRole ? $this->finishedBy($open->step, $part) : null),
+                ]);
+            }
+        }
+
+        foreach ($current as $part => $now) {
+            RfqStep::query()->create([
+                'rfq_id' => $this->id,
+                'part_number' => $part,
+                'assignee_id' => $now['assignee_id'],
+                // Sourcing's own time is the part's member's from the start;
+                // Data Entry's and GM Assistant's is whoever finishes it.
+                'worked_by' => in_array($now['step'], ['sourcing', 'finalize'], true) ? $now['assignee_id'] : null,
+                'step' => $now['step'],
+                'started_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Whether $part left $step by its role's own doing — Sourcing marking it
+     * complete or finalizing it (or sending it back to Data Entry), Data Entry
+     * sending it to finalize (or back to Sourcing), GM Assistant adding their
+     * details — rather than by being held or reset by someone else. Read
+     * just after it left, from where the part is now.
+     */
+    private function roleFinished(string $step, RfqAssignment $part): bool
+    {
+        return match ($step) {
+            'sourcing' => $part->completed_at !== null,
+            'data_entry' => $part->data_entry_completed_at !== null
+                || ($part->completed_at === null && $part->returned_at !== null),
+            'finalize' => $part->finalized_at !== null
+                || ($part->data_entry_completed_at === null && $part->data_entry_returned_at !== null),
+            'gm_assistant' => $part->gm_assistant_completed_at !== null,
+            default => false,
+        };
+    }
+
+    /**
+     * Who finished $step on $part, by its role's own doing (roleFinished()) —
+     * whose time it was: the part's member for Sourcing's steps, whoever sent
+     * it to finalize (or back) for Data Entry, whoever added the details for
+     * GM Assistant. Read just after, from where the part is now.
+     */
+    private function finishedBy(string $step, RfqAssignment $part): ?int
+    {
+        return match ($step) {
+            'sourcing', 'finalize' => $part->user_id,
+            'data_entry' => $part->data_entry_completed_by ?? $part->returned_by,
+            'gm_assistant' => $part->gm_assistant_completed_by,
+            default => null,
+        };
+    }
+
+    /**
+     * The timed step a part is at, if it's at one (see RfqStep::ROLE_STEPS):
+     * with Sourcing until they mark it complete — rework included — then
+     * with Data Entry until they send it to finalize, then back with Sourcing
+     * to finalize. After that it's with the reviewers, untimed, until the
+     * Head of Business Development approves it and it's GM Assistant's — but
+     * not while the RFQ's held on another stage's Returns page, when GM
+     * Assistant can't act on it.
+     */
+    private function timedStepFor(RfqAssignment $part): ?string
+    {
+        return match (true) {
+            $part->completed_at === null => 'sourcing',
+            $part->data_entry_completed_at === null => 'data_entry',
+            $part->finalized_at === null => 'finalize',
+            $part->isAwaitingGmAssistant() && ! $this->isHeldOnAnotherReturnsPage('gm_assistant') => 'gm_assistant',
+            default => null,
+        };
+    }
+
+    /**
+     * Where $part's countdown stands with its Sourcing member: the working
+     * time its priority allows them (Setting::sourcingTargets()) less what
+     * this round with them has taken so far, less any day they were absent
+     * (Attendance) — negative once it's overdue.
+     * Null if the part isn't with Sourcing right now. Each round starts its
+     * own countdown. Expects steps to be loaded, or loads them.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function sourcingCountdown(int $part, ?CarbonInterface $now = null): ?array
+    {
+        $stretch = $this->steps->first(fn (RfqStep $step) => $step->part_number === $part
+            && $step->step === 'sourcing'
+            && $step->ended_at === null);
+
+        if ($stretch === null || $this->status !== 'Pending') {
+            return null;
+        }
+
+        $target = $this->sourcingTargetSeconds();
+
+        // A day its member was absent doesn't count against them.
+        return [
+            'target' => $target,
+            'remaining' => $target - $stretch->secondsExcludingAbsence(Attendance::book([$stretch->worked_by]), $now),
+        ];
+    }
+
+    /**
+     * The working time Sourcing has for a round on this RFQ, by its priority
+     * — see Setting::sourcingTargets(). In seconds.
+     */
+    public function sourcingTargetSeconds(): int
+    {
+        return (Setting::sourcingTargets()[$this->priority_level] ?? Setting::DEFAULT_SOURCING_TARGETS['Medium']) * 60;
+    }
+
+    /**
+     * How this RFQ stands against Sourcing's deadline — its priority's target
+     * for each round with them (sourcingTargetSeconds()): the least time left
+     * on a round still open (negative once it's overdue; null with none open),
+     * how many finished rounds ran past the target and by how much in all,
+     * and whether it's been exceeded at all — overdue now, or finished late.
+     * A day its member was absent (Attendance) doesn't count against it. Null
+     * if Sourcing hasn't had it yet. $book is Attendance::book(), loaded if
+     * not given. Expects steps to be loaded, or loads them.
+     *
+     * @param  array<int, array<string, string>>|null  $book
+     * @return array{target: int, remaining: ?int, late_rounds: int, late_by: int, exceeded: bool}|null in seconds
+     */
+    public function sourcingDeadline(?CarbonInterface $now = null, ?array $book = null): ?array
+    {
+        $rounds = $this->steps->where('step', 'sourcing');
+
+        if ($rounds->isEmpty()) {
+            return null;
+        }
+
+        $now ??= now();
+        $book ??= Attendance::book($rounds->pluck('worked_by'));
+        $target = $this->sourcingTargetSeconds();
+
+        // A day its member was absent doesn't count against them.
+        $taken = $rounds->mapWithKeys(fn (RfqStep $round) => [$round->id => $round->secondsExcludingAbsence($book, $now)]);
+
+        $remaining = $this->status === 'Pending'
+            ? $rounds->whereNull('ended_at')->map(fn (RfqStep $round) => $target - $taken[$round->id])->min()
+            : null;
+        $late = $rounds->filter(fn (RfqStep $round) => $round->ended_at !== null && $taken[$round->id] > $target);
+
+        return [
+            'target' => $target,
+            'remaining' => $remaining,
+            'late_rounds' => $late->count(),
+            'late_by' => (int) $late->sum(fn (RfqStep $round) => $taken[$round->id] - $target),
+            'exceeded' => $late->isNotEmpty() || ($remaining !== null && $remaining <= 0),
+        ];
+    }
+
+    /**
+     * The time each tracked role has spent on this RFQ (see
+     * RfqStep::ROLE_STEPS), every round added up. Its working time — only the
+     * working hours count (Setting::workingSecondsBetween()) — and, from the
+     * day attendance starts, only the days the attendance sheet has whoever
+     * it's credited to present (Attendance): per part and in all, in minutes
+     * and to the second; besides it, what's on a day whose sheet isn't made
+     * yet (awaiting), and what's on a day they were absent. Its elapsed
+     * (clock) time, nights and days off included, so a stretch outside
+     * working hours still shows; how many rounds it took and how many of
+     * those were rework (a part back at the role after its first round); and
+     * whether it's still going — counted up to $now while it is. And the work
+     * done out of hours (RfqStep::isOutOfHoursWork()): how many stretches,
+     * and how much of them fell outside the working hours. $book is
+     * Attendance::book(), loaded for this RFQ's people if not given. Expects
+     * steps to be loaded, or loads them.
+     *
+     * @param  array<int, array<string, string>>|null  $book
+     * @return array{roles: array<string, array{parts: array<int, int>, minutes: int, seconds: int, awaiting: int, absent: int, elapsed: int, out_of_hours: int, out_of_hours_count: int, rounds: int, reworks: int, ongoing: bool}>, minutes: int, seconds: int, awaiting: int, absent: int, elapsed: int, out_of_hours: int, out_of_hours_count: int}
+     */
+    public function timeSpent(?CarbonInterface $now = null, ?array $book = null): array
+    {
+        $now ??= now();
+        $book ??= Attendance::book($this->steps->pluck('worked_by'));
+        $roles = [];
+
+        foreach (RfqStep::ROLE_STEPS as $role => $roleSteps) {
+            $stretches = $this->steps->filter(fn (RfqStep $step) => in_array($step->step, $roleSteps, true));
+            $splits = $stretches->mapWithKeys(fn (RfqStep $step) => [$step->id => $step->secondsByAttendance($book, $now)]);
+
+            $partSeconds = $stretches->groupBy('part_number')
+                ->map(fn ($partStretches) => $partStretches->sum(fn (RfqStep $step) => $splits[$step->id]['present']))
+                ->sortKeys();
+            $seconds = (int) $partSeconds->sum();
+
+            // A round is a time a part reached the role's own work — reaching
+            // Finalize doesn't make a new one for Sourcing.
+            $rounds = $stretches->where('step', $roleSteps[0]);
+
+            $roles[$role] = [
+                'parts' => $partSeconds->map(fn (int $partTotal) => intdiv($partTotal, 60))->all(),
+                'minutes' => intdiv($seconds, 60),
+                'seconds' => $seconds,
+                'awaiting' => (int) $splits->sum('unmarked'),
+                'absent' => (int) $splits->sum('absent'),
+                'elapsed' => (int) $stretches->sum(fn (RfqStep $step) => $step->elapsedSeconds($now)),
+                'out_of_hours' => (int) $stretches->sum(fn (RfqStep $step) => $step->outOfHoursSeconds()),
+                'out_of_hours_count' => $stretches->filter(fn (RfqStep $step) => $step->isOutOfHoursWork())->count(),
+                'rounds' => $rounds->count(),
+                'reworks' => $rounds->count() - $rounds->pluck('part_number')->unique()->count(),
+                'ongoing' => $stretches->contains(fn (RfqStep $step) => $step->ended_at === null),
+            ];
+        }
+
+        $seconds = array_sum(array_column($roles, 'seconds'));
+
+        return [
+            'roles' => $roles,
+            'minutes' => intdiv($seconds, 60),
+            'seconds' => $seconds,
+            'awaiting' => array_sum(array_column($roles, 'awaiting')),
+            'absent' => array_sum(array_column($roles, 'absent')),
+            'elapsed' => array_sum(array_column($roles, 'elapsed')),
+            'out_of_hours' => array_sum(array_column($roles, 'out_of_hours')),
+            'out_of_hours_count' => array_sum(array_column($roles, 'out_of_hours_count')),
+        ];
     }
 
     /**
@@ -1661,6 +1950,8 @@ class Rfq extends Model
         }
 
         $this->resolveReturnOnceDealtWith('gm_assistant');
+
+        $this->syncSteps();
     }
 
     /**
@@ -1692,6 +1983,8 @@ class Rfq extends Model
         ]);
 
         $this->resolveReturnOnceDealtWith('gm_assistant');
+
+        $this->syncSteps();
     }
 
     /**
@@ -1856,6 +2149,8 @@ class Rfq extends Model
             'stage' => 'closed',
             'status' => 'Completed',
         ]);
+
+        $this->syncSteps();
     }
 
     /**

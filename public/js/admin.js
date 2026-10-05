@@ -1538,6 +1538,137 @@ function rfqmsBoot() {
                 });
         });
     });
+
+    // Sourcing's Pending list: each part counts down the working time its
+    // priority allows. The server gives where each one stood when the page
+    // was made, and the working periods ahead (#countdown-schedule); from
+    // there only working time is taken off, so outside working hours a
+    // countdown is paused. One timer for the page — a live refresh brings a
+    // fresh schedule and starts it over. Labels and colours as in
+    // Setting::countdownLabel() / countdownBadgeClass().
+    clearInterval(window.__rfqmsCountdownTimer);
+    var countdownScheduleEl = document.getElementById('countdown-schedule');
+    if (countdownScheduleEl) {
+        var countdownSchedule = JSON.parse(countdownScheduleEl.textContent);
+        // The server's clock, not the browser's, which may be set wrong.
+        var clockOffset = countdownSchedule.now - Date.now() / 1000;
+        var countdownHours = function (minutes) {
+            var hours = Math.floor(minutes / 60);
+            var rest = minutes % 60;
+            return hours === 0 ? rest + 'm' : hours + 'h' + (rest > 0 ? ' ' + rest + 'm' : '');
+        };
+        var countdownLabel = function (remaining) {
+            if (remaining >= 60) return countdownHours(Math.floor(remaining / 60)) + ' left';
+            if (remaining > 0) return 'Under 1m left';
+            if (remaining > -60) return 'Due now';
+            return 'Overdue by ' + countdownHours(Math.floor(-remaining / 60));
+        };
+
+        var tickCountdowns = function () {
+            var now = Date.now() / 1000 + clockOffset;
+            var worked = 0;
+            var paused = true;
+
+            countdownSchedule.periods.forEach(function (period) {
+                worked += Math.max(0, Math.min(now, period[1]) - Math.max(countdownSchedule.now, period[0]));
+                if (now >= period[0] && now < period[1]) paused = false;
+            });
+
+            document.querySelectorAll('[data-countdown]').forEach(function (badge) {
+                var remaining = Math.round(Number(badge.dataset.remaining) - worked);
+                var target = Number(badge.dataset.target);
+
+                badge.classList.toggle('badge-soft-danger', remaining <= 0);
+                badge.classList.toggle('badge-soft-warning', remaining > 0 && remaining <= target / 4);
+                badge.classList.toggle('badge-soft-success', remaining > target / 4);
+                badge.classList.toggle('is-paused', paused);
+                badge.title = paused ? 'Paused — outside working hours' : 'Working time left to mark it complete';
+                badge.querySelector('i').className = 'bi ' + (paused ? 'bi-pause-circle' : 'bi-stopwatch');
+                badge.querySelector('.sourcing-countdown-label').textContent = countdownLabel(remaining);
+            });
+        };
+
+        tickCountdowns();
+        window.__rfqmsCountdownTimer = setInterval(tickCountdowns, 15000);
+    }
+
+    // The attendance sheet: marking someone absent tints their row and opens
+    // up why; marking them present greys it out again — it's only kept for
+    // an absence (see AttendanceController::update()).
+    document.querySelectorAll('.js-attendance-status').forEach(function (radio) {
+        var row = radio.closest('tr');
+        var sync = function () {
+            var absent = row.querySelector('.js-attendance-status[value="absent"]').checked;
+            row.classList.toggle('is-absent', absent);
+            row.querySelectorAll('.attendance-absence select, .attendance-absence input').forEach(function (field) {
+                field.disabled = !absent;
+            });
+        };
+        radio.addEventListener('change', sync);
+        sync();
+    });
+
+    // Settings: keep the open tab in the address (?tab=), so a reload — or
+    // coming back to the page — opens it again. See settings/edit.blade.php.
+    document.querySelectorAll('[data-settings-tab]').forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function () {
+            var url = new URL(window.location.href);
+            url.searchParams.set('tab', tab.dataset.settingsTab);
+            window.history.replaceState(null, '', url);
+        });
+    });
+
+    // Settings → Working Hours: a day switched off greys out and locks its
+    // times (they're kept, and come back when it's switched on again), and
+    // each day's hours — and the week's — follow what's typed. Same sum as
+    // Setting::workingMinutes(): working time less whatever part lunch takes.
+    var workingHoursTable = document.getElementById('working-hours-table');
+    if (workingHoursTable) {
+        var toMinutes = function (value) {
+            var match = /^(\d{2}):(\d{2})$/.exec(value || '');
+            return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+        };
+        var hoursLabel = function (minutes) {
+            var hours = Math.floor(minutes / 60);
+            var rest = minutes % 60;
+            return hours === 0 ? rest + 'm' : hours + 'h' + (rest > 0 ? ' ' + rest + 'm' : '');
+        };
+        var timeOf = function (row, field) {
+            return toMinutes(row.querySelector('[data-time="' + field + '"]').value);
+        };
+
+        var refreshWorkingHours = function () {
+            var week = 0;
+
+            workingHoursTable.querySelectorAll('[data-working-day]').forEach(function (row) {
+                var working = row.querySelector('.js-working-day').checked;
+                row.classList.toggle('is-off', !working);
+                row.querySelectorAll('input[type="time"]').forEach(function (input) {
+                    input.disabled = !working;
+                });
+
+                var minutes = 0;
+                var start = timeOf(row, 'start');
+                var end = timeOf(row, 'end');
+                if (working && start !== null && end !== null && end > start) {
+                    minutes = end - start;
+                    var lunchStart = timeOf(row, 'lunch_start');
+                    var lunchEnd = timeOf(row, 'lunch_end');
+                    if (lunchStart !== null && lunchEnd !== null) {
+                        minutes -= Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart));
+                    }
+                }
+
+                week += minutes;
+                row.querySelector('.js-day-hours').textContent = working ? hoursLabel(minutes) : 'Day off';
+            });
+
+            document.getElementById('working-hours-week').textContent = hoursLabel(week);
+        };
+
+        workingHoursTable.addEventListener('input', refreshWorkingHours);
+        workingHoursTable.addEventListener('change', refreshWorkingHours);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', rfqmsBoot);

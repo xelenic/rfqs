@@ -33,6 +33,13 @@ class User extends Authenticatable
     ];
 
     /**
+     * The roles that see the Time Spent report.
+     *
+     * @var array<int, string>
+     */
+    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations'];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -53,6 +60,24 @@ class User extends Authenticatable
     public function preference(string $key): mixed
     {
         return $this->preferences[$key] ?? self::PREFERENCE_DEFAULTS[$key] ?? null;
+    }
+
+    /**
+     * Whether this person sees the Time Spent report — see
+     * TIME_SPENT_REPORT_ROLES.
+     */
+    public function canViewTimeSpentReport(): bool
+    {
+        return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
+    }
+
+    /**
+     * Whether this person keeps the daily attendance sheet (AttendanceSheet)
+     * — the same people as see the Time Spent report.
+     */
+    public function canManageAttendance(): bool
+    {
+        return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
     }
 
     /**
