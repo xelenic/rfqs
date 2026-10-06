@@ -11,7 +11,7 @@
     </div>
 @endif
 @if ($time['absent'] > 0)
-    <div class="small text-muted-soft text-decoration-line-through" title="Absent that day — not counted">
-        {{ \App\Models\Setting::durationLabel($time['absent']) }} absent
+    <div class="small text-muted-soft text-decoration-line-through" title="On leave that day — not counted">
+        {{ \App\Models\Setting::durationLabel($time['absent']) }} on leave
     </div>
 @endif

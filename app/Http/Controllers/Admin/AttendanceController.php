@@ -146,7 +146,7 @@ class AttendanceController extends Controller
     private function markMessages(): array
     {
         return [
-            'attendance.*.reason.required_if' => 'Say why they were absent.',
+            'attendance.*.reason.required_if' => 'Say why they were on leave.',
         ];
     }
 
@@ -199,6 +199,6 @@ class AttendanceController extends Controller
         $day = $date === Setting::today() ? 'today' : $date;
 
         return redirect()->route('admin.attendance.index')
-            ->with('status', "Attendance saved for {$day} — {$present} present, {$absent} absent.");
+            ->with('status', "Attendance saved for {$day} — {$present} present, {$absent} on leave.");
     }
 }

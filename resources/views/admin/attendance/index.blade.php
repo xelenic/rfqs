@@ -1,9 +1,10 @@
 {{--
     The attendance page (see AttendanceController): every day's submitted sheet,
-    newest first — who was present, who was absent and why, who submitted it —
+    newest first — who was present, who was on leave and why, who submitted it —
     and the working days still without one. A new sheet, or a correction to
     one, is filled in the popup below (#attendanceModal): every Sourcing, Data
-    Entry and GM Assistant person, Present or Absent, with why when absent. A
+    Entry and GM Assistant person, Present or Leave (stored as absent —
+    Attendance::ABSENT), with why when on leave. A
     person's time only counts on a day the sheet has them present.
 
     One sheet a day: New attendance sheet opens on the newest day still without
@@ -63,7 +64,7 @@
                             <tr>
                                 <th>Day</th>
                                 <th>Present</th>
-                                <th>Absent</th>
+                                <th>Leave</th>
                                 <th>Submitted by</th>
                                 <th class="text-end">Actions</th>
                             </tr>
@@ -190,7 +191,7 @@
                             @enderror
                             <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
                         </div>
-                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as absent, and why. Their time that day won't count.</p>
+                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, and why. Their time that day won't count.</p>
                     </div>
 
                     <div class="table-responsive">
@@ -200,7 +201,7 @@
                                     <th>Person</th>
                                     <th>Role</th>
                                     <th>Attendance</th>
-                                    <th>If absent</th>
+                                    <th>If on leave</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -218,7 +219,7 @@
                                         </td>
                                         <td>
                                             <div class="btn-group btn-group-sm" role="group" aria-label="{{ $person->name }}'s attendance">
-                                                @foreach (['present' => ['Present', 'btn-outline-success', 'bi-check2'], 'absent' => ['Absent', 'btn-outline-danger', 'bi-x-lg']] as $value => [$label, $class, $icon])
+                                                @foreach (['present' => ['Present', 'btn-outline-success', 'bi-check2'], 'absent' => ['Leave', 'btn-outline-danger', 'bi-x-lg']] as $value => [$label, $class, $icon])
                                                     <input type="radio" class="btn-check js-attendance-status" name="attendance[{{ $person->id }}][status]"
                                                            id="attendance-{{ $person->id }}-{{ $value }}" value="{{ $value }}" autocomplete="off" @checked($status === $value)>
                                                     <label class="btn {{ $class }}" for="attendance-{{ $person->id }}-{{ $value }}"><i class="bi {{ $icon }}"></i> {{ $label }}</label>
@@ -228,14 +229,14 @@
                                         <td>
                                             <div class="d-flex gap-2 attendance-absence">
                                                 <select name="attendance[{{ $person->id }}][reason]" class="form-select form-select-sm w-auto @error($field('reason'), 'attendance') is-invalid @enderror"
-                                                        aria-label="Why {{ $person->name }} was absent">
+                                                        aria-label="Why {{ $person->name }} was on leave">
                                                     <option value="">Why…</option>
                                                     @foreach (\App\Models\Attendance::REASONS as $reason)
                                                         <option value="{{ $reason }}" @selected($failed && old($field('reason')) === $reason)>{{ $reason }}</option>
                                                     @endforeach
                                                 </select>
                                                 <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm"
-                                                       value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s absence">
+                                                       value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s leave">
                                             </div>
                                             @error($field('reason'), 'attendance')
                                                 <div class="text-danger small attendance-error">{{ $message }}</div>

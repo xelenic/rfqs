@@ -125,7 +125,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Sick leave'])
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 absent.');
+        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 on leave.');
 
     $sheet = AttendanceSheet::query()->sole();
     expect($sheet->created_by)->toBe($ops->id)
@@ -178,7 +178,7 @@ it('brings a refused submission back in the popup, as it was sent', function () 
     expect($html)->toContain('bootstrap.Modal.getOrCreateInstance(document.getElementById(\'attendanceModal\')).show()')
         ->and($row)->toContain('value="absent" autocomplete="off" checked')
         ->toContain('value="Called in"')
-        ->toContain('Say why they were absent.');
+        ->toContain('Say why they were on leave.');
     expect(AttendanceSheet::query()->count())->toBe(0);
 });
 
@@ -191,7 +191,7 @@ it('marks someone absent, with why, and back again', function () {
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']))
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 absent.');
+        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave.');
 
     expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave'])
         ->and($sheet->refresh()->updated_by)->toBe($ops->id);
@@ -292,7 +292,7 @@ it('counts the day for someone present, and not for someone absent', function ()
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'absent' => 7200]);
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertSee('2h absent');
+        ->assertSee('2h on leave');
 });
 
 it('counts days before attendance started, and everything while it\'s off', function () {
