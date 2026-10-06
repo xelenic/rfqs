@@ -1209,9 +1209,20 @@ function rfqmsBoot() {
             submitSoon(field.type === 'checkbox' ? 500 : 150);
         });
 
+        // The tab's kept in the address too (?tab=), so a reload, a live
+        // update, or coming back after an action on one of its rows (they
+        // redirect back) opens it again.
         document.querySelectorAll('[data-ops-tab]').forEach(function (tab) {
             tab.addEventListener('shown.bs.tab', function () {
                 tabInput.value = tab.dataset.opsTab;
+
+                var url = new URL(window.location.href);
+                if (tab.dataset.opsTab === 'assigned') {
+                    url.searchParams.set('tab', 'assigned');
+                } else {
+                    url.searchParams.delete('tab');
+                }
+                window.history.replaceState(null, '', url);
             });
         });
 
@@ -1255,6 +1266,46 @@ function rfqmsBoot() {
             form.dataset.confirm = isPart
                 ? 'Send this part back? Any approval already given for it is undone.'
                 : 'Send this RFQ back? Any approval already given for it is undone.';
+        });
+    });
+
+    // Senior Operations putting an RFQ on hold, or cancelling it: the button
+    // that opens the popup says which, and the popup asks why. On a list, the
+    // popup is shared by the rows, so the button says which RFQ too.
+    document.querySelectorAll('.js-rfq-status').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('rfqStatusForm');
+            if (!form) return;
+
+            var cancelling = button.dataset.status === 'Cancelled';
+            var part = button.dataset.part || '';
+            var reason = form.querySelector('[name="reason"]');
+            var submit = document.getElementById('rfqStatusSubmit');
+            var title = part
+                ? (cancelling ? 'Cancel part' : 'Put part on hold')
+                : (cancelling ? 'Cancel RFQ' : 'Put on hold');
+
+            if (button.dataset.action) {
+                form.action = button.dataset.action;
+                form.querySelector('[name="status_rfq_id"]').value = button.dataset.rfqId || '';
+                form.querySelector('[name="status_label"]').value = button.dataset.label || '';
+                document.getElementById('rfqStatusTarget').textContent = button.dataset.label || '';
+            }
+
+            form.querySelector('[name="status"]').value = button.dataset.status;
+            form.querySelector('[name="part"]').value = part;
+            document.getElementById('rfqStatusModalLabel').textContent = title;
+            document.getElementById('rfqStatusHint').textContent = part
+                ? (cancelling
+                    ? 'Just this part comes out of the RFQ — the rest carries on without it — until Senior Operations reopens it.'
+                    : 'Just this part comes out of every queue, and its time stops counting, until Senior Operations resumes it. The rest carries on, but the RFQ doesn\'t move on past it meanwhile.')
+                : (cancelling
+                    ? 'It comes out of the workflow — every queue — until Senior Operations reopens it.'
+                    : 'It comes out of every queue, and its time stops counting, until Senior Operations resumes it — just where it was.');
+            submit.querySelector('i').className = 'bi ' + (cancelling ? 'bi-x-circle' : 'bi-pause-circle');
+            submit.querySelector('span').textContent = title;
+            reason.value = '';
+            reason.classList.remove('is-invalid');
         });
     });
 

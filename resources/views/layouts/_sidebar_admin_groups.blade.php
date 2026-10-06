@@ -43,6 +43,8 @@
                 // Not in the heading's badge: every one of these is already
                 // counted in Unassigned or Review above.
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'sent back by a reviewer'],
+                ['label' => 'On Hold', 'icon' => 'bi-pause-circle', 'status' => \App\Models\Rfq::ON_HOLD, 'view' => null, 'count' => 'on_hold', 'hint' => 'on hold'],
+                ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
             ],
         ],
         [

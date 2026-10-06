@@ -15,7 +15,13 @@
     an RFQ can be sent back to Business Development for details
     (_request_details_modal.blade.php) — or, once it has been, is marked as
     being with them.
+    A part of a split stopped on its own (Rfq::changePartStatus()) is noted
+    under the subject, with its own Resume or Reopen for Senior Operations —
+    except on a row heading its parts, whose own lines show it.
 --}}
+@php
+    $stoppedParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isStopped());
+@endphp
 <tr @class(['rfq-group-head' => $groupedParts ?? false])>
     <td class="fw-semibold">
         @if ($groupedParts ?? false)
@@ -36,9 +42,17 @@
             {{-- One segment per part, coloured by where it stands. --}}
             <div class="rfq-group-progress">
                 @foreach ($rfq->sourcingParts() as $part)
-                    @php $partState = $part['assignee']?->pivot->progressState() ?? 'unassigned'; @endphp
+                    @php
+                        $partPivot = $part['assignee']?->pivot;
+                        $partState = match (true) {
+                            $partPivot === null => 'unassigned',
+                            $partPivot->isOnHold() => 'on_hold',
+                            $partPivot->isCancelled() => 'cancelled',
+                            default => $partPivot->progressState(),
+                        };
+                    @endphp
                     <span class="rfq-seg" data-state="{{ $partState }}"
-                          title="{{ $part['number'] }} — {{ $part['assignee']?->pivot->progressLabel() ?? 'Not assigned' }}"></span>
+                          title="{{ $part['number'] }} — {{ $partPivot?->progressLabel() ?? 'Not assigned' }}{{ $partPivot?->isStopped() ? ' · '.($partPivot->isOnHold() ? 'On hold' : 'Cancelled') : '' }}"></span>
                 @endforeach
             </div>
             <div class="rfq-group-caption">{{ $sourcingDone }} of {{ $partsTotal }} {{ $partsTotal === 1 ? 'task' : 'parts' }} done by Sourcing</div>
@@ -50,6 +64,23 @@
     @endunless
     <td>
         {{ $rfq->subject }}
+        @if ($rfq->isStopped() && $rfq->status_reason)
+            <div class="rfq-list-subnote">
+                <i class="bi {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'bi-pause-circle' : 'bi-x-circle' }}"></i>
+                {{ $rfq->status_reason }}
+                @if ($rfq->status_changed_at)
+                    · {{ $rfq->status_changed_at->format('M d') }}
+                @endif
+            </div>
+        @endif
+        @unless ($groupedParts ?? false)
+            @foreach ($stoppedParts as $stoppedAssignee)
+                <div class="rfq-list-subnote">
+                    <i class="bi {{ $stoppedAssignee->pivot->isOnHold() ? 'bi-pause-circle' : 'bi-x-circle' }}"></i>
+                    {{ $rfq->partNumberLabel($stoppedAssignee->pivot->part_number) }} {{ $stoppedAssignee->pivot->isOnHold() ? 'on hold' : 'cancelled' }}@if ($stoppedAssignee->pivot->status_reason): {{ $stoppedAssignee->pivot->status_reason }}@endif
+                </div>
+            @endforeach
+        @endunless
         @if (($canRequestDetails ?? false) && $rfq->isReturnedToBusinessDevelopment())
             <div class="rfq-list-subnote rfq-list-subnote-returned">
                 <i class="bi bi-arrow-counterclockwise"></i>
@@ -123,6 +154,14 @@
                 </button>
             @endif
         @endcan
+        @if ($rfq->isStopped() && auth()->user()->canChangeRfqStatus())
+            @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => null])
+        @endif
+        @if (! ($groupedParts ?? false) && $rfq->status === 'Pending' && auth()->user()->canChangeRfqStatus())
+            @foreach ($stoppedParts as $stoppedAssignee)
+                @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $stoppedAssignee->pivot])
+            @endforeach
+        @endif
         @if (auth()->user()->hasRole('Admin') || (auth()->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment()))
             <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
                     data-bs-toggle="modal" data-bs-target="#editRfqModal"

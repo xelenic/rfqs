@@ -18,6 +18,11 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  * Rfq::assignees() / completeSourcingPart() / returnSourcingPart() /
  * completeDataEntryPart() / finalizePart() / approveSeniorOpsPart() / approveHeadOfBdPart() /
  * recordGmAssistantPart() / approveGmPart() / closePart().
+ *
+ * A part of a split can also be stopped on its own — put on hold or
+ * cancelled (status), see Rfq::changePartStatus(). The isAwaiting…() and
+ * whereAwaiting…() checks say where a part stands regardless; a stopped part
+ * is out of every queue all the same — see isStopped() / whereActive().
  */
 class RfqAssignment extends Pivot
 {
@@ -51,7 +56,45 @@ class RfqAssignment extends Pivot
             'gm_assistant_completed_at' => 'datetime',
             'gm_approved_at' => 'datetime',
             'bd_closed_at' => 'datetime',
+            'status_changed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether this part has been put on hold on its own.
+     */
+    public function isOnHold(): bool
+    {
+        return $this->status === Rfq::ON_HOLD;
+    }
+
+    /**
+     * Whether this part has been cancelled on its own — the rest of its RFQ
+     * goes ahead without it.
+     */
+    public function isCancelled(): bool
+    {
+        return $this->status === Rfq::CANCELLED;
+    }
+
+    /**
+     * Whether this part has been stopped on its own — on hold or cancelled:
+     * out of every queue, its time stopped, until it's set going again.
+     */
+    public function isStopped(): bool
+    {
+        return $this->status !== null;
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts going ahead — not
+     * stopped on their own. The SQL twin of ! isStopped().
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     */
+    public static function whereActive(Builder $query): void
+    {
+        $query->whereNull('rfq_user.status');
     }
 
     /**
@@ -297,6 +340,15 @@ class RfqAssignment extends Pivot
     {
         $query->whereNotNull('rfq_user.gm_approved_at')
             ->whereNull('rfq_user.bd_closed_at');
+    }
+
+    /**
+     * The Senior Operations (or Admin) user who last stopped this part, or set
+     * it going again.
+     */
+    public function statusChangedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'status_changed_by');
     }
 
     /**

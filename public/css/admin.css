@@ -1522,6 +1522,17 @@ h6, .h6 { font-size: 0.85rem; }
   background: transparent;
 }
 
+/* Stopped on its own: on hold reads as a break in the bar, cancelled as
+   greyed out of it. */
+.rfq-seg[data-state="on_hold"] {
+  background: repeating-linear-gradient(90deg, #0aa2c0 0 4px, transparent 4px 7px);
+}
+
+.rfq-seg[data-state="cancelled"] {
+  background: var(--rfq-text-muted);
+  opacity: 0.4;
+}
+
 .rfq-group-caption {
   margin-top: 0.2rem;
   font-size: 0.7rem;
@@ -1565,7 +1576,7 @@ h6, .h6 { font-size: 0.85rem; }
 
 .rfq-part-line {
   display: grid;
-  grid-template-columns: 11rem minmax(13rem, 1.3fr) 13rem minmax(12rem, 1.5fr);
+  grid-template-columns: 11rem minmax(13rem, 1.3fr) 13rem minmax(12rem, 1.5fr) auto;
   align-items: center;
   gap: 0.5rem 1rem;
   font-size: 0.8rem;
@@ -1626,6 +1637,21 @@ h6, .h6 { font-size: 0.85rem; }
 
 .rfq-part-detail-returned {
   color: #b02a37;
+}
+
+/* A part stopped on its own — on hold, or cancelled — with why. */
+.rfq-part-detail-stopped {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.rfq-part-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  white-space: nowrap;
 }
 
 @media (max-width: 991.98px) {

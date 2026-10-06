@@ -51,6 +51,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/assign', [RfqController::class, 'assign'])->name('rfqs.assign');
     Route::patch('rfqs/{rfq}/assign-operations', [RfqController::class, 'assignOperations'])->name('rfqs.assign-operations');
     Route::patch('rfqs/{rfq}/request-details', [RfqController::class, 'requestDetails'])->name('rfqs.request-details');
+    Route::patch('rfqs/{rfq}/status', [RfqController::class, 'changeStatus'])->name('rfqs.change-status');
     Route::patch('rfqs/{rfq}/complete-sourcing', [RfqController::class, 'completeSourcing'])->name('rfqs.complete-sourcing');
     Route::patch('rfqs/{rfq}/return-sourcing', [RfqController::class, 'returnSourcing'])->name('rfqs.return-sourcing');
     Route::patch('rfqs/{rfq}/complete-data-entry', [RfqController::class, 'completeDataEntry'])->name('rfqs.complete-data-entry');

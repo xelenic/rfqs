@@ -156,7 +156,7 @@ it('lists each day\'s submitted sheet, with who was absent and why, and an Edit 
         ->and($monday)->toContain('1 present')
         ->toContain(e($dataEntry->name))
         ->toContain('Casual leave')
-        ->toContain($ops->name)
+        ->toContain(e($ops->name))
         ->toContain('data-action="'.route('admin.attendance.update', $sheet).'"')
         ->toContain('data-sheet-id="'.$sheet->id.'"')
         ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'reason' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'reason' => 'Casual leave', 'note' => null]])));

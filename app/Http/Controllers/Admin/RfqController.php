@@ -8,6 +8,7 @@ use App\Models\Rfq;
 use App\Models\RfqAssignment;
 use App\Models\Setting;
 use App\Models\User;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,7 +49,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'close', 'closePart']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -56,7 +57,7 @@ class RfqController extends Controller implements HasMiddleware
     {
         $status = $request->query('status');
 
-        if (! in_array($status, Rfq::STATUSES, true)) {
+        if (! in_array($status, Rfq::LIST_STATUSES, true)) {
             $status = null;
         }
 
@@ -171,8 +172,11 @@ class RfqController extends Controller implements HasMiddleware
             // The Closed list is the RFQs that have been closed and, beside
             // them, the closed parts of split RFQs still open — a part shows
             // there as soon as Business Development closes it.
+            // On Hold and Cancelled list the RFQs with a part stopped on its own
+            // too — see Rfq::scopeStoppedAs().
             $query->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
-                ->when($status && $status !== 'Completed', fn ($query) => $query->where('status', $status))
+                ->when(in_array($status, [Rfq::ON_HOLD, Rfq::CANCELLED], true), fn ($query) => $query->stoppedAs($status))
+                ->when($status === 'Pending', fn ($query) => $query->where('status', $status))
                 ->when($search, function ($query, $search) {
                     $query->where(function ($q) use ($search) {
                         $q->where('wc_number', 'like', "%{$search}%")
@@ -209,15 +213,17 @@ class RfqController extends Controller implements HasMiddleware
                 // Returns list (below) until they're completed again.
                 // Admin's overview also lists the parts waiting on their
                 // member's Finalize, which are Sourcing's to act on too.
+                // A part stopped on its own is on nobody's list.
                 $query->whereHas('assignees', fn ($q) => $sourcingOverview
-                    ? $q->where(fn ($parts) => $parts
+                    ? $q->whereNull('rfq_user.status')->where(fn ($parts) => $parts
                         ->where(fn ($open) => $open->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at'))
                         ->orWhere(fn ($finalizing) => RfqAssignment::whereAwaitingFinalize($finalizing)))
-                    : $q->whereKey($user->id)->tap(fn ($q) => RfqAssignment::whereNotReturned($q)));
+                    : $q->whereKey($user->id)->whereNull('rfq_user.status')->tap(fn ($q) => RfqAssignment::whereNotReturned($q)));
             })
             ->when($scopedToReturns, function ($query) use ($user, $sourcingOverview) {
                 $query->whereHas('assignees', function ($q) use ($user, $sourcingOverview) {
                     $q->when(! $sourcingOverview, fn ($q) => $q->whereKey($user->id))
+                        ->whereNull('rfq_user.status')
                         ->whereNotNull('rfq_user.returned_at')
                         ->whereNull('rfq_user.completed_at');
                 });
@@ -253,7 +259,7 @@ class RfqController extends Controller implements HasMiddleware
                 // assignee's split, it drops out of this queue on its own,
                 // without touching any other assignee's split on the same
                 // RFQ. See Rfq::completeDataEntryPartFor().
-                ->whereHas('assignees', fn ($q) => $q->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at'))
+                ->whereHas('assignees', fn ($q) => $q->whereNull('rfq_user.status')->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at'))
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(10, ['*'], 'sourcing_page')
@@ -458,7 +464,7 @@ class RfqController extends Controller implements HasMiddleware
     {
         $status = $request->query('status');
 
-        if (! in_array($status, Rfq::STATUSES, true)) {
+        if (! in_array($status, Rfq::LIST_STATUSES, true)) {
             $status = null;
         }
 
@@ -519,7 +525,14 @@ class RfqController extends Controller implements HasMiddleware
         $isBdReturn = $request->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment();
         $resolvesBdReturn = $rfq->isReturnedToBusinessDevelopment() && $request->user()->hasAnyRole(['Business Development', 'Admin']);
 
-        $validator = Validator::make($request->all(), $this->rules());
+        // An RFQ on hold or cancelled keeps its status through an edit — only
+        // Senior Operations' own change (changeStatus()) sets it going again.
+        $rules = $this->rules();
+        if ($rfq->isStopped()) {
+            $rules['status'] = ['nullable'];
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'edit')->withInput();
@@ -529,6 +542,10 @@ class RfqController extends Controller implements HasMiddleware
 
         if ($isBdReturn) {
             $validated['status'] = 'Pending';
+        }
+
+        if ($rfq->isStopped()) {
+            $validated['status'] = $rfq->status;
         }
 
         $rfq->update($validated);
@@ -690,6 +707,115 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
+     * Senior Operations puts an RFQ on hold, cancels it, or sets it going
+     * again (status Pending): an open RFQ can be put on hold or cancelled, one
+     * on hold resumed or cancelled, a cancelled one reopened. Putting on hold
+     * or cancelling needs a reason. A closed RFQ is done with. Admin can too,
+     * as one of Senior Operations (doneBy()). See Rfq::changeStatus(). With a
+     * part, just that part of a split — see changePartStatus().
+     */
+    public function changeStatus(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless($request->user()->canChangeRfqStatus(), 403, 'Only Senior Operations can put an RFQ on hold or cancel it.');
+
+        if ($request->filled('part')) {
+            return $this->changePartStatus($request, $rfq, (int) $request->input('part'));
+        }
+
+        $allowed = match ($rfq->status) {
+            'Pending' => [Rfq::ON_HOLD, Rfq::CANCELLED],
+            Rfq::ON_HOLD => ['Pending', Rfq::CANCELLED],
+            Rfq::CANCELLED => ['Pending'],
+            default => [],
+        };
+        abort_if($allowed === [], 422, 'A closed RFQ can\'t be put on hold or cancelled.');
+
+        $validated = $request->validateWithBag('rfq_status', [
+            'status' => ['required', Rule::in($allowed)],
+            'reason' => ['nullable', 'required_unless:status,Pending', 'string', 'max:1000'],
+        ], [
+            'status.in' => 'That isn\'t a change this RFQ can make right now.',
+            'reason.required_unless' => 'Say why.',
+        ]);
+
+        $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null);
+
+        return redirect()->back()->with('status', match ($validated['status']) {
+            Rfq::ON_HOLD => "{$rfq->rfq_number} is on hold.",
+            Rfq::CANCELLED => "{$rfq->rfq_number} is cancelled.",
+            default => "{$rfq->rfq_number} is back in progress.",
+        });
+    }
+
+    /**
+     * Senior Operations puts one part of a split on hold, cancels it, or sets
+     * it going again, on its own — the same changes as the whole RFQ's
+     * (changeStatus()), while the RFQ itself is in progress. A part that's
+     * closed is done with, and the last part still going ahead can't be
+     * cancelled — that's cancelling the RFQ. See Rfq::changePartStatus().
+     */
+    private function changePartStatus(Request $request, Rfq $rfq, int $part): RedirectResponse
+    {
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($rfq->isSplit() && $assignee, 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->status === 'Pending', 422, 'Set the RFQ itself going again first.');
+        abort_if($assignee->pivot->isBdClosed(), 422, 'A closed part can\'t be put on hold or cancelled.');
+
+        $allowed = match ($assignee->pivot->status) {
+            Rfq::ON_HOLD => ['Pending', Rfq::CANCELLED],
+            Rfq::CANCELLED => ['Pending'],
+            default => [Rfq::ON_HOLD, Rfq::CANCELLED],
+        };
+        $isLastLivePart = ! $assignee->pivot->isCancelled() && $rfq->liveParts()->count() === 1;
+
+        $validated = $request->validateWithBag('rfq_status', [
+            'status' => ['required', Rule::in($allowed), function (string $attribute, mixed $value, Closure $fail) use ($isLastLivePart) {
+                if ($value === Rfq::CANCELLED && $isLastLivePart) {
+                    $fail('It\'s the last part still going ahead — cancel the whole RFQ instead.');
+                }
+            }],
+            'reason' => ['nullable', 'required_unless:status,Pending', 'string', 'max:1000'],
+        ], [
+            'status.in' => 'That isn\'t a change this part can make right now.',
+            'reason.required_unless' => 'Say why.',
+        ]);
+
+        $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null);
+
+        $label = $rfq->partNumberLabel($part);
+
+        return redirect()->back()->with('status', match ($validated['status']) {
+            Rfq::ON_HOLD => "{$label} is on hold.",
+            Rfq::CANCELLED => "{$label} is cancelled — the rest of the RFQ carries on without it.",
+            default => "{$label} is back in progress.",
+        });
+    }
+
+    /**
+     * Refuses work on $assignee's part while it — or the RFQ itself — is
+     * stopped (on hold or cancelled): it's out of every queue until Senior
+     * Operations sets it going again.
+     */
+    private function abortIfStopped(Rfq $rfq, ?User $assignee): void
+    {
+        abort_if($rfq->isStopped(), 422, 'This RFQ is '.strtolower($rfq->status).'.');
+        abort_if($assignee?->pivot->isStopped() === true, 422, 'That part is '.strtolower((string) $assignee?->pivot->status).'.');
+    }
+
+    /**
+     * Refuses acting on the RFQ as a whole — approving every part, closing it
+     * — while a part of it is on hold: that would move it on past the part.
+     * The other parts can still be dealt with one by one.
+     */
+    private function abortIfPartOnHold(Rfq $rfq): void
+    {
+        $partsOnHold = $rfq->partsOnHold();
+
+        abort_if($partsOnHold !== [], 422, "{$rfq->partsLabel($partsOnHold)} is on hold — deal with the other parts one by one, or resume it first.");
+    }
+
+    /**
      * Assign (or clear) the single Operations-team member who routed this
      * RFQ, ahead of Sourcing assignment. Only a user who actually holds the
      * Operations role is ever recorded, even if the request is tampered
@@ -749,6 +875,7 @@ class RfqController extends Controller implements HasMiddleware
             422,
             "That person isn't the Sourcing member assigned to this part."
         );
+        $this->abortIfStopped($rfq, $assignee);
 
         $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
 
@@ -789,6 +916,7 @@ class RfqController extends Controller implements HasMiddleware
         $assignee = $rfq->assigneeForPart((int) $validated['part']);
 
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
 
         $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back.', 1000);
 
@@ -824,6 +952,7 @@ class RfqController extends Controller implements HasMiddleware
         $assignee = $rfq->assigneeForPart((int) $validated['part']);
 
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
 
         $comment = $this->requiredComment($request, 'comment', 'Add a comment to send this part to finalize.');
 
@@ -951,6 +1080,7 @@ class RfqController extends Controller implements HasMiddleware
             'Only Senior Operations can approve this review.'
         );
         abort_unless($rfq->stage === 'senior_ops_review', 422, 'This RFQ is not awaiting Senior Operations review.');
+        $this->abortIfPartOnHold($rfq);
 
         $rfq->completeSeniorOpsReview($this->doneBy($request, 'Senior Operations'));
 
@@ -1012,6 +1142,7 @@ class RfqController extends Controller implements HasMiddleware
             'Only Head of Business Development can approve here.'
         );
         abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
+        $this->abortIfPartOnHold($rfq);
 
         $rfq->approveByHeadOfBd($this->doneBy($request, 'Head of Business Development'));
 
@@ -1127,6 +1258,7 @@ class RfqController extends Controller implements HasMiddleware
 
         if ($part === null) {
             abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not awaiting GM Assistant details.');
+            $this->abortIfPartOnHold($rfq);
         } else {
             abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
             abort_unless($rfq->partAwaitsGmAssistant($part), 422, 'This part is not awaiting GM Assistant details.');
@@ -1193,6 +1325,7 @@ class RfqController extends Controller implements HasMiddleware
             'Only the General Manager can give final approval.'
         );
         abort_unless($rfq->stage === 'gm_review', 422, 'This RFQ is not awaiting General Manager approval.');
+        $this->abortIfPartOnHold($rfq);
 
         $rfq->approveByGm($this->doneBy($request, 'General Manager'));
 
@@ -1259,6 +1392,7 @@ class RfqController extends Controller implements HasMiddleware
             'Only Business Development can close an RFQ.'
         );
         abort_unless($rfq->stage === 'bd_closing', 422, 'This RFQ is not ready to close.');
+        $this->abortIfPartOnHold($rfq);
 
         $validated = $request->validateWithBag('close', $this->referenceCodeRules(), $this->referenceCodeMessages());
 
@@ -1360,7 +1494,7 @@ class RfqController extends Controller implements HasMiddleware
     protected function redirectToIndex(Request $request): RedirectResponse
     {
         $status = $request->input('redirect_status');
-        $parameters = in_array($status, Rfq::STATUSES, true) ? ['status' => $status] : [];
+        $parameters = in_array($status, Rfq::LIST_STATUSES, true) ? ['status' => $status] : [];
 
         $role = $request->user()->hasRole('Admin') ? Rfq::workflowRoleForSlug($request->input('redirect_role')) : null;
 

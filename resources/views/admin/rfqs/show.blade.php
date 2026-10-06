@@ -20,7 +20,9 @@
     // RFQ only hands off to Data Entry once all of its parts have been. See
     // Rfq::completeSourcingPart().
     $myParts = $restrictSourcingView ? $rfq->assignees->where('id', auth()->id()) : collect();
-    $myOpenParts = $myParts->whereNull('pivot.completed_at');
+    // Not a part stopped on its own (Rfq::changePartStatus()) — out of every
+    // queue, and with nothing to be done on it, until it's set going again.
+    $myOpenParts = $myParts->whereNull('pivot.status')->whereNull('pivot.completed_at');
 
     // Data Entry sent one of this Sourcing viewer's parts back for rework —
     // flagged here so a banner with the reason can show up front, rather
@@ -31,7 +33,7 @@
     // who the prompt names — see RfqController::completeSourcing(). Not the
     // ones already offered above, if Admin also holds Sourcing.
     $adminOpenParts = auth()->user()->hasRole('Admin')
-        ? $rfq->assignees->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
+        ? $rfq->assignees->whereNull('pivot.status')->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
         : collect();
 
     // Parts Data Entry has sent to finalize (Send to Finalize), waiting on
@@ -39,7 +41,7 @@
     // every one of them, finalized as its member. See
     // RfqController::finalize().
     $finalizableParts = $rfq->status === 'Pending'
-        ? (auth()->user()->hasRole('Admin') ? $rfq->assignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize())
+        ? (auth()->user()->hasRole('Admin') ? $rfq->assignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped())
         : collect();
 
     // Sourcing never gets access to the assign controls at all — it's a
@@ -58,21 +60,26 @@
     // actually sitting in that stage, same as it only appears on the
     // Review queue while it's there. See Rfq::completeSeniorOpsReview() /
     // rejectToStage().
-    $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->stage === 'senior_ops_review';
+    // None of these while a part's on hold: acting on the RFQ as a whole would
+    // move it on past the part — the others are dealt with one by one
+    // meanwhile (RfqController::abortIfPartOnHold()).
+    $hasPartOnHold = $rfq->partsOnHold() !== [];
+
+    $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->stage === 'senior_ops_review' && ! $hasPartOnHold;
     $canRejectSeniorOps = $canApproveSeniorOpsReview;
 
     // Head of Business Development's own review — same "only while it's
     // actually theirs to decide" rule. See Rfq::approveByHeadOfBd() /
     // rejectToStage().
-    $canDecideHeadOfBdReview = auth()->user()->hasAnyRole(['Head of Business Development', 'Admin']) && $rfq->stage === 'head_of_bd_review';
+    $canDecideHeadOfBdReview = auth()->user()->hasAnyRole(['Head of Business Development', 'Admin']) && $rfq->stage === 'head_of_bd_review' && ! $hasPartOnHold;
 
     // GM Assistant's own turn — same rule again. See
     // Rfq::recordGmAssistantDetails().
-    $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->stage === 'gm_assistant';
+    $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->stage === 'gm_assistant' && ! $hasPartOnHold;
 
     // General Manager's final approval — same rule again. See
     // Rfq::approveByGm() / rejectToStage().
-    $canApproveGm = auth()->user()->hasAnyRole(['General Manager', 'Admin']) && $rfq->stage === 'gm_review';
+    $canApproveGm = auth()->user()->hasAnyRole(['General Manager', 'Admin']) && $rfq->stage === 'gm_review' && ! $hasPartOnHold;
     $canRejectGm = $canApproveGm;
 
     // The one shared reject modal (_reject_modal) works for whichever of
@@ -101,7 +108,7 @@
 
     // Business Development's closing action — the true end of the
     // lifecycle. See Rfq::closeOut().
-    $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing';
+    $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing' && ! $hasPartOnHold;
 
     // A Sourcing assignee sees their own split RFQ number (e.g.
     // "RFQ1001-P2 of P3") once more than one person is sharing the work;
@@ -519,6 +526,24 @@
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
+            @if (auth()->user()->canChangeRfqStatus() && $rfq->status !== 'Completed')
+                {{-- Senior Operations stopping an RFQ — on hold, or cancelled — or
+                     setting it going again (RfqController::changeStatus()). --}}
+                @if ($rfq->status === 'Pending')
+                    <button type="button" class="btn btn-sm btn-outline-warning js-rfq-status"
+                            data-bs-toggle="modal" data-bs-target="#rfqStatusModal" data-status="{{ \App\Models\Rfq::ON_HOLD }}">
+                        <i class="bi bi-pause-circle"></i> Put on hold
+                    </button>
+                @else
+                    @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => null])
+                @endif
+                @if ($rfq->status !== \App\Models\Rfq::CANCELLED)
+                    <button type="button" class="btn btn-sm btn-outline-danger js-rfq-status"
+                            data-bs-toggle="modal" data-bs-target="#rfqStatusModal" data-status="{{ \App\Models\Rfq::CANCELLED }}">
+                        <i class="bi bi-x-circle"></i> Cancel RFQ
+                    </button>
+                @endif
+            @endif
             @if ($canCloseRfq)
                 @include('admin.rfqs._close_button', [
                     'rfq' => $rfq,
@@ -569,6 +594,69 @@
             </div>
         </div>
     @endforeach
+
+    @if ($rfq->isStopped())
+        {{-- On hold or cancelled by Senior Operations — out of every queue
+             until it's set going again. --}}
+        <div @class(['alert d-flex align-items-start gap-2 mb-3', 'alert-info' => $rfq->status === \App\Models\Rfq::ON_HOLD, 'alert-secondary' => $rfq->status === \App\Models\Rfq::CANCELLED])>
+            <i class="bi {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'bi-pause-circle' : 'bi-x-circle' }} fs-5"></i>
+            <div>
+                <div class="fw-bold">
+                    {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'On hold' : 'Cancelled' }}
+                    @if ($rfq->status_changed_at)
+                        since {{ $rfq->status_changed_at->format('M d, Y g:i A') }}
+                    @endif
+                    @if ($rfq->statusChangedBy)
+                        by {{ $rfq->statusChangedBy->name }}
+                    @endif
+                </div>
+                @if ($rfq->status_reason)
+                    <div>{{ $rfq->status_reason }}</div>
+                @endif
+                <div class="small">
+                    {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'Out of every queue, and its time isn\'t counting, until Senior Operations resumes it.' : 'Out of the workflow, unless Senior Operations reopens it.' }}
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @php $stoppedParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isStopped()); @endphp
+    @if ($stoppedParts->isNotEmpty())
+        {{-- Parts of the split stopped on their own (Rfq::changePartStatus()) —
+             the rest carries on. Set going again from Senior Operations'
+             Assigned tab, or here. --}}
+        <div class="alert alert-info d-flex align-items-start gap-2 mb-3">
+            <i class="bi bi-sign-stop fs-5"></i>
+            <div class="flex-grow-1">
+                @foreach ($stoppedParts as $stoppedAssignee)
+                    @php $stoppedPivot = $stoppedAssignee->pivot; @endphp
+                    <div class="d-flex align-items-start justify-content-between gap-2 {{ $loop->last ? '' : 'mb-2' }}">
+                        <div>
+                            <div class="fw-bold">
+                                {{ $rfq->partNumberLabel($stoppedPivot->part_number) }}
+                                {{ $stoppedPivot->isOnHold() ? 'on hold' : 'cancelled' }}
+                                @if ($stoppedPivot->status_changed_at)
+                                    since {{ $stoppedPivot->status_changed_at->format('M d, Y g:i A') }}
+                                @endif
+                                @if ($stoppedPivot->statusChangedBy)
+                                    by {{ $stoppedPivot->statusChangedBy->name }}
+                                @endif
+                            </div>
+                            @if ($stoppedPivot->status_reason)
+                                <div>{{ $stoppedPivot->status_reason }}</div>
+                            @endif
+                            <div class="small">
+                                {{ $stoppedPivot->isOnHold() ? 'Out of every queue, and its time isn\'t counting — the RFQ doesn\'t move on past it until it\'s resumed.' : 'Out of the RFQ — the rest carries on without it.' }}
+                            </div>
+                        </div>
+                        @if ($rfq->status === 'Pending' && auth()->user()->canChangeRfqStatus())
+                            @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $stoppedPivot])
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     @if ($rfq->isReturnedToBusinessDevelopment())
         <div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
@@ -1088,7 +1176,11 @@
                                             <div class="text-muted-soft small fw-semibold">{{ $part['number'] }}</div>
                                         @endif
                                     </div>
-                                    @if ($assignee->pivot->completed_at)
+                                    @if ($assignee->pivot->isStopped())
+                                        <span class="badge {{ $assignee->pivot->isOnHold() ? 'badge-soft-info' : 'badge-soft-secondary' }}" title="{{ $assignee->pivot->status_reason }}">
+                                            <i class="bi {{ $assignee->pivot->isOnHold() ? 'bi-pause-circle' : 'bi-x-circle' }}"></i> {{ $assignee->pivot->isOnHold() ? 'On hold' : 'Cancelled' }}
+                                        </span>
+                                    @elseif ($assignee->pivot->completed_at)
                                         <span class="badge badge-soft-success" title="Completed {{ $assignee->pivot->completed_at->diffForHumans() }}">
                                             <i class="bi bi-check-circle-fill"></i> Done
                                         </span>
@@ -1147,7 +1239,7 @@
         // RfqController::completeDataEntry() and returnSourcing().
         $canReturnSourcing = auth()->user()->hasAnyRole(['Data Entry', 'Admin']);
         $returnEligibleAssignees = $canReturnSourcing
-            ? $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && $assignee->pivot->data_entry_completed_at === null)
+            ? $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && $assignee->pivot->data_entry_completed_at === null && ! $assignee->pivot->isStopped())
             : collect();
     @endphp
 
@@ -1231,6 +1323,9 @@
     @endif
     @if ($canCloseRfq)
         @include('admin.rfqs._close_modal')
+    @endif
+    @if (auth()->user()->canChangeRfqStatus() && in_array($rfq->status, ['Pending', \App\Models\Rfq::ON_HOLD], true))
+        @include('admin.rfqs._status_modal', ['rfq' => $rfq])
     @endif
     @if ($canSubmitGmAssistantDetails)
         @include('admin.rfqs._gm_assistant_modal')

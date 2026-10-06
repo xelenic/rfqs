@@ -369,7 +369,7 @@ class DashboardController extends Controller
             }
         }
 
-        $assignedToMe = $user->assignedRfqs()->where('status', 'Pending')->count();
+        $assignedToMe = $user->assignedRfqs()->where('rfqs.status', 'Pending')->count();
         if ($assignedToMe > 0) {
             $notifications[] = [
                 'type' => 'primary',

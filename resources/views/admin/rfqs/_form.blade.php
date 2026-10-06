@@ -78,6 +78,12 @@
                             {{ $status === 'Completed' ? 'Closed' : $status }}
                         </option>
                     @endforeach
+                    {{-- Shown for an RFQ Senior Operations has stopped, but not
+                         choosable — it's resumed from the RFQ's own page, and
+                         an edit leaves it as it is (RfqController::update()). --}}
+                    @foreach ([\App\Models\Rfq::ON_HOLD, \App\Models\Rfq::CANCELLED] as $stoppedStatus)
+                        <option value="{{ $stoppedStatus }}" disabled>{{ $stoppedStatus }} — change it from the RFQ's page</option>
+                    @endforeach
                 </select>
                 @error('status', $idPrefix)
                     <div class="invalid-feedback">{{ $message }}</div>

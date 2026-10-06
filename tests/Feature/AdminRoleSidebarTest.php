@@ -158,6 +158,8 @@ it('counts each role\'s queue company-wide', function () {
         'gm_assistant' => 1,
         'gm_assistant_returns' => 0,
         'gm_review' => 1,
+        'on_hold' => 0,
+        'cancelled' => 0,
     ]);
 });
 

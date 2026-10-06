@@ -22,6 +22,10 @@ class RfqComment extends Model
         'returned_to_sourcing' => ['label' => 'Returned to Sourcing', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
         'returned_to_data_entry' => ['label' => 'Returned to Data Entry', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
         'rejected' => ['label' => 'Rejected', 'icon' => 'bi-x-octagon-fill', 'tone' => 'danger'],
+        'put_on_hold' => ['label' => 'Put on hold', 'icon' => 'bi-pause-circle-fill', 'tone' => 'danger'],
+        'cancelled' => ['label' => 'Cancelled', 'icon' => 'bi-x-circle-fill', 'tone' => 'danger'],
+        'resumed' => ['label' => 'Resumed', 'icon' => 'bi-play-circle-fill', 'tone' => 'success'],
+        'reopened' => ['label' => 'Reopened', 'icon' => 'bi-arrow-repeat', 'tone' => 'success'],
     ];
 
     protected $fillable = [

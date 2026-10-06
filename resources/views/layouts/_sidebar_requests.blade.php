@@ -24,10 +24,12 @@
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where('rfq_user.user_id', auth()->id())
+            ->whereNull('rfq_user.status')
             ->whereNull('rfq_user.completed_at')
             ->whereNull('rfq_user.returned_at')
             ->count() + \App\Models\Rfq::awaitingFinalizeCount(auth()->id()),
         auth()->user()->hasRole('Data Entry') => \Illuminate\Support\Facades\DB::table('rfq_user')
+            ->whereNull('status')
             ->whereNotNull('completed_at')
             ->whereNull('data_entry_completed_at')
             ->count(),
@@ -72,6 +74,7 @@
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
             ->where('rfq_user.user_id', auth()->id())
+            ->whereNull('rfq_user.status')
             ->whereNull('rfq_user.completed_at')
             ->whereNotNull('rfq_user.returned_at')
             ->count();
@@ -105,6 +108,18 @@
             <span class="nav-link-count" title="{{ $opsReturnsCount }} sent back by a reviewer">{{ $opsReturnsCount }}</span>
         @endif
     </a>
+    {{-- The RFQs they've stopped — on hold, or cancelled, whole or a part of
+         one — each with how many, in grey: they're waiting on nobody. --}}
+    @foreach ([\App\Models\Rfq::ON_HOLD => 'bi-pause-circle', \App\Models\Rfq::CANCELLED => 'bi-x-circle'] as $stoppedStatus => $stoppedIcon)
+        @php $stoppedCount = \App\Models\Rfq::stoppedAs($stoppedStatus)->count(); @endphp
+        <a href="{{ route('admin.rfqs.index', ['status' => $stoppedStatus]) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('status') === $stoppedStatus ? 'active' : '' }}">
+            <i class="bi {{ $stoppedIcon }}"></i>
+            <span class="nav-link-label">{{ $stoppedStatus }}</span>
+            @if ($stoppedCount > 0)
+                <span class="badge badge-soft-secondary ms-auto" title="{{ $stoppedCount }} {{ strtolower($stoppedStatus) }}">{{ $stoppedCount }}</span>
+            @endif
+        </a>
+    @endforeach
 @endif
 @if (auth()->user()->hasRole('Head of Business Development'))
     {{-- RFQs the General Manager sent back to their review, still waiting on

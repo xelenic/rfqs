@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -33,6 +34,24 @@ class Rfq extends Model
      * @var array<int, string>
      */
     public const STATUSES = ['Pending', 'Completed'];
+
+    /**
+     * Senior Operations can stop an open RFQ: on hold — paused, out of every
+     * queue and its time not ticking, until it's resumed where it was — or
+     * cancelled, out of the workflow, unless it's reopened. Set only through
+     * changeStatus(), never the edit form.
+     */
+    public const ON_HOLD = 'On Hold';
+
+    public const CANCELLED = 'Cancelled';
+
+    /**
+     * Every status an RFQ list can be filtered by — STATUSES and the two
+     * Senior Operations sets (ON_HOLD, CANCELLED).
+     *
+     * @var array<int, string>
+     */
+    public const LIST_STATUSES = ['Pending', 'Completed', self::ON_HOLD, self::CANCELLED];
 
     /**
      * Prefix, zero-padding width, and starting sequence for auto-generated
@@ -194,6 +213,9 @@ class Rfq extends Model
         'priority_level',
         'number_of_items',
         'status',
+        'status_reason',
+        'status_changed_by',
+        'status_changed_at',
         'subject',
         'description',
     ];
@@ -212,6 +234,7 @@ class Rfq extends Model
             'split_count' => 'integer',
             'bd_return_count' => 'integer',
             'number_of_items' => 'integer',
+            'status_changed_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'rejected_at' => 'datetime',
@@ -322,7 +345,194 @@ class Rfq extends Model
      */
     public function statusBadgeClass(): string
     {
-        return $this->status === 'Completed' ? 'badge-soft-success' : 'badge-soft-warning';
+        return match ($this->status) {
+            'Completed' => 'badge-soft-success',
+            self::ON_HOLD => 'badge-soft-info',
+            self::CANCELLED => 'badge-soft-secondary',
+            default => 'badge-soft-warning',
+        };
+    }
+
+    /**
+     * Whether Senior Operations has stopped this RFQ — on hold or cancelled.
+     */
+    public function isStopped(): bool
+    {
+        return in_array($this->status, [self::ON_HOLD, self::CANCELLED], true);
+    }
+
+    /**
+     * Senior Operations puts this RFQ on hold, cancels it, or — from either —
+     * sets it going again (Pending), resuming exactly where it was: every
+     * part's progress, and its stage, are left as they were; only the status
+     * changes. A stop needs a reason. Either way it's recorded — who, when,
+     * why — and posted to the RFQ's thread, and the step log follows: time
+     * stops while it's stopped, and starts again when it's resumed, each
+     * part's round carrying on rather than starting over (syncSteps()).
+     *
+     * Caller is responsible for verifying the change is allowed — see
+     * RfqController::changeStatus().
+     */
+    public function changeStatus(string $status, User $by, ?string $reason = null): void
+    {
+        $action = match ($status) {
+            self::ON_HOLD => 'put_on_hold',
+            self::CANCELLED => 'cancelled',
+            default => $this->status === self::CANCELLED ? 'reopened' : 'resumed',
+        };
+
+        $this->update([
+            'status' => $status,
+            'status_reason' => $status === 'Pending' ? null : $reason,
+            'status_changed_by' => $by->id,
+            'status_changed_at' => now(),
+        ]);
+
+        $this->postActionComment($by, $action, filled($reason) ? $reason : match ($action) {
+            'reopened' => 'Reopened.',
+            default => 'Resumed.',
+        });
+
+        $this->syncSteps(resuming: $status === 'Pending');
+    }
+
+    /**
+     * Who last put it on hold, cancelled or resumed it.
+     */
+    public function statusChangedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'status_changed_by');
+    }
+
+    /**
+     * Senior Operations puts one part of a split on hold, cancels it, or —
+     * from either — sets it going again (Pending), on its own: the rest of
+     * the RFQ carries on. A part on hold is out of every queue, its time
+     * stopped, just where it is until it's resumed — and the RFQ as a whole
+     * doesn't move on past it meanwhile. A cancelled part is out of the RFQ:
+     * nothing waits on it, so the RFQ moves on to wherever every other part
+     * is through to already (catchUpWithLiveParts()); reopening it puts the
+     * RFQ back to where that part leaves it (fallBackToLiveParts()). A stop
+     * needs a reason. Either way it's recorded on the part and posted to the
+     * RFQ's thread, naming the part.
+     *
+     * Caller is responsible for verifying the change is allowed — see
+     * RfqController::changeStatus().
+     */
+    public function changePartStatus(int $part, string $status, User $by, ?string $reason = null): void
+    {
+        $assignee = $this->assigneeForPart($part);
+        $wasCancelled = $assignee->pivot->isCancelled();
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+            'status' => $status === 'Pending' ? null : $status,
+            'status_reason' => $status === 'Pending' ? null : $reason,
+            'status_changed_by' => $by->id,
+            'status_changed_at' => now(),
+        ]);
+        $this->load('assignees');
+
+        $action = match ($status) {
+            self::ON_HOLD => 'put_on_hold',
+            self::CANCELLED => 'cancelled',
+            default => $wasCancelled ? 'reopened' : 'resumed',
+        };
+
+        $this->postActionComment($by, $action, filled($reason) ? $reason : ($wasCancelled ? 'Reopened.' : 'Resumed.'), $this->partContext($part));
+
+        if ($status === self::CANCELLED) {
+            $this->catchUpWithLiveParts($by);
+        } elseif ($wasCancelled) {
+            $this->fallBackToLiveParts();
+        }
+
+        // Nothing on a Returns page waits on a stopped part either.
+        if ($status !== 'Pending') {
+            $this->resolveReturnOnceDealtWith('head_of_bd_review');
+            $this->resolveReturnOnceDealtWith('gm_assistant');
+        }
+
+        $this->syncSteps(resuming: $status === 'Pending');
+    }
+
+    /**
+     * Once a part's been cancelled, moves the RFQ on as far as its live parts
+     * (liveParts()) are all through already — the cancelled part may have
+     * been all it was waiting on, at any step. Each step is recorded as done
+     * by whoever did the last of it on a live part, as if that had been the
+     * one to finish it — or by $by, where nobody's on record.
+     */
+    private function catchUpWithLiveParts(User $by): void
+    {
+        $lastToDo = fn (string $at) => $this->liveParts()->sortBy(fn (User $assignee) => $assignee->pivot->{$at})->last();
+        $whoDid = fn (string $at, string $byColumn): User => User::find($lastToDo($at)?->pivot->{$byColumn}) ?? $by;
+
+        if ($this->allSourcingPartsCompleted() && ! $this->isWithDataEntry()) {
+            $this->update(['sourcing_completed_by' => $lastToDo('completed_at')->id, 'sourcing_completed_at' => now()]);
+        }
+
+        if ($this->allDataEntryPartsCompleted() && $this->data_entry_completed_at === null) {
+            $this->update(['data_entry_completed_by' => $whoDid('data_entry_completed_at', 'data_entry_completed_by')->id, 'data_entry_completed_at' => now()]);
+        }
+
+        if ($this->allPartsFinalized() && $this->stage === null) {
+            $this->update(['finalized_by' => $lastToDo('finalized_at')->id, 'finalized_at' => now(), 'stage' => 'senior_ops_review']);
+        }
+
+        if ($this->stage === 'senior_ops_review' && $this->allSeniorOpsPartsReviewed()) {
+            $this->completeSeniorOpsReview($whoDid('senior_ops_reviewed_at', 'senior_ops_reviewed_by'));
+        }
+
+        if ($this->stage === 'head_of_bd_review' && $this->allHeadOfBdPartsApproved()) {
+            $this->approveByHeadOfBd($whoDid('head_of_bd_approved_at', 'head_of_bd_approved_by'));
+        }
+
+        if ($this->stage === 'gm_assistant' && $this->allGmAssistantPartsCompleted()) {
+            $this->update([
+                'gm_assistant_completed_by' => $whoDid('gm_assistant_completed_at', 'gm_assistant_completed_by')->id,
+                'gm_assistant_completed_at' => now(),
+                'stage' => 'gm_review',
+            ]);
+        }
+
+        if ($this->stage === 'gm_review' && $this->allGmPartsApproved()) {
+            $this->approveByGm($whoDid('gm_approved_at', 'gm_approved_by'));
+        }
+
+        if ($this->stage === 'bd_closing' && $this->allBdPartsClosed()) {
+            $this->closeOut($whoDid('bd_closed_at', 'bd_closed_by'), $lastToDo('bd_closed_at')?->pivot->bd_reference_code);
+        }
+    }
+
+    /**
+     * Once a cancelled part's been reopened, puts the RFQ back to where its
+     * live parts leave it: whatever that part isn't through, the RFQ as a
+     * whole isn't either — its own record of each such step goes, and its
+     * stage drops back to the furthest every part has reached
+     * (stageEveryPartHasReached()).
+     */
+    private function fallBackToLiveParts(): void
+    {
+        $through = [
+            'sourcing_completed' => $this->allSourcingPartsCompleted(),
+            'data_entry_completed' => $this->allDataEntryPartsCompleted(),
+            'finalized' => $this->allPartsFinalized(),
+            'senior_ops_reviewed' => $this->allSeniorOpsPartsReviewed(),
+            'head_of_bd_approved' => $this->allHeadOfBdPartsApproved(),
+            'gm_assistant_completed' => $this->allGmAssistantPartsCompleted(),
+            'gm_approved' => $this->allGmPartsApproved(),
+        ];
+
+        $columns = [];
+
+        foreach ($through as $step => $isThrough) {
+            if (! $isThrough) {
+                $columns["{$step}_at"] = null;
+                $columns["{$step}_by"] = null;
+            }
+        }
+
+        $this->update($columns + ['stage' => $this->stageEveryPartHasReached()]);
     }
 
     /**
@@ -355,7 +565,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -524,6 +734,59 @@ class Rfq extends Model
     }
 
     /**
+     * $part's assignment while it's going ahead — null if the part's empty,
+     * doesn't exist, or has been stopped on its own (changePartStatus()).
+     * What every action on one part asks for.
+     */
+    private function activePart(int $part): ?RfqAssignment
+    {
+        $assignment = $this->assigneeForPart($part)?->pivot;
+
+        return $assignment?->isStopped() === false ? $assignment : null;
+    }
+
+    /**
+     * The parts still in this RFQ — every one assigned, less those cancelled
+     * on their own (changePartStatus()). What every "every part is through"
+     * check counts: nothing waits on a cancelled part. One on hold still
+     * counts — the RFQ waits for it.
+     *
+     * @return Collection<int, User>
+     */
+    public function liveParts(): Collection
+    {
+        return $this->assignees->reject(fn (User $assignee) => $assignee->pivot->isCancelled());
+    }
+
+    /**
+     * Whether every planned part is assigned and every live one
+     * (liveParts()) passes $isThrough — false with none assigned at all.
+     */
+    private function everyLivePart(Closure $isThrough): bool
+    {
+        $liveParts = $this->liveParts();
+
+        return $liveParts->isNotEmpty() && $this->allPartsAssigned() && $liveParts->every($isThrough);
+    }
+
+    /**
+     * The parts on hold on their own, by number — what stops the RFQ being
+     * acted on as a whole, which would move it on past them (see
+     * RfqController::abortIfPartOnHold()).
+     *
+     * @return array<int, int>
+     */
+    public function partsOnHold(): array
+    {
+        return $this->assignees
+            ->filter(fn (User $assignee) => $assignee->pivot->isOnHold())
+            ->map(fn (User $assignee) => $assignee->pivot->part_number)
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Whether every Sourcing part has been completed — the condition that
      * actually hands the RFQ off to Data Entry. False for an RFQ with no
      * Sourcing assignees at all (nothing to complete), and false while any
@@ -532,9 +795,7 @@ class Rfq extends Model
      */
     public function allSourcingPartsCompleted(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->completed_at !== null);
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->completed_at !== null);
     }
 
     /**
@@ -545,9 +806,7 @@ class Rfq extends Model
      */
     public function allDataEntryPartsCompleted(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->data_entry_completed_at !== null);
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->data_entry_completed_at !== null);
     }
 
     /**
@@ -557,9 +816,7 @@ class Rfq extends Model
      */
     public function allPartsFinalized(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->finalized_at !== null);
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->finalized_at !== null);
     }
 
     /**
@@ -654,11 +911,7 @@ class Rfq extends Model
      */
     public function scopeAwaitingSeniorOpsReview(Builder $query): void
     {
-        $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
-            ->where('rfqs.stage', 'senior_ops_review')
-            ->orWhere(fn (Builder $inProgress) => $inProgress
-                ->whereNull('rfqs.stage')
-                ->whereHas('assignees', fn (Builder $parts) => RfqAssignment::whereAwaitingSeniorOpsReview($parts))));
+        static::whereAwaitingAt($query, 'senior_ops_review', ['senior_ops_review'], RfqAssignment::whereAwaitingSeniorOpsReview(...));
     }
 
     /**
@@ -671,11 +924,7 @@ class Rfq extends Model
      */
     public function scopeAwaitingHeadOfBdReview(Builder $query): void
     {
-        $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
-            ->where('rfqs.stage', 'head_of_bd_review')
-            ->orWhere(fn (Builder $inProgress) => $inProgress
-                ->where(fn (Builder $stage) => $stage->whereNull('rfqs.stage')->orWhere('rfqs.stage', 'senior_ops_review'))
-                ->whereHas('assignees', fn (Builder $parts) => RfqAssignment::whereAwaitingHeadOfBdReview($parts))));
+        static::whereAwaitingAt($query, 'head_of_bd_review', ['senior_ops_review', 'head_of_bd_review'], RfqAssignment::whereAwaitingHeadOfBdReview(...));
     }
 
     /**
@@ -688,11 +937,7 @@ class Rfq extends Model
      */
     public function scopeAwaitingGmAssistant(Builder $query): void
     {
-        $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
-            ->where('rfqs.stage', 'gm_assistant')
-            ->orWhere(fn (Builder $inProgress) => $inProgress
-                ->where(fn (Builder $stage) => $stage->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review']))
-                ->whereHas('assignees', fn (Builder $parts) => RfqAssignment::whereAwaitingGmAssistant($parts))));
+        static::whereAwaitingAt($query, 'gm_assistant', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant'], RfqAssignment::whereAwaitingGmAssistant(...));
     }
 
     /**
@@ -704,11 +949,7 @@ class Rfq extends Model
      */
     public function scopeAwaitingGmApproval(Builder $query): void
     {
-        $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
-            ->where('rfqs.stage', 'gm_review')
-            ->orWhere(fn (Builder $inProgress) => $inProgress
-                ->where(fn (Builder $stage) => $stage->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant']))
-                ->whereHas('assignees', fn (Builder $parts) => RfqAssignment::whereAwaitingGmApproval($parts))));
+        static::whereAwaitingAt($query, 'gm_review', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review'], RfqAssignment::whereAwaitingGmApproval(...));
     }
 
     /**
@@ -720,11 +961,50 @@ class Rfq extends Model
      */
     public function scopeAwaitingBdClosing(Builder $query): void
     {
+        static::whereAwaitingAt($query, 'bd_closing', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing'], RfqAssignment::whereAwaitingBdClosing(...));
+    }
+
+    /**
+     * The condition behind each review or closing queue's scope above: an RFQ
+     * still open with a part waiting at the step ($awaiting, an RfqAssignment
+     * whereAwaiting…() check) and going ahead — on its way there (stage null
+     * or one of $partStages) — listed part by part; or one at the step's own
+     * $stage with no part waiting there at all, listed whole. A part stopped on
+     * its own (changePartStatus()) isn't waiting on anyone — an RFQ whose only
+     * parts waiting at the step are stopped isn't listed, part by part or
+     * whole, until they're set going again.
+     *
+     * @param  Builder<self>  $query
+     * @param  array<int, string>  $partStages
+     */
+    private static function whereAwaitingAt(Builder $query, string $stage, array $partStages, Closure $awaiting): void
+    {
         $query->where('rfqs.status', 'Pending')->where(fn (Builder $q) => $q
-            ->where('rfqs.stage', 'bd_closing')
-            ->orWhere(fn (Builder $inProgress) => $inProgress
-                ->where(fn (Builder $stage) => $stage->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review']))
-                ->whereHas('assignees', fn (Builder $parts) => RfqAssignment::whereAwaitingBdClosing($parts))));
+            ->where(fn (Builder $whole) => $whole
+                ->where('rfqs.stage', $stage)
+                ->whereDoesntHave('assignees', fn (Builder $parts) => $awaiting($parts)))
+            ->orWhere(fn (Builder $byPart) => $byPart
+                ->where(fn (Builder $at) => $at->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', $partStages))
+                ->whereHas('assignees', function (Builder $parts) use ($awaiting) {
+                    RfqAssignment::whereActive($parts);
+                    $awaiting($parts);
+                })));
+    }
+
+    /**
+     * What Senior Operations' On Hold or Cancelled page lists ($status): the
+     * RFQs stopped whole (changeStatus()), and the ones still in progress
+     * with a part stopped that way on its own (changePartStatus()).
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeStoppedAs(Builder $query, string $status): void
+    {
+        $query->where(fn (Builder $q) => $q
+            ->where('rfqs.status', $status)
+            ->orWhere(fn (Builder $withPart) => $withPart
+                ->where('rfqs.status', 'Pending')
+                ->whereHas('assignees', fn (Builder $parts) => $parts->where('rfq_user.status', $status))));
     }
 
     /**
@@ -880,7 +1160,7 @@ class Rfq extends Model
     {
         $assignee = $this->assigneeForPart($part);
 
-        if (! $assignee || $assignee->pivot->completed_at !== null) {
+        if (! $assignee || $assignee->pivot->completed_at !== null || $assignee->pivot->isStopped()) {
             return;
         }
 
@@ -1013,7 +1293,7 @@ class Rfq extends Model
     {
         $assignee = $this->assigneeForPart($part);
 
-        if (! $assignee || $assignee->pivot->data_entry_completed_at !== null) {
+        if (! $assignee || $assignee->pivot->data_entry_completed_at !== null || $assignee->pivot->isStopped()) {
             return;
         }
 
@@ -1050,7 +1330,7 @@ class Rfq extends Model
     public function partAwaitsFinalize(int $part): bool
     {
         return $this->status === 'Pending'
-            && $this->assigneeForPart($part)?->pivot->isAwaitingFinalize() === true;
+            && $this->activePart($part)?->isAwaitingFinalize() === true;
     }
 
     /**
@@ -1155,7 +1435,7 @@ class Rfq extends Model
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review'], true)
             && ! $this->isHeldOnAnotherReturnsPage()
-            && $this->assigneeForPart($part)?->pivot->isAwaitingSeniorOpsReview() === true;
+            && $this->activePart($part)?->isAwaitingSeniorOpsReview() === true;
     }
 
     /**
@@ -1166,9 +1446,7 @@ class Rfq extends Model
      */
     public function allSeniorOpsPartsReviewed(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->isSeniorOpsApproved());
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->isSeniorOpsApproved());
     }
 
     /**
@@ -1216,6 +1494,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNotNull('finalized_at')
             ->whereNull('senior_ops_reviewed_at')
+            ->whereNull('status')
             ->update([
                 'senior_ops_reviewed_at' => now(),
                 'senior_ops_reviewed_by' => $reviewer->id,
@@ -1239,7 +1518,7 @@ class Rfq extends Model
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review'], true)
             && ! $this->isHeldOnAnotherReturnsPage('head_of_bd_review')
-            && $this->assigneeForPart($part)?->pivot->isAwaitingHeadOfBdReview() === true;
+            && $this->activePart($part)?->isAwaitingHeadOfBdReview() === true;
     }
 
     /**
@@ -1250,9 +1529,7 @@ class Rfq extends Model
      */
     public function allHeadOfBdPartsApproved(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->isHeadOfBdApproved());
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->isHeadOfBdApproved());
     }
 
     /**
@@ -1304,6 +1581,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNotNull('senior_ops_reviewed_at')
             ->whereNull('head_of_bd_approved_at')
+            ->whereNull('status')
             ->update([
                 'head_of_bd_approved_at' => now(),
                 'head_of_bd_approved_by' => $approver->id,
@@ -1417,7 +1695,9 @@ class Rfq extends Model
      *   cleared — see markerColumnsFrom().
      *
      * A part Business Development has already closed is done with, and
-     * left as it is throughout. Also posts a comment recording the
+     * left as it is throughout; so is one cancelled on its own
+     * (changePartStatus()), unless the assignment itself is being redone —
+     * then it's freed with the rest. Also posts a comment recording the
      * rejection, same convention as returnSourcingPart().
      *
      * Caller is responsible for verifying $fromStage is one of
@@ -1428,7 +1708,11 @@ class Rfq extends Model
     {
         $columns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
 
-        DB::table('rfq_user')->where('rfq_id', $this->id)->whereNull('bd_closed_at')->update($columns);
+        DB::table('rfq_user')
+            ->where('rfq_id', $this->id)
+            ->whereNull('bd_closed_at')
+            ->where(fn ($parts) => $parts->whereNull('status')->orWhere('status', '<>', self::CANCELLED))
+            ->update($columns);
         $this->load('assignees');
 
         $this->update($columns + [
@@ -1461,7 +1745,7 @@ class Rfq extends Model
                 $this->increment('bd_return_count');
             }
         } elseif ($targetStage === 'sourcing') {
-            foreach ($openParts as $assignee) {
+            foreach ($openParts->reject(fn (User $assignee) => $assignee->pivot->isCancelled()) as $assignee) {
                 $this->returnSourcingPart($assignee->pivot->part_number, $reason, $rejectedBy);
             }
         }
@@ -1581,9 +1865,12 @@ class Rfq extends Model
      * part that's been freed has its stretch ended too, and on a closed RFQ
      * every stretch is. Called at the end of every workflow action that moves
      * a part; safe to call any time, since a part still where it was logged
-     * is left alone.
+     * is left alone. $resuming: the RFQ's just been set going again after a
+     * stop, so a part back at the step it was stopped at carries on that
+     * round (RfqStep::resumed) — and once its role finishes it, whoever's
+     * credited is credited with the stretches before the stop too.
      */
-    public function syncSteps(): void
+    public function syncSteps(bool $resuming = false): void
     {
         $this->load('assignees');
 
@@ -1612,10 +1899,18 @@ class Rfq extends Model
                     'ended_by_role' => $endedByRole,
                     'worked_by' => $open->worked_by ?? ($endedByRole ? $this->finishedBy($open->step, $part) : null),
                 ]);
+
+                if ($endedByRole && $open->resumed) {
+                    $this->creditRoundBefore($open);
+                }
             }
         }
 
         foreach ($current as $part => $now) {
+            $last = $resuming
+                ? RfqStep::query()->where('rfq_id', $this->id)->where('part_number', $part)->latest('started_at')->latest('id')->first()
+                : null;
+
             RfqStep::query()->create([
                 'rfq_id' => $this->id,
                 'part_number' => $part,
@@ -1625,8 +1920,68 @@ class Rfq extends Model
                 'worked_by' => in_array($now['step'], ['sourcing', 'finalize'], true) ? $now['assignee_id'] : null,
                 'step' => $now['step'],
                 'started_at' => now(),
+                'resumed' => $last !== null && $last->step === $now['step'] && $last->assignee_id === $now['assignee_id'],
             ]);
         }
+    }
+
+    /**
+     * Credits the stretches of $finished's round from before it was stopped
+     * — nobody's while they were waiting on it — to whoever's credited with
+     * $finished.
+     */
+    private function creditRoundBefore(RfqStep $finished): void
+    {
+        $earlier = RfqStep::query()
+            ->where('rfq_id', $this->id)
+            ->where('part_number', $finished->part_number)
+            ->where('step', $finished->step)
+            ->whereKeyNot($finished->id)
+            ->where('started_at', '<=', $finished->started_at)
+            ->latest('started_at')->latest('id')
+            ->get();
+
+        $stretch = $finished;
+
+        foreach ($earlier as $before) {
+            if (! $stretch->resumed) {
+                break;
+            }
+
+            if ($before->worked_by === null) {
+                $before->update(['worked_by' => $finished->worked_by]);
+            }
+
+            $stretch = $before;
+        }
+    }
+
+    /**
+     * $stretches — of one step or several, one part or several — grouped
+     * into rounds, oldest first: one resumed after a stop (RfqStep::resumed)
+     * carries on its part's round at that step rather than starting one.
+     * Expects them oldest first, as steps() has them.
+     *
+     * @param  Collection<int, RfqStep>  $stretches
+     * @return Collection<int, Collection<int, RfqStep>>
+     */
+    private static function roundsOf(Collection $stretches): Collection
+    {
+        $rounds = collect();
+        $latestRound = [];
+
+        foreach ($stretches as $stretch) {
+            $key = $stretch->part_number.'|'.$stretch->step;
+
+            if ($stretch->resumed && isset($latestRound[$key])) {
+                $rounds[$latestRound[$key]]->push($stretch);
+            } else {
+                $latestRound[$key] = $rounds->count();
+                $rounds->push(collect([$stretch]));
+            }
+        }
+
+        return $rounds;
     }
 
     /**
@@ -1672,11 +2027,13 @@ class Rfq extends Model
      * to finalize. After that it's with the reviewers, untimed, until the
      * Head of Business Development approves it and it's GM Assistant's — but
      * not while the RFQ's held on another stage's Returns page, when GM
-     * Assistant can't act on it.
+     * Assistant can't act on it. Nor while it's stopped on its own
+     * (changePartStatus()).
      */
     private function timedStepFor(RfqAssignment $part): ?string
     {
         return match (true) {
+            $part->isStopped() => null,
             $part->completed_at === null => 'sourcing',
             $part->data_entry_completed_at === null => 'data_entry',
             $part->finalized_at === null => 'finalize',
@@ -1697,20 +2054,20 @@ class Rfq extends Model
      */
     public function sourcingCountdown(int $part, ?CarbonInterface $now = null): ?array
     {
-        $stretch = $this->steps->first(fn (RfqStep $step) => $step->part_number === $part
-            && $step->step === 'sourcing'
-            && $step->ended_at === null);
+        $round = self::roundsOf($this->steps->filter(fn (RfqStep $step) => $step->part_number === $part && $step->step === 'sourcing'))->last();
 
-        if ($stretch === null || $this->status !== 'Pending') {
+        if ($round === null || $round->last()->ended_at !== null || $this->status !== 'Pending') {
             return null;
         }
 
         $target = $this->sourcingTargetSeconds();
+        $book = Attendance::book($round->pluck('worked_by'));
 
-        // A day its member was absent doesn't count against them.
+        // Every stretch of the round — time on hold aside — less any day its
+        // member was absent.
         return [
             'target' => $target,
-            'remaining' => $target - $stretch->secondsExcludingAbsence(Attendance::book([$stretch->worked_by]), $now),
+            'remaining' => $target - (int) $round->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)),
         ];
     }
 
@@ -1738,29 +2095,32 @@ class Rfq extends Model
      */
     public function sourcingDeadline(?CarbonInterface $now = null, ?array $book = null): ?array
     {
-        $rounds = $this->steps->where('step', 'sourcing');
+        $stretches = $this->steps->where('step', 'sourcing');
 
-        if ($rounds->isEmpty()) {
+        if ($stretches->isEmpty()) {
             return null;
         }
 
         $now ??= now();
-        $book ??= Attendance::book($rounds->pluck('worked_by'));
+        $book ??= Attendance::book($stretches->pluck('worked_by'));
         $target = $this->sourcingTargetSeconds();
+        $rounds = self::roundsOf($stretches);
+        $isOpen = fn (Collection $round) => $round->last()->ended_at === null;
 
-        // A day its member was absent doesn't count against them.
-        $taken = $rounds->mapWithKeys(fn (RfqStep $round) => [$round->id => $round->secondsExcludingAbsence($book, $now)]);
+        // Every stretch of a round — time on hold aside — less any day its
+        // member was absent.
+        $taken = $rounds->map(fn (Collection $round) => (int) $round->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)));
 
         $remaining = $this->status === 'Pending'
-            ? $rounds->whereNull('ended_at')->map(fn (RfqStep $round) => $target - $taken[$round->id])->min()
+            ? $rounds->filter($isOpen)->keys()->map(fn (int $round) => $target - $taken[$round])->min()
             : null;
-        $late = $rounds->filter(fn (RfqStep $round) => $round->ended_at !== null && $taken[$round->id] > $target);
+        $late = $rounds->reject($isOpen)->keys()->filter(fn (int $round) => $taken[$round] > $target);
 
         return [
             'target' => $target,
             'remaining' => $remaining,
             'late_rounds' => $late->count(),
-            'late_by' => (int) $late->sum(fn (RfqStep $round) => $taken[$round->id] - $target),
+            'late_by' => (int) $late->sum(fn (int $round) => $taken[$round] - $target),
             'exceeded' => $late->isNotEmpty() || ($remaining !== null && $remaining <= 0),
         ];
     }
@@ -1801,8 +2161,9 @@ class Rfq extends Model
             $seconds = (int) $partSeconds->sum();
 
             // A round is a time a part reached the role's own work — reaching
-            // Finalize doesn't make a new one for Sourcing.
-            $rounds = $stretches->where('step', $roleSteps[0]);
+            // Finalize doesn't make a new one for Sourcing, nor does resuming
+            // after a stop.
+            $rounds = $stretches->where('step', $roleSteps[0])->reject(fn (RfqStep $step) => $step->resumed);
 
             $roles[$role] = [
                 'parts' => $partSeconds->map(fn (int $partTotal) => intdiv($partTotal, 60))->all(),
@@ -1873,7 +2234,7 @@ class Rfq extends Model
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'], true)
             && ! $this->isHeldOnAnotherReturnsPage('gm_assistant')
-            && $this->assigneeForPart($part)?->pivot->isAwaitingGmAssistant() === true;
+            && $this->activePart($part)?->isAwaitingGmAssistant() === true;
     }
 
     /**
@@ -1886,7 +2247,7 @@ class Rfq extends Model
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review'], true)
             && ! $this->isHeldOnAnotherReturnsPage()
-            && $this->assigneeForPart($part)?->pivot->isAwaitingGmApproval() === true;
+            && $this->activePart($part)?->isAwaitingGmApproval() === true;
     }
 
     /**
@@ -1897,9 +2258,7 @@ class Rfq extends Model
      */
     public function allGmAssistantPartsCompleted(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->isGmAssistantCompleted());
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->isGmAssistantCompleted());
     }
 
     /**
@@ -1909,9 +2268,7 @@ class Rfq extends Model
      */
     public function allGmPartsApproved(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->isGmApproved());
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->isGmApproved());
     }
 
     /**
@@ -1971,6 +2328,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNotNull('head_of_bd_approved_at')
             ->whereNull('gm_assistant_completed_at')
+            ->whereNull('status')
             ->update([
                 'gm_assistant_completed_at' => now(),
                 'gm_assistant_completed_by' => $completedBy->id,
@@ -2003,8 +2361,8 @@ class Rfq extends Model
     private function resolveReturnOnceDealtWith(string $stage): void
     {
         $stillWaiting = match ($stage) {
-            'head_of_bd_review' => fn (User $assignee) => $assignee->pivot->isAwaitingHeadOfBdReview(),
-            'gm_assistant' => fn (User $assignee) => $assignee->pivot->isAwaitingGmAssistant(),
+            'head_of_bd_review' => fn (User $assignee) => $assignee->pivot->isAwaitingHeadOfBdReview() && ! $assignee->pivot->isStopped(),
+            'gm_assistant' => fn (User $assignee) => $assignee->pivot->isAwaitingGmAssistant() && ! $assignee->pivot->isStopped(),
         };
 
         if ($this->reject_target_stage !== $stage || $this->assignees->contains($stillWaiting)) {
@@ -2058,6 +2416,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNotNull('gm_assistant_completed_at')
             ->whereNull('gm_approved_at')
+            ->whereNull('status')
             ->update([
                 'gm_approved_at' => now(),
                 'gm_approved_by' => $approver->id,
@@ -2080,7 +2439,7 @@ class Rfq extends Model
     {
         return $this->status === 'Pending'
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing'], true)
-            && $this->assigneeForPart($part)?->pivot->isAwaitingBdClosing() === true;
+            && $this->activePart($part)?->isAwaitingBdClosing() === true;
     }
 
     /**
@@ -2091,9 +2450,7 @@ class Rfq extends Model
      */
     public function allBdPartsClosed(): bool
     {
-        return $this->assignees->isNotEmpty()
-            && $this->allPartsAssigned()
-            && $this->assignees->every(fn (User $assignee) => $assignee->pivot->isBdClosed());
+        return $this->everyLivePart(fn (User $assignee) => $assignee->pivot->isBdClosed());
     }
 
     /**
@@ -2145,6 +2502,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNotNull('gm_approved_at')
             ->whereNull('bd_closed_at')
+            ->whereNull('status')
             ->update([
                 'bd_closed_at' => now(),
                 'bd_closed_by' => $closedBy->id,
@@ -2473,6 +2831,7 @@ class Rfq extends Model
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhere('rfqs.stage', 'senior_ops_review'))
             ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.completed_at')
@@ -2504,6 +2863,7 @@ class Rfq extends Model
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review']))
             ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.senior_ops_reviewed_at')
@@ -2531,6 +2891,7 @@ class Rfq extends Model
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant']))
             ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.head_of_bd_approved_at')
@@ -2558,6 +2919,7 @@ class Rfq extends Model
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review']))
             ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
             ->whereNotNull('rfq_user.gm_assistant_completed_at')
@@ -2585,6 +2947,7 @@ class Rfq extends Model
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing']))
             ->whereNotNull('rfq_user.gm_approved_at')
             ->whereNull('rfq_user.bd_closed_at')
@@ -2674,6 +3037,7 @@ class Rfq extends Model
         return DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->when($userId, fn ($query) => $query->where('rfq_user.user_id', $userId))
             ->whereNotNull('rfq_user.data_entry_completed_at')
             ->whereNull('rfq_user.finalized_at')
@@ -2695,6 +3059,7 @@ class Rfq extends Model
         $sourcingParts = fn () => DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
             ->whereNull('rfq_user.completed_at');
 
         return [
@@ -2705,12 +3070,16 @@ class Rfq extends Model
             'ops_returns' => static::seniorOpsReturnsCount(),
             'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count() + static::awaitingFinalizeCount(),
             'sourcing_returns' => $sourcingParts()->whereNotNull('rfq_user.returned_at')->count(),
-            'data_entry' => DB::table('rfq_user')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->count(),
+            'data_entry' => DB::table('rfq_user')->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->count(),
             'head_of_bd' => static::headOfBdReviewCount(),
             'head_of_bd_returns' => static::headOfBdReturnsCount(),
             'gm_assistant' => static::gmAssistantReviewCount(),
             'gm_assistant_returns' => static::gmAssistantReturnsCount(),
             'gm_review' => static::gmReviewCount(),
+            // Senior Operations' stopped RFQs, and RFQs with a part stopped —
+            // not waiting on anyone, so not in any heading's badge.
+            'on_hold' => static::stoppedAs(self::ON_HOLD)->count(),
+            'cancelled' => static::stoppedAs(self::CANCELLED)->count(),
         ];
     }
 

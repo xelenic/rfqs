@@ -27,12 +27,12 @@
                     // Open parts: the ones sent back on Returns, the rest on Pending —
                     // each in one list only, as on a member's own pages. Pending
                     // also has the parts waiting on their member's Finalize.
-                    $openParts = $rfq->assignees->whereNull('pivot.completed_at');
+                    $openParts = $rfq->assignees->whereNull('pivot.status')->whereNull('pivot.completed_at');
                     $listedParts = $scopedToReturns
                         ? $openParts->whereNotNull('pivot.returned_at')
                         // concat, not merge: an Eloquent merge keeps one entry per
                         // user, and one member can hold several parts.
-                        : $openParts->whereNull('pivot.returned_at')->toBase()->concat($rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize()));
+                        : $openParts->whereNull('pivot.returned_at')->toBase()->concat($rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped()));
                 @endphp
                 @foreach ($listedParts as $partAssignment)
                     <tr>

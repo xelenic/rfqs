@@ -81,6 +81,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person can put an RFQ on hold, cancel it, or set it going
+     * again — Senior Operations, and Admin (Rfq::changeStatus()).
+     */
+    public function canChangeRfqStatus(): bool
+    {
+        return $this->hasAnyRole(['Senior Operations', 'Admin']);
+    }
+
+    /**
      * RFQs this user (typically a Sourcing team member) is assigned to.
      */
     public function assignedRfqs(): BelongsToMany

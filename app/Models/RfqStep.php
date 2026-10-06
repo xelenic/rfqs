@@ -12,7 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One stretch a part of an RFQ spent at a timed step — from when it reached
  * the step to when it left it, whether done or sent back. A part goes through
  * a step once per round, so rework is more rows; an open row (no ended_at) is
- * where the part is now. One the role ended themselves, outside working
+ * where the part is now — and a part stopped part way through (the RFQ on
+ * hold or cancelled) carries on the same round once it's resumed (resumed),
+ * rather than starting a new one. One the role ended themselves, outside working
  * hours, is work done out of hours (isOutOfHoursWork()). Its time is credited
  * to worked_by, and counts on a day the attendance sheet has them present
  * (Attendance) — see secondsByAttendance(). Kept by Rfq::syncSteps(); read as working time by
@@ -46,6 +48,7 @@ class RfqStep extends Model
         'started_at',
         'ended_at',
         'ended_by_role',
+        'resumed',
     ];
 
     /**
@@ -58,6 +61,7 @@ class RfqStep extends Model
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
             'ended_by_role' => 'boolean',
+            'resumed' => 'boolean',
         ];
     }
 

@@ -16,6 +16,8 @@
         $statusFilter === 'Pending' && $scopedToBdClosing => 'Ready to Close',
         $statusFilter === 'Pending' => 'Pending RFQs',
         $statusFilter === 'Completed' => 'Closed RFQs',
+        $statusFilter === \App\Models\Rfq::ON_HOLD => 'On Hold RFQs',
+        $statusFilter === \App\Models\Rfq::CANCELLED => 'Cancelled RFQs',
         default => 'RFQs',
     };
 
@@ -118,7 +120,7 @@
                     </thead>
                     <tbody>
                         @forelse ($bySourcingRfqs as $rfq)
-                            @foreach ($rfq->assignees->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
+                            @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
                                 {{-- Clicking the row opens a quick-detail modal scoped to
                                      this one assignee (subject, description, their own
                                      comments only — other split sourcers' comments stay
@@ -172,7 +174,7 @@
             @endif
 
             @foreach ($bySourcingRfqs as $rfq)
-                @foreach ($rfq->assignees->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
+                @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
                     @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $assignee])
                 @endforeach
             @endforeach
@@ -200,7 +202,7 @@
                         @forelse ($rfqs as $rfq)
                             {{-- One row per returned part of mine — someone holding
                                  several parts of a split can have more than one. --}}
-                            @foreach ($rfq->assignees->where('id', auth()->id())->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
+                            @foreach ($rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
                                 <tr class="js-de-sourcing-row" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $myAssignment->pivot->part_number }}" role="button" tabindex="0">
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($myAssignment->pivot->part_number) }}</td>
@@ -235,7 +237,7 @@
             </div>
 
             @foreach ($rfqs as $rfq)
-                @foreach ($rfq->assignees->where('id', auth()->id())->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
+                @foreach ($rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
                     @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment, 'redirectView' => 'returns'])
                 @endforeach
             @endforeach
@@ -265,7 +267,7 @@
                     </thead>
                     <tbody>
                         @forelse ($seniorOpsReviewRfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingSeniorOpsReview()); @endphp
+                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingSeniorOpsReview() && ! $assignee->pivot->isStopped()); @endphp
                             @foreach ($readyParts as $assignee)
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
@@ -390,7 +392,7 @@
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingHeadOfBdReview()); @endphp
+                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingHeadOfBdReview() && ! $assignee->pivot->isStopped()); @endphp
                             @foreach ($readyParts as $assignee)
                                 @php $partLabel = $rfq->partNumberLabel($assignee->pivot->part_number); @endphp
                                 <tr>
@@ -531,7 +533,7 @@
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmAssistant()); @endphp
+                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmAssistant() && ! $assignee->pivot->isStopped()); @endphp
                             @foreach ($readyParts as $assignee)
                                 @php $partLabel = $rfq->partNumberLabel($assignee->pivot->part_number); @endphp
                                 <tr>
@@ -651,7 +653,7 @@
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmApproval()); @endphp
+                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmApproval() && ! $assignee->pivot->isStopped()); @endphp
                             @foreach ($readyParts as $assignee)
                                 @php $partLabel = $rfq->partNumberLabel($assignee->pivot->part_number); @endphp
                                 <tr>
@@ -915,7 +917,7 @@
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingBdClosing()); @endphp
+                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingBdClosing() && ! $assignee->pivot->isStopped()); @endphp
                             @foreach ($readyParts as $assignee)
                                 @php $partLabel = $rfq->partNumberLabel($assignee->pivot->part_number); @endphp
                                 <tr>
@@ -1014,8 +1016,10 @@
                                     $myPart = $myAssignment->pivot->part_number;
                                     $iHaveCompletedMyPart = $myAssignment->pivot->completed_at !== null;
                                 @endphp
-                                {{-- Sent back by Data Entry: that's on the Returns list, not here. --}}
+                                {{-- Sent back by Data Entry: that's on the Returns list, not here.
+                                     Stopped on its own: on nobody's list. --}}
                                 @continue(! $iHaveCompletedMyPart && $myAssignment->pivot->returned_at !== null)
+                                @continue($myAssignment->pivot->isStopped())
                                 {{-- Clicking the row (but not the Mark Complete button) opens
                                      the same quick-detail modal Data Entry uses (description,
                                      status, comments scoped to you) — see admin.js, which
@@ -1088,6 +1092,7 @@
             @foreach ($rfqs as $rfq)
                 @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)
                     @continue($myAssignment->pivot->completed_at === null && $myAssignment->pivot->returned_at !== null)
+                    @continue($myAssignment->pivot->isStopped())
                     @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment])
                 @endforeach
             @endforeach
@@ -1315,6 +1320,10 @@
     @endif
     @if ($scopedToUnassigned)
         @include('admin.rfqs._request_details_modal')
+        @if (auth()->user()->canChangeRfqStatus())
+            {{-- No RFQ of its own — not the list loop's last one either. --}}
+            @include('admin.rfqs._status_modal', ['rfq' => null])
+        @endif
     @endif
 
     @if ($errors->create->any() || $errors->edit->any())
