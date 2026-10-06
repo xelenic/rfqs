@@ -51,7 +51,9 @@
                     @endif
                 @endcan
 
-                @if (auth()->user()->canViewTimeSpentReport())
+                {{-- Admin has these in Senior Operations' group, with the rest of
+                     that role's pages (_sidebar_admin_groups). --}}
+                @if (auth()->user()->canViewTimeSpentReport() && ! (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view')))
                     <div class="sidebar-section-title">Reports</div>
                     @if (auth()->user()->canManageAttendance())
                         {{-- The working days still without an attendance sheet, as a red count. --}}

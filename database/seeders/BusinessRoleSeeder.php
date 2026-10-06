@@ -60,6 +60,12 @@ class BusinessRoleSeeder extends Seeder
                 'description' => 'Gives final executive approval before an RFQ routes back to Business Development to close.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
+            // No part in the RFQ workflow: attendance and the Time Spent
+            // report go by role (User::TIME_SPENT_REPORT_ROLES), not permission.
+            'HR Manager' => [
+                'description' => 'Keeps the daily attendance sheet — who of Sourcing, Data Entry and GM Assistant was present or on leave — and sees the Time Spent report.',
+                'permissions' => [],
+            ],
         ];
 
         foreach ($roles as $name => $config) {

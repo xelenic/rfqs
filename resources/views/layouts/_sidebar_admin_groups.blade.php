@@ -14,9 +14,13 @@
     parent included — are remembered in this browser, and a collapsed
     heading carries its queue's count (the parent's, all of them added up) so
     nothing waiting is hidden.
+
+    A role's pages that aren't RFQ lists — Senior Operations' Attendance and
+    Time Spent — sit in its group too, as plain links to their own route.
 --}}
 @php
-    $counts = \App\Models\Rfq::queueCounts();
+    // Besides the queues: the working days still without an attendance sheet.
+    $counts = \App\Models\Rfq::queueCounts() + ['attendance_missing' => count(\App\Models\AttendanceSheet::missingDays())];
     $onRfqList = request()->routeIs('admin.rfqs.index');
     $currentRole = $onRfqList ? \App\Models\Rfq::workflowRoleForSlug(request('role')) : null;
     $currentView = in_array(request('view'), \App\Models\Rfq::QUEUE_VIEWS, true) ? request('view') : null;
@@ -24,7 +28,9 @@
     // Per group: the pages under it and which of the counts its heading shows
     // while collapsed — a role's queues add up, each item in one only. (Sourcing's
     // pending parts leave out the returns, which have a count of their own.) A
-    // page's "view" is the role's second queue; its first has none.
+    // page's "view" is the role's second queue; its first has none. A page
+    // that isn't an RFQ list has a "route" (and the routes it's active on)
+    // instead.
     $groups = [
         [
             'role' => 'Business Development', 'badge' => ['closing', 'bd_returns'],
@@ -45,6 +51,8 @@
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'sent back by a reviewer'],
                 ['label' => 'On Hold', 'icon' => 'bi-pause-circle', 'status' => \App\Models\Rfq::ON_HOLD, 'view' => null, 'count' => 'on_hold', 'hint' => 'on hold'],
                 ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
+                ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance_missing', 'hint' => 'working days without a sheet'],
+                ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
             ],
         ],
         [
@@ -89,10 +97,12 @@
     // Whether a page is the one being viewed. Closed RFQs is company-wide,
     // not a role's own queue — no role on its link, and it's active whichever
     // group it sits under.
-    $isLinkActive = fn (array $group, array $link) => $onRfqList
-        && request('status') === $link['status']
-        && $currentView === $link['view']
-        && ($link['status'] === 'Completed' || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development'));
+    $isLinkActive = fn (array $group, array $link) => isset($link['route'])
+        ? request()->routeIs($link['activeOn'])
+        : ($onRfqList
+            && request('status') === $link['status']
+            && $currentView === $link['view']
+            && ($link['status'] === 'Completed' || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development')));
 @endphp
 
 {{-- The root: one node, "Role Stages", with each role's group under it as a
@@ -134,11 +144,14 @@
                 <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
                     @foreach ($group['links'] as $link)
                         @php
-                            $isCompanyWide = $link['status'] === 'Completed';
+                            $isCompanyWide = ($link['status'] ?? null) === 'Completed';
                             $isActive = $isLinkActive($group, $link);
                             $count = $link['count'] ? $counts[$link['count']] : 0;
+                            $linkUrl = isset($link['route'])
+                                ? route($link['route'])
+                                : route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug]));
                         @endphp
-                        <a href="{{ route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug])) }}"
+                        <a href="{{ $linkUrl }}"
                            class="nav-link {{ $isActive ? 'active' : '' }}">
                             <i class="bi {{ $link['icon'] }}"></i>
                             <span class="nav-link-label">{{ $link['label'] }}</span>

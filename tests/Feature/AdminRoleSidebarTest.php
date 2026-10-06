@@ -310,3 +310,20 @@ it('leaves Assign Operations off Admin\'s list and RFQ pages, but not off everyo
             ->assertSee('js-assign-operations-rfq', false);
     }
 });
+
+it('gives Admin Senior Operations\' Attendance and Time Spent pages in that role\'s group, not in a Reports section of its own', function () {
+    $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.attendance.index'))->assertOk()->getContent();
+    $group = Str::betweenFirst($html, 'id="sidebar-group-senior-operations">', '</div>');
+
+    expect($group)->toContain('href="'.route('admin.attendance.index').'"')
+        ->toContain('href="'.route('admin.reports.time-spent').'"')
+        // Open on Attendance: its link is the current one.
+        ->toMatch('/href="'.preg_quote(route('admin.attendance.index'), '/').'"\s+class="nav-link active"/')
+        ->and($html)->not->toContain('<div class="sidebar-section-title">Reports</div>');
+
+    // Senior Operations keeps its own Reports section.
+    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('<div class="sidebar-section-title">Reports</div>', false)
+        ->assertSee(route('admin.attendance.index'))
+        ->assertSee(route('admin.reports.time-spent'));
+});

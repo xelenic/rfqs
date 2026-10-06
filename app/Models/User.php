@@ -33,11 +33,13 @@ class User extends Authenticatable
     ];
 
     /**
-     * The roles that see the Time Spent report.
+     * The roles that see the Time Spent report — and keep the attendance
+     * sheet (canManageAttendance()). HR Manager has no part in the RFQ
+     * workflow itself.
      *
      * @var array<int, string>
      */
-    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations'];
+    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Manager'];
 
     /**
      * Get the attributes that should be cast.

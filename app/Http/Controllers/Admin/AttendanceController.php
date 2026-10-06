@@ -17,9 +17,9 @@ use Illuminate\View\View;
  * Senior Operations' daily attendance sheets (AttendanceSheet), one a day:
  * every day's submitted sheet listed, newest first, and a new one — or a
  * correction to one already submitted — filled in a popup: every Sourcing, Data Entry and GM
- * Assistant person, present or absent, with why when absent. A person's time
- * only counts on a day the sheet has them present. For Admin and Senior
- * Operations (User::canManageAttendance()).
+ * Assistant person, present or on leave, with why when on leave. A person's
+ * time only counts on a day the sheet has them present. For Admin, Senior
+ * Operations and HR Manager (User::canManageAttendance()).
  */
 class AttendanceController extends Controller
 {
@@ -36,7 +36,7 @@ class AttendanceController extends Controller
      */
     public function index(Request $request): View
     {
-        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin and Senior Operations keep the attendance sheet.');
+        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin, Senior Operations and HR Manager keep the attendance sheet.');
 
         $today = Setting::today();
         $missingDays = AttendanceSheet::missingDays();
@@ -66,7 +66,7 @@ class AttendanceController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin and Senior Operations keep the attendance sheet.');
+        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin, Senior Operations and HR Manager keep the attendance sheet.');
 
         $validated = $request->validateWithBag('attendance', [
             'date' => [
@@ -110,7 +110,7 @@ class AttendanceController extends Controller
      */
     public function update(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin and Senior Operations keep the attendance sheet.');
+        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin, Senior Operations and HR Manager keep the attendance sheet.');
 
         $validated = $request->validateWithBag('attendance', $this->markRules(), $this->markMessages());
 
