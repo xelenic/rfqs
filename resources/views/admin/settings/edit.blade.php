@@ -165,6 +165,24 @@
                         @csrf
                         @method('PATCH')
 
+                        {{-- Light is the panel as it's always been; Dark turns every
+                             page dark (admin.css). --}}
+                        <div class="mb-3">
+                            <div class="form-label fw-semibold mb-2">Theme</div>
+                            <div class="theme-picks" role="radiogroup" aria-label="Theme">
+                                @foreach (\App\Models\User::THEMES as $theme => $themeLabel)
+                                    <input type="radio" class="btn-check" name="theme" id="pref-theme-{{ $theme }}" value="{{ $theme }}" autocomplete="off" @checked($user->theme() === $theme)>
+                                    <label class="theme-pick" for="pref-theme-{{ $theme }}" data-theme-preview="{{ $theme }}">
+                                        <span class="theme-pick-swatch" aria-hidden="true">
+                                            <span class="theme-pick-sidebar"></span>
+                                            <span class="theme-pick-card"></span>
+                                        </span>
+                                        <span class="fw-semibold"><i class="bi {{ $theme === 'dark' ? 'bi-moon-stars' : 'bi-sun' }}"></i> {{ $themeLabel }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
                         <div class="form-check form-switch mb-3">
                             <input type="hidden" name="live_updates" value="0">
                             <input class="form-check-input" type="checkbox" role="switch" name="live_updates" value="1" id="pref-live-updates"

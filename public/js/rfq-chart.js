@@ -5,16 +5,23 @@
 // the table is the chart's accessible twin, swapped in for it on request — or
 // left showing on its own if ECharts couldn't be loaded.
 (function () {
-    // Colors are validated for CVD-safe adjacent separation ("#3b53d1,#157347"
-    // passes all checks against a white surface). Pending = blue, Completed =
-    // green, matching the badge-soft-* colors used for RFQ status elsewhere.
+    // Its colors come from the page's theme — admin.css's palette, light or
+    // dark (Settings → Preferences) — read once, as the script loads; six-digit
+    // hex, for withAlpha(). Pending = blue, Completed = green, matching the
+    // badge-soft-* colors used for RFQ status elsewhere; on the light theme
+    // "#3b53d1,#157347" passes every CVD-safe separation check against white.
+    var theme = getComputedStyle(document.documentElement);
+    function token(name, fallback) {
+        return theme.getPropertyValue(name).trim() || fallback;
+    }
     var SERIES = [
-        { key: 'pending', label: 'Pending', color: '#3b53d1' },
-        { key: 'completed', label: 'Completed', color: '#157347' },
+        { key: 'pending', label: 'Pending', color: token('--rfq-chart-pending', '#3b53d1') },
+        { key: 'completed', label: 'Completed', color: token('--rfq-chart-completed', '#157347') },
     ];
-    var INK = '#1f2430';
-    var MUTED = '#6b7280';
-    var HAIRLINE = '#e6e9f2';
+    var INK = token('--rfq-text', '#1f2430');
+    var MUTED = token('--rfq-text-muted', '#6b7280');
+    var HAIRLINE = token('--rfq-border', '#e6e9f2');
+    var SURFACE = token('--rfq-surface', '#ffffff');
     var MIN_CEILING = 4; // a quiet period still gets a readable scale
 
     // The charts on the page, and — so a live refresh (window.renderRfqCharts)
@@ -114,7 +121,7 @@
                 itemHeight: 4,
                 itemGap: 20,
                 textStyle: { color: INK, fontSize: 12, fontWeight: 600 },
-                inactiveColor: '#c3cbdc',
+                inactiveColor: token('--rfq-tree-line-soft', '#c3cbdc'),
                 selected: switchedOff[container.id] || {},
             },
             tooltip: {
@@ -124,7 +131,7 @@
                 backgroundColor: INK,
                 borderWidth: 0,
                 padding: [8, 12],
-                textStyle: { color: '#fff', fontSize: 12 },
+                textStyle: { color: SURFACE, fontSize: 12 },
                 extraCssText: 'border-radius: 8px; box-shadow: 0 6px 18px rgba(16, 24, 40, 0.18);',
             },
             xAxis: {
@@ -145,7 +152,7 @@
                     symbolSize: 7,
                     showSymbol: labels.length <= 15, // over a long range only the point you're on
                     lineStyle: { width: 2.5 },
-                    itemStyle: { color: item.color, borderColor: '#fff', borderWidth: 2 },
+                    itemStyle: { color: item.color, borderColor: SURFACE, borderWidth: 2 },
                     areaStyle: {
                         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                             { offset: 0, color: withAlpha(item.color, 0.18) },

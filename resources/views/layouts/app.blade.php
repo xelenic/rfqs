@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+{{-- The person's theme (Settings → Preferences): data-bs-theme turns
+     Bootstrap's own components dark, data-theme admin.css's palette. --}}
+<html lang="en" data-theme="{{ auth()->user()->theme() }}" data-bs-theme="{{ auth()->user()->theme() }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -1890,13 +1890,24 @@ window.renderRfqProgressChart = function () {
     // text. Pending stays a flat white/dashed outline on purpose, so a
     // lane still reads left-to-right at a glance: solid + tinted means
     // "happened", dashed + white means "not yet".
-    var STATE_COLORS = {
+    // The dark theme (Settings → Preferences) has its own: deep tints, light
+    // text — "not yet" a flat card on the page's surface.
+    var isDark = document.documentElement.dataset.theme === 'dark';
+    var STATE_COLORS = isDark ? {
+        done: { from: '#173327', to: '#1b3b2d', border: '#2f7a52', text: '#4ade80' },
+        current: { from: '#1e2647', to: '#232d55', border: '#5b78f6', text: '#a3b3ff' },
+        pending: { from: '#171c27', to: '#171c27', border: '#3a4357', text: '#98a2b3' },
+        returned: { from: '#3a1d22', to: '#432026', border: '#b4535e', text: '#f87171' },
+    } : {
         done: { from: '#eafaf1', to: '#d7f2e3', border: '#8fd4ac', text: '#157347' },
         current: { from: '#eef2ff', to: '#dde5ff', border: '#7c93f7', text: '#3b53d1' },
         pending: { from: '#ffffff', to: '#ffffff', border: '#c3cbdc', text: '#6b7280' },
         returned: { from: '#fdf1f2', to: '#fbe0e3', border: '#ee9ca6', text: '#b02a37' },
     };
-    var LINE_COLOR = '#a9b4c9';
+    var LINE_COLOR = isDark ? '#4b556b' : '#a9b4c9';
+    var LABEL_COLORS = isDark
+        ? { kicker: '#7c879c', number: '#8c97ab', role: '#b3bccb', date: '#7c879c' }
+        : { kicker: '#8b98ab', number: '#7c8a9e', role: '#5b6576', date: '#9aa3b2' };
     var BASE_NODE_WIDTH = 170;
     var BASE_NODE_HEIGHT = 78;
     var BASE_COLUMN_GAP = 64;
@@ -2127,14 +2138,14 @@ window.renderRfqProgressChart = function () {
                     verticalAlign: 'middle',
                     align: 'center',
                     rich: {
-                        role_kicker: { fontWeight: 700, fontSize: 8 * zoom, color: '#8b98ab', lineHeight: 11 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        role_kicker: { fontWeight: 700, fontSize: 8 * zoom, color: LABEL_COLORS.kicker, lineHeight: 11 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
                         title_done: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.done.text, width: nodeWidth - 18, overflow: 'truncate' },
                         title_current: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.current.text, width: nodeWidth - 18, overflow: 'truncate' },
                         title_pending: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.pending.text, width: nodeWidth - 18, overflow: 'truncate' },
                         title_returned: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.returned.text, width: nodeWidth - 18, overflow: 'truncate' },
-                        rfq_number: { fontSize: 9 * zoom, fontWeight: 600, color: '#7c8a9e', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                        meta_role: { fontSize: 9 * zoom, color: '#5b6576', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                        meta_date: { fontSize: 9 * zoom, color: '#9aa3b2', lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        rfq_number: { fontSize: 9 * zoom, fontWeight: 600, color: LABEL_COLORS.number, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        meta_role: { fontSize: 9 * zoom, color: LABEL_COLORS.role, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
+                        meta_date: { fontSize: 9 * zoom, color: LABEL_COLORS.date, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
                     },
                 },
             }],

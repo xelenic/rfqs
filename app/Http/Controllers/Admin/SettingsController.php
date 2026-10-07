@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -78,8 +79,16 @@ class SettingsController extends Controller
     {
         $user = $request->user();
 
+        $validated = $request->validate([
+            'theme' => ['nullable', Rule::in(array_keys(User::THEMES))],
+        ]);
+
         $preferences = $user->preferences ?? [];
         $preferences['live_updates'] = $request->boolean('live_updates');
+
+        if (isset($validated['theme'])) {
+            $preferences['theme'] = $validated['theme'];
+        }
 
         // Only offered to the people who close RFQs — leave everyone else's be.
         if ($user->hasAnyRole(self::CLOSING_ROLES)) {

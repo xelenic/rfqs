@@ -30,7 +30,25 @@ class User extends Authenticatable
     public const PREFERENCE_DEFAULTS = [
         'live_updates' => true,
         'celebrations' => true,
+        'theme' => 'light',
     ];
+
+    /**
+     * The themes the panel comes in — see the theme preference, and admin.css.
+     *
+     * @var array<string, string>
+     */
+    public const THEMES = ['light' => 'Light', 'dark' => 'Dark'];
+
+    /**
+     * The panel's theme for this person — one of THEMES.
+     */
+    public function theme(): string
+    {
+        $theme = $this->preference('theme');
+
+        return array_key_exists($theme, self::THEMES) ? $theme : self::PREFERENCE_DEFAULTS['theme'];
+    }
 
     /**
      * The roles that see the Time Spent report. HR Manager has no part in the

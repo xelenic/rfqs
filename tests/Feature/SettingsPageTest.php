@@ -347,3 +347,48 @@ it('comes back to the tab a form failed on, marked as needing a fix', function (
         ->and(Str::betweenFirst($html, 'id="settings-tab-application"', '</button>'))->toContain('bi-exclamation-circle-fill')
         ->and(Str::betweenFirst($html, 'id="settings-tab-profile"', '</button>'))->not->toContain('bi-exclamation-circle-fill');
 });
+
+// ---- theme -------------------------------------------------------------------
+
+it('keeps the light theme until someone picks the dark one', function () {
+    $user = userWithRole('Sourcing');
+
+    test()->actingAs($user)->get(route('admin.settings.edit', ['tab' => 'preferences']))->assertOk()
+        ->assertSee('<html lang="en" data-theme="light" data-bs-theme="light">', false)
+        ->assertSee('id="pref-theme-light" value="light" autocomplete="off" checked', false)
+        ->assertSee('id="pref-theme-dark" value="dark" autocomplete="off"', false);
+
+    expect($user->theme())->toBe('light');
+});
+
+it('turns every page dark once someone picks the dark theme, and only theirs', function () {
+    $user = userWithRole('Sourcing');
+
+    test()->actingAs($user)->patch(route('admin.settings.preferences'), ['live_updates' => '1', 'theme' => 'dark'])
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('settings_tab', 'preferences');
+
+    expect($user->refresh()->theme())->toBe('dark');
+
+    foreach ([route('admin.dashboard'), route('admin.rfqs.index', ['status' => 'Pending']), route('admin.settings.edit')] as $page) {
+        test()->actingAs($user)->get($page)->assertOk()
+            ->assertSee('<html lang="en" data-theme="dark" data-bs-theme="dark">', false);
+    }
+
+    // Everyone else's stays as it was.
+    test()->actingAs(userWithRole('Sourcing'))->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('data-theme="light"', false);
+
+    // And back again.
+    test()->actingAs($user)->patch(route('admin.settings.preferences'), ['live_updates' => '1', 'theme' => 'light']);
+    expect($user->refresh()->theme())->toBe('light');
+});
+
+it('refuses a theme that isn\'t one', function () {
+    $user = userWithRole('Sourcing');
+
+    test()->actingAs($user)->patch(route('admin.settings.preferences'), ['live_updates' => '1', 'theme' => 'purple'])
+        ->assertSessionHasErrors('theme');
+
+    expect($user->refresh()->theme())->toBe('light');
+});

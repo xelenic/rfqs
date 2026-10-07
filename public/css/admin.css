@@ -1,5 +1,6 @@
 /*
- * RFQMS Admin Panel — light theme
+ * RFQMS Admin Panel — light theme, and a dark one (see "Dark theme" at the
+ * end), chosen per person in Settings → Preferences.
  * Plain hand-written CSS, no build step. Loaded directly via <link>.
  * Layers on top of Bootstrap 5 (CDN) for grid/forms/components.
  */
@@ -25,6 +26,9 @@
   /* The same idea for the sidebar's page tree, where a lighter line suits. */
   --rfq-tree-line-soft: #c9d0e0;
   --rfq-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  /* The RFQ activity chart's two lines (public/js/rfq-chart.js reads them). */
+  --rfq-chart-pending: #3b53d1;
+  --rfq-chart-completed: #157347;
 }
 
 * {
@@ -3997,3 +4001,206 @@ h6, .h6 { font-size: 0.85rem; }
   font-weight: 700;
   font-size: 1.15rem;
 }
+
+/* ---------- Theme picker (Settings → Preferences) ---------- */
+/* Two cards, each a little picture of the panel in that theme. */
+
+.theme-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.theme-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem;
+  border: 2px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  cursor: pointer;
+  min-width: 9.5rem;
+}
+
+.btn-check:checked + .theme-pick {
+  border-color: var(--rfq-primary);
+  box-shadow: 0 0 0 0.2rem rgba(79, 109, 245, 0.15);
+}
+
+.btn-check:focus-visible + .theme-pick {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.theme-pick-swatch {
+  display: flex;
+  gap: 0.3rem;
+  height: 3.2rem;
+  padding: 0.3rem;
+  border-radius: 0.35rem;
+}
+
+.theme-pick-sidebar {
+  width: 28%;
+  border-radius: 0.25rem;
+}
+
+.theme-pick-card {
+  flex: 1;
+  border-radius: 0.25rem;
+}
+
+.theme-pick[data-theme-preview="light"] .theme-pick-swatch { background: #f4f6fb; }
+.theme-pick[data-theme-preview="light"] .theme-pick-sidebar { background: #ffffff; border: 1px solid #e6e9f2; }
+.theme-pick[data-theme-preview="light"] .theme-pick-card { background: #ffffff; border: 1px solid #e6e9f2; }
+.theme-pick[data-theme-preview="dark"] .theme-pick-swatch { background: #0f131c; }
+.theme-pick[data-theme-preview="dark"] .theme-pick-sidebar { background: #141925; border: 1px solid #2a3142; }
+.theme-pick[data-theme-preview="dark"] .theme-pick-card { background: #171c27; border: 1px solid #2a3142; }
+
+/* ---------- Dark theme ---------- */
+/* A person's choice in Settings → Preferences (User::theme()): the layout
+   marks <html data-theme="dark" data-bs-theme="dark">. Bootstrap's own
+   components follow data-bs-theme; here, this panel's palette — the
+   variables everything above is built on — and Bootstrap's, so its
+   components sit on the same surfaces, then the soft tints above that are
+   written as light colors, each as a deep tint of its hue with a lighter text
+   that reads on it. */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --rfq-bg: #0f131c;
+  --rfq-surface: #171c27;
+  --rfq-border: #2a3142;
+  --rfq-text: #e4e7ef;
+  --rfq-text-muted: #98a2b3;
+  --rfq-primary: #5b78f6;
+  --rfq-primary-dark: #8ea0ff;
+  --rfq-primary-soft: #1e2647;
+  --rfq-sidebar-bg: #141925;
+  --rfq-sidebar-active: #1e2647;
+  --rfq-danger: #f2777b;
+  --rfq-success: #3ccf91;
+  --rfq-tree-line: #5b6680;
+  --rfq-tree-line-soft: #353d50;
+  --rfq-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.45);
+  --rfq-chart-pending: #7b91ff;
+  --rfq-chart-completed: #3ccf91;
+
+  --bs-body-bg: var(--rfq-surface);
+  --bs-body-bg-rgb: 23, 28, 39;
+  --bs-body-color: var(--rfq-text);
+  --bs-body-color-rgb: 228, 231, 239;
+  --bs-emphasis-color: #ffffff;
+  --bs-secondary-color: var(--rfq-text-muted);
+  --bs-secondary-bg: #1f2533;
+  --bs-tertiary-bg: #1b2130;
+  --bs-border-color: var(--rfq-border);
+  --bs-link-color: var(--rfq-primary-dark);
+  --bs-link-hover-color: #b6c3ff;
+  --bs-primary-rgb: 91, 120, 246;
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .modal-content,
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .list-group-item {
+  background-color: var(--rfq-surface);
+  border-color: var(--rfq-border);
+}
+
+[data-theme="dark"] .bg-white { background-color: var(--rfq-surface) !important; }
+[data-theme="dark"] .table-warning { --bs-table-bg: rgba(245, 158, 11, 0.12); --bs-table-color: var(--rfq-text); }
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .input-group-text {
+  background-color: #11151e;
+  border-color: #333b4e;
+  color: var(--rfq-text);
+}
+
+[data-theme="dark"] .form-control:disabled,
+[data-theme="dark"] .form-select:disabled { background-color: #1a1f2a; color: var(--rfq-text-muted); }
+[data-theme="dark"] .form-control::placeholder { color: #6b7488; }
+[data-theme="dark"] .alert-info { background: #13283a; border-color: #1f4a66; color: #9fd3f5; }
+[data-theme="dark"] .alert-secondary { background: #1f2533; border-color: #333b4e; color: var(--rfq-text); }
+[data-theme="dark"] .alert-danger { background: #3a1d22; border-color: #6b2d36; color: #f8b4b9; }
+[data-theme="dark"] .alert-success { background: #12301f; border-color: #1f5a3a; color: #9ee6bd; }
+[data-theme="dark"] .alert-warning { background: #33270f; border-color: #6b5016; color: #f8d58a; }
+[data-theme="dark"] .btn-outline-secondary { --bs-btn-color: #b3bccb; --bs-btn-border-color: #3a4357; --bs-btn-hover-bg: #262d3d; --bs-btn-hover-border-color: #4b556b; --bs-btn-hover-color: #ffffff; }
+
+/* Soft badges, status icons, timeline markers and comment actions: deep
+   tints with light text. */
+[data-theme="dark"] .badge-soft-secondary,
+[data-theme="dark"] .assignee-avatar-more,
+[data-theme="dark"] .rfq-timeline-marker,
+[data-theme="dark"] .comment-action-context { background: #262d3d; color: #c3cad6; }
+
+[data-theme="dark"] .badge-soft-warning,
+[data-theme="dark"] .stat-card .stat-icon.stat-icon-warning,
+[data-theme="dark"] .dashboard-notice-warning .dashboard-notice-icon,
+[data-theme="dark"] .role-pick-inactive { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
+
+[data-theme="dark"] .badge-soft-orange { background: rgba(249, 115, 22, 0.18); color: #fb923c; }
+
+[data-theme="dark"] .badge-soft-success,
+[data-theme="dark"] .stat-card .stat-icon.stat-icon-success,
+[data-theme="dark"] .dashboard-notice-success .dashboard-notice-icon,
+[data-theme="dark"] .rfq-timeline-item-success .rfq-timeline-marker,
+[data-theme="dark"] .comment-action-success { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+
+[data-theme="dark"] .badge-soft-info { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+
+[data-theme="dark"] .badge-soft-danger,
+[data-theme="dark"] .stat-card .stat-icon.stat-icon-danger,
+[data-theme="dark"] .dashboard-notice-danger .dashboard-notice-icon,
+[data-theme="dark"] .rfq-timeline-item-danger .rfq-timeline-marker,
+[data-theme="dark"] .comment-action-danger { background: rgba(239, 68, 68, 0.17); color: #f87171; }
+
+[data-theme="dark"] .stat-card .stat-icon.stat-icon-violet,
+[data-theme="dark"] .rfq-timeline-item-secondary .rfq-timeline-marker { background: rgba(167, 139, 250, 0.16); color: #c4b5fd; }
+
+[data-theme="dark"] .stat-card .stat-icon.stat-icon-teal { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+[data-theme="dark"] .rfq-timeline-item-info .rfq-timeline-marker { background: rgba(56, 152, 236, 0.16); color: #7cc0f7; }
+
+/* Green and red text on its own, and the other light-only touches. */
+[data-theme="dark"] .rfq-list-subnote,
+[data-theme="dark"] .dashboard-notice-empty i,
+[data-theme="dark"] .role-pick-stat-completed { color: #4ade80; }
+[data-theme="dark"] .rfq-list-subnote-returned,
+[data-theme="dark"] .rfq-part-detail-returned { color: #f87171; }
+[data-theme="dark"] .role-pick-stat-pending,
+[data-theme="dark"] .time-out-of-hours-note,
+[data-theme="dark"] .time-out-of-hours-key { color: #fbbf24; }
+[data-theme="dark"] .time-awaiting-note { color: #5eead4; }
+
+[data-theme="dark"] .ops-filters { background: var(--rfq-surface); }
+[data-theme="dark"] .conversation-row.is-unread { background: rgba(91, 120, 246, 0.1); }
+[data-theme="dark"] .mention-dropdown,
+[data-theme="dark"] .rfq-de-sourcing-row,
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-number { background: var(--rfq-surface); }
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed { background: rgba(34, 197, 94, 0.12); }
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed,
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-number,
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-name,
+[data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-status { color: #4ade80; }
+
+[data-theme="dark"] .rfq-thread-bubble,
+[data-theme="dark"] .review-note,
+[data-theme="dark"] .wizard-parts-preview { background: #1b2130; border-color: #2f3850; }
+[data-theme="dark"] .rfq-timeline-item-success .rfq-thread-bubble { background: rgba(34, 197, 94, 0.07); border-color: rgba(34, 197, 94, 0.28); }
+[data-theme="dark"] .rfq-timeline-item-danger .rfq-thread-bubble { background: rgba(239, 68, 68, 0.07); border-color: rgba(239, 68, 68, 0.3); }
+[data-theme="dark"] .wizard-lead { background: linear-gradient(135deg, var(--rfq-primary-soft), #1b2130); border-color: #2f3850; }
+[data-theme="dark"] .category-card,
+[data-theme="dark"] .category-card .badge { border-color: #2f3850; }
+
+[data-theme="dark"] .celebration-card { background: rgba(23, 28, 39, 0.97); box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08) inset; }
+[data-theme="dark"] .live-notice { background: #2a3142; }
+
+/* Rows tinted for what they hold. */
+[data-theme="dark"] .attendance-table tr.is-absent td { background: rgba(239, 68, 68, 0.1); }
+[data-theme="dark"] .attendance-table tr.is-half-day td { background: rgba(249, 115, 22, 0.12); }
+[data-theme="dark"] .time-out-of-hours,
+[data-theme="dark"] .table .time-out-of-hours { --bs-table-bg: rgba(245, 158, 11, 0.12); background: rgba(245, 158, 11, 0.12); }
+
+[data-theme="dark"] .btn-check:checked + .theme-pick { box-shadow: 0 0 0 0.2rem rgba(91, 120, 246, 0.25); }
