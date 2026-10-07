@@ -1306,7 +1306,7 @@
                             @if ($statusFilter === 'Completed' && $rfq->isSplit() && $rfq->assignees->isNotEmpty())
                                 {{-- A split shows on the Closed list part by part — each as
                                      Business Development closes it (see Rfq::closePart()). --}}
-                                @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames])
+                                @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null])
                             @else
                                 @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed'])
                             @endif
@@ -1380,6 +1380,9 @@
         @if (auth()->user()->canChangeRfqStatus())
             {{-- No RFQ of its own — not the list loop's last one either. --}}
             @include('admin.rfqs._status_modal', ['rfq' => null])
+        @endif
+        @if (auth()->user()->hasAnyRole(['Senior Operations', 'Admin']))
+            @include('admin.rfqs._reassign_modal', ['sourcingUsers' => $sourcingUsers])
         @endif
     @endif
 

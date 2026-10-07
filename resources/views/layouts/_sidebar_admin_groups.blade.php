@@ -16,7 +16,8 @@
     nothing waiting is hidden.
 
     A role's pages that aren't RFQ lists — Senior Operations' Attendance and
-    Time Spent — sit in its group too, as plain links to their own route.
+    Time Spent — sit in its group too, as plain links to their own route. And
+    every group ends with Closed RFQs, as every role's own sidebar does.
 --}}
 @php
     // Besides the queues: the attendance sheets to make (working days still
@@ -56,6 +57,7 @@
                 ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
                 ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
                 ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
@@ -63,12 +65,14 @@
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts to complete or finalize'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry'],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
             'role' => 'Data Entry', 'badge' => ['data_entry'],
             'links' => [
                 ['label' => 'Ready for Data Entry', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'data_entry', 'hint' => 'parts not marked complete'],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
@@ -76,6 +80,7 @@
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'head_of_bd', 'hint' => 'awaiting approval'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'head_of_bd_returns', 'hint' => 'sent back by the General Manager'],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
@@ -83,12 +88,14 @@
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting client details'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'gm_assistant_returns', 'hint' => 'sent back by the General Manager'],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
             'role' => 'General Manager', 'badge' => ['gm_review'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_review', 'hint' => 'awaiting final approval'],
+                ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
     ];
@@ -97,15 +104,15 @@
     // added up.
     $allGroupsCount = collect($groups)->sum(fn (array $group) => collect($group['badge'])->sum(fn (string $key) => $counts[$key]));
 
-    // Whether a page is the one being viewed. Closed RFQs is company-wide,
-    // not a role's own queue — no role on its link, and it's active whichever
-    // group it sits under.
+    // Whether a page is the one being viewed. Every group has Closed RFQs —
+    // the company-wide list, the same whichever group it's opened from, but
+    // with the group's role on its link, so only that group shows it open.
     $isLinkActive = fn (array $group, array $link) => isset($link['route'])
         ? request()->routeIs($link['activeOn'])
         : ($onRfqList
             && request('status') === $link['status']
             && $currentView === $link['view']
-            && ($link['status'] === 'Completed' || $currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development')));
+            && ($currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development')));
 @endphp
 
 {{-- The root: one node, "Role Stages", with each role's group under it as a
@@ -147,12 +154,11 @@
                 <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
                     @foreach ($group['links'] as $link)
                         @php
-                            $isCompanyWide = ($link['status'] ?? null) === 'Completed';
                             $isActive = $isLinkActive($group, $link);
                             $count = $link['count'] ? $counts[$link['count']] : 0;
                             $linkUrl = isset($link['route'])
                                 ? route($link['route'])
-                                : route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $isCompanyWide ? null : $groupSlug]));
+                                : route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $groupSlug]));
                         @endphp
                         <a href="{{ $linkUrl }}"
                            class="nav-link {{ $isActive ? 'active' : '' }}">

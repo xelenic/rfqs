@@ -1319,6 +1319,32 @@ function rfqmsBoot() {
         });
     });
 
+    // Senior Operations' Reassign on a part still with Sourcing: the popup is
+    // pointed at the part, says who has it, and won't offer them again.
+    var reassignModal = document.getElementById('reassignModal');
+    if (reassignModal) {
+        reassignModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-reassign-part')) return;
+
+            var form = document.getElementById('reassignForm');
+            var select = form.querySelector('[name="user_id"]');
+            var target = button.dataset.label + ' \u2014 with ' + button.dataset.currentName;
+
+            form.action = button.dataset.action;
+            form.querySelector('[name="reassign_rfq_id"]').value = button.dataset.rfqId || '';
+            form.querySelector('[name="part"]').value = button.dataset.part || '';
+            form.querySelector('[name="reassign_target"]').value = target;
+            document.getElementById('reassignTarget').textContent = target;
+
+            select.value = '';
+            select.classList.remove('is-invalid');
+            Array.prototype.forEach.call(select.options, function (option) {
+                option.disabled = option.value !== '' && option.value === button.dataset.currentId;
+            });
+        });
+    }
+
     // Business Development's Close popup — same shared-modal-populated-per-row
     // pattern as the Reject modal: which RFQ, and which part of it (none for a
     // whole RFQ), with the reference code it asks for left empty to fill in.

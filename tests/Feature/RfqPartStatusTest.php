@@ -53,8 +53,11 @@ it('gives each part of a split on the Assigned tab its own Status options, and t
 
     [, $assignedTab] = operationsTabs(['tab' => 'assigned']);
 
-    expect(substr_count($assignedTab, 'data-label="RFQ13001-P1 of P2"'))->toBe(2)
-        ->and(substr_count($assignedTab, 'data-label="RFQ13001-P2 of P2"'))->toBe(2)
+    // Each part's Put on hold and Cancel (its Reassign has the same label).
+    $statusOptionsFor = fn (string $label) => preg_match_all('/data-status="[^"]+"[^>]*data-label="'.preg_quote($label, '/').'"/', $assignedTab);
+
+    expect($statusOptionsFor('RFQ13001-P1 of P2'))->toBe(2)
+        ->and($statusOptionsFor('RFQ13001-P2 of P2'))->toBe(2)
         ->and($assignedTab)->toContain('Put part on hold')
         ->and($assignedTab)->toContain('Cancel part')
         // The split as a whole only through its parts…

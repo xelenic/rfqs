@@ -49,7 +49,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'close', 'closePart', 'changeStatus']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -166,6 +166,11 @@ class RfqController extends Controller implements HasMiddleware
         // lens on their Pending status, same pattern as "Closing" above.
         $scopedToBdReturns = $status === 'Pending' && $actsAs('Business Development') && $request->query('view') === 'returns';
 
+        // A Sourcing member's Closed RFQs are their own: the RFQs they hold a
+        // part of that have been closed — their part, or the whole RFQ.
+        // Admin's view of Sourcing's pages ($sourcingOverview) is everyone's.
+        $scopedToMyClosed = $status === 'Completed' && $user->hasRole('Sourcing');
+
         $search = $request->string('search')->trim()->toString();
 
         $applyCommonFilters = function ($query) use ($status, $search) {
@@ -241,6 +246,11 @@ class RfqController extends Controller implements HasMiddleware
             ->when($scopedToSeniorOpsReturns, fn ($query) => $query->returnedToSeniorOperations())
             ->when($scopedToHeadOfBdReturns, fn ($query) => $query->returnedToHeadOfBd())
             ->when($scopedToGmAssistantReturns, fn ($query) => $query->returnedToGmAssistant())
+            ->when($scopedToMyClosed, fn ($query) => $query->where(fn ($mine) => $mine
+                ->where(fn ($closedWhole) => $closedWhole
+                    ->where('rfqs.status', 'Completed')
+                    ->whereHas('assignees', fn ($parts) => $parts->whereKey($user->id)))
+                ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
             ->paginate(10)
@@ -333,6 +343,7 @@ class RfqController extends Controller implements HasMiddleware
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'scopedToMe' => $scopedToMe,
+            'scopedToMyClosed' => $scopedToMyClosed,
             'scopedToReturns' => $scopedToReturns,
             'scopedToSeniorOpsReview' => $scopedToSeniorOpsReview,
             'scopedToDataEntry' => $scopedToDataEntry,
@@ -850,6 +861,42 @@ class RfqController extends Controller implements HasMiddleware
 
         return redirect()->back()->with('status', "Passed {$rfq->partsLabel(array_keys($holders))} back to {$names}."
             .($remaining > 0 ? " {$remaining} still to assign." : ''));
+    }
+
+    /**
+     * Senior Operations gives a part still with Sourcing — not yet marked
+     * complete — to another Sourcing member, from the Assigned tab
+     * (Rfq::reassignSourcingPart()). Once it's gone on to Data Entry, or past,
+     * it can't be. Admin can too, as one of Senior Operations (doneBy()).
+     */
+    public function reassignSourcing(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can reassign Sourcing.');
+
+        $validated = $request->validateWithBag('reassign', [
+            'part' => ['required', 'integer'],
+            'user_id' => ['required', 'integer'],
+        ], [
+            'user_id.required' => 'Pick who takes it over.',
+        ]);
+
+        $part = (int) $validated['part'];
+        $current = $rfq->assigneeForPart($part);
+
+        abort_unless($current, 404, 'That part is not assigned on this RFQ.');
+        abort_unless($rfq->canReassignPart($part), 422, 'This part has moved on past Sourcing — it can\'t be reassigned now.');
+
+        $to = User::role('Sourcing')->find($validated['user_id']);
+
+        if ($to === null || $to->id === $current->id) {
+            return back()->withInput()->withErrors([
+                'user_id' => $to === null ? 'Pick someone from Sourcing.' : 'They already have it — pick someone else.',
+            ], 'reassign');
+        }
+
+        $rfq->reassignSourcingPart($part, $to, $this->doneBy($request, 'Senior Operations'));
+
+        return redirect()->back()->with('status', "Reassigned {$rfq->partNumberLabel($part)} from {$current->name} to {$to->name}.");
     }
 
     /**

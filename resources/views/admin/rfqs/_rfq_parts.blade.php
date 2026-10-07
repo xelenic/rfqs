@@ -10,11 +10,16 @@
     once it has been, set going again — until it's closed; an RFQ kept whole
     is put on hold or cancelled from its one line, the whole RFQ with it.
 
+    A part still with Sourcing — not yet marked complete — can be reassigned
+    to another Sourcing member from its line (Reassign, _reassign_modal);
+    once it's gone on to Data Entry, it can't (Rfq::canReassignPart()).
+
     Expects: $rfq (with its assignees), $columns (the table's column count).
 --}}
 @php
     $isSplit = $rfq->splitTotal() > 1;
     $canChangeStatus = $rfq->status === 'Pending' && auth()->user()->canChangeRfqStatus();
+    $canReassignSourcing = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
 @endphp
 @foreach ($rfq->sourcingParts() as $part)
     @php
@@ -75,26 +80,43 @@
                         @endif
                     </span>
 
-                    @if ($canChangeStatus && ! $isSplit)
+                    @php
+                        $canReassign = $canReassignSourcing && $rfq->canReassignPart($part['part']);
+                        $canChangeThisStatus = $canChangeStatus && (! $isSplit || ! $pivot->isBdClosed());
+                    @endphp
+                    @if ($canReassign || $canChangeThisStatus)
                         <span class="rfq-part-actions">
-                            @include('admin.rfqs._status_options', [
-                                'rfq' => $rfq,
-                                'statusPart' => null,
-                                'statusOptions' => [\App\Models\Rfq::ON_HOLD, \App\Models\Rfq::CANCELLED],
-                            ])
-                        </span>
-                    @elseif ($canChangeStatus && ! $pivot->isBdClosed())
-                        <span class="rfq-part-actions">
-                            @if ($pivot->isStopped())
-                                @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $pivot])
+                            @if ($canReassign)
+                                <button type="button" class="btn btn-sm btn-outline-primary js-reassign-part"
+                                        data-bs-toggle="modal" data-bs-target="#reassignModal"
+                                        data-action="{{ route('admin.rfqs.reassign-sourcing', $rfq) }}"
+                                        data-rfq-id="{{ $rfq->id }}"
+                                        data-part="{{ $part['part'] }}"
+                                        data-label="{{ $isSplit ? $part['number'] : $rfq->rfq_number }}"
+                                        data-current-id="{{ $assignee->id }}"
+                                        data-current-name="{{ $assignee->name }}"
+                                        title="Give this part to another Sourcing member">
+                                    <i class="bi bi-person-gear"></i> Reassign
+                                </button>
                             @endif
-                            @unless ($pivot->isCancelled())
+                            @if ($canChangeThisStatus && ! $isSplit)
                                 @include('admin.rfqs._status_options', [
                                     'rfq' => $rfq,
-                                    'statusPart' => $part['part'],
-                                    'statusOptions' => $pivot->isOnHold() ? [\App\Models\Rfq::CANCELLED] : [\App\Models\Rfq::ON_HOLD, \App\Models\Rfq::CANCELLED],
+                                    'statusPart' => null,
+                                    'statusOptions' => [\App\Models\Rfq::ON_HOLD, \App\Models\Rfq::CANCELLED],
                                 ])
-                            @endunless
+                            @elseif ($canChangeThisStatus)
+                                @if ($pivot->isStopped())
+                                    @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $pivot])
+                                @endif
+                                @unless ($pivot->isCancelled())
+                                    @include('admin.rfqs._status_options', [
+                                        'rfq' => $rfq,
+                                        'statusPart' => $part['part'],
+                                        'statusOptions' => $pivot->isOnHold() ? [\App\Models\Rfq::CANCELLED] : [\App\Models\Rfq::ON_HOLD, \App\Models\Rfq::CANCELLED],
+                                    ])
+                                @endunless
+                            @endif
                         </span>
                     @endif
                 @else

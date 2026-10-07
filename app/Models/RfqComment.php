@@ -26,6 +26,7 @@ class RfqComment extends Model
         'cancelled' => ['label' => 'Cancelled', 'icon' => 'bi-x-circle-fill', 'tone' => 'danger'],
         'resumed' => ['label' => 'Resumed', 'icon' => 'bi-play-circle-fill', 'tone' => 'success'],
         'reopened' => ['label' => 'Reopened', 'icon' => 'bi-arrow-repeat', 'tone' => 'success'],
+        'reassigned' => ['label' => 'Reassigned', 'icon' => 'bi-person-gear', 'tone' => 'info'],
     ];
 
     protected $fillable = [

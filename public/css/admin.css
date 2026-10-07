@@ -2446,6 +2446,11 @@ h6, .h6 { font-size: 0.85rem; }
   color: #c81e1e;
 }
 
+.comment-action-info {
+  background: #e7f1fb;
+  color: #1970b8;
+}
+
 .comment-action-context {
   background: #f1f2f6;
   font-weight: 600;
@@ -4161,7 +4166,8 @@ h6, .h6 { font-size: 0.85rem; }
 [data-theme="dark"] .rfq-timeline-item-secondary .rfq-timeline-marker { background: rgba(167, 139, 250, 0.16); color: #c4b5fd; }
 
 [data-theme="dark"] .stat-card .stat-icon.stat-icon-teal { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
-[data-theme="dark"] .rfq-timeline-item-info .rfq-timeline-marker { background: rgba(56, 152, 236, 0.16); color: #7cc0f7; }
+[data-theme="dark"] .rfq-timeline-item-info .rfq-timeline-marker,
+[data-theme="dark"] .comment-action-info { background: rgba(56, 152, 236, 0.16); color: #7cc0f7; }
 
 /* Green and red text on its own, and the other light-only touches. */
 [data-theme="dark"] .rfq-list-subnote,

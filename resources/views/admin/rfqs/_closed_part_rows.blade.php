@@ -7,8 +7,11 @@
     a part.
 
     Expects: $rfq (with its assignees), $bdClosedNames (user id => name).
+    Optional: $onlyHeldBy — a Sourcing member's own Closed RFQs: only the
+    parts they hold.
 --}}
 @foreach ($rfq->assignees as $assignee)
+    @continue(($onlyHeldBy ?? null) && $assignee->id !== $onlyHeldBy)
     @php
         $isClosed = $assignee->pivot->bd_closed_at !== null || $rfq->status === 'Completed';
         $closedAt = $assignee->pivot->bd_closed_at ?? $rfq->bd_closed_at;

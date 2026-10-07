@@ -74,6 +74,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/reject-bd', [RfqController::class, 'rejectBd'])->name('rfqs.reject-bd');
     Route::patch('rfqs/{rfq}/return-senior-ops', [RfqController::class, 'returnSeniorOps'])->name('rfqs.return-senior-ops');
     Route::patch('rfqs/{rfq}/pass-back-sourcing', [RfqController::class, 'passBackToSourcing'])->name('rfqs.pass-back-sourcing');
+    Route::patch('rfqs/{rfq}/reassign-sourcing', [RfqController::class, 'reassignSourcing'])->name('rfqs.reassign-sourcing');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);

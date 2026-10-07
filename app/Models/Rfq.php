@@ -1212,6 +1212,39 @@ class Rfq extends Model
     }
 
     /**
+     * Whether $part can go to another Sourcing member: it's still with
+     * Sourcing — assigned and not yet marked complete (a part sent back for
+     * rework included), going ahead — on an RFQ in progress. Once Sourcing has
+     * marked it complete it's on to Data Entry, and stays with whoever did it.
+     */
+    public function canReassignPart(int $part): bool
+    {
+        $assignment = $this->activePart($part);
+
+        return $this->status === 'Pending' && $assignment !== null && $assignment->completed_at === null;
+    }
+
+    /**
+     * Senior Operations gives $part to another Sourcing member, $to, while
+     * it's still with Sourcing (canReassignPart()): it starts afresh with them
+     * — a new assignment, the round and its countdown theirs (syncSteps()) —
+     * and leaves the member who had it. The thread says who it went from and
+     * to, naming the part.
+     *
+     * Caller is responsible for verifying it's allowed, and that $to holds the
+     * Sourcing role.
+     */
+    public function reassignSourcingPart(int $part, User $to, User $by): void
+    {
+        $from = $this->assigneeForPart($part);
+
+        $this->freePart($part);
+        $this->assignSourcingParts([$part => $to->id]);
+
+        $this->postActionComment($by, 'reassigned', "From {$from->name} to {$to->name}.", $this->partContext($part));
+    }
+
+    /**
      * Marks one Sourcing part done. Idempotent — completing an already-
      * completed part is a no-op. Once every part is assigned and completed,
      * the RFQ itself is marked handed off to Data Entry, recording this

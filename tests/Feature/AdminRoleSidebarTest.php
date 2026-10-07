@@ -327,3 +327,28 @@ it('gives Admin Senior Operations\' Attendance and Time Spent pages in that role
         ->assertSee(route('admin.attendance.index'))
         ->assertSee(route('admin.reports.time-spent'));
 });
+
+it('gives every role\'s group in the Admin sidebar its Closed RFQs, opening only that group', function () {
+    $admin = userWithRole('Admin');
+    Rfq::factory()->create(['rfq_number' => 'RFQ16001', 'status' => 'Completed', 'stage' => 'closed', 'bd_closed_at' => now()]);
+
+    $html = test()->actingAs($admin)->get(indexUrl(['status' => 'Pending']))->assertOk()->getContent();
+
+    foreach (Rfq::WORKFLOW_ROLES as $role) {
+        $group = Str::betweenFirst($html, 'id="sidebar-group-'.Str::slug($role).'">', '</div>');
+
+        expect($group)->toContain('href="'.e(indexUrl(['status' => 'Completed', 'role' => Str::slug($role)])).'"')
+            ->toContain('Closed RFQs');
+    }
+
+    // Opened from Sourcing's group: the company's closed RFQs, with Sourcing's step the current one.
+    $closed = test()->actingAs($admin)->get(indexUrl(['status' => 'Completed', 'role' => 'sourcing']))->assertOk()
+        ->assertSee('<title>Closed RFQs', false)
+        ->assertSee('RFQ16001')
+        ->getContent();
+
+    expect(substr_count($closed, 'sidebar-step-number is-current'))->toBe(1)
+        ->and(Str::betweenFirst($closed, 'data-sidebar-group="sourcing"', '</button>'))->toContain('is-current')
+        ->and(Str::betweenFirst($closed, 'id="sidebar-group-sourcing">', '</div>'))
+        ->toMatch('/href="'.preg_quote(e(indexUrl(['status' => 'Completed', 'role' => 'sourcing'])), '/').'"\s+class="nav-link active"/');
+});
