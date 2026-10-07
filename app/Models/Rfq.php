@@ -1133,6 +1133,43 @@ class Rfq extends Model
     }
 
     /**
+     * The Sourcing member who last held each part nobody holds now — part
+     * number => User, by part — as the step log has it (RfqStep::assignee_id,
+     * who held the part at the time): who to pass a part freed back to Senior
+     * Operations straight back to. A part nobody's ever held, or whose member
+     * no longer holds the Sourcing role, isn't in it.
+     *
+     * @return array<int, User>
+     */
+    public function previousHoldersOfOpenParts(): array
+    {
+        $openParts = $this->sourcingParts()->whereNull('assignee')->pluck('part');
+
+        if ($openParts->isEmpty()) {
+            return [];
+        }
+
+        // Oldest first, so each part ends up keyed to its latest holder.
+        $lastHolderIds = RfqStep::query()
+            ->where('rfq_id', $this->id)
+            ->whereIn('part_number', $openParts)
+            ->whereNotNull('assignee_id')
+            ->oldest('started_at')
+            ->oldest('id')
+            ->get()
+            ->keyBy('part_number')
+            ->map(fn (RfqStep $stretch) => $stretch->assignee_id);
+
+        $sourcingMembers = User::role('Sourcing')->whereKey($lastHolderIds->unique()->values())->get()->keyBy('id');
+
+        return $lastHolderIds
+            ->map(fn (int $userId) => $sourcingMembers->get($userId))
+            ->filter()
+            ->sortKeys()
+            ->all();
+    }
+
+    /**
      * Records how many parts Operations planned this RFQ into. 1 means
      * "not split" — still one part, so the same assign-a-person step
      * applies.

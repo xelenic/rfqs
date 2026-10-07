@@ -768,10 +768,12 @@
         @elseif ($scopedToSeniorOpsReturns)
             {{-- Senior Operations' Returns page — RFQs sent back to them by
                  their own second review, the Head of Business Development,
-                 or the General Manager, with who, why, and to which of their
-                 steps: the assignment (parts freed — Assign Sourcing again,
-                 right here) or the second review (approve it again from the
-                 Review page). A row leaves once that's done — see
+                 GM Assistant or the General Manager — or by Sourcing or Data
+                 Entry on a part — with who, why, and to which of their steps:
+                 the assignment (parts freed — pass them straight back to the
+                 Sourcing members who had them in one click, or Assign Sourcing
+                 again, right here) or the second review (approve it again
+                 from the Review page). A row leaves once that's done — see
                  Rfq::scopeReturnedToSeniorOperations(), RfqController::index()
                  ($scopedToSeniorOpsReturns). --}}
             @php
@@ -796,7 +798,11 @@
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $backToAssignment = $rfq->reject_target_stage === 'operations'; @endphp
+                            @php
+                                $backToAssignment = $rfq->reject_target_stage === 'operations';
+                                $passBackTo = $backToAssignment ? $rfq->previousHoldersOfOpenParts() : [];
+                                $passBackNames = collect($passBackTo)->pluck('name')->unique()->join(', ', ' and ');
+                            @endphp
                             <tr>
                                 <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                 <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
@@ -818,6 +824,19 @@
                                     </a>
                                     @can('rfqs.edit')
                                         @if ($backToAssignment)
+                                            {{-- Each freed part straight back to whoever had it — see
+                                                 RfqController::passBackToSourcing(). --}}
+                                            @if ($passBackTo !== [])
+                                                <form action="{{ route('admin.rfqs.pass-back-sourcing', $rfq) }}" method="POST" class="d-inline"
+                                                      data-confirm="Pass {{ $rfq->partsLabel(array_keys($passBackTo)) }} back to {{ $passBackNames }}?">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
+                                                    <button type="submit" class="btn btn-sm btn-primary">
+                                                        <i class="bi bi-arrow-right-circle"></i> Pass back to {{ $passBackNames }}
+                                                    </button>
+                                                </form>
+                                            @endif
                                             @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => false, 'showLabel' => true])
                                         @else
                                             <a href="{{ $reviewPageUrl }}" class="btn btn-sm btn-outline-secondary" title="Approve it again from the Review page">

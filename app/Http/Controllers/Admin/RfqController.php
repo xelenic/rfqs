@@ -49,7 +49,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'close', 'closePart', 'changeStatus']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -813,6 +813,43 @@ class RfqController extends Controller implements HasMiddleware
         $partsOnHold = $rfq->partsOnHold();
 
         abort_if($partsOnHold !== [], 422, "{$rfq->partsLabel($partsOnHold)} is on hold — deal with the other parts one by one, or resume it first.");
+    }
+
+    /**
+     * Senior Operations passes the parts of an RFQ sent back to their
+     * assignment step straight back to the Sourcing members who held them —
+     * one click, no wizard: each freed part to whoever last had it
+     * (Rfq::previousHoldersOfOpenParts()), the same as assigning it to them
+     * (assign()). A part with nobody to go back to is left for Assign
+     * Sourcing. Admin can too, as one of Senior Operations (doneBy()).
+     */
+    public function passBackToSourcing(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can pass an RFQ back to Sourcing.');
+        $this->abortIfStopped($rfq, null);
+
+        $holders = $rfq->previousHoldersOfOpenParts();
+
+        abort_if($holders === [], 422, 'No part here has a Sourcing member to pass it back to — assign it instead.');
+
+        $user = $this->doneBy($request, 'Senior Operations');
+
+        DB::transaction(function () use ($rfq, $holders, $user) {
+            $rfq->assignSourcingParts(array_map(fn (User $holder) => $holder->id, $holders));
+
+            if (! $rfq->operations_assigned_by) {
+                $rfq->update([
+                    'operations_assigned_by' => $user->id,
+                    'operations_assigned_at' => now(),
+                ]);
+            }
+        });
+
+        $names = collect($holders)->pluck('name')->unique()->join(', ', ' and ');
+        $remaining = $rfq->sourcingParts()->whereNull('assignee')->count();
+
+        return redirect()->back()->with('status', "Passed {$rfq->partsLabel(array_keys($holders))} back to {$names}."
+            .($remaining > 0 ? " {$remaining} still to assign." : ''));
     }
 
     /**
