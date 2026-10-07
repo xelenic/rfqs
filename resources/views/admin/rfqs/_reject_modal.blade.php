@@ -1,7 +1,9 @@
 {{--
     Reject modal — Senior Operations (their own second review), the Head of
-    Business Development, or the General Manager sends an RFQ, or just one
-    part of it, back to an earlier stage with a reason. Shared across the
+    Business Development, GM Assistant, the General Manager, or Business
+    Development (from Ready to Close) sends an RFQ, or just one part of it,
+    back to an earlier stage with a reason — wherever Rfq::RETURN_TARGETS
+    lets it. Shared across the
     index (list) page, populated per-row via JS, see public/js/admin.js
     (.js-reject-rfq).
 

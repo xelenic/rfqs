@@ -71,19 +71,24 @@ function rfqReadyForGm(array $people): Rfq
 
 // ---- Rfq::rejectTargetStages() --------------------------------------------
 
-it('gives each reject-capable stage every earlier one, and nothing at or after its own', function () {
-    expect(Rfq::rejectTargetStages('senior_ops_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry'])
+it('gives each stage the earlier ones the business lets it send back to, and none at or after its own', function () {
+    // Senior Operations: Business Development, Sourcing, Data Entry — not
+    // their own assignment step.
+    expect(Rfq::rejectTargetStages('senior_ops_review'))->toBe(['business_development', 'sourcing', 'data_entry'])
         ->and(Rfq::rejectTargetStages('head_of_bd_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'])
+        // GM Assistant: Senior Operations, Sourcing, Data Entry.
+        ->and(Rfq::rejectTargetStages('gm_assistant'))->toBe(['operations', 'sourcing', 'data_entry', 'senior_ops_review'])
         // The General Manager's own example: Operations, Sourcing, Data
         // Entry, Senior Ops, Head of BD, GM Assistant — plus Business
         // Development itself, further back than any of them.
         ->and(Rfq::rejectTargetStages('gm_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'])
-        // Nothing before the very first stage, and nothing for a stage
-        // that isn't part of this chain at all (GM Assistant only ever
-        // forwards — see Rfq::REJECTABLE_STAGES — so it's never actually
-        // asked for, but the lookup itself is just "everything earlier").
-        ->and(Rfq::rejectTargetStages('business_development'))->toBe([])
-        ->and(Rfq::rejectTargetStages('bd_closing'))->toBe([]);
+        // Business Development, from Ready to Close: the Head and the General Manager.
+        ->and(Rfq::rejectTargetStages('bd_closing'))->toBe(['head_of_bd_review', 'gm_review'])
+        // Sourcing and Data Entry: Senior Operations, to assign again.
+        ->and(Rfq::rejectTargetStages('sourcing'))->toBe(['operations'])
+        ->and(Rfq::rejectTargetStages('data_entry'))->toBe(['operations'])
+        // Nothing before the very first stage.
+        ->and(Rfq::rejectTargetStages('business_development'))->toBe([]);
 });
 
 it('offers each review page only the stages before its own', function () {
@@ -100,7 +105,7 @@ it('offers each review page only the stages before its own', function () {
         ->assertOk()->getContent();
 
     expect($seniorOpsHtml)->toContain('<option value="business_development" >')
-        ->toContain('<option value="operations" >')
+        ->not->toContain('<option value="operations" >')
         ->toContain('<option value="sourcing" >')
         ->toContain('<option value="data_entry" >')
         ->not->toContain('<option value="senior_ops_review" >');
@@ -121,31 +126,17 @@ it('offers each review page only the stages before its own', function () {
 
 // ---- Senior Operations rejects ---------------------------------------------
 
-it('lets Senior Operations reject their own second review, back to their own assignment step', function () {
+it('refuses Senior Operations sending a part from their second review back to their own assignment step', function () {
     $people = chainPeople();
     $rfq = rfqReadyForSeniorOps($people);
 
     test()->actingAs($people['ops'])
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['part' => 1, 'target_stage' => 'operations', 'reason' => 'Wrong Sourcing member — reassign it'])
-        ->assertRedirect()
-        ->assertSessionHas('status', 'Sent RFQ1001-P1 of P2 back to Senior Operations (assignment).');
+        ->assertSessionHasErrorsIn('reject', 'target_stage');
 
-    $rfq->refresh();
-
-    // Part 1 is unassigned again — a fresh part for Senior Operations to
-    // hand out, same as one nobody's ever taken.
-    expect($rfq->assigneeForPart(1))->toBeNull()
-        ->and($rfq->hasUnassignedParts())->toBeTrue()
-        // Part 2 is exactly where it was.
-        ->and($rfq->assigneeForPart(2)->pivot->data_entry_completed_at)->not->toBeNull()
-        ->and($rfq->rejected_by)->toBe($people['ops']->id)
-        ->and($rfq->reject_from_stage)->toBe('senior_ops_review')
-        ->and($rfq->reject_target_stage)->toBe('operations')
-        ->and($rfq->stage)->toBeNull();
-
-    // Shows up on the Unassigned RFQs list, ready to be handed to someone.
-    test()->actingAs($people['ops'])->get(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->assertSee('RFQ1001');
+    // Part 1 is where it was.
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_completed_at)->not->toBeNull()
+        ->and($rfq->reject_target_stage)->toBeNull();
 });
 
 it('refuses Senior Operations a target that is not theirs to use', function () {

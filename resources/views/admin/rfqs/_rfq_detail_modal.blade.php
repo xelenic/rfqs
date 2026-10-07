@@ -127,7 +127,10 @@
                      Sourcing each ask for a comment in the shared prompt, and Back
                      there comes back here. --}}
                 @if ($canCompleteAsSourcing)
-                    @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
+                    <div class="d-flex gap-2">
+                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'sourcing_to_ops', 'backModal' => $modalId])
+                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
+                    </div>
                 @elseif ($canFinalize)
                     @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
                 @elseif ($canCompleteAsDataEntry)
@@ -135,6 +138,7 @@
                          and returnSourcing(), which never touch any other part on the
                          same RFQ. --}}
                     <div class="d-flex gap-2">
+                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry_to_ops', 'who' => $assignee->name, 'backModal' => $modalId])
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'return', 'who' => $assignee->name, 'backModal' => $modalId, 'label' => 'Return to Sourcing'])
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry', 'who' => $assignee->name, 'backModal' => $modalId])
                     </div>

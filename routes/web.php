@@ -67,6 +67,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/approve-gm', [RfqController::class, 'approveGm'])->name('rfqs.approve-gm');
     Route::patch('rfqs/{rfq}/approve-gm-part', [RfqController::class, 'approveGmPart'])->name('rfqs.approve-gm-part');
     Route::patch('rfqs/{rfq}/reject-gm', [RfqController::class, 'rejectGm'])->name('rfqs.reject-gm');
+    Route::patch('rfqs/{rfq}/reject-gm-assistant', [RfqController::class, 'rejectGmAssistant'])->name('rfqs.reject-gm-assistant');
+    Route::patch('rfqs/{rfq}/reject-bd', [RfqController::class, 'rejectBd'])->name('rfqs.reject-bd');
+    Route::patch('rfqs/{rfq}/return-senior-ops', [RfqController::class, 'returnSeniorOps'])->name('rfqs.return-senior-ops');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);

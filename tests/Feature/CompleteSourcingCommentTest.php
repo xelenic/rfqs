@@ -143,11 +143,14 @@ it('gives Sourcing a Mark Complete that asks, and no comment box of their own, o
         ->not->toContain('Post comment')
         ->not->toContain('Write a comment...');
 
-    // Every Mark Complete opens the one prompt: a row's, and the modal's, which comes back to it.
+    // Every Mark Complete — and Return to Senior Operations — opens the one
+    // prompt: a row's, and the modal's, which comes back to it.
     expect($html)->toContain('id="completeModal"')
         ->toContain('name="comment"')
-        ->and(substr_count($html, 'js-complete"'))->toBe(4)
-        ->and(substr_count($html, 'data-redirect-status="Pending"'))->toBe(4)
+        ->and(substr_count($html, 'js-complete"'))->toBe(8)
+        ->and(substr_count($html, 'data-action="'.route('admin.rfqs.complete-sourcing', $rfq).'"'))->toBe(4)
+        ->and(substr_count($html, 'data-action="'.route('admin.rfqs.return-senior-ops', $rfq).'"'))->toBe(4)
+        ->and(substr_count($html, 'data-redirect-status="Pending"'))->toBe(8)
         ->and($html)->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p1"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p2"');
     // …and nothing completes without going through it.

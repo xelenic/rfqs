@@ -22,25 +22,32 @@
     };
 
     // The one shared reject modal (_reject_modal) works for whichever of the
-    // three review queues is showing — its route name and the stages it can
-    // send an RFQ back to (Rfq::rejectTargetStages()) both follow from which.
+    // review and closing queues is showing — its route name and the stages it
+    // can send an RFQ back to (Rfq::rejectTargetStages()) both follow from
+    // which.
     $rejectFromStage = match (true) {
         $scopedToSeniorOpsReview => 'senior_ops_review',
         $scopedToHeadOfBdReview, $scopedToHeadOfBdReturns => 'head_of_bd_review',
+        $scopedToGmAssistant, $scopedToGmAssistantReturns => 'gm_assistant',
         $scopedToGmReview => 'gm_review',
+        $scopedToBdClosing => 'bd_closing',
         default => null,
     };
     $rejectRouteName = match ($rejectFromStage) {
         'senior_ops_review' => 'admin.rfqs.reject-senior-ops',
         'head_of_bd_review' => 'admin.rfqs.reject-head-of-bd',
+        'gm_assistant' => 'admin.rfqs.reject-gm-assistant',
         'gm_review' => 'admin.rfqs.reject-gm',
+        'bd_closing' => 'admin.rfqs.reject-bd',
         default => null,
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
     $rejectRole = match ($rejectFromStage) {
         'senior_ops_review' => 'Senior Operations',
         'head_of_bd_review' => 'Head of Business Development',
+        'gm_assistant' => 'GM Assistant',
         'gm_review' => 'General Manager',
+        'bd_closing' => 'Business Development',
         default => null,
     };
 
@@ -150,6 +157,7 @@
                                              which never touch any other part on the same RFQ. Each
                                              asks for a comment first. --}}
                                         <div class="d-inline-flex gap-2">
+                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry_to_ops', 'who' => $assignee->name])
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'return', 'who' => $assignee->name])
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
                                         </div>
@@ -221,6 +229,7 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
+                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => 'returns'])
                                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => 'returns'])
                                     </td>
                                 </tr>
@@ -572,6 +581,14 @@
                                                 data-payment-terms="{{ $rfq->payment_terms }}">
                                             <i class="bi bi-pencil-square"></i> Add Details
                                         </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route($rejectRouteName, $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}"
+                                                data-part="{{ $assignee->pivot->part_number }}"
+                                                data-label="{{ $partLabel }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -610,6 +627,12 @@
                                                 data-client-details="{{ $rfq->client_details }}"
                                                 data-payment-terms="{{ $rfq->payment_terms }}">
                                             <i class="bi bi-pencil-square"></i> Add Details
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route($rejectRouteName, $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
                                         </button>
                                     </td>
                                 </tr>
@@ -943,6 +966,14 @@
                                             'label' => $partLabel,
                                             'hint' => 'It moves into Closed RFQs.'.($rfq->isSplit() ? ' The RFQ closes once every part is closed.' : ''),
                                         ])
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route($rejectRouteName, $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}"
+                                                data-part="{{ $assignee->pivot->part_number }}"
+                                                data-label="{{ $partLabel }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endforeach
@@ -970,6 +1001,12 @@
                                             'label' => $rfq->rfq_number,
                                             'hint' => 'It moves out of Pending into Closed RFQs.',
                                         ])
+                                        <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                                                data-action="{{ route($rejectRouteName, $rfq) }}"
+                                                data-rfq-id="{{ $rfq->id }}">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Reject
+                                        </button>
                                     </td>
                                 </tr>
                             @endif
@@ -1066,6 +1103,7 @@
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         @if (! $iHaveCompletedMyPart)
+                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart, 'kind' => 'sourcing_to_ops'])
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart])
                                         @elseif ($rfq->partAwaitsFinalize($myPart))
                                             @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $myPart])

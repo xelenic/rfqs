@@ -82,33 +82,39 @@
     $canApproveGm = auth()->user()->hasAnyRole(['General Manager', 'Admin']) && $rfq->stage === 'gm_review' && ! $hasPartOnHold;
     $canRejectGm = $canApproveGm;
 
+    // Business Development's closing action — the true end of the
+    // lifecycle. See Rfq::closeOut().
+    $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing' && ! $hasPartOnHold;
+
     // The one shared reject modal (_reject_modal) works for whichever of
-    // the three is theirs to decide right now — its route name and the
+    // the review or closing steps is theirs to decide right now — its route name and the
     // stages it can send the RFQ back to (Rfq::rejectTargetStages()) both
     // follow from which.
     $rejectFromStage = match (true) {
         $canRejectSeniorOps => 'senior_ops_review',
         $canDecideHeadOfBdReview => 'head_of_bd_review',
+        $canSubmitGmAssistantDetails => 'gm_assistant',
         $canRejectGm => 'gm_review',
+        $canCloseRfq => 'bd_closing',
         default => null,
     };
     $rejectRouteName = match ($rejectFromStage) {
         'senior_ops_review' => 'admin.rfqs.reject-senior-ops',
         'head_of_bd_review' => 'admin.rfqs.reject-head-of-bd',
+        'gm_assistant' => 'admin.rfqs.reject-gm-assistant',
         'gm_review' => 'admin.rfqs.reject-gm',
+        'bd_closing' => 'admin.rfqs.reject-bd',
         default => null,
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
     $rejectRole = match ($rejectFromStage) {
         'senior_ops_review' => 'Senior Operations',
         'head_of_bd_review' => 'Head of Business Development',
+        'gm_assistant' => 'GM Assistant',
         'gm_review' => 'General Manager',
+        'bd_closing' => 'Business Development',
         default => null,
     };
-
-    // Business Development's closing action — the true end of the
-    // lifecycle. See Rfq::closeOut().
-    $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing' && ! $hasPartOnHold;
 
     // A Sourcing assignee sees their own split RFQ number (e.g.
     // "RFQ1001-P2 of P3") once more than one person is sharing the work;
@@ -508,6 +514,12 @@
                         data-rfq-id="{{ $rfq->id }}">
                     <i class="bi bi-pencil-square"></i> Add Details
                 </button>
+                <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                        data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                        data-action="{{ route('admin.rfqs.reject-gm-assistant', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reject
+                </button>
             @endif
             @if ($canApproveGm)
                 <form action="{{ route('admin.rfqs.approve-gm', $rfq) }}" method="POST"
@@ -551,6 +563,12 @@
                     'label' => $rfq->rfq_number,
                     'hint' => 'It moves out of Pending into Closed RFQs.',
                 ])
+                <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
+                        data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
+                        data-action="{{ route('admin.rfqs.reject-bd', $rfq) }}"
+                        data-rfq-id="{{ $rfq->id }}">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reject
+                </button>
             @endif
             @can('rfqs.edit')
                 @if ($rfq->assignees->isEmpty() && $canSeeAssignOperationsButton)

@@ -769,6 +769,16 @@ function rfqmsBoot() {
                 title: 'Return to Data Entry', icon: 'bi-arrow-counterclockwise', field: 'reason', label: 'Reason', max: 1000,
                 submit: 'Return to Data Entry', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Data Entry.',
             },
+            // Sourcing's on their own part, or Data Entry's on one with them:
+            // back to Senior Operations to assign again.
+            sourcing_to_ops: {
+                title: 'Return to Senior Operations', icon: 'bi-arrow-return-left', field: 'reason', label: 'Reason', max: 1000,
+                submit: 'Return to Senior Operations', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Senior Operations.',
+            },
+            data_entry_to_ops: {
+                title: 'Return to Senior Operations', icon: 'bi-arrow-return-left', field: 'reason', label: 'Reason', max: 1000,
+                submit: 'Return to Senior Operations', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Senior Operations.',
+            },
         };
 
         var form = document.getElementById('completeForm');

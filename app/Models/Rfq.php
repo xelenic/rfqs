@@ -124,11 +124,11 @@ class Rfq extends Model
      * Every stage, in pipeline order, that a reject can send an RFQ back
      * to — from the very start (Business Development itself, if it needs
      * fixing there before anything else can be redone) through Senior
-     * Operations' own assignment/split step and GM Assistant, just short
-     * of the General Manager's own review, which nothing rejects back to.
-     * Which of these a given reject-capable stage can actually use is
-     * whatever comes before its own position here — see
-     * rejectTargetStages().
+     * Operations' own assignment/split step and GM Assistant, to the General
+     * Manager's own review, which only Business Development sends back to.
+     * Which of these a given stage can actually use is RETURN_TARGETS'
+     * call; this order is what a reject undoes — the target and everything
+     * after it (markerColumnsFrom()).
      *
      * @var array<int, string>
      */
@@ -137,14 +137,49 @@ class Rfq extends Model
     ];
 
     /**
-     * The stages that can reject an RFQ back to an earlier one — Senior
-     * Operations' second review, the Head of Business Development, and the
-     * General Manager. GM Assistant, the other stage in the chain, only
-     * ever forwards. See rejectTargetStages(), rejectToStage().
+     * Who can send an RFQ — or one part of it — back to whom: each stage that
+     * can, with the earlier stages it sends to, as the business has it. A
+     * role never sends back to its own step, nor on to a later one.
+     *
+     * - Business Development, from Ready to Close: the Head of Business
+     *   Development, the General Manager.
+     * - Senior Operations, from their second review: Business Development,
+     *   Sourcing, Data Entry.
+     * - Sourcing, on a part still with them: Senior Operations — and, from
+     *   Finalize, Data Entry (returnToDataEntry(), not a reject).
+     * - Data Entry, on a part with them: Senior Operations — and Sourcing
+     *   (returnSourcingPart(), not a reject).
+     * - The Head of Business Development: Business Development, Senior
+     *   Operations (its assignment or its review), Sourcing, Data Entry.
+     * - GM Assistant: Senior Operations (its assignment or its review),
+     *   Sourcing, Data Entry.
+     * - The General Manager: every stage before their own.
+     *
+     * Senior Operations' assignment step ('operations') frees the part for
+     * them to assign again. See rejectTargetStages(), rejectToStage(),
+     * rejectPartToStage().
+     *
+     * @var array<string, array<int, string>>
+     */
+    public const RETURN_TARGETS = [
+        'sourcing' => ['operations'],
+        'data_entry' => ['operations'],
+        'senior_ops_review' => ['business_development', 'sourcing', 'data_entry'],
+        'head_of_bd_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'],
+        'gm_assistant' => ['operations', 'sourcing', 'data_entry', 'senior_ops_review'],
+        'gm_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'],
+        'bd_closing' => ['head_of_bd_review', 'gm_review'],
+    ];
+
+    /**
+     * The review and closing stages that send an RFQ back with the shared
+     * Reject & Return (RfqController::reject()) — every one in RETURN_TARGETS
+     * but Sourcing's and Data Entry's, which send their own part back
+     * (RfqController::returnSeniorOps()).
      *
      * @var array<int, string>
      */
-    public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_review'];
+    public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing'];
 
     /**
      * The stages with a Returns page of their own that holds what's sent back
@@ -245,21 +280,14 @@ class Rfq extends Model
     }
 
     /**
-     * The stages $fromStage's own review can send an RFQ back to —
-     * everything earlier in REJECT_STAGE_ORDER. Senior Operations' second
-     * review reaches back through their own assignment/split step to
-     * Business Development itself; the Head of Business Development's
-     * review reaches back through Senior Operations'; the General
-     * Manager's reaches all the way back through GM Assistant. Empty for
-     * anything that isn't a REJECTABLE_STAGE.
+     * The stages $fromStage can send an RFQ back to — see RETURN_TARGETS.
+     * Empty for a stage that can't send anything back.
      *
      * @return array<int, string>
      */
     public static function rejectTargetStages(string $fromStage): array
     {
-        $index = array_search($fromStage, self::REJECT_STAGE_ORDER, true);
-
-        return $index === false ? [] : array_slice(self::REJECT_STAGE_ORDER, 0, $index);
+        return self::RETURN_TARGETS[$fromStage] ?? [];
     }
 
     /**

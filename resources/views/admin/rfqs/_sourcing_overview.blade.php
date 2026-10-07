@@ -67,6 +67,13 @@
                                 @include('admin.rfqs._complete_button', [
                                     'rfq' => $rfq,
                                     'part' => $partAssignment->pivot->part_number,
+                                    'kind' => 'sourcing_to_ops',
+                                    'redirectRole' => 'sourcing',
+                                    'redirectView' => $scopedToReturns ? 'returns' : '',
+                                ])
+                                @include('admin.rfqs._complete_button', [
+                                    'rfq' => $rfq,
+                                    'part' => $partAssignment->pivot->part_number,
                                     'redirectRole' => 'sourcing',
                                     'redirectView' => $scopedToReturns ? 'returns' : '',
                                 ])

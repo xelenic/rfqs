@@ -49,7 +49,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'close', 'closePart', 'changeStatus']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -1174,6 +1174,86 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
+     * GM Assistant sends the RFQ (or, with a part, just that part) back to
+     * Senior Operations, Sourcing or Data Entry instead of adding their
+     * details — see Rfq::RETURN_TARGETS.
+     */
+    public function rejectGmAssistant(Request $request, Rfq $rfq): RedirectResponse
+    {
+        return $this->reject($request, $rfq, 'gm_assistant', 'GM Assistant');
+    }
+
+    /**
+     * Business Development sends an RFQ ready to close (or, with a part, just
+     * that part) back to the Head of Business Development or the General
+     * Manager instead of closing it — see Rfq::RETURN_TARGETS.
+     */
+    public function rejectBd(Request $request, Rfq $rfq): RedirectResponse
+    {
+        return $this->reject($request, $rfq, 'bd_closing', 'Business Development');
+    }
+
+    /**
+     * Sourcing — on their own part, still with them — or Data Entry — on a
+     * part Sourcing has completed and they haven't sent to finalize — sends
+     * it back to Senior Operations, with a required reason: the part is
+     * freed for them to assign again, and the RFQ is on their Returns page
+     * until they have (Rfq::rejectPartToStage() to 'operations'). Sourcing's
+     * is recorded as the part's own member — Admin can, on their behalf —
+     * and Data Entry's as one of Data Entry (doneBy()).
+     */
+    public function returnSeniorOps(Request $request, Rfq $rfq): RedirectResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
+
+        $withSourcing = $assignee->pivot->completed_at === null;
+        $withDataEntry = ! $withSourcing && $assignee->pivot->data_entry_completed_at === null;
+
+        abort_unless($withSourcing || $withDataEntry, 422, 'This part has moved on past Sourcing and Data Entry.');
+
+        if ($withSourcing) {
+            abort_unless(
+                ($user->hasRole('Sourcing') && $assignee->id === $user->id) || $user->hasRole('Admin'),
+                403,
+                'Only the Sourcing member assigned to this part can send it back to Senior Operations.'
+            );
+        } else {
+            abort_unless($user->hasAnyRole(['Data Entry', 'Admin']), 403, 'Only Data Entry can send this part back to Senior Operations.');
+        }
+
+        $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back to Senior Operations.', 1000);
+
+        if ($reason instanceof RedirectResponse) {
+            return $reason;
+        }
+
+        $rfq->rejectPartToStage(
+            $part,
+            'operations',
+            $reason,
+            $withSourcing ? $assignee : $this->doneBy($request, 'Data Entry'),
+            $withSourcing ? 'sourcing' : 'data_entry',
+        );
+
+        $status = "Sent {$rfq->partNumberLabel($part)} back to Senior Operations.";
+
+        // Sourcing no longer holds the part — nothing of it to go back to.
+        return $withSourcing
+            ? $this->redirectToIndex($request)->with('status', $status)
+            : redirect()->back()->with('status', $status);
+    }
+
+    /**
      * Who a stage's action is recorded as done by. Whoever does it — except
      * that Admin, who can act at every stage, may name one of the people who
      * hold that stage's role instead (the "Done by" dropdown on Admin's forms
@@ -1197,10 +1277,11 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Shared by rejectSeniorOps()/rejectHeadOfBd()/rejectGm(): the
-     * three stages that can send an RFQ back to an earlier one (see
-     * Rfq::REJECTABLE_STAGES) all work the same way, only $fromStage and
-     * $roleName differ.
+     * Shared by rejectSeniorOps()/rejectHeadOfBd()/rejectGmAssistant()/
+     * rejectGm()/rejectBd(): the stages that send an RFQ back with Reject &
+     * Return (see Rfq::REJECTABLE_STAGES) all work the same way, only
+     * $fromStage and $roleName differ — and where each can send it,
+     * Rfq::RETURN_TARGETS.
      */
     private function reject(Request $request, Rfq $rfq, string $fromStage, string $roleName): RedirectResponse
     {
@@ -1219,7 +1300,9 @@ class RfqController extends Controller implements HasMiddleware
             $awaits = match ($fromStage) {
                 'senior_ops_review' => $rfq->partAwaitsSeniorOpsReview($part),
                 'head_of_bd_review' => $rfq->partAwaitsHeadOfBdReview($part),
+                'gm_assistant' => $rfq->partAwaitsGmAssistant($part),
                 'gm_review' => $rfq->partAwaitsGmApproval($part),
+                'bd_closing' => $rfq->partAwaitsBdClosing($part),
             };
             abort_unless($awaits, 422, "This part is not awaiting {$roleName} review.");
         }

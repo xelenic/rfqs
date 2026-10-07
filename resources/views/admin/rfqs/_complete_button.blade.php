@@ -4,7 +4,11 @@
     Finalize on a Sourcing part — or (kind "return") Data Entry sending a part back to Sourcing, where
     the comment is the reason — or (kind "return_data_entry") the Sourcing
     member sending a part Data Entry sent to finalize back to Data Entry
-    instead, again with a reason. It doesn't act itself: it opens the prompt
+    instead, again with a reason — or (kind "sourcing_to_ops", the Sourcing
+    member on their own part still with them, or "data_entry_to_ops", Data
+    Entry on a part with them) sending it back to Senior Operations to assign
+    again, with a reason (RfqController::returnSeniorOps()). It doesn't act
+    itself: it opens the prompt
     (_complete_modal.blade.php), pointing it at the right route and part and at
     where to come back to.
 
@@ -29,7 +33,7 @@
 
     // The Sourcing member's own actions. Admin has no part of their own:
     // doing one is done as its assignee.
-    $isSourcingAction = in_array($kind, ['sourcing', 'return_data_entry'], true);
+    $isSourcingAction = in_array($kind, ['sourcing', 'return_data_entry', 'sourcing_to_ops'], true);
     $forAssignee = $isSourcingAction && auth()->user()->hasRole('Admin') ? $rfq->assigneeForPart((int) $part) : null;
 
     [$route, $audience, $heading, $hint, $placeholder, $defaultLabel, $defaultClass, $icon] = match ($kind) {
@@ -54,6 +58,17 @@
             'Return to Data Entry',
             'btn btn-sm btn-outline-danger',
             'bi-arrow-counterclockwise',
+        ],
+        // Back to Senior Operations, who frees the part to assign again.
+        'sourcing_to_ops', 'data_entry_to_ops' => [
+            route('admin.rfqs.return-senior-ops', $rfq),
+            'Senior Operations',
+            'Tell Senior Operations what\'s wrong',
+            'Sent back to Senior Operations to assign again. Your reason is posted to the RFQ\'s comments and shown with it on their Returns page.',
+            'Why should Senior Operations look at this part again?',
+            'Return to Senior Operations',
+            'btn btn-sm btn-outline-danger',
+            'bi-arrow-return-left',
         ],
         'data_entry' => [
             route('admin.rfqs.complete-data-entry', $rfq),
@@ -98,7 +113,7 @@
         data-placeholder="{{ $placeholder }}"
         data-return-to="{{ $returnTo ?? '' }}"
         data-redirect-status="{{ $isSourcingAction && ! ($returnTo ?? null) ? 'Pending' : '' }}"
-        data-redirect-view="{{ $kind === 'sourcing' ? ($redirectView ?? '') : '' }}"
+        data-redirect-view="{{ in_array($kind, ['sourcing', 'sourcing_to_ops'], true) ? ($redirectView ?? '') : '' }}"
         data-redirect-role="{{ $redirectRole ?? '' }}"
         data-back-modal="{{ $backModal ?? '' }}">
     <i class="bi {{ $icon }}"></i> {{ $label ?? $defaultLabel }}
