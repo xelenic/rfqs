@@ -49,6 +49,18 @@ class Setting extends Model
     public const DEFAULT_WORKING_DAY = ['working' => true, 'start' => '08:30', 'end' => '17:00', 'lunch_start' => '12:30', 'lunch_end' => '13:30'];
 
     /**
+     * The time a half day off takes until an Admin changes it — the morning
+     * off, or the afternoon off (Attendance::HALF_DAY) — times as "HH:MM",
+     * 24-hour. See halfDayOff().
+     *
+     * @var array{morning: array{start: string, end: string}, afternoon: array{start: string, end: string}}
+     */
+    public const DEFAULT_HALF_DAY_OFF = [
+        'morning' => ['start' => '08:30', 'end' => '12:30'],
+        'afternoon' => ['start' => '13:30', 'end' => '17:00'],
+    ];
+
+    /**
      * The days off until an Admin changes them.
      *
      * @var array<int, string>
@@ -270,6 +282,64 @@ class Setting extends Model
         foreach (static::workingPeriodsBetween($from, $to) as [$periodStart, $periodEnd]) {
             $date = CarbonImmutable::createFromTimestamp($periodStart, $zone)->toDateString();
             $days[$date] = ($days[$date] ?? 0) + $periodEnd - $periodStart;
+        }
+
+        return $days;
+    }
+
+    /**
+     * The time a half day off takes — the morning off, and the afternoon off
+     * (Attendance::HALF_DAY) — as saved on the Settings page, or
+     * DEFAULT_HALF_DAY_OFF.
+     *
+     * @return array{morning: array{start: string, end: string}, afternoon: array{start: string, end: string}}
+     */
+    public static function halfDayOff(): array
+    {
+        $saved = json_decode((string) static::get('half_day_off'), true);
+        $saved = is_array($saved) ? $saved : [];
+
+        return collect(self::DEFAULT_HALF_DAY_OFF)
+            ->map(fn (array $default, string $half) => array_merge($default, array_intersect_key(is_array($saved[$half] ?? null) ? $saved[$half] : [], $default)))
+            ->all();
+    }
+
+    /**
+     * Saves the time a half day off takes — see halfDayOff() for its shape.
+     *
+     * @param  array{morning: array{start: string, end: string}, afternoon: array{start: string, end: string}}  $halves
+     */
+    public static function putHalfDayOff(array $halves): void
+    {
+        static::put('half_day_off', json_encode($halves));
+    }
+
+    /**
+     * workingSecondsByDay() — all of each day's — with how much of it falls in
+     * the morning off and in the afternoon off (halfDayOff()): what a half
+     * day off doesn't count, the rest of the day counting as usual.
+     *
+     * @return array<string, array{all: int, morning: int, afternoon: int}>
+     */
+    public static function workingSecondsWithHalfDaysOff(CarbonInterface $from, CarbonInterface $to): array
+    {
+        $zone = static::timezone();
+        $halves = static::halfDayOff();
+        $days = [];
+
+        foreach (static::workingPeriodsBetween($from, $to) as [$periodStart, $periodEnd]) {
+            $day = CarbonImmutable::createFromTimestamp($periodStart, $zone);
+            $date = $day->toDateString();
+
+            $days[$date] ??= ['all' => 0, 'morning' => 0, 'afternoon' => 0];
+            $days[$date]['all'] += $periodEnd - $periodStart;
+
+            foreach ($halves as $half => $off) {
+                $offStart = $day->setTimeFromTimeString($off['start'])->getTimestamp();
+                $offEnd = $day->setTimeFromTimeString($off['end'])->getTimestamp();
+
+                $days[$date][$half] += max(0, min($periodEnd, $offEnd) - max($periodStart, $offStart));
+            }
         }
 
         return $days;

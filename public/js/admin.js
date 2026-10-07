@@ -1681,18 +1681,24 @@ function rfqmsBoot() {
         window.__rfqmsCountdownTimer = setInterval(tickCountdowns, 15000);
     }
 
-    // The attendance popup (admin/attendance): marking someone absent tints
-    // their row and opens up why; present greys it out again — it's only kept
-    // for an absence (see AttendanceController). The button that opens it
+    // The attendance popup (admin/attendance): marking someone on leave, or
+    // on a half day, tints their row and opens up why — and, for a half day,
+    // which half they were off; present greys it out again — it's only kept
+    // for time off (see AttendanceController). The button that opens it
     // says whether it's a new day's sheet or a submitted one to correct, and
     // with what marks; one with no button (a refused submission coming back)
     // is left as the server filled it.
     var syncAttendanceRow = function (row) {
-        var absent = row.querySelector('.js-attendance-status[value="absent"]').checked;
-        row.classList.toggle('is-absent', absent);
+        var checked = row.querySelector('.js-attendance-status:checked');
+        var status = checked ? checked.value : 'present';
+        var halfDay = status === 'half_day';
+        row.classList.toggle('is-absent', status === 'absent');
+        row.classList.toggle('is-half-day', halfDay);
         row.querySelectorAll('.attendance-absence select, .attendance-absence input').forEach(function (field) {
-            field.disabled = !absent;
+            field.disabled = field.classList.contains('attendance-half') ? !halfDay : status === 'present';
         });
+        var half = row.querySelector('.attendance-half');
+        if (half) half.classList.toggle('d-none', !halfDay);
     };
 
     document.querySelectorAll('.js-attendance-status').forEach(function (radio) {
@@ -1752,10 +1758,30 @@ function rfqmsBoot() {
             form.querySelectorAll('[data-attendance-user]').forEach(function (row) {
                 var mark = marks[row.dataset.attendanceUser] || { status: 'present' };
                 row.querySelector('.js-attendance-status[value="' + mark.status + '"]').checked = true;
-                row.querySelector('.attendance-absence select').value = mark.reason || '';
+                row.querySelector('.attendance-half').value = mark.half_off || '';
+                row.querySelector('.attendance-reason').value = mark.reason || '';
                 row.querySelector('.attendance-absence input').value = mark.note || '';
                 syncAttendanceRow(row);
             });
+        });
+    }
+
+    // HR Manager's Return on a submitted sheet: the popup asks what needs
+    // correcting, pointed at the sheet whose button opened it.
+    var attendanceReturnModal = document.getElementById('attendanceReturnModal');
+    if (attendanceReturnModal) {
+        attendanceReturnModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-attendance-return')) return;
+
+            var form = document.getElementById('attendanceReturnForm');
+            var reason = form.querySelector('[name="reason"]');
+
+            form.action = button.dataset.action;
+            form.querySelector('[name="return_sheet_id"]').value = button.dataset.sheetId || '';
+            document.getElementById('attendanceReturnDay').textContent = button.dataset.dateLabel || '';
+            reason.value = '';
+            reason.classList.remove('is-invalid');
         });
     }
 

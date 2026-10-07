@@ -132,7 +132,9 @@ class RfqStep extends Model
     /**
      * This stretch's working seconds by where whoever it's credited to
      * (worked_by) stood on each day of it (Attendance::statusIn()): present —
-     * it counts — absent, or unmarked, that day's sheet not made yet. A
+     * it counts — absent, or unmarked, that day's sheet not made yet (or not
+     * approved); on a half day, what of it fell in the half they were off
+     * (Setting::halfDayOff()) as absent and the rest as present. A
      * stretch that ended without anyone being credited with it — held or
      * freed before Data Entry or GM Assistant got to it — is unattributed
      * instead: nobody will be. Up to $now while it's still open.
@@ -144,14 +146,25 @@ class RfqStep extends Model
     {
         $split = ['present' => 0, 'absent' => 0, 'unmarked' => 0, 'unattributed' => 0];
 
-        foreach (Setting::workingSecondsByDay($this->started_at, $this->ended_at ?? $now ?? now()) as $date => $seconds) {
+        foreach (Setting::workingSecondsWithHalfDaysOff($this->started_at, $this->ended_at ?? $now ?? now()) as $date => $seconds) {
             $status = Attendance::statusIn($book, $this->worked_by, $date);
 
             if ($status === Attendance::UNMARKED && $this->worked_by === null && $this->ended_at !== null) {
                 $status = 'unattributed';
             }
 
-            $split[$status] += $seconds;
+            $off = match ($status) {
+                Attendance::MORNING_OFF => $seconds['morning'],
+                Attendance::AFTERNOON_OFF => $seconds['afternoon'],
+                default => null,
+            };
+
+            if ($off === null) {
+                $split[$status] += $seconds['all'];
+            } else {
+                $split['absent'] += $off;
+                $split['present'] += $seconds['all'] - $off;
+            }
         }
 
         return $split;

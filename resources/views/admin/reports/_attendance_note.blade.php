@@ -6,7 +6,7 @@
     Expects: $time (a role's, or the whole RFQ's, from Rfq::timeSpent()).
 --}}
 @if ($time['awaiting'] > 0)
-    <div class="small time-awaiting-note" title="Not counted until that day's attendance sheet is made">
+    <div class="small time-awaiting-note" title="Not counted until that day's attendance sheet is made and approved by HR Manager">
         <i class="bi bi-hourglass"></i> {{ \App\Models\Setting::durationLabel($time['awaiting']) }} awaiting attendance
     </div>
 @endif

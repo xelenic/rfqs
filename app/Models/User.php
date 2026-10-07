@@ -33,13 +33,27 @@ class User extends Authenticatable
     ];
 
     /**
-     * The roles that see the Time Spent report — and keep the attendance
-     * sheet (canManageAttendance()). HR Manager has no part in the RFQ
-     * workflow itself.
+     * The roles that see the Time Spent report. HR Manager has no part in the
+     * RFQ workflow itself.
      *
      * @var array<int, string>
      */
     public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Manager'];
+
+    /**
+     * The roles that fill in and submit the daily attendance sheet.
+     *
+     * @var array<int, string>
+     */
+    public const ATTENDANCE_KEEPER_ROLES = ['Admin', 'Senior Operations'];
+
+    /**
+     * The roles that review a submitted attendance sheet — approve it, or
+     * return it to be corrected.
+     *
+     * @var array<int, string>
+     */
+    public const ATTENDANCE_APPROVER_ROLES = ['Admin', 'HR Manager'];
 
     /**
      * Get the attributes that should be cast.
@@ -74,12 +88,30 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this person keeps the daily attendance sheet (AttendanceSheet)
-     * — the same people as see the Time Spent report.
+     * Whether this person fills in and submits the daily attendance sheet
+     * (AttendanceSheet) — see ATTENDANCE_KEEPER_ROLES.
      */
     public function canManageAttendance(): bool
     {
-        return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
+        return $this->hasAnyRole(self::ATTENDANCE_KEEPER_ROLES);
+    }
+
+    /**
+     * Whether this person reviews submitted attendance sheets — approves
+     * them, or returns them to be corrected. See ATTENDANCE_APPROVER_ROLES.
+     */
+    public function canApproveAttendance(): bool
+    {
+        return $this->hasAnyRole(self::ATTENDANCE_APPROVER_ROLES);
+    }
+
+    /**
+     * Whether this person sees the attendance page — to keep the sheets, or
+     * to review them.
+     */
+    public function canViewAttendance(): bool
+    {
+        return $this->canManageAttendance() || $this->canApproveAttendance();
     }
 
     /**

@@ -35,19 +35,20 @@ it('seeds HR Manager with a description and no RFQ permissions', function () {
         ->and($role->permissions)->toBeEmpty();
 });
 
-it('lets HR Manager keep the attendance sheet', function () {
+it('lets HR Manager review the attendance sheets, but not fill them in', function () {
     $hr = hrManager();
     $sourcing = userWithRole('Sourcing');
 
     test()->actingAs($hr)->get(route('admin.attendance.index'))->assertOk()
-        ->assertSee('New attendance sheet');
+        ->assertDontSee('New attendance sheet')
+        ->assertDontSee('id="attendanceModal"', false);
 
     test()->actingAs($hr)->post(route('admin.attendance.store'), [
         'date' => now()->toDateString(),
         'attendance' => [$sourcing->id => ['status' => 'absent', 'reason' => 'Sick leave']],
-    ])->assertSessionHasNoErrors();
+    ])->assertForbidden();
 
-    expect(AttendanceSheet::query()->sole()->created_by)->toBe($hr->id);
+    expect(AttendanceSheet::query()->count())->toBe(0);
 });
 
 it('lets HR Manager see the Time Spent report, without opening the RFQs themselves', function () {

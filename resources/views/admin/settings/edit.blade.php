@@ -1,7 +1,7 @@
 {{--
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
-    settings, the Working Hours and the Sourcing Targets. Each tab is its own
+    settings, the Working Hours, the Half Day and the Sourcing Targets. Each tab is its own
     form with its own error bag. The tab that opens is the one a form was
     just saved from (session settings_tab) or failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
@@ -10,7 +10,8 @@
     Expects: $user, $closesRfqs, $isAdmin, $companyName, $liveInterval,
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
-    $attendanceSince (Setting::attendanceSince()).
+    $attendanceSince (Setting::attendanceSince()), $halfDayOff
+    (Setting::halfDayOff()).
 --}}
 @extends('layouts.app')
 
@@ -26,6 +27,7 @@
         $adminTabs = $isAdmin ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
+            'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
         ] : [];
         $allTabs = $accountTabs + $adminTabs;
@@ -354,6 +356,51 @@
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save working hours</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'half-day' ? 'show active' : '' }}" id="settings-pane-half-day" role="tabpanel" aria-labelledby="settings-tab-half-day" tabindex="0">
+                {{-- The time a half day off takes — the morning off and the
+                     afternoon off. On the attendance sheet, someone on a half day
+                     is off one of them, and the time in it doesn't count. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Half Day
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.half-day') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">When the attendance sheet has someone on a half day, the time they spend on RFQs in the half they were off doesn't count. The rest of their day counts as usual.</p>
+
+                            <div class="row g-3 mb-3">
+                                @foreach (['morning' => 'Morning off', 'afternoon' => 'Afternoon off'] as $half => $halfLabel)
+                                    <div class="col-md-6">
+                                        <label class="form-label" for="half-{{ $half }}-start">{{ $halfLabel }}</label>
+                                        <div class="working-hours-range">
+                                            @foreach (['start' => 'starts', 'end' => 'ends'] as $name => $label)
+                                                <input type="time" name="halves[{{ $half }}][{{ $name }}]" id="half-{{ $half }}-{{ $name }}"
+                                                       class="form-control @error("halves.{$half}.{$name}", 'half_day') is-invalid @enderror"
+                                                       value="{{ old("halves.{$half}.{$name}", $halfDayOff[$half][$name]) }}" aria-label="{{ $halfLabel }} {{ $label }}">
+                                                @if ($name === 'start')
+                                                    <span class="text-muted-soft">to</span>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                        @foreach (['start', 'end'] as $name)
+                                            @error("halves.{$half}.{$name}", 'half_day')
+                                                <div class="text-danger small mt-1">{{ $message }}</div>
+                                            @enderror
+                                        @endforeach
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save half day</button>
+                        </form>
+                    </div>
                 </div>
             </div>
 

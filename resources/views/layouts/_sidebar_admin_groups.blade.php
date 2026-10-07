@@ -19,8 +19,11 @@
     Time Spent — sit in its group too, as plain links to their own route.
 --}}
 @php
-    // Besides the queues: the working days still without an attendance sheet.
-    $counts = \App\Models\Rfq::queueCounts() + ['attendance_missing' => count(\App\Models\AttendanceSheet::missingDays())];
+    // Besides the queues: the attendance sheets to make (working days still
+    // without one), correct (returned by HR Manager) or approve.
+    $counts = \App\Models\Rfq::queueCounts() + ['attendance' => count(\App\Models\AttendanceSheet::missingDays())
+        + \App\Models\AttendanceSheet::returnedCount()
+        + \App\Models\AttendanceSheet::awaitingApprovalCount()];
     $onRfqList = request()->routeIs('admin.rfqs.index');
     $currentRole = $onRfqList ? \App\Models\Rfq::workflowRoleForSlug(request('role')) : null;
     $currentView = in_array(request('view'), \App\Models\Rfq::QUEUE_VIEWS, true) ? request('view') : null;
@@ -51,7 +54,7 @@
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'sent back by a reviewer'],
                 ['label' => 'On Hold', 'icon' => 'bi-pause-circle', 'status' => \App\Models\Rfq::ON_HOLD, 'view' => null, 'count' => 'on_hold', 'hint' => 'on hold'],
                 ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
-                ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance_missing', 'hint' => 'working days without a sheet'],
+                ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
                 ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
             ],
         ],

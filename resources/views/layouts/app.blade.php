@@ -55,14 +55,26 @@
                      that role's pages (_sidebar_admin_groups). --}}
                 @if (auth()->user()->canViewTimeSpentReport() && ! (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view')))
                     <div class="sidebar-section-title">Reports</div>
-                    @if (auth()->user()->canManageAttendance())
-                        {{-- The working days still without an attendance sheet, as a red count. --}}
-                        @php $daysWithoutSheet = count(\App\Models\AttendanceSheet::missingDays()); @endphp
+                    @if (auth()->user()->canViewAttendance())
+                        {{-- What's waiting on them there, as a red count: for Senior
+                             Operations, the working days still without a sheet and the
+                             sheets HR Manager returned; for HR Manager, the sheets
+                             awaiting their approval. --}}
+                        @php
+                            $daysWithoutSheet = auth()->user()->canManageAttendance() ? count(\App\Models\AttendanceSheet::missingDays()) : 0;
+                            $attendanceToDo = array_filter([
+                                $daysWithoutSheet.' working '.\Illuminate\Support\Str::plural('day', $daysWithoutSheet).' without a sheet' => $daysWithoutSheet,
+                                'returned by HR Manager' => auth()->user()->canManageAttendance() ? \App\Models\AttendanceSheet::returnedCount() : 0,
+                                'awaiting your approval' => auth()->user()->canApproveAttendance() ? \App\Models\AttendanceSheet::awaitingApprovalCount() : 0,
+                            ]);
+                            $attendanceCount = array_sum($attendanceToDo);
+                            $attendanceTitle = collect($attendanceToDo)->map(fn (int $count, string $what) => str_contains($what, 'without a sheet') ? $what : "{$count} {$what}")->join(', ');
+                        @endphp
                         <a href="{{ route('admin.attendance.index') }}" class="nav-link {{ request()->routeIs('admin.attendance.*') ? 'active' : '' }}">
                             <i class="bi bi-person-check"></i>
                             <span class="nav-link-label">Attendance</span>
-                            @if ($daysWithoutSheet > 0)
-                                <span class="nav-link-count" title="{{ $daysWithoutSheet }} working {{ \Illuminate\Support\Str::plural('day', $daysWithoutSheet) }} without a sheet">{{ $daysWithoutSheet }}</span>
+                            @if ($attendanceCount > 0)
+                                <span class="nav-link-count" title="{{ $attendanceTitle }}">{{ $attendanceCount }}</span>
                             @endif
                         </a>
                     @endif

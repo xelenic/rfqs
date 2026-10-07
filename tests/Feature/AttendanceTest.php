@@ -63,6 +63,19 @@ function makeSheet($by, string $date, array $absent = [])
 }
 
 /**
+ * HR Manager approves $date's sheet — only then does its day count.
+ */
+function approveSheetAsHr(string $date): void
+{
+    Role::findOrCreate('HR Manager');
+    $sheet = AttendanceSheet::query()->whereDate('date', $date)->sole();
+
+    test()->actingAs(User::factory()->create()->assignRole('HR Manager'))
+        ->patch(route('admin.attendance.approve', $sheet))
+        ->assertSessionHasNoErrors();
+}
+
+/**
  * The marks the sheet's form sends: everyone present but those in $absent
  * (user id => reason).
  *
@@ -125,7 +138,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Sick leave'])
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 on leave.');
+        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 on leave. Sent to HR Manager for approval.');
 
     $sheet = AttendanceSheet::query()->sole();
     expect($sheet->created_by)->toBe($ops->id)
@@ -159,7 +172,7 @@ it('lists each day\'s submitted sheet, with who was absent and why, and an Edit 
         ->toContain(e($ops->name))
         ->toContain('data-action="'.route('admin.attendance.update', $sheet).'"')
         ->toContain('data-sheet-id="'.$sheet->id.'"')
-        ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'reason' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'reason' => 'Casual leave', 'note' => null]])));
+        ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'half_off' => null, 'reason' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'half_off' => null, 'reason' => 'Casual leave', 'note' => null]])));
 });
 
 it('brings a refused submission back in the popup, as it was sent', function () {
@@ -191,7 +204,7 @@ it('marks someone absent, with why, and back again', function () {
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']))
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave.');
+        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Manager for approval.');
 
     expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave'])
         ->and($sheet->refresh()->updated_by)->toBe($ops->id);
@@ -284,11 +297,20 @@ it('counts the day for someone present, and not for someone absent', function ()
     $ops = userWithRole('Senior Operations');
     makeSheet($ops, '2026-10-05');
 
+    // Submitted, but not counted until HR Manager approves it.
+    expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'awaiting' => 7200]);
+
+    approveSheetAsHr('2026-10-05');
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 7200, 'awaiting' => 0]);
 
+    // Corrected to on leave: back to HR Manager — awaiting again until approved.
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Casual leave']));
 
+    expect($sheet->refresh()->isAwaitingApproval())->toBeTrue()
+        ->and($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'awaiting' => 7200]);
+
+    approveSheetAsHr('2026-10-05');
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'absent' => 7200]);
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -322,6 +344,7 @@ it('credits Data Entry\'s time to whoever finishes it, by their attendance', fun
         ->and($rfq->timeSpent()['roles']['Data Entry'])->toMatchArray(['seconds' => 0, 'awaiting' => 3600]);
 
     makeSheet(userWithRole('Senior Operations'), '2026-10-05');
+    approveSheetAsHr('2026-10-05');
 
     expect($rfq->timeSpent()['roles']['Data Entry'])->toMatchArray(['seconds' => 3600, 'awaiting' => 0]);
 });
@@ -341,6 +364,7 @@ it('doesn\'t count a day absent against Sourcing\'s deadline', function () {
     makeSheet($ops, '2026-10-05');
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']));
+    approveSheetAsHr('2026-10-05');
 
     expect($rfq->refresh()->sourcingDeadline())->toMatchArray(['remaining' => 4 * 3600 - 90 * 60, 'exceeded' => false]);
 

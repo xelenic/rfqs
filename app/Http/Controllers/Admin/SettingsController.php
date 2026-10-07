@@ -41,6 +41,7 @@ class SettingsController extends Controller
             'timezone' => Setting::timezone(),
             'sourcingTargets' => Setting::sourcingTargets(),
             'attendanceSince' => Setting::attendanceSince(),
+            'halfDayOff' => Setting::halfDayOff(),
         ]);
     }
 
@@ -205,6 +206,47 @@ class SettingsController extends Controller
             ->all()));
 
         return $this->backToTab('sourcing-targets', 'Sourcing targets saved.');
+    }
+
+    /**
+     * The time a half day off takes: the morning off and the afternoon off,
+     * each from a time to a later one. On a half day the attendance sheet has
+     * someone off one of them, the time that falls in it doesn't count. See
+     * Setting::halfDayOff().
+     */
+    public function updateHalfDay(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the half day.');
+
+        $rules = [];
+        $attributes = [];
+
+        foreach (['morning' => 'the morning off', 'afternoon' => 'the afternoon off'] as $half => $name) {
+            $rules["halves.{$half}.start"] = ['required', 'date_format:H:i'];
+            $rules["halves.{$half}.end"] = ['required', 'date_format:H:i'];
+            $attributes["halves.{$half}.start"] = "when {$name} starts";
+            $attributes["halves.{$half}.end"] = "when {$name} ends";
+        }
+
+        $validated = Validator::make($request->all(), $rules, [
+            'required' => 'Give :attribute.',
+            'date_format' => 'Give :attribute as a time, like 08:30.',
+        ], $attributes)->after(function (ValidatorInstance $validator) {
+            foreach (['morning' => 'The morning off', 'afternoon' => 'The afternoon off'] as $half => $name) {
+                $times = $validator->getData()['halves'][$half] ?? [];
+
+                // Zero-padded "HH:MM" (date_format:H:i) compares in time order as a string.
+                if (! $validator->errors()->hasAny(["halves.{$half}.start", "halves.{$half}.end"]) && $times['end'] <= $times['start']) {
+                    $validator->errors()->add("halves.{$half}.end", "{$name} has to end after it starts.");
+                }
+            }
+        })->validateWithBag('half_day');
+
+        Setting::putHalfDayOff(collect($validated['halves'])
+            ->map(fn (array $times) => ['start' => $times['start'], 'end' => $times['end']])
+            ->all());
+
+        return $this->backToTab('half-day', 'Half day saved.');
     }
 
     /**

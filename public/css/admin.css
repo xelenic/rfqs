@@ -1703,6 +1703,19 @@ h6, .h6 { font-size: 0.85rem; }
   border-color: var(--rfq-primary);
 }
 
+/* Orange, like .badge-soft-orange — the attendance sheet's Half day. */
+.btn-outline-orange {
+  --bs-btn-color: #ea580c;
+  --bs-btn-border-color: #ea580c;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #ea580c;
+  --bs-btn-hover-border-color: #ea580c;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #ea580c;
+  --bs-btn-active-border-color: #ea580c;
+  --bs-btn-focus-shadow-rgb: 234, 88, 12;
+}
+
 /* ---------- Switches ---------- */
 
 .form-check-input:checked {
@@ -1749,6 +1762,16 @@ h6, .h6 { font-size: 0.85rem; }
 .badge-soft-warning {
   background: #fef3e2;
   color: #b45309;
+  font-weight: 600;
+  padding: 0.3em 0.6em;
+  font-size: 0.72rem;
+}
+
+/* Orange — a half day on the attendance sheet, between present's green and
+   leave's red. */
+.badge-soft-orange {
+  background: #ffedd5;
+  color: #c2410c;
   font-weight: 600;
   padding: 0.3em 0.6em;
   font-size: 0.72rem;
@@ -3844,14 +3867,18 @@ h6, .h6 { font-size: 0.85rem; }
   opacity: 0.7;
 }
 
-/* The attendance sheet: an absent person's row tinted, and the reason and
-   note only usable for someone marked absent (see admin.js). Time on the
-   Time Spent sheet that waits on a sheet, or was a day absent. */
+/* The attendance sheet: the row of someone on leave, or on a half day,
+   tinted, and the reason and note only usable for them (see admin.js). Time
+   on the Time Spent sheet that waits on a sheet, or was a day absent. */
 .attendance-table tr.is-absent td {
   background: #fdf2f2;
 }
 
-.attendance-table tr:not(.is-absent) .attendance-absence {
+.attendance-table tr.is-half-day td {
+  background: #fff1e6;
+}
+
+.attendance-table tr:not(.is-absent):not(.is-half-day) .attendance-absence {
   opacity: 0.4;
 }
 

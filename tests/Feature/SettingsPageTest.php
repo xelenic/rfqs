@@ -299,14 +299,14 @@ function openSettingsTab(string $html): ?string
     return preg_match('/<button type="button" class="nav-link active" id="settings-tab-([a-z-]+)"/', $html, $match) ? $match[1] : null;
 }
 
-it('splits the page into tabs: three for everyone, three more for an Admin', function () {
+it('splits the page into tabs: three for everyone, four more for an Admin', function () {
     $tabs = fn (string $html) => preg_match_all('/data-settings-tab="([a-z-]+)"/', $html, $matches) ? $matches[1] : [];
 
     expect($tabs(test()->actingAs(userWithRole('Sourcing'))->get(route('admin.settings.edit'))->getContent()))
         ->toBe(['profile', 'password', 'preferences']);
 
     expect($tabs(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit'))->getContent()))
-        ->toBe(['profile', 'password', 'preferences', 'application', 'working-hours', 'sourcing-targets']);
+        ->toBe(['profile', 'password', 'preferences', 'application', 'working-hours', 'half-day', 'sourcing-targets']);
 });
 
 it('opens on Profile, or on the tab asked for — one that\'s theirs to see', function () {

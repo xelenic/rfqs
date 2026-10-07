@@ -13,3 +13,6 @@ RfqAssignment::isAwaiting…() and whereAwaiting…() say where a part stands, i
 
 ## Who can send back to whom lives in Rfq::RETURN_TARGETS
 The business decided which role can return an RFQ to which earlier step (2026-10-06). Rfq::RETURN_TARGETS is the single source: rejectTargetStages(), the Reject modal's options and validation all read it. Never derive targets from REJECT_STAGE_ORDER ("everything earlier"); that rule was replaced. Returns go only to earlier steps, never to the role's own step or a later one. A new send-back must be added to RETURN_TARGETS, not hard-coded in a controller or view.
+
+## Attendance counts only once HR Manager approves the sheet
+Senior Operations (and Admin) submit the daily AttendanceSheet, and HR Manager (and Admin) approve it or return it. Only approved sheets count: Attendance::book() filters on attendance_sheets.approved_at, so an unapproved or returned day reads as UNMARKED ("awaiting"). Read attendance through book() and statusIn(), never by querying attendances directly. Any edit to a sheet goes through AttendanceSheet::submitted(), which clears the approval and sends it back to HR.

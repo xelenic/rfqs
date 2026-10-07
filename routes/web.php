@@ -37,12 +37,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('settings/application', [SettingsController::class, 'updateApplication'])->name('settings.application');
     Route::patch('settings/working-hours', [SettingsController::class, 'updateWorkingHours'])->name('settings.working-hours');
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
+    Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
 
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
     Route::put('attendance/{sheet}', [AttendanceController::class, 'update'])->name('attendance.update');
+    Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
+    Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
 
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');
