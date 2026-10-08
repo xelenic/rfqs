@@ -1502,7 +1502,7 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * Business Development closes one Sourcing part the General Manager has
      * approved — without waiting for the rest of a split — giving the
-     * reference code that's required to close anything, kept with the part.
+     * quotation number that's required to close anything, kept with the part.
      * The RFQ closes once every part has been. See Rfq::closePart().
      */
     public function closePart(Request $request, Rfq $rfq): RedirectResponse
@@ -1548,7 +1548,7 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * Business Development formally closes this whole RFQ out — any part not
      * yet closed on its own included — the true end of the lifecycle, giving
-     * the reference code that's required to close it, kept with it. See
+     * the quotation number that's required to close it, kept with it. See
      * Rfq::closeOut().
      */
     public function close(Request $request, Rfq $rfq): RedirectResponse
@@ -1571,7 +1571,7 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * The reference code Business Development must give to close a part or an
+     * The quotation number (kept as the reference code) Business Development must give to close a part or an
      * RFQ — kept with it (Rfq::closePart(), closeOut()).
      *
      * @return array<string, array<int, string>>
@@ -1587,8 +1587,8 @@ class RfqController extends Controller implements HasMiddleware
     private function referenceCodeMessages(): array
     {
         return [
-            'reference_code.required' => 'Give the reference code to close it.',
-            'reference_code.max' => 'Keep the reference code under 100 characters.',
+            'reference_code.required' => 'Give the quotation number to close it.',
+            'reference_code.max' => 'Keep the quotation number under 100 characters.',
         ];
     }
 

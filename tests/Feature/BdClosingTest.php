@@ -524,13 +524,13 @@ it('keeps the reference code with the part, and with the RFQ when the last part 
 
     // Each part's own code on the RFQ's page, and on Closed RFQs.
     test()->actingAs($people['closer'])->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertSee('Reference code')
+        ->assertSee('Quotation number')
         ->assertSee('PO-7001')
         ->assertSee('PO-7002');
 
     test()->actingAs($people['closer'])->get(closedUrl())->assertOk()
-        ->assertSee('Ref: <span class="fw-semibold text-body">PO-7001</span>', false)
-        ->assertSee('Ref: <span class="fw-semibold text-body">PO-7002</span>', false);
+        ->assertSee('Quotation: <span class="fw-semibold text-body">PO-7001</span>', false)
+        ->assertSee('Quotation: <span class="fw-semibold text-body">PO-7002</span>', false);
 });
 
 it('keeps one reference code for a whole RFQ closed at once, on every part it closes', function () {
@@ -547,7 +547,7 @@ it('keeps one reference code for a whole RFQ closed at once, on every part it cl
     // And needs it too.
     $whole = Rfq::factory()->create(['stage' => 'bd_closing']);
     test()->actingAs($people['closer'])->patch(route('admin.rfqs.close', $whole), [])
-        ->assertSessionHasErrorsIn('close', ['reference_code' => 'Give the reference code to close it.']);
+        ->assertSessionHasErrorsIn('close', ['reference_code' => 'Give the quotation number to close it.']);
     expect($whole->refresh()->status)->toBe('Pending');
 });
 
@@ -563,6 +563,6 @@ it('brings a close with no reference code back in the popup, pointed at the same
 
     expect($html)->toContain('getElementById(\'closeRfqModal\')).show()')
         ->toContain('action="'.route('admin.rfqs.close-part', $rfq).'"')
-        ->toContain('Give the reference code to close it.')
+        ->toContain('Give the quotation number to close it.')
         ->toContain('id="closeRfqTarget">RFQ1001-P1 of P2');
 });

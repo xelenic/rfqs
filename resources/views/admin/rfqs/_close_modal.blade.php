@@ -1,6 +1,6 @@
 {{--
     The Close popup — Business Development closing a part, or a whole RFQ,
-    the General Manager has approved. A reference code is required to close
+    the General Manager has approved. A quotation number is required to close
     anything, and is kept with what's closed (RfqController::closePart() /
     close()). One shared popup per page, pointed at the right RFQ and part by
     the .js-close-rfq button that opens it (see admin.js); after a refused
@@ -33,14 +33,14 @@
 
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="close-reference-code" class="form-label">Reference code</label>
+                        <label for="close-reference-code" class="form-label">Quotation number</label>
                         <input type="text" name="reference_code" id="close-reference-code" maxlength="100" required autocomplete="off"
                                class="form-control @error('reference_code', 'close') is-invalid @enderror"
                                value="{{ $isFailedClose ? old('reference_code') : '' }}">
                         @error('reference_code', 'close')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @else
-                            <div class="form-text">Needed to close it — kept with it in Closed RFQs.</div>
+                            <div class="form-text">Add the quotation number to close the RFQ.</div>
                         @enderror
                     </div>
                     <p class="text-muted-soft small mb-0" id="closeRfqHint"></p>

@@ -1110,7 +1110,7 @@
                             <dt>Number of items</dt>
                             <dd>{{ $rfq->number_of_items ?? '—' }}</dd>
                         </div>
-                        {{-- The reference code Business Development gave to close it —
+                        {{-- The quotation number Business Development gave to close it —
                              one for the RFQ, or each closed part's on a split closed
                              part by part with different ones. --}}
                         @php
@@ -1120,7 +1120,7 @@
                         @endphp
                         @if ($rfq->bd_reference_code || $closingCodes->isNotEmpty())
                             <div>
-                                <dt>Reference code</dt>
+                                <dt>Quotation number</dt>
                                 <dd>
                                     @if ($closingCodes->unique()->count() > 1)
                                         @foreach ($closingCodes as $partLabel => $code)

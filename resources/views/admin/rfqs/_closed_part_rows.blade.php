@@ -36,7 +36,7 @@
                 <div class="small">by {{ $closedByName }}</div>
             @endif
             @if ($referenceCode)
-                <div class="small">Ref: <span class="fw-semibold text-body">{{ $referenceCode }}</span></div>
+                <div class="small">Quotation: <span class="fw-semibold text-body">{{ $referenceCode }}</span></div>
             @endif
         </td>
         <td class="text-end">

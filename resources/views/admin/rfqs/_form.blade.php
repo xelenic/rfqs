@@ -57,7 +57,7 @@
         @error('number_of_items', $idPrefix)
             <div class="invalid-feedback">{{ $message }}</div>
         @else
-            <div class="form-text">How many items this RFQ asks for.</div>
+            <div class="form-text">Please add the number of items for this RFQ.</div>
         @enderror
     </div>
 

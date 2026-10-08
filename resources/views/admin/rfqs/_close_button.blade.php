@@ -1,6 +1,6 @@
 {{--
     A Close button: opens the Close popup (_close_modal.blade.php) for one
-    part, or — with no part — a whole RFQ, which asks for the reference code
+    part, or — with no part — a whole RFQ, which asks for the quotation number
     before anything's closed. See admin.js (.js-close-rfq).
 
     Expects: $rfq, $label (what's being closed, as it reads), $part (the part

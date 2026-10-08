@@ -978,7 +978,7 @@
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part — see RfqController::closePart(). Asks
-                                             for the reference code first (_close_modal). --}}
+                                             for the quotation number first (_close_modal). --}}
                                         @include('admin.rfqs._close_button', [
                                             'rfq' => $rfq,
                                             'part' => $assignee->pivot->part_number,

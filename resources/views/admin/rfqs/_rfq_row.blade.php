@@ -101,7 +101,7 @@
                 <div class="small">by {{ $rfq->bdClosedBy->name }}</div>
             @endif
             @if ($rfq->bd_reference_code)
-                <div class="small">Ref: <span class="fw-semibold text-body">{{ $rfq->bd_reference_code }}</span></div>
+                <div class="small">Quotation: <span class="fw-semibold text-body">{{ $rfq->bd_reference_code }}</span></div>
             @endif
         </td>
     @endif
