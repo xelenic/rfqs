@@ -12,7 +12,7 @@
 <div class="modal fade" id="requestDetailsModal" tabindex="-1" aria-labelledby="requestDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" id="requestDetailsForm" action="#" data-confirm="Send this RFQ back to Business Development? Any Sourcing part already assigned on it is freed.">
+            <form method="POST" id="requestDetailsForm" action="#" enctype="multipart/form-data" data-confirm="Send this RFQ back to Business Development? Any Sourcing part already assigned on it is freed.">
                 @csrf
                 @method('PATCH')
                 {{-- Carried along so a failed submission can be reopened
@@ -34,6 +34,7 @@
                         @error('reason', 'requestDetails')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
+                        @include('admin.rfqs._attachments_input', ['attachmentsId' => 'request-details-attachments'])
                     </div>
                     <div class="mt-3">
                         @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'request-details-acting-as', 'label' => 'Sent back by'])

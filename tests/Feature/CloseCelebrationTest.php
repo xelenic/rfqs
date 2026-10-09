@@ -36,7 +36,7 @@ function rfqReadyToCelebrate(array $holders = []): Rfq
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $ops);
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
-        $rfq->refresh()->recordGmAssistantPart($part, $assistant, 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, $assistant);
         $rfq->refresh()->approveGmPart($part, $gm);
     }
 

@@ -295,6 +295,7 @@ it('has Data Entry process and return parts one at a time, even ones held by the
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->completeSourcingPart(2);
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
+    startDataEntryOn($rfq, 1, $dataEntry);
 
     // Data Entry finishes part 1 only — the RFQ doesn't move on yet.
     test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Entered'])->assertSessionHas('status');
@@ -327,6 +328,7 @@ it('moves to Senior Operations\' review only once every part is through Data Ent
     ]);
     foreach ([1, 2, 3] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
+        startDataEntryOn($rfq, $part, $dataEntry);
     }
 
     foreach ([1, 2] as $part) {

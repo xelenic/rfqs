@@ -1,7 +1,8 @@
 {{--
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
-    settings, the Working Hours, the Half Day and the Sourcing Targets. Each tab is its own
+    settings, the Working Hours, the Half Day, the Sourcing and Data Entry
+    Targets, and the Idle Alert. Each tab is its own
     form with its own error bag. The tab that opens is the one a form was
     just saved from (session settings_tab) or failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
@@ -10,6 +11,8 @@
     Expects: $user, $closesRfqs, $isAdmin, $companyName, $liveInterval,
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
+    $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
+    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange,
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
     (Setting::halfDayOff()).
 --}}
@@ -29,6 +32,8 @@
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
+            'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => 'data_entry_targets'],
+            'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
         ] : [];
         $allTabs = $accountTabs + $adminTabs;
         $hasErrors = fn (array $tab) => $tab['bag'] !== null && $errors->getBag($tab['bag'])->any();
@@ -437,6 +442,7 @@
 
                             <p class="text-muted-soft small">Working hours Sourcing has to mark a part complete. Their Pending list counts each part down, only during working hours.</p>
 
+                            {{-- Both target tabs send targets[]: only the one that failed gets what was typed back. --}}
                             <div class="row g-3 mb-3">
                                 @foreach (array_reverse($sourcingTargets, true) as $priority => $minutes)
                                     <div class="col-sm-6">
@@ -444,7 +450,7 @@
                                         <div class="input-group">
                                             <input type="number" name="targets[{{ $priority }}]" id="target-{{ \Illuminate\Support\Str::slug($priority) }}"
                                                    class="form-control @error('targets.'.$priority, 'sourcing_targets') is-invalid @enderror"
-                                                   value="{{ old('targets.'.$priority, $minutes / 60) }}" min="0.25" step="0.25" required>
+                                                   value="{{ $errors->getBag('sourcing_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
                                             <span class="input-group-text">hours</span>
                                             @error('targets.'.$priority, 'sourcing_targets')
                                                 <div class="invalid-feedback">{{ $message }}</div>
@@ -455,6 +461,89 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Sourcing targets</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'data-entry-targets' ? 'show active' : '' }}" id="settings-pane-data-entry-targets" role="tabpanel" aria-labelledby="settings-tab-data-entry-targets" tabindex="0">
+                {{-- How long Data Entry has to send a part to finalize from their
+                     Start, by its RFQ's priority — what the countdown on their
+                     list runs from. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Data Entry Targets
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.data-entry-targets') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">Working hours Data Entry has to send a part to finalize, from when they press Start. Their list counts each started part down, only during working hours.</p>
+
+                            {{-- Both target tabs send targets[]: only the one that failed gets what was typed back. --}}
+                            <div class="row g-3 mb-3">
+                                @foreach (array_reverse($dataEntryTargets, true) as $priority => $minutes)
+                                    <div class="col-sm-6">
+                                        <label for="de-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <div class="input-group">
+                                            <input type="number" name="targets[{{ $priority }}]" id="de-target-{{ \Illuminate\Support\Str::slug($priority) }}"
+                                                   class="form-control @error('targets.'.$priority, 'data_entry_targets') is-invalid @enderror"
+                                                   value="{{ $errors->getBag('data_entry_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
+                                            <span class="input-group-text">hours</span>
+                                            @error('targets.'.$priority, 'data_entry_targets')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Data Entry targets</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'idle-alert' ? 'show active' : '' }}" id="settings-pane-idle-alert" role="tabpanel" aria-labelledby="settings-tab-idle-alert" tabindex="0">
+                {{-- When Senior Operations hears that someone in Data Entry hasn't
+                     started anything — see App\Console\Commands\AlertIdleDataEntry. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Idle Alert
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.idle-alert') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">When parts are waiting for Data Entry and someone there hasn't started anything for this many working minutes, Senior Operations gets an alert in their bell. Lunch, out of hours, and anyone on leave on today's attendance sheet don't count.</p>
+
+                            @php $idleAlertFailed = $errors->getBag('idle_alert')->any(); @endphp
+                            <div class="form-check form-switch mb-3">
+                                <input type="hidden" name="enabled" value="0">
+                                <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="idle-alert-enabled" value="1"
+                                       @checked($idleAlertFailed ? old('enabled') : $dataEntryIdleAlert['enabled'])>
+                                <label class="form-check-label" for="idle-alert-enabled">Alert Senior Operations</label>
+                            </div>
+
+                            <div class="mb-3 settings-narrow-field">
+                                <label for="idle-alert-minutes" class="form-label">Alert after</label>
+                                <div class="input-group">
+                                    <input type="number" name="minutes" id="idle-alert-minutes"
+                                           class="form-control @error('minutes', 'idle_alert') is-invalid @enderror"
+                                           value="{{ $idleAlertFailed ? old('minutes') : $dataEntryIdleAlert['minutes'] }}"
+                                           min="{{ $dataEntryIdleMinutesRange[0] }}" max="{{ $dataEntryIdleMinutesRange[1] }}" step="1" required>
+                                    <span class="input-group-text">minutes</span>
+                                    @error('minutes', 'idle_alert')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save idle alert</button>
                         </form>
                     </div>
                 </div>

@@ -185,6 +185,24 @@ class RfqStep extends Model
     }
 
     /**
+     * The part $user has running with Data Entry — started, and not yet sent
+     * to finalize, nor sent back, stopped or closed: its open data_entry
+     * stretch, with its RFQ. Null if none. Data Entry works one part at a
+     * time: no Start on another while there's one (see
+     * RfqController::startDataEntry()).
+     */
+    public static function runningDataEntryOf(User $user): ?self
+    {
+        return static::query()
+            ->with('rfq')
+            ->where('step', 'data_entry')
+            ->whereNull('ended_at')
+            ->where('worked_by', $user->id)
+            ->latest('started_at')
+            ->first();
+    }
+
+    /**
      * Who the stretch's time is credited to — see worked_by.
      */
     public function workedBy(): BelongsTo

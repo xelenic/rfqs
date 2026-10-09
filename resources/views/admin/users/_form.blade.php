@@ -28,20 +28,79 @@
         @enderror
     </div>
 
-    <div class="col-md-6">
-        <label for="{{ $idPrefix }}-password" class="form-label">
-            Password @if ($mode === 'edit') <span class="text-muted-soft fw-normal">(leave blank to keep current)</span> @endif
-        </label>
-        <input type="password" name="password" id="{{ $idPrefix }}-password" class="form-control @error('password', $idPrefix) is-invalid @enderror" {{ $mode === 'edit' ? '' : 'required' }} autocomplete="new-password">
-        @error('password', $idPrefix)
-            <div class="invalid-feedback">{{ $message }}</div>
-        @enderror
-    </div>
+    @if ($mode === 'edit')
+        <div class="col-md-6">
+            <label for="{{ $idPrefix }}-password" class="form-label">
+                Password <span class="text-muted-soft fw-normal">(leave blank to keep current)</span>
+            </label>
+            <input type="password" name="password" id="{{ $idPrefix }}-password" class="form-control @error('password', $idPrefix) is-invalid @enderror" autocomplete="new-password">
+            @error('password', $idPrefix)
+                <div class="invalid-feedback">{{ $message }}</div>
+            @enderror
+        </div>
 
-    <div class="col-md-6">
-        <label for="{{ $idPrefix }}-password_confirmation" class="form-label">Confirm password</label>
-        <input type="password" name="password_confirmation" id="{{ $idPrefix }}-password_confirmation" class="form-control" {{ $mode === 'edit' ? '' : 'required' }} autocomplete="new-password">
-    </div>
+        <div class="col-md-6">
+            <label for="{{ $idPrefix }}-password_confirmation" class="form-label">Confirm password</label>
+            <input type="password" name="password_confirmation" id="{{ $idPrefix }}-password_confirmation" class="form-control" autocomplete="new-password">
+        </div>
+    @else
+        {{-- How a new account signs in: by default its person sets their own
+             password from the email it sends; an Admin can set one instead,
+             and no email goes (Admin\UserController::store()). admin.js
+             shows the password fields for that choice alone. --}}
+        @php
+            $canSetPassword = auth()->user()->hasRole('Admin');
+            $setsPassword = $canSetPassword && $showOld && old('sign_in') === 'password';
+        @endphp
+        @if ($canSetPassword)
+            <div class="col-12">
+                <label class="form-label d-block mb-2">How they'll sign in</label>
+                <div class="d-flex flex-column flex-sm-row gap-2 js-sign-in-choice">
+                    <label class="sign-in-option" for="{{ $idPrefix }}-sign-in-email">
+                        <input class="form-check-input" type="radio" name="sign_in" id="{{ $idPrefix }}-sign-in-email" value="email_link" @checked(! $setsPassword)>
+                        <span>
+                            <span class="fw-semibold d-block"><i class="bi bi-envelope-check"></i> Email them a link</span>
+                            <span class="small text-muted-soft">They set their own password.</span>
+                        </span>
+                    </label>
+                    <label class="sign-in-option" for="{{ $idPrefix }}-sign-in-password">
+                        <input class="form-check-input" type="radio" name="sign_in" id="{{ $idPrefix }}-sign-in-password" value="password" @checked($setsPassword)>
+                        <span>
+                            <span class="fw-semibold d-block"><i class="bi bi-key"></i> Set a password now</span>
+                            <span class="small text-muted-soft">You give it to them — no email is sent.</span>
+                        </span>
+                    </label>
+                </div>
+                @error('sign_in', $idPrefix)
+                    <div class="text-danger small mt-2">{{ $message }}</div>
+                @enderror
+            </div>
+        @endif
+
+        <div @class(['col-12 js-sign-in-email', 'd-none' => $setsPassword])>
+            <div class="alert alert-info d-flex gap-2 align-items-start py-2 mb-0">
+                <i class="bi bi-envelope-check mt-1"></i>
+                <div class="small">They'll get an email at this address with a link to set their own password — it works for {{ \App\Notifications\AccountCreated::LINK_DAYS }} days.</div>
+            </div>
+        </div>
+
+        @if ($canSetPassword)
+            <div @class(['col-md-6 js-sign-in-password', 'd-none' => ! $setsPassword])>
+                <label for="{{ $idPrefix }}-password" class="form-label">Password</label>
+                <input type="password" name="password" id="{{ $idPrefix }}-password" class="form-control @error('password', $idPrefix) is-invalid @enderror"
+                       autocomplete="new-password" minlength="8" @required($setsPassword) @disabled(! $setsPassword)>
+                @error('password', $idPrefix)
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div @class(['col-md-6 js-sign-in-password', 'd-none' => ! $setsPassword])>
+                <label for="{{ $idPrefix }}-password_confirmation" class="form-label">Confirm password</label>
+                <input type="password" name="password_confirmation" id="{{ $idPrefix }}-password_confirmation" class="form-control"
+                       autocomplete="new-password" @required($setsPassword) @disabled(! $setsPassword)>
+            </div>
+        @endif
+    @endif
 
     <div class="col-12">
         <label class="form-label d-block mb-2">Roles</label>
@@ -69,6 +128,9 @@
                     </label>
                 @endforeach
             </div>
+            @if ($errors->getBag($idPrefix)->has('roles.*'))
+                <div class="text-danger small mt-2">{{ $errors->getBag($idPrefix)->first('roles.*') }}</div>
+            @endif
         @endif
     </div>
 </div>

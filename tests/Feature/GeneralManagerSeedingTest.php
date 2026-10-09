@@ -78,7 +78,7 @@ it('lets a seeded General Manager account work the approvals, part by part', fun
         $rfq->refresh()->approveSeniorOpsPart($part, $ops);
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
     }
-    $rfq->refresh()->recordGmAssistantPart(1, $assistant, 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $assistant);
 
     // The account that used to be the Manager, signed in.
     $morgan = User::where('email', 'manager@rfqms.test')->firstOrFail();

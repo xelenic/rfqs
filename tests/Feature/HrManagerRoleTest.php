@@ -26,13 +26,13 @@ function hrManager(): User
     return User::factory()->create()->assignRole('HR Manager');
 }
 
-it('seeds HR Manager with a description and no RFQ permissions', function () {
+it('seeds HR Manager with a description, adding people, and no RFQ permissions', function () {
     test()->seed([RolePermissionSeeder::class, BusinessRoleSeeder::class]);
 
     $role = Role::findByName('HR Manager');
 
     expect($role->description)->toContain('attendance sheet')
-        ->and($role->permissions)->toBeEmpty();
+        ->and($role->permissions->pluck('name')->sort()->values()->all())->toBe(['users.create', 'users.view']);
 });
 
 it('lets HR Manager review the attendance sheets, but not fill them in', function () {
@@ -45,7 +45,7 @@ it('lets HR Manager review the attendance sheets, but not fill them in', functio
 
     test()->actingAs($hr)->post(route('admin.attendance.store'), [
         'date' => now()->toDateString(),
-        'attendance' => [$sourcing->id => ['status' => 'absent', 'reason' => 'Sick leave']],
+        'attendance' => [$sourcing->id => ['status' => 'absent']],
     ])->assertForbidden();
 
     expect(AttendanceSheet::query()->count())->toBe(0);

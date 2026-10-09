@@ -20,7 +20,7 @@
 <div class="modal fade" id="rejectRfqModal" tabindex="-1" aria-labelledby="rejectRfqModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" id="rejectRfqForm" action="#" data-confirm="Send this {{ old('part') ? 'part' : 'RFQ' }} back? Any approval already given for it is undone.">
+            <form method="POST" id="rejectRfqForm" action="#" enctype="multipart/form-data" data-confirm="Send this {{ old('part') ? 'part' : 'RFQ' }} back? Any approval already given for it is undone.">
                 @csrf
                 @method('PATCH')
                 {{-- Not part of the request the route needs — just carried
@@ -60,6 +60,7 @@
                         @error('reason', 'reject')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
+                        @include('admin.rfqs._attachments_input', ['attachmentsId' => 'reject-attachments'])
                     </div>
                     @isset($rejectRole)
                         <div class="mt-3">

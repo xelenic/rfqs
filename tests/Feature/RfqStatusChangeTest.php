@@ -160,11 +160,12 @@ it('stops the clock while it\'s on hold, and starts it again on resuming', funct
         ->and($rfq->sourcingDeadline())->toMatchArray(['remaining' => 2 * 3600, 'late_rounds' => 0, 'exceeded' => false]);
 });
 
-it('credits Data Entry\'s time before a hold to whoever finishes the part after it', function () {
+it('credits Data Entry\'s time on both sides of a hold to whoever started on it', function () {
     $ops = userWithRole('Senior Operations');
     $dataEntry = userWithRole('Data Entry');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1, $dataEntry);
 
     changeRfqStatus($ops, $rfq, ['status' => 'On Hold', 'reason' => 'Paused']);
     changeRfqStatus($ops, $rfq, ['status' => 'Pending']);

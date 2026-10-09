@@ -61,10 +61,12 @@ class BusinessRoleSeeder extends Seeder
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
             // No part in the RFQ workflow: attendance and the Time Spent
-            // report go by role (User::TIME_SPENT_REPORT_ROLES), not permission.
+            // report go by role (User::TIME_SPENT_REPORT_ROLES), not
+            // permission. They add people — never as Admin (see
+            // Admin\UserController::store()).
             'HR Manager' => [
-                'description' => 'Keeps the daily attendance sheet — who of Sourcing, Data Entry and GM Assistant was present or on leave — and sees the Time Spent report.',
-                'permissions' => [],
+                'description' => 'Approves the daily attendance sheet, sees the Time Spent report, and adds new people — who get an email to set their password.',
+                'permissions' => ['users.view', 'users.create'],
             ],
         ];
 

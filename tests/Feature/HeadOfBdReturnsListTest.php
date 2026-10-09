@@ -34,7 +34,7 @@ function atGmReview(): array
     $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->completeSeniorOpsReview(userWithRole('Senior Operations'));
     $rfq->refresh()->approveByHeadOfBd($head);
-    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GM Assistant'), 'Acme Ltd', '30 days');
+    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GM Assistant'));
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
     return ['head' => $head, 'gm' => $gm, 'rfq' => $rfq->refresh()];
@@ -165,7 +165,7 @@ function splitAtGmReview(): array
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
-        $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'), 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
     }
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
@@ -232,7 +232,7 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
     $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, $head);
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
 
     test()->actingAs($gm)
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 1, 'target_stage' => 'head_of_bd_review', 'reason' => 'Check P1'])

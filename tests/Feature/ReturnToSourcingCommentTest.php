@@ -25,8 +25,10 @@ function completedBySourcing(array $holders, array $attributes = []): Rfq
 {
     $rfq = splitAmong(Rfq::factory()->create($attributes + ['priority_level' => 'Medium']), $holders);
 
+    // Data Entry has started on each — Send to Finalize comes after.
     foreach (array_keys($holders) as $part) {
         $rfq->refresh()->completeSourcingPart($part);
+        startDataEntryOn($rfq, $part);
     }
 
     return $rfq->refresh();

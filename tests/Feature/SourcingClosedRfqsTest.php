@@ -22,7 +22,7 @@ function closePartThroughEveryStep(Rfq $rfq, int $part): void
     $rfq->refresh()->finalizePart($part);
     $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
     $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'), 'Acme Ltd', 'Net 30');
+    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
     $rfq->refresh()->approveGmPart($part, userWithRole('General Manager'));
     $rfq->refresh()->closePart($part, userWithRole('Business Development'), 'REF-'.$part);
 }

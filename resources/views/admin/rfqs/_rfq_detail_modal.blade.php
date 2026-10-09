@@ -138,9 +138,12 @@
                          and returnSourcing(), which never touch any other part on the
                          same RFQ. --}}
                     <div class="d-flex gap-2">
-                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry_to_ops', 'who' => $assignee->name, 'backModal' => $modalId])
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'return', 'who' => $assignee->name, 'backModal' => $modalId, 'label' => 'Return to Sourcing'])
-                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry', 'who' => $assignee->name, 'backModal' => $modalId])
+                        @if ($assignee->pivot->hasDataEntryStarted())
+                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry', 'who' => $assignee->name, 'backModal' => $modalId])
+                        @else
+                            @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $part])
+                        @endif
                     </div>
                 @endif
             </div>

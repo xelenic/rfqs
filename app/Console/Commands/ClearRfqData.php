@@ -2,12 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Models\RfqCommentAttachment;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Console\ConfirmableTrait;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 #[Signature('rfq:clear {--force : Skip the confirmation prompt (and allow running in production)}')]
 #[Description('Delete every RFQ along with its Sourcing parts, comments, and any other rfq_id-linked rows')]
@@ -38,6 +40,9 @@ class ClearRfqData extends Command
                 $this->components->twoColumnDetail($table, "{$count} rows deleted");
             }
         });
+
+        // The photos and files attached to comments went with their rows.
+        Storage::disk(RfqCommentAttachment::DISK)->deleteDirectory('rfq-attachments');
 
         $this->components->success('All RFQ data cleared.');
 

@@ -42,6 +42,16 @@
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->format('M d, Y') }}</td>
                             <td class="text-end">
+                                {{-- A fresh set-password email — for a link that expired or went astray. --}}
+                                @can('users.create')
+                                    <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
+                                          data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Email a set-password link">
+                                            <i class="bi bi-envelope"></i>
+                                        </button>
+                                    </form>
+                                @endcan
                                 @can('users.edit')
                                     <button type="button" class="btn btn-sm btn-outline-secondary js-edit-user"
                                             data-bs-toggle="modal" data-bs-target="#editUserModal"
@@ -95,7 +105,11 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create user</button>
+                        @php $createSetsPassword = $errors->create->any() && old('sign_in') === 'password' && auth()->user()->hasRole('Admin'); @endphp
+                        <button type="submit" class="btn btn-primary js-sign-in-submit">
+                            <span class="js-sign-in-email-label @if ($createSetsPassword) d-none @endif"><i class="bi bi-envelope-check"></i> Create and email them</span>
+                            <span class="js-sign-in-password-label @unless ($createSetsPassword) d-none @endunless"><i class="bi bi-person-plus"></i> Create user</span>
+                        </button>
                     </div>
                 </form>
             </div>

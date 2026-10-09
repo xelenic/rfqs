@@ -77,6 +77,34 @@ function rfqmsBoot() {
         });
     });
 
+    // Add user: an Admin chooses how they'll sign in — the set-password
+    // email, or a password set now. Only the chosen one's fields show, and
+    // the password fields are only sent (and required) for the second.
+    document.querySelectorAll('.js-sign-in-choice').forEach(function (choice) {
+        var form = choice.closest('form');
+        var sync = function () {
+            var setsPassword = !!form.querySelector('input[name="sign_in"][value="password"]:checked');
+            form.querySelectorAll('.js-sign-in-password').forEach(function (field) {
+                field.classList.toggle('d-none', !setsPassword);
+                field.querySelectorAll('input').forEach(function (input) {
+                    input.disabled = !setsPassword;
+                    input.required = setsPassword;
+                });
+            });
+            form.querySelectorAll('.js-sign-in-email, .js-sign-in-email-label').forEach(function (note) {
+                note.classList.toggle('d-none', setsPassword);
+            });
+            form.querySelectorAll('.js-sign-in-password-label').forEach(function (label) {
+                label.classList.toggle('d-none', !setsPassword);
+            });
+        };
+
+        choice.querySelectorAll('input[name="sign_in"]').forEach(function (radio) {
+            radio.addEventListener('change', sync);
+        });
+        sync();
+    });
+
     // Populate the shared "Edit user" modal from the clicked row's data-* attributes.
     document.querySelectorAll('.js-edit-user').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -116,6 +144,15 @@ function rfqmsBoot() {
             if (statusField) statusField.value = button.dataset.status || 'Pending';
             form.querySelector('#edit-subject').value = button.dataset.subject || '';
             form.querySelector('#edit-description').value = button.dataset.description || '';
+            // Business Development's Returns: offer to send it straight back
+            // to whoever sent it once it's saved.
+            var forwardBack = document.getElementById('editForwardBack');
+            if (forwardBack) {
+                forwardBack.classList.toggle('d-none', !button.dataset.forwardBack);
+                forwardBack.querySelector('[name="forward_back"]').checked = false;
+                forwardBack.querySelector('[name="forward_back_to"]').value = button.dataset.forwardBack || '';
+                document.getElementById('editForwardBackTo').textContent = button.dataset.forwardBack || '';
+            }
         });
     });
 
@@ -752,8 +789,8 @@ function rfqmsBoot() {
         // from the button's own data-* attributes.
         var KINDS = {
             complete: {
-                title: 'Mark complete', icon: 'bi-check2-circle', field: 'comment', label: 'Comment', max: 2000,
-                submit: 'Mark Complete', submitClass: 'btn-success', missing: 'Add a comment to mark this part complete.',
+                title: 'Assign to Data Entry', icon: 'bi-check2-circle', field: 'comment', label: 'Comment', max: 2000,
+                submit: 'Assign to Data Entry', submitClass: 'btn-success', missing: 'Add a comment to assign this part to Data Entry.',
             },
             // Data Entry's — it goes back to the part's Sourcing member to finalize.
             data_entry: {
@@ -769,13 +806,9 @@ function rfqmsBoot() {
                 title: 'Return to Data Entry', icon: 'bi-arrow-counterclockwise', field: 'reason', label: 'Reason', max: 1000,
                 submit: 'Return to Data Entry', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Data Entry.',
             },
-            // Sourcing's on their own part, or Data Entry's on one with them:
-            // back to Senior Operations to assign again.
+            // Sourcing's on their own part: back to Senior Operations to
+            // assign again.
             sourcing_to_ops: {
-                title: 'Return to Senior Operations', icon: 'bi-arrow-return-left', field: 'reason', label: 'Reason', max: 1000,
-                submit: 'Return to Senior Operations', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Senior Operations.',
-            },
-            data_entry_to_ops: {
                 title: 'Return to Senior Operations', icon: 'bi-arrow-return-left', field: 'reason', label: 'Reason', max: 1000,
                 submit: 'Return to Senior Operations', submitClass: 'btn-danger', missing: 'Add a reason to send this part back to Senior Operations.',
             },
@@ -1319,6 +1352,73 @@ function rfqmsBoot() {
         });
     });
 
+    // Data Entry's Start is on only in working hours — not at lunch, nor out
+    // of hours — and never while they've another part running
+    // (data-busy-hint): checked against the off-hours windows the page brought
+    // (#off-hours: [from, to, why], Unix seconds) every half minute, so it
+    // turns on and off as they come and go. Hovering (or focusing) it says
+    // why it's off and when it's back — from a wrapper, since a disabled
+    // button takes no hover. One delegated tooltip on the document, made
+    // once, covers every Start however often the page is swapped. The server
+    // checks again on Start.
+    (function () {
+        if (!window.__rfqmsStartHints && window.bootstrap) {
+            window.__rfqmsStartHints = new bootstrap.Tooltip(document.body, {
+                selector: '.js-start-hint',
+                title: function (wrapper) { return wrapper.dataset.startHint; },
+                placement: 'top',
+                trigger: 'hover focus'
+            });
+        }
+
+        // A hint left showing for a Start the page swapped out goes with it.
+        document.querySelectorAll('body > .tooltip').forEach(function (tip) {
+            if (!document.querySelector('[aria-describedby="' + tip.id + '"]')) tip.remove();
+        });
+
+        var source = document.getElementById('off-hours');
+        if (!source) return;
+
+        var windows = JSON.parse(source.textContent || '[]');
+        var sync = function () {
+            var now = Date.now() / 1000;
+            var off = windows.find(function (span) { return now >= span[0] && now < span[1]; });
+
+            document.querySelectorAll('.js-start-hint').forEach(function (wrapper) {
+                // One running part elsewhere keeps it off whatever the hour.
+                var busy = wrapper.dataset.busyHint;
+                var hint = busy || (off ? off[2] : wrapper.dataset.onHint);
+                var button = wrapper.querySelector('.js-working-hours-only');
+
+                if (button) button.disabled = !!(busy || off);
+                wrapper.classList.toggle('is-off', !!(busy || off));
+
+                if (wrapper.dataset.startHint === hint) return;
+                wrapper.dataset.startHint = hint;
+
+                var tooltip = window.bootstrap && bootstrap.Tooltip.getInstance(wrapper);
+                if (tooltip) tooltip.setContent({ '.tooltip-inner': hint });
+            });
+        };
+
+        sync();
+        clearInterval(window.__rfqmsWorkingHoursTimer);
+        window.__rfqmsWorkingHoursTimer = setInterval(sync, 30000);
+    })();
+
+    // A popup opened from a button starts with no files picked — the photos or
+    // files for another part, or another RFQ, aren't carried over. Bound
+    // once, on the document, however often the page is rebound.
+    if (!window.__rfqmsAttachmentReset) {
+        window.__rfqmsAttachmentReset = true;
+        document.addEventListener('show.bs.modal', function (event) {
+            if (!event.relatedTarget) return;
+            event.target.querySelectorAll('input[type="file"]').forEach(function (input) {
+                input.value = '';
+            });
+        });
+    }
+
     // Senior Operations' Reassign on a part still with Sourcing: the popup is
     // pointed at the part, says who has it, and won't offer them again.
     var reassignModal = document.getElementById('reassignModal');
@@ -1386,27 +1486,17 @@ function rfqmsBoot() {
         });
     });
 
-    // GM Assistant's Client Details / Payment Terms modal — same
-    // shared-modal-populated-per-row pattern as the Reject modal above: which
-    // RFQ, and which part of it when it's one part going on (none for a whole
-    // RFQ), with what's already been given for the RFQ to confirm or adjust.
-    document.querySelectorAll('.js-gm-assistant-rfq').forEach(function (button) {
+    // GM Assistant's Submit prompt — pointed at the part (none for a whole
+    // RFQ) of the Submit button that opened it, with a fresh comment box.
+    document.querySelectorAll('.js-gm-assistant-submit').forEach(function (button) {
         button.addEventListener('click', function () {
-            var form = document.getElementById('gmAssistantForm');
+            var form = document.getElementById('gmAssistantSubmitForm');
             if (!form) return;
 
-            var isPart = !!button.dataset.part;
             form.action = button.dataset.action;
-            form.querySelector('[name="gm_assistant_rfq_id"]').value = button.dataset.rfqId || '';
-            form.querySelector('[name="part"]').value = button.dataset.part || '';
-            form.querySelector('[name="gm_assistant_label"]').value = button.dataset.label || '';
-            form.querySelector('[name="client_details"]').value = button.dataset.clientDetails || '';
-            form.querySelector('[name="payment_terms"]').value = button.dataset.paymentTerms || '';
-            document.getElementById('gmAssistantTarget').textContent = button.dataset.label || '';
-            document.getElementById('gmAssistantWholeNote').classList.toggle('d-none', !isPart);
-            form.dataset.confirm = isPart
-                ? 'Forward this part to the General Manager?'
-                : 'Forward this RFQ to the General Manager?';
+            form.elements.part.value = button.dataset.part || '';
+            form.elements.comment.value = '';
+            document.getElementById('gmAssistantSubmitTarget').textContent = button.dataset.label || '';
         });
     });
 
@@ -1654,13 +1744,15 @@ function rfqmsBoot() {
         });
     });
 
-    // Sourcing's Pending list: each part counts down the working time its
-    // priority allows. The server gives where each one stood when the page
-    // was made, and the working periods ahead (#countdown-schedule); from
-    // there only working time is taken off, so outside working hours a
-    // countdown is paused. One timer for the page — a live refresh brings a
-    // fresh schedule and starts it over. Labels and colours as in
-    // Setting::countdownLabel() / countdownBadgeClass().
+    // Sourcing's Pending list and Data Entry's: each part counts down the
+    // working time its priority allows (Data Entry's from their Start). The
+    // server gives where each one stood when the page was made, and the
+    // working periods ahead (#countdown-schedule); from there only working
+    // time is taken off, so outside working hours a countdown is paused —
+    // and so is a running row's glow (.js-running-row). One timer for the
+    // page — a live refresh brings a fresh schedule and starts it over.
+    // Labels and colours as in Setting::countdownLabel() /
+    // countdownBadgeClass().
     clearInterval(window.__rfqmsCountdownTimer);
     var countdownScheduleEl = document.getElementById('countdown-schedule');
     if (countdownScheduleEl) {
@@ -1697,15 +1789,77 @@ function rfqmsBoot() {
                 badge.classList.toggle('badge-soft-warning', remaining > 0 && remaining <= target / 4);
                 badge.classList.toggle('badge-soft-success', remaining > target / 4);
                 badge.classList.toggle('is-paused', paused);
-                badge.title = paused ? 'Paused — outside working hours' : 'Working time left to mark it complete';
+                badge.title = paused ? 'Paused — outside working hours' : (badge.dataset.runningTitle || 'Working time left to mark it complete');
                 badge.querySelector('i').className = 'bi ' + (paused ? 'bi-pause-circle' : 'bi-stopwatch');
                 badge.querySelector('.sourcing-countdown-label').textContent = countdownLabel(remaining);
+            });
+
+            document.querySelectorAll('.js-running-row').forEach(function (row) {
+                row.classList.toggle('is-paused', paused);
+                var label = row.querySelector('.running-pill-label');
+                if (label) label.textContent = paused ? 'Paused' : 'Running';
             });
         };
 
         tickCountdowns();
         window.__rfqmsCountdownTimer = setInterval(tickCountdowns, 15000);
     }
+
+    // Data Entry's countdown to Senior Operations hearing they haven't started
+    // (_data_entry_idle_banner): like the countdowns above, only working time
+    // comes off — from the same #countdown-schedule — but to the second, with
+    // a bar running down. At zero it says the message is on its way; a live
+    // refresh brings in "sent" once it is. The clock reads as
+    // Setting::clockLabel() has it.
+    clearInterval(window.__rfqmsIdleTimer);
+    (function () {
+        var banner = document.querySelector('.js-idle-countdown');
+        var scheduleEl = document.getElementById('countdown-schedule');
+        if (!banner || !scheduleEl) return;
+
+        var schedule = JSON.parse(scheduleEl.textContent);
+        var offset = schedule.now - Date.now() / 1000;
+        var startRemaining = Number(banner.dataset.remaining);
+        var alertAfter = Number(banner.dataset.alertAfter) || 1;
+        var clock = banner.querySelector('.js-idle-clock');
+        var text = banner.querySelector('.js-idle-text');
+        var bar = banner.querySelector('.js-idle-bar');
+        var pad = function (number) { return (number < 10 ? '0' : '') + number; };
+        var clockLabel = function (seconds) {
+            seconds = Math.max(0, seconds);
+            var hours = Math.floor(seconds / 3600);
+            var rest = pad(Math.floor((seconds % 3600) / 60)) + ':' + pad(seconds % 60);
+            return hours > 0 ? hours + ':' + rest : rest;
+        };
+
+        var tick = function () {
+            var now = Date.now() / 1000 + offset;
+            var worked = 0;
+            var paused = true;
+
+            schedule.periods.forEach(function (period) {
+                worked += Math.max(0, Math.min(now, period[1]) - Math.max(schedule.now, period[0]));
+                if (now >= period[0] && now < period[1]) paused = false;
+            });
+
+            var remaining = Math.round(startRemaining - worked);
+            var state = remaining <= 0 ? 'due' : (paused ? 'paused' : 'running');
+
+            clock.textContent = clockLabel(remaining);
+            bar.style.width = Math.max(0, Math.min(100, remaining / alertAfter * 100)) + '%';
+            banner.classList.toggle('is-due', state === 'due');
+            banner.classList.toggle('is-paused', state === 'paused');
+            banner.classList.toggle('is-urgent', state === 'running' && remaining <= alertAfter / 4);
+
+            if (text.dataset.state !== state) {
+                text.dataset.state = state;
+                text.textContent = banner.dataset[state + 'Text'];
+            }
+        };
+
+        tick();
+        window.__rfqmsIdleTimer = setInterval(tick, 1000);
+    })();
 
     // The attendance popup (admin/attendance): marking someone on leave, or
     // on a half day, tints their row and opens up why — and, for a half day,
@@ -1785,7 +1939,6 @@ function rfqmsBoot() {
                 var mark = marks[row.dataset.attendanceUser] || { status: 'present' };
                 row.querySelector('.js-attendance-status[value="' + mark.status + '"]').checked = true;
                 row.querySelector('.attendance-half').value = mark.half_off || '';
-                row.querySelector('.attendance-reason').value = mark.reason || '';
                 row.querySelector('.attendance-absence input').value = mark.note || '';
                 syncAttendanceRow(row);
             });

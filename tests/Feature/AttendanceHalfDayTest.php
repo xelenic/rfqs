@@ -52,7 +52,7 @@ function halfDayForRiley(User $by, User $riley, string $half): void
 {
     test()->actingAs($by)->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
-        'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => $half, 'reason' => 'Personal leave']],
+        'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => $half]],
     ])->assertSessionHasNoErrors();
 
     test()->actingAs(User::factory()->create()->assignRole('HR Manager'))
@@ -60,18 +60,18 @@ function halfDayForRiley(User $by, User $riley, string $half): void
         ->assertSessionHasNoErrors();
 }
 
-it('saves a half day — which half off, and why — and lists it', function () {
+it('saves a half day — which half off, and a note — and lists it', function () {
     ['riley' => $riley, 'ops' => $ops] = rileysMonday();
 
     test()->actingAs($ops)->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
-        'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => 'morning', 'reason' => 'Sick leave', 'note' => 'Doctor\'s appointment']],
+        'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => 'morning', 'note' => 'Doctor\'s appointment']],
     ])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on a half day, 0 on leave. Sent to HR Manager for approval.');
 
     expect(Attendance::query()->sole())->toMatchArray([
         'status' => 'half_day',
         'half_off' => 'morning',
-        'reason' => 'Sick leave',
+        'reason' => null,
         'note' => 'Doctor\'s appointment',
     ]);
 
@@ -82,10 +82,10 @@ it('saves a half day — which half off, and why — and lists it', function () 
     expect(Str::betweenFirst($html, 'data-attendance-sheet="2026-10-05"', '</tr>'))
         ->toContain('1 half day')
         ->toContain('Half day · Morning off')
-        ->toContain('Sick leave');
+        ->toContain('Doctor&#039;s appointment');
 });
 
-it('asks which half they were off, and why', function () {
+it('asks which half they were off — not why', function () {
     ['riley' => $riley, 'ops' => $ops] = rileysMonday();
 
     test()->actingAs($ops)->post(route('admin.attendance.store'), [
@@ -93,8 +93,7 @@ it('asks which half they were off, and why', function () {
         'attendance' => [$riley->id => ['status' => 'half_day']],
     ])->assertSessionHasErrorsIn('attendance', [
         "attendance.{$riley->id}.half_off" => 'Say which half they were off.',
-        "attendance.{$riley->id}.reason" => 'Say why they were on leave.',
-    ]);
+    ])->assertSessionDoesntHaveErrors("attendance.{$riley->id}.reason", null, 'attendance');
 
     expect(AttendanceSheet::query()->count())->toBe(0);
 });

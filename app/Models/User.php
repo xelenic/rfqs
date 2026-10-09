@@ -3,6 +3,9 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\DataEntryIdle;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -12,6 +15,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -164,6 +168,59 @@ class User extends Authenticatable
     public function sentMessages(): HasMany
     {
         return $this->hasMany(PrivateMessage::class, 'sender_id');
+    }
+
+    /**
+     * Where this Data Entry person stands against the idle alert
+     * (Setting::dataEntryIdleAlert()) at $now: idle since the latest of the
+     * start of today, when they last had a part running, and when the oldest
+     * part waiting for Data Entry came in (Rfq::dataEntryWaitingSince()) —
+     * that many working seconds, less the half of a half day they're off —
+     * and when Senior Operations was told about it, if they have been
+     * (DataEntryIdle, sent by App\Console\Commands\AlertIdleDataEntry).
+     * Null when it doesn't apply: the alert's off, nothing's waiting, they've
+     * a part running (RfqStep::runningDataEntryOf()), or today's attendance
+     * sheet has them on leave.
+     *
+     * @return array{idle_from: CarbonImmutable, idle_seconds: int, alert_after: int, waiting: int, half_off: ?string, alerted_at: ?CarbonImmutable}|null
+     */
+    public function dataEntryIdleness(?CarbonInterface $now = null): ?array
+    {
+        $alert = Setting::dataEntryIdleAlert();
+        $waiting = Rfq::dataEntryWaitingSince();
+
+        if (! $alert['enabled'] || $waiting->isEmpty() || RfqStep::runningDataEntryOf($this) !== null) {
+            return null;
+        }
+
+        $now = CarbonImmutable::instance($now ?? now());
+        $local = $now->setTimezone(Setting::timezone());
+        $mark = Attendance::markOn($this->id, $local->toDateString());
+
+        if ($mark?->status === Attendance::ABSENT) {
+            return null;
+        }
+
+        $halfOff = $mark?->status === Attendance::HALF_DAY ? $mark->half_off : null;
+        $lastRunning = RfqStep::query()->where('step', 'data_entry')->where('worked_by', $this->id)->max('ended_at');
+        $startOfToday = $local->startOfDay()->setTimezone($now->getTimezone());
+        $freeSince = $lastRunning !== null ? max($startOfToday, CarbonImmutable::parse($lastRunning)) : $startOfToday;
+        $idleFrom = max($freeSince, $waiting->min());
+        $alertedAt = DatabaseNotification::query()
+            ->where('type', DataEntryIdle::class)
+            ->where('data->data_entry_user_id', $this->id)
+            ->where('created_at', '>=', $freeSince)
+            ->min('created_at');
+
+        return [
+            'idle_from' => $idleFrom,
+            'idle_seconds' => (int) collect(Setting::workingSecondsWithHalfDaysOff($idleFrom, $now))
+                ->sum(fn (array $day) => $day['all'] - ($halfOff !== null ? $day[$halfOff] : 0)),
+            'alert_after' => $alert['minutes'] * 60,
+            'waiting' => $waiting->count(),
+            'half_off' => $halfOff,
+            'alerted_at' => $alertedAt !== null ? CarbonImmutable::parse($alertedAt) : null,
+        ];
     }
 
     /**

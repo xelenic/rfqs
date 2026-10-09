@@ -89,6 +89,7 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     test()->travelTo(colombo('2026-10-05 11:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     // Data Entry: Monday 11:00–17:00 less lunch, and Tuesday 08:30–10:00.
     test()->travelTo(colombo('2026-10-06 10:00'));
@@ -103,7 +104,7 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     // GM Assistant: 11:00–15:00 less lunch.
     test()->travelTo(colombo('2026-10-06 15:00'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
 
     expect($rfq->refresh()->steps->map(fn (RfqStep $step) => [$step->step, $step->assignee_id, $step->ended_at !== null])->all())->toBe([
         ['sourcing', $riley->id, true],
@@ -127,18 +128,21 @@ it('adds up every round of rework, both ways between Sourcing and Data Entry', f
 
     test()->travelTo(colombo('2026-10-05 10:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     // Data Entry sends it back to Sourcing, who redo it.
     test()->travelTo(colombo('2026-10-05 11:00'));
     $rfq->refresh()->returnSourcingPart(1, 'Prices missing', $dataEntry);
     test()->travelTo(colombo('2026-10-05 12:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     // Data Entry sends it to finalize; Sourcing sends it back to them instead.
     test()->travelTo(colombo('2026-10-05 15:00'));
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
     test()->travelTo(colombo('2026-10-05 16:00'));
     $rfq->refresh()->returnToDataEntry(1, 'Wrong currency');
+    startDataEntryOn($rfq, 1);
     test()->travelTo(colombo('2026-10-05 17:00'));
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
 
@@ -165,8 +169,10 @@ it('keeps each part\'s time on a split apart, and in all', function () {
 
     test()->travelTo(colombo('2026-10-05 10:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
     test()->travelTo(colombo('2026-10-05 11:30'));
     $rfq->refresh()->completeSourcingPart(2);
+    startDataEntryOn($rfq, 2);
 
     expect($rfq->refresh()->timeSpent(colombo('2026-10-05 11:30'))['roles']['Sourcing'])
         ->toMatchArray(['parts' => [1 => 60, 2 => 150], 'minutes' => 210, 'rounds' => 2, 'reworks' => 0]);
@@ -179,12 +185,13 @@ it('pauses GM Assistant\'s clock while the RFQ is held on the Head\'s Returns pa
 
     foreach ([1, 2] as $part) {
         $rfq->refresh()->completeSourcingPart($part);
+        startDataEntryOn($rfq, $part);
         $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
     }
-    $rfq->refresh()->recordGmAssistantPart(1, $assistant, 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $assistant);
 
     $openGmAssistant = fn () => RfqStep::query()->where('rfq_id', $rfq->id)->where('step', 'gm_assistant')->whereNull('ended_at')->pluck('part_number')->all();
     expect($openGmAssistant())->toBe([2]);
@@ -223,6 +230,7 @@ it('shows the time spent on the RFQ\'s page, by role and part', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-05 10:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
     test()->travelTo(colombo('2026-10-05 11:30'));
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -241,8 +249,10 @@ it('reports every role\'s time per RFQ and on average, for Admin and Senior Oper
 
     test()->travelTo(colombo('2026-10-05 10:00'));
     $one->refresh()->completeSourcingPart(1);
+    startDataEntryOn($one, 1);
     test()->travelTo(colombo('2026-10-05 12:00'));
     $two->refresh()->completeSourcingPart(1);
+    startDataEntryOn($two, 1);
     test()->travelTo(colombo('2026-10-05 12:30'));
 
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.time-spent'))->assertOk()
@@ -284,6 +294,7 @@ it('still shows work done outside working hours, as elapsed time', function () {
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9001']), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-04 02:36:09'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
     test()->travelTo(colombo('2026-10-04 02:36:28'));
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
 
@@ -307,6 +318,7 @@ it('shows a stretch under a minute in seconds, not as nothing', function () {
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9002']), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-05 09:00:24'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     expect($rfq->refresh()->timeSpent(colombo('2026-10-05 09:00:24'))['roles']['Sourcing'])->toMatchArray(['minutes' => 0, 'seconds' => 24]);
 
@@ -334,6 +346,7 @@ it('flags a step its role finished outside working hours, with how much fell out
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9101']), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-04 02:36:09'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     $step = $rfq->refresh()->steps->firstWhere('step', 'sourcing');
 
@@ -349,6 +362,7 @@ it('doesn\'t flag a part that only waited overnight, finished within working hou
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-12 09:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     expect($rfq->refresh()->timeSpent()['roles']['Sourcing'])->toMatchArray(['minutes' => 90, 'out_of_hours' => 0, 'out_of_hours_count' => 0]);
 });
@@ -359,6 +373,7 @@ it('counts the whole stretch outside the hours of one finished out of hours', fu
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-10 10:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     expect($rfq->refresh()->timeSpent()['roles']['Sourcing'])->toMatchArray(['minutes' => 60, 'out_of_hours' => 17 * 3600, 'out_of_hours_count' => 1]);
 });
@@ -368,6 +383,7 @@ it('flags returns done out of hours too, by whoever sent it back', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-05 10:00'));
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
 
     // Data Entry sends it back at 20:00.
     test()->travelTo(colombo('2026-10-05 20:00'));
@@ -400,12 +416,13 @@ it('doesn\'t flag a step ended at night by something else — the part freed, or
     $head = userWithRole('Head of Business Development');
     foreach ([1, 2] as $part) {
         $held->refresh()->completeSourcingPart($part);
+        startDataEntryOn($held, $part);
         $held->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $held->refresh()->finalizePart($part);
         $held->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $held->refresh()->approveHeadOfBdPart($part, $head);
     }
-    $held->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Acme Ltd', null);
+    $held->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
 
     test()->travelTo(colombo('2026-10-05 22:00'));
     $held->refresh()->rejectPartToStage(1, 'head_of_bd_review', 'Check P1', userWithRole('General Manager'), 'gm_review');
@@ -421,11 +438,13 @@ it('highlights out-of-hours work on the report and the RFQ\'s page, and lists it
     $night = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9201']), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-04 02:36'));
     $night->refresh()->completeSourcingPart(1);
+    startDataEntryOn($night, 1);
 
     test()->travelTo(colombo('2026-10-05 09:00'));
     $day = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9202']), [1 => userWithRole('Sourcing')]);
     test()->travelTo(colombo('2026-10-05 10:00'));
     $day->refresh()->completeSourcingPart(1);
+    startDataEntryOn($day, 1);
 
     $admin = userWithRole('Admin');
 
@@ -471,6 +490,7 @@ function deadlineSpread(): array
 
     test()->travelTo(colombo('2026-10-05 10:00'));
     $closed->refresh()->completeSourcingPart(1);
+    startDataEntryOn($closed, 1);
     $closed->refresh()->update(['status' => 'Completed']);
     $closed->refresh()->syncSteps();
 
@@ -479,6 +499,7 @@ function deadlineSpread(): array
 
     test()->travelTo(colombo('2026-10-05 14:30'));
     $late->refresh()->completeSourcingPart(1);
+    startDataEntryOn($late, 1);
 
     test()->travelTo(colombo('2026-10-05 15:30'));
 

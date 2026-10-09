@@ -32,7 +32,7 @@ function partToGmAssistant(Rfq $rfq, int $part): void
 function partToBdClosing(Rfq $rfq, int $part): void
 {
     partToGmAssistant($rfq, $part);
-    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'), 'Acme Ltd, Colombo', 'Net 30');
+    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
     $rfq->refresh()->approveGmPart($part, userWithRole('General Manager'));
 }
 
@@ -70,40 +70,34 @@ it('lets only the part\'s own Sourcing member send it back, and only while it\'s
     test()->actingAs($sam)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
         ->assertForbidden();
 
-    // With Data Entry now — theirs to send back, not Riley's.
+    // Assigned to Data Entry now — past sending back.
     $rfq->refresh()->completeSourcingPart(1);
     test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
-        ->assertForbidden();
+        ->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(1))->not->toBeNull();
 });
 
-it('lets Data Entry send a part with them back to Senior Operations', function () {
+it('gives Data Entry no way to send a part back to Senior Operations — Return to Sourcing is theirs', function () {
     $dataEntry = userWithRole('Data Entry');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15002']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     $rfq->refresh()->completeSourcingPart(1);
 
     test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSee('data-action="'.route('admin.rfqs.return-senior-ops', $rfq).'"', false);
+        ->assertSee('data-action="'.route('admin.rfqs.return-sourcing', $rfq).'"', false)
+        ->assertDontSee(route('admin.rfqs.return-senior-ops', $rfq))
+        ->assertDontSee('Return to Senior Operations');
 
     test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Quoted for the wrong building'])
-        ->assertSessionHas('status', 'Sent RFQ15002-P1 of P2 back to Senior Operations.');
+        ->assertForbidden();
 
-    expect($rfq->refresh())
-        ->reject_from_stage->toBe('data_entry')
-        ->rejected_by->toBe($dataEntry->id)
-        ->and($rfq->assigneeForPart(1))->toBeNull();
-
-    // Once Data Entry has sent a part to finalize, it's past them.
-    $rfq->refresh()->completeSourcingPart(2);
-    $rfq->refresh()->completeDataEntryPart(2, $dataEntry);
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 2, 'reason' => 'Too late'])
-        ->assertStatus(422);
+    expect($rfq->refresh()->assigneeForPart(1))->not->toBeNull()
+        ->and($rfq->reject_target_stage)->toBeNull();
 });
 
 // ---- GM Assistant -----------------------------------------------------------
 
-it('lets GM Assistant send a part back to Senior Operations, Sourcing or Data Entry — and nowhere else', function () {
+it('lets GM Assistant send a part back to Senior Operations or Sourcing — and nowhere else, Data Entry included', function () {
     $assistant = userWithRole('GM Assistant');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15003']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     partToGmAssistant($rfq, 1);
@@ -112,22 +106,22 @@ it('lets GM Assistant send a part back to Senior Operations, Sourcing or Data En
     expect($html)->toContain('data-action="'.route('admin.rfqs.reject-gm-assistant', $rfq).'"')
         ->toContain('<option value="operations" >')
         ->toContain('<option value="sourcing" >')
-        ->toContain('<option value="data_entry" >')
         ->toContain('<option value="senior_ops_review" >')
+        ->not->toContain('<option value="data_entry" >')
         ->not->toContain('<option value="business_development" >')
         ->not->toContain('<option value="head_of_bd_review" >')
         ->not->toContain('<option value="gm_review" >');
 
-    foreach (['business_development', 'head_of_bd_review', 'gm_review'] as $target) {
+    foreach (['data_entry', 'business_development', 'head_of_bd_review', 'gm_review'] as $target) {
         test()->actingAs($assistant)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => $target, 'reason' => 'No'])
             ->assertSessionHasErrorsIn('reject', 'target_stage');
     }
 
-    test()->actingAs($assistant)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => 'data_entry', 'reason' => 'Totals don\'t match the quotes'])
-        ->assertSessionHas('status', 'Sent RFQ15003-P1 of P2 back to Data Entry.');
+    test()->actingAs($assistant)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => 'sourcing', 'reason' => 'Totals don\'t match the quotes'])
+        ->assertSessionHas('status', 'Sent RFQ15003-P1 of P2 back to Sourcing.');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot)
-        ->data_entry_completed_at->toBeNull()
+        ->completed_at->toBeNull()
         ->head_of_bd_approved_at->toBeNull()
         ->and($rfq->reject_from_stage)->toBe('gm_assistant');
 });

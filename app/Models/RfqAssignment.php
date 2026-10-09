@@ -49,6 +49,7 @@ class RfqAssignment extends Pivot
             'completed_at' => 'datetime',
             'returned_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
+            'data_entry_started_at' => 'datetime',
             'finalized_at' => 'datetime',
             'data_entry_returned_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
@@ -256,7 +257,7 @@ class RfqAssignment extends Pivot
     }
 
     /**
-     * Whether GM Assistant has added their details for this part.
+     * Whether GM Assistant has submitted this part to the General Manager.
      */
     public function isGmAssistantCompleted(): bool
     {
@@ -406,6 +407,23 @@ class RfqAssignment extends Pivot
     public function dataEntryCompletedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'data_entry_completed_by');
+    }
+
+    /**
+     * Whether Data Entry has started on this part — see
+     * Rfq::startDataEntryPart().
+     */
+    public function hasDataEntryStarted(): bool
+    {
+        return $this->data_entry_started_at !== null;
+    }
+
+    /**
+     * The Data Entry (or Admin) user who started on this part.
+     */
+    public function dataEntryStartedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'data_entry_started_by');
     }
 
     /**

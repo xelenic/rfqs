@@ -86,7 +86,7 @@
         [
             'role' => 'GM Assistant', 'badge' => ['gm_assistant', 'gm_assistant_returns'],
             'links' => [
-                ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting client details'],
+                ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting submit'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'gm_assistant_returns', 'hint' => 'sent back by the General Manager'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],

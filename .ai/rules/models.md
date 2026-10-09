@@ -16,3 +16,12 @@ The business decided which role can return an RFQ to which earlier step (2026-10
 
 ## Attendance counts only once HR Manager approves the sheet
 Senior Operations (and Admin) submit the daily AttendanceSheet, and HR Manager (and Admin) approve it or return it. Only approved sheets count: Attendance::book() filters on attendance_sheets.approved_at, so an unapproved or returned day reads as UNMARKED ("awaiting"). Read attendance through book() and statusIn(), never by querying attendances directly. Any edit to a sheet goes through AttendanceSheet::submitted(), which clears the approval and sends it back to HR.
+
+## Data Entry's time runs from their Start
+A part with Data Entry is only timed once Data Entry starts it: rfq_user.data_entry_started_at, set by Rfq::startDataEntryPart() and allowed only in working hours by the controller. Rfq::timedStepFor() returns no step until then. The data_entry stretch's worked_by is whoever started it. Every path that sends a part back to Data Entry must clear the start (Rfq::DATA_ENTRY_START_COLUMNS): returnSourcingPart, returnToDataEntry, and rejects that target 'data_entry'. Send to Finalize is refused until the part is started.
+
+## GM Assistant only submits; client details and payment terms are legacy
+Since 2026-10-09 GM Assistant's step is a confirmed Submit that forwards the part or RFQ to the General Manager (Rfq::recordGmAssistantPart() / recordGmAssistantDetails(), no details arguments). rfqs.client_details and payment_terms are kept only so older RFQs still show what was given; nothing writes them now. Don't reintroduce a details form for GM Assistant without the business asking.
+
+## Rejects save a snapshot so the part can be sent straight back
+Rfq::rejectToStage()/rejectPartToStage() call recordReturn() first, saving each part's rfq_user row and the RFQ's workflow columns (RfqReturn). The receiving role's "Send back to …" button (Rfq::forwardBack()) restores that snapshot, skipping the steps between. Any new reject path must call recordReturn() before it clears anything. Availability is Rfq::openReturns(): each part's latest unforwarded return, still positionally where it was sent. Pitfall: on an Eloquent collection, only()/except() filter by model id, not collection key, so use filter() for part numbers.

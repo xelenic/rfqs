@@ -24,14 +24,14 @@
         'data_entry_all_completed' => ['bi-clipboard-check', 'success', 'All Splits Completed by Data Entry'],
         'senior_ops_part_reviewed' => ['bi-clipboard2-check', 'success', 'Part approved by Senior Operations'],
         'head_of_bd_part_approved' => ['bi-check-circle-fill', 'success', 'Part approved by Head of Business Development'],
-        'gm_assistant_part_completed' => ['bi-file-earmark-text', 'info', 'Part details added by GM Assistant'],
+        'gm_assistant_part_completed' => ['bi-file-earmark-text', 'info', 'Part submitted by GM Assistant'],
         'gm_part_approved' => ['bi-award', 'success', 'Part approved by General Manager'],
         'bd_part_closed' => ['bi-flag-fill', 'success', 'Part closed by Business Development'],
         'category_set' => ['bi-tag', 'secondary', 'Category Set'],
         'senior_ops_reviewed' => ['bi-clipboard2-check', 'success', 'Approved by Senior Operations (2nd review)'],
         'head_of_bd_approved' => ['bi-check-circle-fill', 'success', 'Approved by Head of Business Development'],
         'rejected' => ['bi-arrow-counterclockwise', 'danger', 'Rejected'],
-        'gm_assistant_completed' => ['bi-file-earmark-text', 'info', 'Client Details Added'],
+        'gm_assistant_completed' => ['bi-file-earmark-text', 'info', 'Submitted to General Manager'],
         'gm_approved' => ['bi-award', 'success', 'Approved by General Manager'],
         'bd_closed' => ['bi-flag-fill', 'success', 'RFQ Closed'],
         'comment' => [$entry['comment']->actionIcon(), $entry['comment']->action ? $entry['comment']->actionTone() : 'comment', $entry['comment']->parent_id ? 'Reply' : 'Comment'],
@@ -83,6 +83,7 @@
                         </div>
                     @endif
                     <p class="mb-1" style="white-space: pre-line;">{!! $comment->bodyWithMentions($sourcingUsers) !!}</p>
+                    @include('admin.rfqs._comment_attachments', ['comment' => $comment])
 
                     @unless ($restrictAssignment)
                         @if (! $comment->parent_id)
@@ -93,7 +94,7 @@
                             </button>
 
                             <div class="collapse {{ $isFailedReply ? 'show' : '' }} mt-2" id="reply-form-{{ $comment->id }}">
-                                <form action="{{ route('admin.rfqs.comments.store', $rfq) }}" method="POST" class="rfq-comment-reply-form">
+                                <form action="{{ route('admin.rfqs.comments.store', $rfq) }}" method="POST" class="rfq-comment-reply-form" enctype="multipart/form-data">
                                     @csrf
                                     <input type="hidden" name="parent_id" value="{{ $comment->id }}">
                                     <textarea name="body" rows="1" class="form-control form-control-sm js-mention-input @error('body', 'reply') is-invalid @enderror"
@@ -103,6 +104,7 @@
                                             <div class="invalid-feedback d-block">{{ $message }}</div>
                                         @enderror
                                     @endif
+                                    @include('admin.rfqs._attachments_input', ['attachmentsId' => 'reply-attachments-'.$comment->id])
                                     <button type="submit" class="btn btn-sm btn-primary mt-1">Reply</button>
                                 </form>
                             </div>

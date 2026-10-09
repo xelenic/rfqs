@@ -62,7 +62,7 @@ it('knows how each action reads, looks and is toned', function (string $action, 
         ->and($comment->actionIcon())->toBe($icon)
         ->and($comment->actionTone())->toBe($tone);
 })->with([
-    'a completion' => ['sourcing_completed', 'Marked complete', 'bi-check-circle-fill', 'success'],
+    'a completion' => ['sourcing_completed', 'Assigned to Data Entry', 'bi-check-circle-fill', 'success'],
     'Data Entry\'s Send to Finalize' => ['data_entry_completed', 'Sent to Finalize', 'bi-send-check', 'success'],
     'a return' => ['returned_to_sourcing', 'Returned to Sourcing', 'bi-arrow-counterclockwise', 'danger'],
     'a rejection' => ['rejected', 'Rejected', 'bi-x-octagon-fill', 'danger'],
@@ -177,7 +177,7 @@ it('shows the thread in the modal as a vertical timeline, each comment with what
         ->toContain('Please be quick on this one')
         // …the completion beside its author's name, with which part…
         ->toContain('rfq-timeline-item rfq-timeline-item-success rfq-thread-item')
-        ->toContain('<i class="bi bi-check-circle-fill"></i> Marked complete')
+        ->toContain('<i class="bi bi-check-circle-fill"></i> Assigned to Data Entry')
         ->toContain('<span class="comment-action-context">RFQ1001-P2 of P3</span>')
         ->toContain('Supplier confirmed stock')
         // …and the return, with whose part.
@@ -233,7 +233,7 @@ it('shows the same on Sourcing\'s modal, in the order it happened', function () 
 
     $modal = partModal($html, $rfq, 2);
 
-    expect($modal)->toContain('Marked complete')
+    expect($modal)->toContain('Assigned to Data Entry')
         ->toContain('Returned to Sourcing')
         // Part 1's completion is on part 1's modal, not this one.
         ->not->toContain('Three quotes attached');
@@ -275,7 +275,7 @@ it('puts the action beside the name on the RFQ\'s own timeline too, with a marke
 
     $html = test()->actingAs($dataEntry)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
-    expect($html)->toContain('<i class="bi bi-check-circle-fill"></i> Marked complete')
+    expect($html)->toContain('<i class="bi bi-check-circle-fill"></i> Assigned to Data Entry')
         ->toContain('<i class="bi bi-arrow-counterclockwise"></i> Returned to Sourcing')
         ->toContain('comment-action comment-action-success')
         ->toContain('comment-action comment-action-danger')

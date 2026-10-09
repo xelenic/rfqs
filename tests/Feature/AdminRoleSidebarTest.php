@@ -243,7 +243,7 @@ it('lets Admin work Data Entry\'s queue as Data Entry would', function () {
         ->assertOk()
         ->assertSee('Ready for Data Entry · Data Entry')
         ->assertSee('<td>'.e($riley->name).'</td>', false)
-        ->assertSee('Mark Complete');
+        ->assertSee('Assign to Data Entry');
 });
 
 it('ignores ?role= for anyone but Admin', function () {

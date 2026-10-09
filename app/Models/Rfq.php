@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -147,12 +149,12 @@ class Rfq extends Model
      *   Sourcing, Data Entry.
      * - Sourcing, on a part still with them: Senior Operations — and, from
      *   Finalize, Data Entry (returnToDataEntry(), not a reject).
-     * - Data Entry, on a part with them: Senior Operations — and Sourcing
-     *   (returnSourcingPart(), not a reject).
+     * - Data Entry, on a part with them: Sourcing (returnSourcingPart(), not
+     *   a reject).
      * - The Head of Business Development: Business Development, Senior
      *   Operations (its assignment or its review), Sourcing, Data Entry.
      * - GM Assistant: Senior Operations (its assignment or its review),
-     *   Sourcing, Data Entry.
+     *   Sourcing — not Data Entry.
      * - The General Manager: every stage before their own.
      *
      * Senior Operations' assignment step ('operations') frees the part for
@@ -163,10 +165,9 @@ class Rfq extends Model
      */
     public const RETURN_TARGETS = [
         'sourcing' => ['operations'],
-        'data_entry' => ['operations'],
         'senior_ops_review' => ['business_development', 'sourcing', 'data_entry'],
         'head_of_bd_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'],
-        'gm_assistant' => ['operations', 'sourcing', 'data_entry', 'senior_ops_review'],
+        'gm_assistant' => ['operations', 'sourcing', 'senior_ops_review'],
         'gm_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'],
         'bd_closing' => ['head_of_bd_review', 'gm_review'],
     ];
@@ -174,12 +175,64 @@ class Rfq extends Model
     /**
      * The review and closing stages that send an RFQ back with the shared
      * Reject & Return (RfqController::reject()) — every one in RETURN_TARGETS
-     * but Sourcing's and Data Entry's, which send their own part back
+     * but Sourcing's, who send their own part back
      * (RfqController::returnSeniorOps()).
      *
      * @var array<int, string>
      */
     public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing'];
+
+    /**
+     * The workflow in order, every step that can be skipped when something
+     * sent back is sent straight back to whoever sent it (forwardBack()) —
+     * Sourcing's Finalize included, between Data Entry and Senior Operations'
+     * review.
+     *
+     * @var array<int, string>
+     */
+    public const FORWARD_BACK_ORDER = [
+        'business_development', 'operations', 'sourcing', 'data_entry', 'finalize', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing',
+    ];
+
+    /**
+     * Which role works each stage something can be sent back to — who gets
+     * to send it straight back (forwardBack()).
+     *
+     * @var array<string, string>
+     */
+    public const RETURN_TARGET_ROLES = [
+        'business_development' => 'Business Development',
+        'operations' => 'Senior Operations',
+        'sourcing' => 'Sourcing',
+        'data_entry' => 'Data Entry',
+        'senior_ops_review' => 'Senior Operations',
+        'head_of_bd_review' => 'Head of Business Development',
+        'gm_assistant' => 'GM Assistant',
+        'gm_review' => 'General Manager',
+    ];
+
+    /**
+     * The RFQ's own workflow columns a reject can change — saved with each
+     * RfqReturn (rfq_before), for sending it straight back.
+     *
+     * @var array<int, string>
+     */
+    private const RETURN_RFQ_COLUMNS = [
+        'stage', 'operations_assigned_by', 'operations_assigned_at', 'split_count',
+        'sourcing_completed_by', 'sourcing_completed_at', 'data_entry_completed_by', 'data_entry_completed_at',
+        'finalized_by', 'finalized_at', 'senior_ops_reviewed_by', 'senior_ops_reviewed_at',
+        'head_of_bd_approved_by', 'head_of_bd_approved_at', 'gm_assistant_completed_by', 'gm_assistant_completed_at',
+        'gm_approved_by', 'gm_approved_at',
+        'rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage',
+    ];
+
+    /**
+     * A part's rfq_user columns sending it straight back leaves as they are
+     * now: what it is, and whether it's been stopped on its own since.
+     *
+     * @var array<int, string>
+     */
+    private const RETURN_PART_KEPT_COLUMNS = ['id', 'rfq_id', 'user_id', 'part_number', 'created_at', 'updated_at', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'];
 
     /**
      * The stages with a Returns page of their own that holds what's sent back
@@ -303,6 +356,7 @@ class Rfq extends Model
             'operations' => 'Senior Operations (assignment)',
             'sourcing' => 'Sourcing',
             'data_entry' => 'Data Entry',
+            'finalize' => 'Sourcing (finalize)',
             'senior_ops_review' => 'Senior Operations (2nd review)',
             'head_of_bd_review' => 'Head of Business Development',
             'gm_assistant' => 'GM Assistant',
@@ -593,7 +647,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_started_at', 'data_entry_started_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -624,6 +678,16 @@ class Rfq extends Model
      * action's comments can. Replies live under each comment's replies()
      * relation — see RfqComment.
      */
+    /**
+     * The latest reason this RFQ was sent back with — its latest "rejected"
+     * comment — for the photos and files it came with (RfqComment::
+     * attachments()), shown with it on the Returns pages.
+     */
+    public function latestRejection(): HasOne
+    {
+        return $this->hasOne(RfqComment::class)->ofMany(['id' => 'max'], fn ($query) => $query->where('action', 'rejected'));
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(RfqComment::class)->whereNull('parent_id')->oldest()->oldest('id');
@@ -636,6 +700,15 @@ class Rfq extends Model
     public function steps(): HasMany
     {
         return $this->hasMany(RfqStep::class)->oldest('started_at')->oldest('id');
+    }
+
+    /**
+     * Every part a reviewer has sent back, with what it was like before —
+     * see RfqReturn and forwardBack().
+     */
+    public function returns(): HasMany
+    {
+        return $this->hasMany(RfqReturn::class);
     }
 
     /**
@@ -709,8 +782,8 @@ class Rfq extends Model
     }
 
     /**
-     * The GM Assistant who recorded this RFQ's client details and payment
-     * terms. See recordGmAssistantDetails().
+     * The GM Assistant who submitted this RFQ to the General Manager. See
+     * recordGmAssistantDetails() / recordGmAssistantPart().
      */
     public function gmAssistantCompletedBy(): BelongsTo
     {
@@ -1325,6 +1398,8 @@ class Rfq extends Model
             'returned_by' => $returnedBy->id,
             'data_entry_completed_at' => null,
             'data_entry_completed_by' => null,
+            'data_entry_started_at' => null,
+            'data_entry_started_by' => null,
             'finalized_at' => null,
             'finalized_by' => null,
             'data_entry_returned_at' => null,
@@ -1370,6 +1445,43 @@ class Rfq extends Model
         }
 
         $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]);
+
+        $this->syncSteps();
+    }
+
+    /**
+     * Whether Data Entry can start on $part: it's with them — Sourcing has
+     * assigned it to them, they haven't sent it to finalize — going ahead,
+     * on an RFQ in progress, and not started yet. (Whether it's working
+     * hours is the controller's call — see RfqController::startDataEntry().)
+     */
+    public function partAwaitsDataEntryStart(int $part): bool
+    {
+        $assignment = $this->activePart($part);
+
+        return $this->status === 'Pending'
+            && $assignment !== null
+            && $assignment->completed_at !== null
+            && $assignment->data_entry_completed_at === null
+            && $assignment->data_entry_started_at === null;
+    }
+
+    /**
+     * Data Entry starts on one part with them: from now, their time on it
+     * counts (syncSteps() — see timedStepFor()), credited to $startedBy.
+     * Idempotent — a part that isn't waiting to be started is left alone.
+     */
+    public function startDataEntryPart(int $part, User $startedBy): void
+    {
+        if (! $this->partAwaitsDataEntryStart($part)) {
+            return;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'data_entry_started_at' => now(),
+            'data_entry_started_by' => $startedBy->id,
+        ]);
+        $this->load('assignees');
 
         $this->syncSteps();
     }
@@ -1491,6 +1603,8 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
             'data_entry_completed_at' => null,
             'data_entry_completed_by' => null,
+            'data_entry_started_at' => null,
+            'data_entry_started_by' => null,
             'data_entry_returned_at' => now(),
             'data_entry_return_reason' => $reason,
         ]);
@@ -1707,6 +1821,15 @@ class Rfq extends Model
      *
      * @var array<string, array<int, string>>
      */
+    /**
+     * A part's Data Entry start (startDataEntryPart()), cleared — kept on the
+     * part only (rfq_user), unlike the markers below, which the RFQ mirrors.
+     * Cleared whenever the part comes back to Data Entry to be done again.
+     *
+     * @var array<string, null>
+     */
+    private const DATA_ENTRY_START_COLUMNS = ['data_entry_started_at' => null, 'data_entry_started_by' => null];
+
     private const REJECT_MARKER_COLUMNS = [
         // Redoing Data Entry means finalizing it again too.
         'data_entry' => ['data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by'],
@@ -1804,13 +1927,15 @@ class Rfq extends Model
      */
     public function rejectToStage(string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
     {
+        $this->recordReturn($fromStage, $targetStage, $rejectedBy);
+
         $columns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
 
         DB::table('rfq_user')
             ->where('rfq_id', $this->id)
             ->whereNull('bd_closed_at')
             ->where(fn ($parts) => $parts->whereNull('status')->orWhere('status', '<>', self::CANCELLED))
-            ->update($columns);
+            ->update($columns + ($targetStage === 'data_entry' ? self::DATA_ENTRY_START_COLUMNS : []));
         $this->load('assignees');
 
         $this->update($columns + [
@@ -1875,6 +2000,10 @@ class Rfq extends Model
      */
     public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
     {
+        if ($this->assigneeForPart($part)) {
+            $this->recordReturn($fromStage, $targetStage, $rejectedBy, $part);
+        }
+
         if (in_array($targetStage, ['business_development', 'operations'], true)) {
             if (! $this->assigneeForPart($part)) {
                 return;
@@ -1903,7 +2032,7 @@ class Rfq extends Model
 
             $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot(
                 $assignee->id,
-                array_fill_keys(self::markerColumnsFrom($targetStage), null)
+                array_fill_keys(self::markerColumnsFrom($targetStage), null) + ($targetStage === 'data_entry' ? self::DATA_ENTRY_START_COLUMNS : [])
             );
             $this->load('assignees');
         }
@@ -1932,6 +2061,214 @@ class Rfq extends Model
         $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
 
         $this->syncSteps();
+    }
+
+    /**
+     * Saves what's about to be sent back from $fromStage to $targetStage —
+     * $part, or every part not yet closed — as it is now, with the RFQ's own
+     * workflow columns: one RfqReturn per part, a whole-RFQ reject's sharing
+     * a batch. What forwardBack() restores.
+     */
+    private function recordReturn(string $fromStage, string $targetStage, User $returnedBy, ?int $part = null): void
+    {
+        $rfqBefore = (array) DB::table('rfqs')->where('id', $this->id)->first(self::RETURN_RFQ_COLUMNS);
+        $batch = (string) Str::uuid();
+
+        DB::table('rfq_user')
+            ->where('rfq_id', $this->id)
+            ->when($part !== null, fn ($parts) => $parts->where('part_number', $part))
+            ->whereNull('bd_closed_at')
+            ->get()
+            ->each(fn (object $row) => $this->returns()->create([
+                'batch' => $batch,
+                'part_number' => $row->part_number,
+                'user_id' => $row->user_id,
+                'whole' => $part === null,
+                'from_stage' => $fromStage,
+                'target_stage' => $targetStage,
+                'returned_by' => $returnedBy->id,
+                'part_before' => collect((array) $row)->except(['id', 'rfq_id', 'user_id', 'part_number'])->all(),
+                'rfq_before' => $rfqBefore,
+            ]));
+
+        $this->unsetRelation('returns');
+    }
+
+    /**
+     * The steps strictly between $from and $to in the workflow
+     * (FORWARD_BACK_ORDER) — what sending something sent back to $from
+     * straight back to $to skips. Nothing when they're next to each other.
+     *
+     * @return array<int, string>
+     */
+    public static function stagesBetween(string $from, string $to): array
+    {
+        $start = array_search($from, self::FORWARD_BACK_ORDER, true);
+        $end = array_search($to, self::FORWARD_BACK_ORDER, true);
+
+        return $start === false || $end === false || $end <= $start + 1
+            ? []
+            : array_slice(self::FORWARD_BACK_ORDER, $start + 1, $end - $start - 1);
+    }
+
+    /**
+     * What sent back can be sent straight back right now, by part: each
+     * part's latest return (RfqReturn) not sent straight back already — once
+     * one has been, the part's back where the one before it left it, so
+     * that one's next — that would skip a step, with the part still just
+     * where it was sent: nobody's moved it on, stopped it, or given it to
+     * someone else since. Empty unless the RFQ is Pending.
+     *
+     * @return Collection<int, RfqReturn> keyed by part number
+     */
+    public function openReturns(): Collection
+    {
+        if ($this->status !== 'Pending') {
+            return collect();
+        }
+
+        return $this->returns
+            ->sortByDesc('id')
+            ->groupBy('part_number')
+            ->map(fn (Collection $partReturns) => $partReturns->first(fn (RfqReturn $return) => $return->forwarded_at === null))
+            ->filter(fn (?RfqReturn $return) => $return !== null
+                && $return->skippedStages() !== []
+                && $this->isWhereReturnLeftIt($return));
+    }
+
+    /**
+     * $part's return that can be sent straight back now, if it has one —
+     * see openReturns().
+     */
+    public function openReturnFor(int $part): ?RfqReturn
+    {
+        return $this->openReturns()->get($part);
+    }
+
+    /**
+     * The returns that can be sent straight back now to $target, grouped by
+     * where they came from — for a whole-RFQ row on a Returns page.
+     *
+     * @return Collection<string, Collection<int, RfqReturn>>
+     */
+    public function openReturnsTo(string $target): Collection
+    {
+        return $this->openReturns()->where('target_stage', $target)->groupBy('from_stage');
+    }
+
+    /**
+     * Whether $return's part is still where it was sent: freed, for the
+     * assignment or Business Development, with the RFQ still sitting there;
+     * otherwise held by the same person, going ahead, and waiting at that
+     * stage.
+     */
+    private function isWhereReturnLeftIt(RfqReturn $return): bool
+    {
+        $holder = $this->assigneeForPart($return->part_number);
+
+        if (in_array($return->target_stage, ['business_development', 'operations'], true)) {
+            return $holder === null && $return->user_id !== null && $this->reject_target_stage === $return->target_stage;
+        }
+
+        $part = $holder?->pivot;
+
+        if ($part === null || $holder->id !== $return->user_id || $part->isStopped()) {
+            return false;
+        }
+
+        return match ($return->target_stage) {
+            'sourcing' => $part->completed_at === null,
+            'data_entry' => $part->completed_at !== null && $part->data_entry_completed_at === null,
+            'senior_ops_review' => $part->finalized_at !== null && $part->senior_ops_reviewed_at === null,
+            'head_of_bd_review' => $part->senior_ops_reviewed_at !== null && $part->head_of_bd_approved_at === null,
+            'gm_assistant' => $part->head_of_bd_approved_at !== null && $part->gm_assistant_completed_at === null,
+            'gm_review' => $part->gm_assistant_completed_at !== null && $part->gm_approved_at === null,
+            default => false,
+        };
+    }
+
+    /**
+     * Sends what $returns sent back (openReturns()) straight back to whoever
+     * sent it, skipping the steps in between: each part is put back just as
+     * it was before it was sent back — the work done on it since, at the
+     * steps skipped, standing — and held by whoever had it then. Once a
+     * whole-RFQ reject's every part is back, so is the RFQ, as it was;
+     * until then — or for a part sent back on its own — the RFQ moves to
+     * wherever its parts now leave it, its own records only standing while
+     * every part is through. Recorded as $by's, and posted to the thread.
+     *
+     * Caller is responsible for verifying $by may, and that $returns are open.
+     *
+     * @param  Collection<int, RfqReturn>  $returns
+     */
+    public function forwardBack(Collection $returns, User $by): void
+    {
+        foreach ($returns as $return) {
+            $columns = $return->part_before;
+
+            if ($this->assigneeForPart($return->part_number)) {
+                DB::table('rfq_user')
+                    ->where('rfq_id', $this->id)
+                    ->where('part_number', $return->part_number)
+                    ->update(collect($columns)->except(self::RETURN_PART_KEPT_COLUMNS)->all() + ['updated_at' => now()]);
+            } else {
+                DB::table('rfq_user')->insert($columns + [
+                    'rfq_id' => $this->id,
+                    'user_id' => $return->user_id,
+                    'part_number' => $return->part_number,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $return->update(['forwarded_at' => now(), 'forwarded_by' => $by->id]);
+            $this->load('assignees');
+        }
+
+        $first = $returns->first();
+        $before = $first->rfq_before;
+        $batchLeft = $this->returns()->where('batch', $first->batch)->whereNull('forwarded_at')->exists();
+        $isItsReject = $this->reject_from_stage === $first->from_stage && $this->reject_target_stage === $first->target_stage;
+
+        if ($first->whole && ! $batchLeft) {
+            $this->update($before);
+        } else {
+            $this->update($this->recordsEveryPartStandsBy($before) + ['stage' => $this->stageEveryPartHasReached()]
+                + ($isItsReject && ! $batchLeft ? collect($before)->only(['rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage'])->all() : []));
+        }
+
+        $skipped = collect($first->skippedStages())->map(fn (string $stage) => self::stageLabel($stage))->join(', ', ' and ');
+        $context = $returns->count() === 1 && $this->isSplit() ? $this->partContext($first->part_number) : [];
+
+        $this->postActionComment($by, 'forwarded_back', 'Sent straight back to '.self::stageLabel($first->from_stage)." — skipping {$skipped}.", ['stage' => self::stageLabel($first->from_stage)] + $context);
+
+        $this->unsetRelation('returns');
+        $this->syncSteps();
+    }
+
+    /**
+     * The RFQ's own step records as its parts now stand: each one kept — or,
+     * if a reject cleared it, back from $before — only while every part is
+     * through that step; cleared while one isn't.
+     *
+     * @param  array<string, mixed>  $before  RfqReturn::rfq_before
+     * @return array<string, mixed>
+     */
+    private function recordsEveryPartStandsBy(array $before): array
+    {
+        $records = [
+            'sourcing_completed' => $this->allSourcingPartsCompleted(),
+            'data_entry_completed' => $this->allDataEntryPartsCompleted(),
+            'finalized' => $this->allPartsFinalized(),
+            'senior_ops_reviewed' => $this->allSeniorOpsPartsReviewed(),
+            'head_of_bd_approved' => $this->allHeadOfBdPartsApproved(),
+            'gm_assistant_completed' => $this->allGmAssistantPartsCompleted(),
+            'gm_approved' => $this->allGmPartsApproved(),
+        ];
+
+        return collect($records)->flatMap(fn (bool $everyPartThrough, string $record) => [
+            "{$record}_by" => $everyPartThrough ? ($this->getRawOriginal("{$record}_by") ?? $before["{$record}_by"] ?? null) : null,
+            "{$record}_at" => $everyPartThrough ? ($this->getRawOriginal("{$record}_at") ?? $before["{$record}_at"] ?? null) : null,
+        ])->all();
     }
 
     /**
@@ -1977,6 +2314,7 @@ class Rfq extends Model
                 ->mapWithKeys(fn (User $assignee) => [$assignee->pivot->part_number => [
                     'assignee_id' => $assignee->id,
                     'step' => $this->timedStepFor($assignee->pivot),
+                    'started_by' => $assignee->pivot->data_entry_started_by,
                 ]])
                 ->filter(fn (array $now) => $now['step'] !== null)
             : collect();
@@ -2013,9 +2351,14 @@ class Rfq extends Model
                 'rfq_id' => $this->id,
                 'part_number' => $part,
                 'assignee_id' => $now['assignee_id'],
-                // Sourcing's own time is the part's member's from the start;
-                // Data Entry's and GM Assistant's is whoever finishes it.
-                'worked_by' => in_array($now['step'], ['sourcing', 'finalize'], true) ? $now['assignee_id'] : null,
+                // Sourcing's own time is the part's member's from the start,
+                // Data Entry's whoever started it (startDataEntryPart());
+                // GM Assistant's is whoever finishes it.
+                'worked_by' => match ($now['step']) {
+                    'sourcing', 'finalize' => $now['assignee_id'],
+                    'data_entry' => $now['started_by'],
+                    default => null,
+                },
                 'step' => $now['step'],
                 'started_at' => now(),
                 'resumed' => $last !== null && $last->step === $now['step'] && $last->assignee_id === $now['assignee_id'],
@@ -2126,14 +2469,16 @@ class Rfq extends Model
      * Head of Business Development approves it and it's GM Assistant's — but
      * not while the RFQ's held on another stage's Returns page, when GM
      * Assistant can't act on it. Nor while it's stopped on its own
-     * (changePartStatus()).
+     * (changePartStatus()) — nor with Data Entry until they've started on it
+     * (startDataEntryPart()).
      */
     private function timedStepFor(RfqAssignment $part): ?string
     {
         return match (true) {
             $part->isStopped() => null,
             $part->completed_at === null => 'sourcing',
-            $part->data_entry_completed_at === null => 'data_entry',
+            // With Data Entry, but only timed once they've started on it.
+            $part->data_entry_completed_at === null => $part->data_entry_started_at !== null ? 'data_entry' : null,
             $part->finalized_at === null => 'finalize',
             $part->isAwaitingGmAssistant() && ! $this->isHeldOnAnotherReturnsPage('gm_assistant') => 'gm_assistant',
             default => null,
@@ -2152,13 +2497,61 @@ class Rfq extends Model
      */
     public function sourcingCountdown(int $part, ?CarbonInterface $now = null): ?array
     {
-        $round = self::roundsOf($this->steps->filter(fn (RfqStep $step) => $step->part_number === $part && $step->step === 'sourcing'))->last();
+        return $this->countdownAt('sourcing', $part, $this->sourcingTargetSeconds(), $now);
+    }
+
+    /**
+     * When each part waiting for Data Entry to start came in — handed over by
+     * Sourcing, sent back from Finalize, set going again, or rejected back —
+     * on a Pending RFQ: what Data Entry's idle alert counts from
+     * (User::dataEntryIdleness()).
+     *
+     * @return Collection<int, CarbonImmutable>
+     */
+    public static function dataEntryWaitingSince(): Collection
+    {
+        return DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.completed_at')
+            ->whereNull('rfq_user.data_entry_completed_at')
+            ->whereNull('rfq_user.data_entry_started_at')
+            ->get(['rfq_user.completed_at', 'rfq_user.data_entry_returned_at', 'rfq_user.status_changed_at', 'rfqs.rejected_at'])
+            ->map(fn (object $part) => collect((array) $part)->filter()->map(fn (string $at) => CarbonImmutable::parse($at))->max());
+    }
+
+    /**
+     * Where $part's countdown stands with Data Entry: the working time its
+     * priority allows them (Setting::dataEntryTargets()) less what this
+     * round has taken since their Start, less any day whoever started it was
+     * absent (Attendance) — negative once it's overdue.
+     * Null if Data Entry isn't on it right now — not started yet, or sent on.
+     * Each round starts its own countdown. Expects steps to be loaded, or
+     * loads them.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function dataEntryCountdown(int $part, ?CarbonInterface $now = null): ?array
+    {
+        return $this->countdownAt('data_entry', $part, $this->dataEntryTargetSeconds(), $now);
+    }
+
+    /**
+     * $part's countdown at $step: $target less the working time its latest
+     * round there has taken — see sourcingCountdown() / dataEntryCountdown().
+     * Null unless that round is still open.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    private function countdownAt(string $step, int $part, int $target, ?CarbonInterface $now): ?array
+    {
+        $round = self::roundsOf($this->steps->filter(fn (RfqStep $stretch) => $stretch->part_number === $part && $stretch->step === $step))->last();
 
         if ($round === null || $round->last()->ended_at !== null || $this->status !== 'Pending') {
             return null;
         }
 
-        $target = $this->sourcingTargetSeconds();
         $book = Attendance::book($round->pluck('worked_by'));
 
         // Every stretch of the round — time on hold aside — less any day its
@@ -2176,6 +2569,15 @@ class Rfq extends Model
     public function sourcingTargetSeconds(): int
     {
         return (Setting::sourcingTargets()[$this->priority_level] ?? Setting::DEFAULT_SOURCING_TARGETS['Medium']) * 60;
+    }
+
+    /**
+     * The working time Data Entry has for a round on this RFQ, from their
+     * Start, by its priority — see Setting::dataEntryTargets(). In seconds.
+     */
+    public function dataEntryTargetSeconds(): int
+    {
+        return (Setting::dataEntryTargets()[$this->priority_level] ?? Setting::DEFAULT_DATA_ENTRY_TARGETS['Medium']) * 60;
     }
 
     /**
@@ -2370,22 +2772,26 @@ class Rfq extends Model
     }
 
     /**
-     * GM Assistant adds their details for one Sourcing part the Head of
-     * Business Development has approved — on its own, without waiting for the
-     * rest of a split — and it goes on to the General Manager. The client
-     * details and payment terms belong to the RFQ (one client, one set of
-     * terms), so what's given here stands for every part: the latest ones
-     * win, and are what the form offers next time. Once every part has been
-     * completed the RFQ as a whole moves on to the General Manager. Idempotent
-     * — a part that isn't waiting on GM Assistant (not approved by the Head
-     * yet, or already completed) is left alone, details and all.
+     * GM Assistant submits one Sourcing part the Head of Business Development
+     * has approved — on its own, without waiting for the rest of a split —
+     * and it goes on to the General Manager. Once every part has been
+     * submitted the RFQ as a whole moves on to the General Manager.
+     * Idempotent — a part that isn't waiting on GM Assistant (not approved by
+     * the Head yet, or already submitted) is left alone. A $comment, if
+     * given, is posted to the RFQ's thread as $completedBy's, naming the
+     * part. (GM Assistant no longer gives client details or payment terms:
+     * an older RFQ keeps what was given.)
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function recordGmAssistantPart(int $part, User $completedBy, string $clientDetails, ?string $paymentTerms): void
+    public function recordGmAssistantPart(int $part, User $completedBy, ?string $comment = null): void
     {
         if (! $this->partAwaitsGmAssistant($part)) {
             return;
+        }
+
+        if ($comment !== null) {
+            $this->postActionComment($completedBy, 'gm_assistant_submitted', $comment, $this->partContext($part));
         }
 
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
@@ -2393,11 +2799,6 @@ class Rfq extends Model
             'gm_assistant_completed_by' => $completedBy->id,
         ]);
         $this->load('assignees');
-
-        $this->update([
-            'client_details' => $clientDetails,
-            'payment_terms' => $paymentTerms,
-        ]);
 
         if ($this->allGmAssistantPartsCompleted()) {
             $this->update([
@@ -2413,15 +2814,19 @@ class Rfq extends Model
     }
 
     /**
-     * GM Assistant records this RFQ's client details and payment terms for
-     * every part at once — completing any not yet completed on its own — and
-     * forwards it on to the General Manager. Not idempotent-guarded — the
-     * details can be corrected before the General Manager acts on them.
+     * GM Assistant submits this RFQ for every part at once — completing any
+     * not yet submitted on its own — and forwards it on to the General
+     * Manager. A $comment, if given, is posted to the RFQ's thread as
+     * $completedBy's.
      *
      * Caller is responsible for verifying stage === 'gm_assistant'.
      */
-    public function recordGmAssistantDetails(User $completedBy, string $clientDetails, ?string $paymentTerms): void
+    public function recordGmAssistantDetails(User $completedBy, ?string $comment = null): void
     {
+        if ($comment !== null) {
+            $this->postActionComment($completedBy, 'gm_assistant_submitted', $comment);
+        }
+
         DB::table('rfq_user')
             ->where('rfq_id', $this->id)
             ->whereNotNull('head_of_bd_approved_at')
@@ -2434,8 +2839,6 @@ class Rfq extends Model
         $this->load('assignees');
 
         $this->update([
-            'client_details' => $clientDetails,
-            'payment_terms' => $paymentTerms,
             'gm_assistant_completed_by' => $completedBy->id,
             'gm_assistant_completed_at' => now(),
             'stage' => 'gm_review',

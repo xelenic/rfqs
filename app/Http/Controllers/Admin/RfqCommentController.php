@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Rfq;
 use App\Models\RfqComment;
+use App\Models\RfqCommentAttachment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RfqCommentController extends Controller implements HasMiddleware
 {
@@ -17,7 +20,7 @@ class RfqCommentController extends Controller implements HasMiddleware
         return [
             // Anyone who can see the RFQ can discuss it — commenting isn't
             // gated behind the stricter edit/delete permissions.
-            new Middleware('permission:rfqs.view', only: ['store', 'destroy']),
+            new Middleware('permission:rfqs.view', only: ['store', 'destroy', 'attachment']),
         ];
     }
 
@@ -29,7 +32,8 @@ class RfqCommentController extends Controller implements HasMiddleware
      *
      * Validation errors use one of two named bags ('comment' or 'reply')
      * so a failure on the reply box doesn't light up the main comment box
-     * (and vice versa) — both forms post 'body' under the same name.
+     * (and vice versa) — both forms post 'body' under the same name. Photos
+     * and files can go with it (attachments[], see attachmentsFrom()).
      */
     public function store(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -46,6 +50,12 @@ class RfqCommentController extends Controller implements HasMiddleware
             'body' => ['required', 'string', 'max:2000'],
         ]);
 
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
         // Via the rfq() relation so rfq_id is set automatically — comments()
         // itself is scoped to whereNull('parent_id'), which only filters
         // reads, not what gets written here.
@@ -53,7 +63,7 @@ class RfqCommentController extends Controller implements HasMiddleware
             'user_id' => $request->user()->id,
             'parent_id' => $parent?->id,
             'body' => $validated['body'],
-        ]);
+        ])->storeAttachments($files);
 
         // Comments can now be posted from more than one place — the RFQ's
         // own show page, or the quick-detail modal on Data Entry's "By
@@ -61,6 +71,24 @@ class RfqCommentController extends Controller implements HasMiddleware
         // rather than always the show page.
         return redirect()->back()
             ->with('status', $parent ? 'Reply posted.' : 'Comment posted.');
+    }
+
+    /**
+     * A photo or file attached to a comment, for anyone who can see RFQs: a
+     * photo shown in place, anything else — or anything asked for with
+     * ?download — downloaded, never opened in the browser as a page.
+     */
+    public function attachment(Request $request, RfqCommentAttachment $attachment): StreamedResponse
+    {
+        $disk = Storage::disk(RfqCommentAttachment::DISK);
+
+        abort_unless($disk->exists($attachment->path), 404);
+
+        $headers = ['X-Content-Type-Options' => 'nosniff'];
+
+        return $attachment->isImage() && ! $request->boolean('download')
+            ? $disk->response($attachment->path, $attachment->original_name, $headers + ['Content-Type' => $attachment->mime_type])
+            : $disk->download($attachment->path, $attachment->original_name, $headers);
     }
 
     /**

@@ -20,8 +20,10 @@ function withDataEntry(array $holders): Rfq
 {
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Replace exit signs']), $holders);
 
+    // Data Entry has started on each — Send to Finalize comes after.
     foreach (array_keys($holders) as $part) {
         $rfq->refresh()->completeSourcingPart($part);
+        startDataEntryOn($rfq, $part);
     }
 
     return $rfq->refresh();
@@ -161,8 +163,11 @@ it('needs finalizing again after a reviewer sends it back to Data Entry', functi
     $pivot = $rfq->refresh()->assigneeForPart(1)->pivot;
     expect($pivot->data_entry_completed_at)->toBeNull()
         ->and($pivot->finalized_at)->toBeNull()
-        ->and($rfq->finalized_at)->toBeNull();
+        ->and($rfq->finalized_at)->toBeNull()
+        // Back with Data Entry, to start on again.
+        ->and($pivot->data_entry_started_at)->toBeNull();
 
+    startDataEntryOn($rfq, 1);
     sendToFinalize($rfq, 1);
     expect($rfq->refresh()->stage)->toBeNull()
         ->and($rfq->partAwaitsFinalize(1))->toBeTrue();

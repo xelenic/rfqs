@@ -37,7 +37,7 @@ function throughToGm(int $parts = 1): array
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
-        $rfq->refresh()->recordGmAssistantPart($part, $assistant, 'Acme Ltd', '30 days');
+        $rfq->refresh()->recordGmAssistantPart($part, $assistant);
     }
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
@@ -53,7 +53,7 @@ it('shows the empty state until the General Manager sends something back', funct
         ->assertSee('Nothing\'s been sent back to GM Assistant.', false);
 });
 
-it('lists what the General Manager sent back to GM Assistant, with who and why, and Add Details right there — and nowhere else', function () {
+it('lists what the General Manager sent back to GM Assistant, with who and why, and Submit right there — and nowhere else', function () {
     ['assistant' => $assistant, 'gm' => $gm, 'rfq' => $rfq] = throughToGm();
 
     test()->actingAs($gm)
@@ -70,7 +70,8 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
         ->assertSee('Sent back by General Manager ('.$gm->name.'): Payment terms should be 45 days')
         ->assertSee('Returned At')
         ->assertSee('data-action="'.route('admin.rfqs.gm-assistant-details', $rfq).'"', false)
-        ->assertSee('id="gmAssistantModal"', false)
+        ->assertSee('data-label="RFQ5001"', false)
+        ->assertSee('id="gmAssistantSubmitModal"', false)
         ->assertSee('title="1 sent back by the General Manager"', false);
 
     // Not on their own Review page.
@@ -79,19 +80,18 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
         ->assertDontSee('>RFQ5001', false);
 });
 
-it('goes on to the General Manager once the details are added again from Returns, and off the list', function () {
+it('goes on to the General Manager once it\'s submitted again from Returns, and off the list', function () {
     ['assistant' => $assistant, 'gm' => $gm, 'rfq' => $rfq] = throughToGm();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'gm_assistant', 'reason' => 'Payment terms should be 45 days']);
 
     test()->actingAs($assistant)
         ->from(gmAssistantReturnsUrl())
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd', 'payment_terms' => '45 days'])
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1])
         ->assertSessionHasNoErrors()
         ->assertRedirect(gmAssistantReturnsUrl());
 
     expect($rfq->refresh())
         ->stage->toBe('gm_review')
-        ->payment_terms->toBe('45 days')
         ->reject_target_stage->toBeNull()
         ->and(Rfq::gmAssistantReturnsCount())->toBe(0)
         ->and(Rfq::gmReviewCount())->toBe(1);
@@ -119,7 +119,7 @@ it('holds a split\'s other parts off the General Manager\'s page until GM Assist
         ->assertDontSee('RFQ5001-P2 of P2');
 
     test()->actingAs($assistant)
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd', 'payment_terms' => '45 days'])
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1])
         ->assertSessionHasNoErrors();
 
     expect(Rfq::gmAssistantReturnsCount())->toBe(0)

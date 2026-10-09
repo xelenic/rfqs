@@ -1,9 +1,12 @@
 <?php
 
 use App\Models\Rfq;
+use App\Models\RfqCommentAttachment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -97,13 +100,22 @@ it('has nothing for GM Assistant until the Head has approved a part', function (
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertSee('Not with the Head yet');
 });
 
-it('takes a part\'s details on its own, and the RFQ goes on to the General Manager once every part has them', function () {
+it('submits a part on its own, and the RFQ goes on to the General Manager once every part is submitted', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
 
+    // Submit, with an optional comment — no client details or payment terms to give.
+    test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
+        ->assertSee('data-label="RFQ1001-P1 of P2"', false)
+        ->assertSee('id="gmAssistantSubmitModal"', false)
+        ->assertSee('<i class="bi bi-send-check"></i> Submit', false)
+        ->assertDontSee('Add Details')
+        ->assertDontSee('name="client_details"', false)
+        ->assertDontSee('name="payment_terms"', false);
+
     test()->actingAs($chain['assistant'])->from(gmPageUrl())
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd, Colombo', 'payment_terms' => 'Net 30'])
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1])
         ->assertRedirect(gmPageUrl())
-        ->assertSessionHas('status', 'Details added for RFQ1001-P1 of P2 — forwarded to General Manager.');
+        ->assertSessionHas('status', 'Submitted RFQ1001-P1 of P2 — forwarded to General Manager.');
 
     $rfq->refresh();
     $part = $rfq->assigneeForPart(1)->pivot;
@@ -111,9 +123,7 @@ it('takes a part\'s details on its own, and the RFQ goes on to the General Manag
     expect($part->gm_assistant_completed_at)->not->toBeNull()
         ->and($part->gm_assistant_completed_by)->toBe($chain['assistant']->id)
         ->and($rfq->assigneeForPart(2)->pivot->gm_assistant_completed_at)->toBeNull()
-        // The details are the RFQ's; the RFQ hasn't moved.
-        ->and($rfq->client_details)->toBe('Acme Ltd, Colombo')
-        ->and($rfq->payment_terms)->toBe('Net 30')
+        // The RFQ as a whole hasn't moved.
         ->and($rfq->stage)->toBe('head_of_bd_review')
         ->and($rfq->gm_assistant_completed_at)->toBeNull();
 
@@ -122,28 +132,26 @@ it('takes a part\'s details on its own, and the RFQ goes on to the General Manag
         ->assertSee('RFQ1001-P1 of P2')
         ->assertDontSee('RFQ1001-P2 of P2');
 
-    // The Head approves part 2: it's the only row for GM Assistant, with what was given already there to confirm.
+    // The Head approves part 2: it's the only row for GM Assistant.
     $rfq->approveHeadOfBdPart(2, $chain['head']);
 
     expect($rfq->refresh()->stage)->toBe('gm_assistant');
 
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
         ->assertSee('RFQ1001-P2 of P2')
-        ->assertDontSee('RFQ1001-P1 of P2')
-        ->assertSee('data-client-details="Acme Ltd, Colombo"', false)
-        ->assertSee('data-payment-terms="Net 30"', false);
+        ->assertDontSee('RFQ1001-P1 of P2');
 
     test()->actingAs($chain['assistant'])->from(gmPageUrl())
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 2, 'client_details' => 'Acme Ltd, Colombo', 'payment_terms' => 'Net 45'])
-        ->assertSessionHas('status', 'Details added — every part is through, forwarded to General Manager.');
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 2])
+        ->assertSessionHas('status', 'Submitted — every part is through, forwarded to General Manager.');
 
     $rfq->refresh();
 
-    // The latest terms stand for the RFQ.
     expect($rfq->stage)->toBe('gm_review')
         ->and($rfq->gm_assistant_completed_by)->toBe($chain['assistant']->id)
         ->and($rfq->gm_assistant_completed_at)->not->toBeNull()
-        ->and($rfq->payment_terms)->toBe('Net 45');
+        ->and($rfq->client_details)->toBeNull()
+        ->and($rfq->payment_terms)->toBeNull();
 
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertDontSee('Replace exit signs');
 });
@@ -152,7 +160,7 @@ it('lets the General Manager approve a part on its own, and readies the RFQ to c
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
     $rfq->approveHeadOfBdPart(2, $chain['head']);
     foreach ([1, 2] as $part) {
-        $rfq->refresh()->recordGmAssistantPart($part, $chain['assistant'], 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, $chain['assistant']);
     }
 
     expect($rfq->refresh()->stage)->toBe('gm_review');
@@ -196,16 +204,15 @@ it('lets the General Manager approve a part on its own, and readies the RFQ to c
 it('sends the whole RFQ on from GM Assistant, completing the parts not yet completed', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
     $rfq->approveHeadOfBdPart(2, $chain['head']);
-    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant'], 'First details', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant']);
 
     test()->actingAs($chain['assistant'])
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq->refresh()), ['client_details' => 'Whole RFQ details', 'payment_terms' => ''])
-        ->assertSessionHas('status', 'Forwarded to General Manager.');
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq->refresh()))
+        ->assertSessionHas('status', 'Submitted — forwarded to General Manager.');
 
     $rfq->refresh();
 
     expect($rfq->stage)->toBe('gm_review')
-        ->and($rfq->client_details)->toBe('Whole RFQ details')
         ->and($rfq->assignees->every(fn (User $assignee) => $assignee->pivot->gm_assistant_completed_at !== null))->toBeTrue()
         // Part 1 keeps its own; part 2 gets this one.
         ->and($rfq->assigneeForPart(2)->pivot->gm_assistant_completed_by)->toBe($chain['assistant']->id);
@@ -215,7 +222,7 @@ it('approves the parts still waiting when the General Manager approves the whole
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
     $rfq->approveHeadOfBdPart(2, $chain['head']);
     foreach ([1, 2] as $part) {
-        $rfq->refresh()->recordGmAssistantPart($part, $chain['assistant'], 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, $chain['assistant']);
     }
     $rfq->refresh()->approveGmPart(1, $chain['gm']);
 
@@ -245,7 +252,7 @@ it('takes an RFQ kept whole through GM Assistant and the General Manager as one 
         ->assertSee('data-part="1"', false);
 
     test()->actingAs($chain['assistant'])
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd']);
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
 
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
@@ -280,7 +287,7 @@ it('lets Admin work both pages', function () {
 
     test()->actingAs($admin)->get(gmPageUrl(['role' => 'gm-assistant']))->assertOk()->assertSee('RFQ1001-P1 of P2');
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd']);
+    test()->actingAs($admin)->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_by)->toBe($admin->id);
 
@@ -291,34 +298,30 @@ it('lets Admin work both pages', function () {
     expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_approved_by)->toBe($admin->id);
 });
 
-it('refuses details that aren\'t GM Assistant\'s to give', function () {
+it('refuses a Submit that isn\'t GM Assistant\'s to make', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
-    $give = fn (User $user, array $data) => test()->actingAs($user)->patch(route('admin.rfqs.gm-assistant-details', $rfq), $data);
+    $submit = fn (User $user, array $data) => test()->actingAs($user)->patch(route('admin.rfqs.gm-assistant-details', $rfq), $data);
 
     // Only GM Assistant (and Admin).
-    $give($chain['head'], ['part' => 1, 'client_details' => 'Acme'])->assertForbidden();
-    $give($chain['gm'], ['part' => 1, 'client_details' => 'Acme'])->assertForbidden();
+    $submit($chain['head'], ['part' => 1])->assertForbidden();
+    $submit($chain['gm'], ['part' => 1])->assertForbidden();
 
-    // A part the Head hasn't approved, one that doesn't exist, no client details.
-    $give($chain['assistant'], ['part' => 2, 'client_details' => 'Acme'])->assertStatus(422);
-    $give($chain['assistant'], ['part' => 9, 'client_details' => 'Acme'])->assertNotFound();
-    $give($chain['assistant'], ['part' => 1, 'client_details' => ''])->assertSessionHasErrors('client_details', null, 'gm_assistant');
+    // A part the Head hasn't approved, one that doesn't exist.
+    $submit($chain['assistant'], ['part' => 2])->assertStatus(422);
+    $submit($chain['assistant'], ['part' => 9])->assertNotFound();
     // Nor the whole RFQ, until it has reached them.
-    $give($chain['assistant'], ['client_details' => 'Acme'])->assertStatus(422);
+    $submit($chain['assistant'], [])->assertStatus(422);
 
-    expect($rfq->refresh()->client_details)->toBeNull()
-        ->and($rfq->assigneeForPart(1)->pivot->gm_assistant_completed_at)->toBeNull();
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_at)->toBeNull();
 
-    // A part already completed keeps its details, and what a second try says is refused.
-    $give($chain['assistant'], ['part' => 1, 'client_details' => 'Acme'])->assertSessionHas('status');
-    $give($chain['assistant'], ['part' => 1, 'client_details' => 'Something else'])->assertStatus(422);
-
-    expect($rfq->refresh()->client_details)->toBe('Acme');
+    // A part already submitted can't be submitted again.
+    $submit($chain['assistant'], ['part' => 1])->assertSessionHas('status');
+    $submit($chain['assistant'], ['part' => 1])->assertStatus(422);
 });
 
 it('refuses an approval that isn\'t the General Manager\'s to give', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
-    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant'], 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant']);
     $approve = fn (User $user, array $data) => test()->actingAs($user)->patch(route('admin.rfqs.approve-gm-part', $rfq), $data);
 
     // Only the General Manager (and Admin).
@@ -340,17 +343,15 @@ it('refuses an approval that isn\'t the General Manager\'s to give', function ()
 it('leaves a part alone that is repeated on the model', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
 
-    $rfq->recordGmAssistantPart(1, $chain['assistant'], 'First', 'Net 30');
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Second', 'Net 60');
+    $rfq->recordGmAssistantPart(1, $chain['assistant']);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
     $rfq->refresh()->approveGmPart(1, $chain['gm']);
     $first = $rfq->refresh()->assigneeForPart(1)->pivot->gm_approved_at;
 
     test()->travel(5)->minutes();
     $rfq->approveGmPart(1, userWithRole('General Manager'));
 
-    expect($rfq->refresh()->client_details)->toBe('First')
-        ->and($rfq->payment_terms)->toBe('Net 30')
-        ->and($rfq->assigneeForPart(1)->pivot->gm_assistant_completed_by)->toBe($chain['assistant']->id)
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_by)->toBe($chain['assistant']->id)
         ->and($rfq->assigneeForPart(1)->pivot->gm_approved_at->equalTo($first))->toBeTrue()
         ->and($rfq->assigneeForPart(1)->pivot->gm_approved_by)->toBe($chain['gm']->id);
 });
@@ -358,7 +359,7 @@ it('leaves a part alone that is repeated on the model', function () {
 it('takes back everything a part had been through when the Head sends the RFQ back, or it is sent back for rework', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
     $rfq->approveHeadOfBdPart(2, $chain['head']);
-    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant'], 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant']);
     $rfq->refresh()->approveGmPart(1, $chain['gm']);
 
     // Sent back for rework: part 1 has to come all the way through again.
@@ -379,7 +380,7 @@ it('takes back everything a part had been through when the Head sends the RFQ ba
     $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $chain['head']);
-    $rfq->refresh()->recordGmAssistantPart(2, $chain['assistant'], 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(2, $chain['assistant']);
     $rfq->refresh()->approveGmPart(2, $chain['gm']);
     // Every part approved by the Head takes it on, so send it back from where it was.
     $rfq->update(['stage' => 'head_of_bd_review']);
@@ -415,7 +416,7 @@ it('counts each approval waiting — a row on each page — and shows it as a re
 
     // Parts 1 and 2 of the split have been through GM Assistant, so are the General Manager's now.
     foreach ([1, 2] as $part) {
-        $split->refresh()->recordGmAssistantPart($part, $chain['assistant'], 'Acme Ltd', null);
+        $split->refresh()->recordGmAssistantPart($part, $chain['assistant']);
     }
 
     // GM Assistant: part 3, the whole one, and the RFQ at their step. General Manager: parts 1 and 2, and the RFQ at theirs.
@@ -430,8 +431,8 @@ it('counts each approval waiting — a row on each page — and shows it as a re
     $gmPage = test()->actingAs($chain['gm'])->get(gmPageUrl())->assertOk()->getContent();
 
     // Three rows on each page, three on each badge.
-    expect(substr_count($assistantPage, 'js-gm-assistant-rfq'))->toBe(3)
-        ->and($assistantPage)->toContain($badge(3, 'awaiting client details'))
+    expect(substr_count($assistantPage, 'js-gm-assistant-submit"'))->toBe(3)
+        ->and($assistantPage)->toContain($badge(3, 'awaiting your submit'))
         ->and(substr_count($gmPage, 'data-confirm="Approve '))->toBe(3)
         ->and($gmPage)->toContain($badge(3, 'awaiting your approval'));
 
@@ -444,12 +445,12 @@ it('counts each approval waiting — a row on each page — and shows it as a re
 
 it('records each part\'s step on a split\'s timeline, and none for an RFQ kept whole', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
-    $rfq->recordGmAssistantPart(1, $chain['assistant'], 'Acme Ltd', null);
+    $rfq->recordGmAssistantPart(1, $chain['assistant']);
     $rfq->refresh()->approveGmPart(1, $chain['gm']);
 
     test()->actingAs($chain['gm'])->get(route('admin.rfqs.show', $rfq).'?status=Pending')
         ->assertOk()
-        ->assertSee('Part details added by GM Assistant')
+        ->assertSee('Part submitted by GM Assistant')
         ->assertSee('Part approved by General Manager')
         ->assertSee('RFQ1001-P1 of P2');
 
@@ -459,13 +460,13 @@ it('records each part\'s step on a split\'s timeline, and none for an RFQ kept w
     $whole->refresh()->finalizePart(1);
     $whole->refresh()->approveSeniorOpsPart(1, $chain['ops']);
     $whole->refresh()->approveHeadOfBdPart(1, $chain['head']);
-    $whole->refresh()->recordGmAssistantPart(1, $chain['assistant'], 'Acme Ltd', null);
+    $whole->refresh()->recordGmAssistantPart(1, $chain['assistant']);
     $whole->refresh()->approveGmPart(1, $chain['gm']);
 
     test()->actingAs($chain['gm'])->get(route('admin.rfqs.show', $whole).'?status=Pending')
         ->assertOk()
         ->assertSee('Approved by General Manager')
-        ->assertDontSee('Part details added by GM Assistant')
+        ->assertDontSee('Part submitted by GM Assistant')
         ->assertDontSee('Part approved by General Manager');
 });
 
@@ -498,4 +499,49 @@ it('sends the parts of RFQs that got this far before it was part by part through
         ->and($done->pluck('gm_approved_by')->all())->toBe([$chain['gm']->id, $chain['gm']->id])
         ->and($notYet->pluck('gm_assistant_completed_at')->all())->toBe([null])
         ->and($notYet->pluck('gm_approved_at')->all())->toBe([null]);
+});
+
+it('takes a comment with GM Assistant\'s Submit — and photos or files — onto the thread for the General Manager', function () {
+    [$rfq, $chain] = splitWithPartOneApprovedByHead();
+    Storage::fake(RfqCommentAttachment::DISK);
+
+    test()->actingAs($chain['assistant'])->from(gmPageUrl())
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), [
+            'part' => 1,
+            'comment' => 'Client confirmed the quantities by phone.',
+            'attachments' => [UploadedFile::fake()->image('call-notes.jpg')],
+        ])
+        ->assertSessionHas('status', 'Submitted RFQ1001-P1 of P2 — forwarded to General Manager.');
+
+    $comment = $rfq->refresh()->comments->last();
+
+    expect($comment)
+        ->action->toBe('gm_assistant_submitted')
+        ->body->toBe('Client confirmed the quantities by phone.')
+        ->user_id->toBe($chain['assistant']->id)
+        ->and($comment->meta)->toMatchArray(['part' => 1])
+        ->and($comment->attachments->sole()->original_name)->toBe('call-notes.jpg')
+        ->and($rfq->assigneeForPart(1)->pivot->gm_assistant_completed_at)->not->toBeNull();
+
+    // Shown to the General Manager with what it was.
+    test()->actingAs($chain['gm'])->get(route('admin.rfqs.show', $rfq).'?status=Pending')->assertOk()
+        ->assertSee('Client confirmed the quantities by phone.')
+        ->assertSee('Submitted to General Manager');
+});
+
+it('submits without a comment, posting nothing — and refuses one that\'s too long', function () {
+    [$rfq, $chain] = splitWithPartOneApprovedByHead();
+    $comments = $rfq->comments()->count();
+
+    test()->actingAs($chain['assistant'])->from(gmPageUrl())
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'comment' => str_repeat('a', 2001)])
+        ->assertSessionHas('error', 'That comment is too long — keep it under 2000 characters.');
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_at)->toBeNull();
+
+    test()->actingAs($chain['assistant'])->from(gmPageUrl())
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'comment' => '  '])
+        ->assertSessionHas('status');
+
+    expect($rfq->refresh()->comments()->count())->toBe($comments)
+        ->and($rfq->assigneeForPart(1)->pivot->gm_assistant_completed_at)->not->toBeNull();
 });

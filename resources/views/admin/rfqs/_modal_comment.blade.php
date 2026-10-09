@@ -32,6 +32,7 @@
         </div>
         <div class="rfq-thread-bubble">
             <p class="mb-0" style="white-space: pre-line;">{!! $comment->bodyWithMentions($rfq->assignees) !!}</p>
+            @include('admin.rfqs._comment_attachments', ['comment' => $comment])
         </div>
 
         @if ($visibleReplies->isNotEmpty())
@@ -44,6 +45,7 @@
                         </div>
                         <div class="rfq-thread-bubble">
                             <p class="mb-0" style="white-space: pre-line;">{!! $reply->bodyWithMentions($rfq->assignees) !!}</p>
+                            @include('admin.rfqs._comment_attachments', ['comment' => $reply])
                         </div>
                     </div>
                 @endforeach

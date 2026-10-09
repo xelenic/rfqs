@@ -94,7 +94,7 @@
                                     $absentees = $sheet->attendances->whereIn('status', [\App\Models\Attendance::ABSENT, \App\Models\Attendance::HALF_DAY])->sortBy(fn ($line) => $line->user?->name);
                                     $presentCount = $sheet->attendances->where('status', \App\Models\Attendance::PRESENT)->count();
                                     $halfDayCount = $sheet->attendances->where('status', \App\Models\Attendance::HALF_DAY)->count();
-                                    $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'half_off' => $line->half_off, 'reason' => $line->reason, 'note' => $line->note]]);
+                                    $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'half_off' => $line->half_off, 'note' => $line->note]]);
                                 @endphp
                                 <tr data-attendance-sheet="{{ $date }}" @class(['table-warning' => $canApprove && $sheet->isAwaitingApproval()])>
                                     <td class="fw-semibold text-nowrap">{{ $dayLabel($date) }}</td>
@@ -111,7 +111,10 @@
                                                 @if ($line->status === \App\Models\Attendance::HALF_DAY)
                                                     <span class="badge badge-soft-orange"><i class="bi bi-circle-half"></i> Half day · {{ \App\Models\Attendance::HALVES[$line->half_off] ?? 'Half off' }}</span>
                                                 @endif
-                                                <span class="badge badge-soft-danger">{{ $line->reason }}</span>
+                                                {{-- Only on an older sheet: why's no longer asked. --}}
+                                                @if ($line->reason)
+                                                    <span class="badge badge-soft-danger">{{ $line->reason }}</span>
+                                                @endif
                                                 @if ($line->note)
                                                     <span class="text-muted-soft">— {{ $line->note }}</span>
                                                 @endif
@@ -257,7 +260,7 @@
                             @enderror
                             <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
                         </div>
-                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off, and why. It goes to HR Manager for approval; once approved, nobody's time counts while they were off.</p>
+                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off. It goes to HR Manager for approval; once approved, nobody's time counts while they were off.</p>
                     </div>
 
                     <div class="table-responsive">
@@ -301,20 +304,10 @@
                                                         <option value="{{ $half }}" @selected($failed && old($field('half_off')) === $half)>{{ $halfLabel($half) }}</option>
                                                     @endforeach
                                                 </select>
-                                                <select name="attendance[{{ $person->id }}][reason]" class="form-select form-select-sm w-auto attendance-reason @error($field('reason'), 'attendance') is-invalid @enderror"
-                                                        aria-label="Why {{ $person->name }} was on leave">
-                                                    <option value="">Why…</option>
-                                                    @foreach (\App\Models\Attendance::REASONS as $reason)
-                                                        <option value="{{ $reason }}" @selected($failed && old($field('reason')) === $reason)>{{ $reason }}</option>
-                                                    @endforeach
-                                                </select>
                                                 <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm"
                                                        value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s leave">
                                             </div>
                                             @error($field('half_off'), 'attendance')
-                                                <div class="text-danger small attendance-error">{{ $message }}</div>
-                                            @enderror
-                                            @error($field('reason'), 'attendance')
                                                 <div class="text-danger small attendance-error">{{ $message }}</div>
                                             @enderror
                                         </td>

@@ -63,7 +63,7 @@ function rfqReadyForGm(array $people): Rfq
     foreach ([1, 2] as $part) {
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
         $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
-        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd, Colombo', 'Net 30');
+        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant']);
     }
 
     return $rfq->refresh();
@@ -76,17 +76,18 @@ it('gives each stage the earlier ones the business lets it send back to, and non
     // their own assignment step.
     expect(Rfq::rejectTargetStages('senior_ops_review'))->toBe(['business_development', 'sourcing', 'data_entry'])
         ->and(Rfq::rejectTargetStages('head_of_bd_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'])
-        // GM Assistant: Senior Operations, Sourcing, Data Entry.
-        ->and(Rfq::rejectTargetStages('gm_assistant'))->toBe(['operations', 'sourcing', 'data_entry', 'senior_ops_review'])
+        // GM Assistant: Senior Operations, Sourcing — not Data Entry.
+        ->and(Rfq::rejectTargetStages('gm_assistant'))->toBe(['operations', 'sourcing', 'senior_ops_review'])
         // The General Manager's own example: Operations, Sourcing, Data
         // Entry, Senior Ops, Head of BD, GM Assistant — plus Business
         // Development itself, further back than any of them.
         ->and(Rfq::rejectTargetStages('gm_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'])
         // Business Development, from Ready to Close: the Head and the General Manager.
         ->and(Rfq::rejectTargetStages('bd_closing'))->toBe(['head_of_bd_review', 'gm_review'])
-        // Sourcing and Data Entry: Senior Operations, to assign again.
+        // Sourcing: Senior Operations, to assign again. Data Entry only
+        // returns to Sourcing (Rfq::returnSourcingPart()), not a reject.
         ->and(Rfq::rejectTargetStages('sourcing'))->toBe(['operations'])
-        ->and(Rfq::rejectTargetStages('data_entry'))->toBe(['operations'])
+        ->and(Rfq::rejectTargetStages('data_entry'))->toBe([])
         // Nothing before the very first stage.
         ->and(Rfq::rejectTargetStages('business_development'))->toBe([]);
 });
@@ -461,7 +462,7 @@ it('runs an RFQ the General Manager sent all the way back to Senior Operations t
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
         $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
-        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant']);
         $rfq->refresh()->approveGmPart($part, $people['gm']);
         $rfq->refresh()->closePart($part, userWithRole('Business Development'));
     }

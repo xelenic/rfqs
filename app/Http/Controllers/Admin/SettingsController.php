@@ -41,6 +41,9 @@ class SettingsController extends Controller
             'workingHours' => Setting::workingHours(),
             'timezone' => Setting::timezone(),
             'sourcingTargets' => Setting::sourcingTargets(),
+            'dataEntryTargets' => Setting::dataEntryTargets(),
+            'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
+            'dataEntryIdleMinutesRange' => Setting::DATA_ENTRY_IDLE_MINUTES_RANGE,
             'attendanceSince' => Setting::attendanceSince(),
             'halfDayOff' => Setting::halfDayOff(),
         ]);
@@ -194,27 +197,83 @@ class SettingsController extends Controller
     {
         abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Sourcing targets.');
 
-        [$fewest, $most] = array_map(fn (int $minutes) => $minutes / 60, Setting::SOURCING_TARGET_RANGE);
+        Setting::put('sourcing_targets', json_encode($this->validatedTargets($request, 'sourcing_targets', Setting::DEFAULT_SOURCING_TARGETS)));
+
+        return $this->backToTab('sourcing-targets', 'Sourcing targets saved.');
+    }
+
+    /**
+     * How long Data Entry has to send a part of each priority to finalize,
+     * from their Start, in working hours — given in hours (quarters
+     * allowed), kept in minutes. What the countdown on their list runs from.
+     * See Setting::dataEntryTargets().
+     */
+    public function updateDataEntryTargets(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Data Entry targets.');
+
+        Setting::put('data_entry_targets', json_encode($this->validatedTargets($request, 'data_entry_targets', Setting::DEFAULT_DATA_ENTRY_TARGETS)));
+
+        return $this->backToTab('data-entry-targets', 'Data Entry targets saved.');
+    }
+
+    /**
+     * Whether Senior Operations is alerted when someone in Data Entry hasn't
+     * started anything for a while, and after how many working minutes. See
+     * Setting::dataEntryIdleAlert() and App\Console\Commands\AlertIdleDataEntry.
+     */
+    public function updateIdleAlert(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the idle alert.');
+
+        [$fewest, $most] = Setting::DATA_ENTRY_IDLE_MINUTES_RANGE;
+
+        $validated = $request->validateWithBag('idle_alert', [
+            'enabled' => ['boolean'],
+            'minutes' => ['required', 'integer', "between:{$fewest},{$most}"],
+        ], [
+            'minutes.required' => 'Give how many minutes.',
+            'minutes.integer' => 'Give the minutes as a whole number, like 10.',
+            'minutes.between' => "Keep it between {$fewest} and {$most} minutes.",
+        ]);
+
+        Setting::putDataEntryIdleAlert([
+            'enabled' => $request->boolean('enabled'),
+            'minutes' => (int) $validated['minutes'],
+        ]);
+
+        return $this->backToTab('idle-alert', 'Idle alert saved.');
+    }
+
+    /**
+     * The targets[] sent — one per priority in $defaults, in hours, to the
+     * quarter hour, within Setting::TARGET_RANGE — validated into error bag
+     * $bag, and turned into minutes.
+     *
+     * @param  array<string, int>  $defaults
+     * @return array<string, int>
+     */
+    private function validatedTargets(Request $request, string $bag, array $defaults): array
+    {
+        [$fewest, $most] = array_map(fn (int $minutes) => $minutes / 60, Setting::TARGET_RANGE);
         $rules = [];
         $attributes = [];
 
-        foreach (array_keys(Setting::DEFAULT_SOURCING_TARGETS) as $priority) {
+        foreach (array_keys($defaults) as $priority) {
             $rules["targets.{$priority}"] = ['required', 'numeric', "between:{$fewest},{$most}", 'multiple_of:0.25'];
             $attributes["targets.{$priority}"] = "the {$priority} target";
         }
 
-        $validated = $request->validateWithBag('sourcing_targets', $rules, [
+        $validated = $request->validateWithBag($bag, $rules, [
             'required' => 'Give :attribute.',
             'numeric' => 'Give :attribute in hours, like 4 or 1.5.',
             'between' => "Keep :attribute between {$fewest} and {$most} hours.",
             'multiple_of' => 'Give :attribute to the quarter hour, like 1.25.',
         ], $attributes);
 
-        Setting::put('sourcing_targets', json_encode(collect($validated['targets'])
+        return collect($validated['targets'])
             ->map(fn ($hours) => (int) round($hours * 60))
-            ->all()));
-
-        return $this->backToTab('sourcing-targets', 'Sourcing targets saved.');
+            ->all();
     }
 
     /**

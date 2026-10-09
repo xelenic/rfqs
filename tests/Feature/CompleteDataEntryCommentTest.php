@@ -3,6 +3,7 @@
 use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -24,8 +25,10 @@ function readyForDataEntry(array $holders, array $attributes = []): Rfq
 {
     $rfq = splitAmong(Rfq::factory()->create($attributes + ['priority_level' => 'Medium']), $holders);
 
+    // Data Entry has started on each — Send to Finalize comes after.
     foreach (array_keys($holders) as $part) {
         $rfq->refresh()->completeSourcingPart($part);
+        startDataEntryOn($rfq, $part);
     }
 
     return $rfq->refresh();
@@ -150,19 +153,17 @@ it('gives Data Entry a Send to Finalize that asks, and no comment box of their o
         ->not->toContain('data-confirm="Mark ')
         ->toContain('id="completeModal"');
 
-    // Send to Finalize, Return to Sourcing and Return to Senior Operations for each part, on its row and in
-    // its modal — which Back returns to. Send to Finalize asks for a comment for the part's own Sourcing
-    // member, who finalizes it next.
-    expect(substr_count($html, 'js-complete"'))->toBe(12)
+    // Send to Finalize and Return to Sourcing for each part, on its row and in its modal — which Back returns
+    // to. Send to Finalize asks for a comment for the part's own Sourcing member, who finalizes it next.
+    expect(substr_count($html, 'js-complete"'))->toBe(8)
         ->and(substr_count($html, 'data-action="'.route('admin.rfqs.complete-data-entry', $rfq).'"'))->toBe(4)
         ->and(substr_count($html, 'data-action="'.route('admin.rfqs.return-sourcing', $rfq).'"'))->toBe(4)
-        ->and(substr_count($html, 'data-action="'.route('admin.rfqs.return-senior-ops', $rfq).'"'))->toBe(4)
-        ->and($html)->toContain('data-who="'.e($riley->name).'"')
+        ->and($html)->not->toContain(route('admin.rfqs.return-senior-ops', $rfq))
+        ->toContain('data-who="'.e($riley->name).'"')
         ->toContain('data-who="'.e($sam->name).'"')
         ->toContain('data-audience="'.e($riley->name).'"')
         ->toContain('Send to Finalize')
-        ->and(substr_count($html, 'data-audience="Senior Operations"'))->toBe(4)
-        ->and($html)
+        ->not->toContain('data-audience="Senior Operations"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p1"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p2"')
         // They can reach the whole RFQ to reply.
@@ -178,11 +179,12 @@ it('words each prompt for whoever is next in line', function () {
     expect($sourcingHtml)->toMatch('/data-kind="sourcing"[^>]*data-audience="Data Entry"/')
         ->toMatch('/data-kind="sourcing_to_ops"[^>]*data-audience="Senior Operations"/');
 
-    // …and Data Entry to send back to them to finalize.
+    // …and Data Entry, once started on it, to send back to them to finalize.
     $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
     $dataEntryHtml = test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     expect($dataEntryHtml)->toMatch('/data-kind="data_entry"[^>]*data-audience="'.preg_quote(e($riley->name), '/').'"/')
-        ->toMatch('/data-kind="data_entry_to_ops"[^>]*data-audience="Senior Operations"/')
+        ->not->toContain('data-audience="Senior Operations"')
         ->not->toContain('data-audience="Data Entry"');
 });
 
@@ -233,4 +235,15 @@ it('shows Admin the same on Data Entry\'s page', function () {
     expect($html)->toContain('id="completeModal"')
         ->toContain('data-action="'.route('admin.rfqs.complete-data-entry', $rfq).'"')
         ->not->toContain('Post comment');
+});
+
+it('shows each RFQ\'s priority on Ready for Data Entry', function () {
+    readyForDataEntry([1 => userWithRole('Sourcing')], ['rfq_number' => 'RFQ1001', 'priority_level' => 'Urgent']);
+
+    $html = test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('<th>Priority</th>', false)
+        ->getContent();
+
+    expect(Str::betweenFirst($html, '<td class="text-nowrap">RFQ1001</td>', '</tr>'))
+        ->toContain('>Urgent</span>');
 });

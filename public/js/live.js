@@ -6,7 +6,7 @@
 // from, the page is fetched again in the background and brought up to date in
 // place — no reload, so nothing you're doing is lost:
 //
-//   - the sidebar's counts, always;
+//   - the sidebar's counts, and the top bar's bell (alerts), always;
 //   - the page body (<main>), unless someone's in the middle of something in
 //     it (a dialog open, something typed, text selected), in which case the
 //     update waits — for the dialog to close, or for a click on the notice —
@@ -175,6 +175,7 @@
 
                 version = freshVersion.content;
                 patchSidebar(doc);
+                patchBell(doc);
 
                 if (bodyIsLive) {
                     pending = freshMain;
@@ -221,6 +222,28 @@
             badge.textContent = wanted.textContent;
             bump(badge);
         }
+    }
+
+    // The top bar's bell (alerts): its count, and what's in its menu — even
+    // while it's open, since the button and the menu themselves stay put.
+    function patchBell(doc) {
+        var current = document.getElementById('notificationBell');
+        var fresh = doc.getElementById('notificationBell');
+        if (!current || !fresh) return;
+
+        var button = current.querySelector('.notification-bell-btn');
+        var freshButton = fresh.querySelector('.notification-bell-btn');
+        var menu = current.querySelector('.notification-menu');
+        var freshMenu = fresh.querySelector('.notification-menu');
+        if (!button || !freshButton || !menu || !freshMenu) return;
+
+        var count = button.querySelector('.notification-bell-count');
+        var wanted = freshButton.querySelector('.notification-bell-count');
+        var grew = wanted && (!count || Number(wanted.textContent) > Number(count.textContent));
+
+        button.innerHTML = freshButton.innerHTML;
+        menu.innerHTML = freshMenu.innerHTML;
+        if (grew) bump(button.querySelector('.notification-bell-count'));
     }
 
     function bump(badge) {

@@ -31,7 +31,7 @@
 <div class="modal fade" id="rfqStatusModal" tabindex="-1" aria-labelledby="rfqStatusModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" id="rfqStatusForm" action="{{ $statusAction }}" novalidate>
+            <form method="POST" id="rfqStatusForm" action="{{ $statusAction }}" novalidate enctype="multipart/form-data">
                 @csrf
                 @method('PATCH')
                 <input type="hidden" name="status" value="{{ $isFailedStatus ? $failedStatus : '' }}">
@@ -62,6 +62,7 @@
                     @error('status', 'rfq_status')
                         <div class="text-danger small mt-2">{{ $message }}</div>
                     @enderror
+                    @include('admin.rfqs._attachments_input', ['attachmentsId' => 'rfq-status-attachments'])
                     <div class="mt-3">
                         @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'rfq-status-acting-as', 'label' => 'Done by'])
                     </div>

@@ -37,7 +37,7 @@ function mondaysSheet(): array
         'date' => '2026-10-05',
         'attendance' => [
             $riley->id => ['status' => 'present'],
-            $morgan->id => ['status' => 'absent', 'reason' => 'Sick leave'],
+            $morgan->id => ['status' => 'absent', 'note' => 'Sick'],
         ],
     ])->assertSessionHasNoErrors();
 
@@ -125,7 +125,7 @@ it('lets HR Manager return a sheet to Senior Operations, with what needs correct
 
     // Corrected and submitted again: HR Manager's to review afresh.
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [
-        $morgan->id => ['status' => 'absent', 'reason' => 'Casual leave'],
+        $morgan->id => ['status' => 'absent', 'note' => 'Casual'],
     ]])->assertSessionHasNoErrors();
 
     expect($sheet->refresh())
@@ -154,7 +154,7 @@ it('sends an approved sheet back for approval once it\'s corrected', function ()
     test()->actingAs(hrReviewer())->patch(route('admin.attendance.approve', $sheet));
 
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [
-        $riley->id => ['status' => 'absent', 'reason' => 'Personal leave'],
+        $riley->id => ['status' => 'absent'],
     ]])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Manager for approval.');
 
     expect($sheet->refresh())

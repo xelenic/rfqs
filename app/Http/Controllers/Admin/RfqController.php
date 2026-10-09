@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\RfqAssignment;
+use App\Models\RfqComment;
+use App\Models\RfqReturn;
+use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\User;
 use Closure;
@@ -49,7 +52,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'close', 'closePart', 'changeStatus']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'startDataEntry', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -140,13 +143,13 @@ class RfqController extends Controller implements HasMiddleware
         $scopedToGmAssistantReturns = $status === 'Pending' && $actsAs('GM Assistant') && $request->query('view') === 'returns';
 
         // GM Assistant's Pending list — one row per part Head of Business
-        // Development has approved, waiting on client details and payment
-        // terms before going on to the General Manager, each part as it comes.
+        // Development has approved, waiting on their Submit before going on to
+        // the General Manager, each part as it comes.
         // Their main queue — the whole Pending page, but for their Returns.
         $scopedToGmAssistant = $status === 'Pending' && $actsAs('GM Assistant') && ! $scopedToGmAssistantReturns;
 
         // General Manager's Pending list — one row per part GM Assistant has
-        // finished adding client details/payment terms to, waiting on final
+        // submitted, waiting on final
         // executive approval, each part as it comes. Their only queue, same as
         // Head of Business Development/GM Assistant above.
         $scopedToGmReview = $status === 'Pending' && $actsAs('General Manager');
@@ -207,8 +210,8 @@ class RfqController extends Controller implements HasMiddleware
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
             // those two views.
-            ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles']))
-            ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with('rejectedBy'))
+            ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments']))
+            ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with(['rejectedBy', 'latestRejection.attachments']))
             // A Sourcing member's own Pending list counts each part down —
             // only the stretches still open matter (Rfq::sourcingCountdown()).
             ->when($scopedToMe && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
@@ -263,7 +266,10 @@ class RfqController extends Controller implements HasMiddleware
         // here before it's fully handed off and appears there.
         $bySourcingRfqs = $scopedToDataEntry
             ? Rfq::query()
-                ->with(['assignees', 'comments.author.roles', 'comments.replies.author.roles'])
+                ->with(['assignees', 'comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments'])
+                // Each started part counts down — its Data Entry rounds are
+                // what that runs from (Rfq::dataEntryCountdown()).
+                ->with(['steps' => fn ($steps) => $steps->where('step', 'data_entry')])
                 // Only assignees Sourcing has finished but Data Entry
                 // hasn't processed yet — once Data Entry completes one
                 // assignee's split, it drops out of this queue on its own,
@@ -356,9 +362,16 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToSeniorOpsReturns' => $scopedToSeniorOpsReturns,
             'scopedToHeadOfBdReturns' => $scopedToHeadOfBdReturns,
             'scopedToGmAssistantReturns' => $scopedToGmAssistantReturns,
-            // What the countdowns there tick against in the browser: the
-            // server's clock, and the working periods of the next two weeks.
-            'countdownSchedule' => $scopedToMe && ! $sourcingOverview
+            // What the countdowns there — Sourcing's own Pending list, Data
+            // Entry's — tick against in the browser: the server's clock, and
+            // the working periods of the next two weeks.
+            'myRunningDataEntry' => $this->runningDataEntryOfViewer($user),
+            // Their own Ready for Data Entry page counts down to Senior
+            // Operations being told they haven't started.
+            'myDataEntryIdle' => $scopedToDataEntry && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')
+                ? $user->dataEntryIdleness()
+                : null,
+            'countdownSchedule' => ($scopedToMe && ! $sourcingOverview) || $scopedToDataEntry
                 ? ['now' => now()->getTimestamp(), 'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14))]
                 : null,
             'lensRole' => $lensRole,
@@ -480,14 +493,25 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return view('admin.rfqs.show', [
-            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles', 'steps']),
+            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments', 'steps']),
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
             'jobCategories' => JobCategory::orderBy('name')->get(),
             'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
+            'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),
         ]);
+    }
+
+    /**
+     * The part a Data Entry viewer has running (RfqStep::runningDataEntryOf()),
+     * which keeps their Start off on every other part. Not an Admin's: they
+     * start on someone's behalf, picked on the form, so the server checks.
+     */
+    private function runningDataEntryOfViewer(User $user): ?RfqStep
+    {
+        return $user->hasRole('Data Entry') && ! $user->hasRole('Admin') ? RfqStep::runningDataEntryOf($user) : null;
     }
 
     public function store(Request $request): RedirectResponse
@@ -563,6 +587,17 @@ class RfqController extends Controller implements HasMiddleware
 
         // Admin can close it from here — any step still timed on it ends.
         $rfq->syncSteps();
+
+        // Fixed, and — if they asked, and it still can — straight back to
+        // whoever sent it (Rfq::forwardBack()) rather than on to Senior
+        // Operations to assign again.
+        $forwardBack = $resolvesBdReturn && $request->boolean('forward_back') ? $rfq->openReturnsTo('business_development') : collect();
+
+        if ($forwardBack->count() === 1) {
+            $rfq->forwardBack($forwardBack->first(), $this->doneBy($request, 'Business Development'));
+
+            return $this->redirectAfterSave($request, $rfq)->with('status', 'RFQ updated — and sent straight back to '.Rfq::stageLabel($forwardBack->keys()->first()).'.');
+        }
 
         if ($resolvesBdReturn) {
             $rfq->resolveBusinessDevelopmentReturn();
@@ -712,7 +747,13 @@ class RfqController extends Controller implements HasMiddleware
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $rfq->rejectToStage('business_development', $validated['reason'], $this->doneBy($request, 'Senior Operations'), 'operations');
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage('business_development', $validated['reason'], $this->doneBy($request, 'Senior Operations'), 'operations'));
 
         return redirect()->back()->with('status', "Sent {$rfq->rfq_number} back to Business Development for details.");
     }
@@ -749,7 +790,13 @@ class RfqController extends Controller implements HasMiddleware
             'reason.required_unless' => 'Say why.',
         ]);
 
-        $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null));
 
         return redirect()->back()->with('status', match ($validated['status']) {
             Rfq::ON_HOLD => "{$rfq->rfq_number} is on hold.",
@@ -792,7 +839,13 @@ class RfqController extends Controller implements HasMiddleware
             'reason.required_unless' => 'Say why.',
         ]);
 
-        $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null));
 
         $label = $rfq->partNumberLabel($part);
 
@@ -824,6 +877,48 @@ class RfqController extends Controller implements HasMiddleware
         $partsOnHold = $rfq->partsOnHold();
 
         abort_if($partsOnHold !== [], 422, "{$rfq->partsLabel($partsOnHold)} is on hold — deal with the other parts one by one, or resume it first.");
+    }
+
+    /**
+     * Whoever something was sent back to sends it straight back to the
+     * reviewer who sent it, skipping the steps in between — their earlier
+     * work stands (Rfq::forwardBack()). One part (part), or — for a
+     * whole-RFQ row on a Returns page — every part sent back to $target from
+     * $from that still can be (Rfq::openReturns()). Only the role at
+     * $target (Rfq::RETURN_TARGET_ROLES), and for Sourcing only the part's
+     * own member; Admin can too, as one of them (doneBy()).
+     */
+    public function forwardBack(Request $request, Rfq $rfq): RedirectResponse
+    {
+        $validated = $request->validate([
+            'part' => ['nullable', 'integer'],
+            'target' => ['required', Rule::in(array_keys(Rfq::RETURN_TARGET_ROLES))],
+            'from' => ['required', 'string'],
+        ]);
+
+        $role = Rfq::RETURN_TARGET_ROLES[$validated['target']];
+        $user = $request->user();
+        $part = isset($validated['part']) ? (int) $validated['part'] : null;
+
+        abort_unless($user->hasAnyRole([$role, 'Admin']), 403, "Only {$role} can send this back.");
+        abort_if(
+            $role === 'Sourcing' && ! $user->hasRole('Admin') && ($part === null || ! $rfq->assigneeForPart($part)?->is($user)),
+            403,
+            'Only the Sourcing member with this part can send it back.'
+        );
+
+        $returns = $rfq->openReturns()
+            ->where('target_stage', $validated['target'])
+            ->where('from_stage', $validated['from'])
+            ->when($part !== null, fn ($returns) => $returns->filter(fn (RfqReturn $return) => $return->part_number === $part));
+
+        abort_if($returns->isEmpty(), 422, 'There\'s nothing here to send straight back.');
+
+        $rfq->forwardBack($returns, $this->doneBy($request, $role));
+
+        $what = $part !== null ? $rfq->partNumberLabel($part) : $rfq->rfq_number;
+
+        return back()->with('status', "Sent {$what} straight back to ".Rfq::stageLabel($validated['from']).'.');
     }
 
     /**
@@ -961,19 +1056,25 @@ class RfqController extends Controller implements HasMiddleware
         );
         $this->abortIfStopped($rfq, $assignee);
 
-        $comment = $this->requiredComment($request, 'comment', 'Add a comment to mark this part complete.');
+        $comment = $this->requiredComment($request, 'comment', 'Add a comment to assign this part to Data Entry.');
 
         if ($comment instanceof RedirectResponse) {
             return $comment;
         }
 
-        $rfq->completeSourcingPart((int) $validated['part'], $comment);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment));
 
         $status = $rfq->isWithDataEntry()
-            ? 'Marked complete — handed off to Data Entry.'
+            ? 'Assigned to Data Entry — every part is with them now.'
             : ($rfq->isSplit()
-                ? 'Part marked complete — waiting on the rest of the parts.'
-                : 'Your part is marked complete — waiting on the rest of the Sourcing team.');
+                ? 'Part assigned to Data Entry — the rest of the parts are still with Sourcing.'
+                : 'Your part is assigned to Data Entry — the rest are still with the Sourcing team.');
 
         return $this->redirectAfterSave($request, $rfq)->with('status', $status);
     }
@@ -1008,9 +1109,55 @@ class RfqController extends Controller implements HasMiddleware
             return $reason;
         }
 
-        $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry'));
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry')));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part back to Sourcing.");
+    }
+
+    /**
+     * Data Entry's Start on a part with them: their time on it counts from
+     * now (Rfq::startDataEntryPart()). Only in working hours — not at lunch,
+     * nor out of hours (Setting::isWorkingTime()), saying why when it isn't
+     * (Setting::offHoursReason()) — and one part at a time: not while they've
+     * another running, till they send it to finalize
+     * (RfqStep::runningDataEntryOf()). Recorded as one of Data
+     * Entry — Admin can, naming who (doneBy()).
+     */
+    public function startDataEntry(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless($request->user()->hasAnyRole(['Data Entry', 'Admin']), 403, 'Only Data Entry can start on a part.');
+
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+
+        $part = (int) $validated['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
+        abort_unless($rfq->partAwaitsDataEntryStart($part), 422, 'This part isn\'t waiting to be started.');
+
+        $starter = $this->doneBy($request, 'Data Entry');
+
+        if ($running = RfqStep::runningDataEntryOf($starter)) {
+            return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' already on '
+                .$running->rfq->partNumberLabel($running->part_number).' — send it to finalize before starting another.');
+        }
+
+        if (! Setting::isWorkingTime(now())) {
+            return back()->with('error', 'Start is off right now — '.(Setting::offHoursReason(now()) ?? 'it\'s outside working hours.'));
+        }
+
+        $rfq->startDataEntryPart($part, $starter);
+
+        return back()->with('status', "Started {$rfq->partNumberLabel($part)} — your time on it is counting.");
     }
 
     /**
@@ -1038,13 +1185,25 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
         $this->abortIfStopped($rfq, $assignee);
 
+        // Their time on it runs from their Start — there's none to send on
+        // before it (startDataEntry()).
+        if ($assignee->pivot->data_entry_completed_at === null && ! $assignee->pivot->hasDataEntryStarted()) {
+            return back()->with('error', 'Start on this part first — Send to Finalize comes after.');
+        }
+
         $comment = $this->requiredComment($request, 'comment', 'Add a comment to send this part to finalize.');
 
         if ($comment instanceof RedirectResponse) {
             return $comment;
         }
 
-        $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part to finalize.");
     }
@@ -1115,7 +1274,13 @@ class RfqController extends Controller implements HasMiddleware
             return $reason;
         }
 
-        $rfq->returnToDataEntry($part, $reason);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->returnToDataEntry($part, $reason));
 
         return $this->redirectAfterSave($request, $rfq)->with('status', "Sent {$rfq->partNumberLabel($part)} back to Data Entry.");
     }
@@ -1278,13 +1443,12 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Sourcing — on their own part, still with them — or Data Entry — on a
-     * part Sourcing has completed and they haven't sent to finalize — sends
-     * it back to Senior Operations, with a required reason: the part is
-     * freed for them to assign again, and the RFQ is on their Returns page
-     * until they have (Rfq::rejectPartToStage() to 'operations'). Sourcing's
-     * is recorded as the part's own member — Admin can, on their behalf —
-     * and Data Entry's as one of Data Entry (doneBy()).
+     * Sourcing sends their own part, still with them, back to Senior
+     * Operations, with a required reason: the part is freed for them to
+     * assign again, and the RFQ is on their Returns page until they have
+     * (Rfq::rejectPartToStage() to 'operations'). Recorded as the part's own
+     * member — Admin can, on their behalf. Once Sourcing has assigned it to
+     * Data Entry, it's past this.
      */
     public function returnSeniorOps(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1300,20 +1464,12 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
         $this->abortIfStopped($rfq, $assignee);
 
-        $withSourcing = $assignee->pivot->completed_at === null;
-        $withDataEntry = ! $withSourcing && $assignee->pivot->data_entry_completed_at === null;
-
-        abort_unless($withSourcing || $withDataEntry, 422, 'This part has moved on past Sourcing and Data Entry.');
-
-        if ($withSourcing) {
-            abort_unless(
-                ($user->hasRole('Sourcing') && $assignee->id === $user->id) || $user->hasRole('Admin'),
-                403,
-                'Only the Sourcing member assigned to this part can send it back to Senior Operations.'
-            );
-        } else {
-            abort_unless($user->hasAnyRole(['Data Entry', 'Admin']), 403, 'Only Data Entry can send this part back to Senior Operations.');
-        }
+        abort_unless(
+            ($user->hasRole('Sourcing') && $assignee->id === $user->id) || $user->hasRole('Admin'),
+            403,
+            'Only the Sourcing member assigned to this part can send it back to Senior Operations.'
+        );
+        abort_unless($assignee->pivot->completed_at === null, 422, 'This part has moved on past Sourcing.');
 
         $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back to Senior Operations.', 1000);
 
@@ -1321,20 +1477,16 @@ class RfqController extends Controller implements HasMiddleware
             return $reason;
         }
 
-        $rfq->rejectPartToStage(
-            $part,
-            'operations',
-            $reason,
-            $withSourcing ? $assignee : $this->doneBy($request, 'Data Entry'),
-            $withSourcing ? 'sourcing' : 'data_entry',
-        );
+        $files = $this->attachmentsFrom($request);
 
-        $status = "Sent {$rfq->partNumberLabel($part)} back to Senior Operations.";
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectPartToStage($part, 'operations', $reason, $assignee, 'sourcing'));
 
         // Sourcing no longer holds the part — nothing of it to go back to.
-        return $withSourcing
-            ? $this->redirectToIndex($request)->with('status', $status)
-            : redirect()->back()->with('status', $status);
+        return $this->redirectToIndex($request)->with('status', "Sent {$rfq->partNumberLabel($part)} back to Senior Operations.");
     }
 
     /**
@@ -1396,20 +1548,27 @@ class RfqController extends Controller implements HasMiddleware
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
         if ($part === null) {
-            $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage);
+            RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage));
 
             return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
         }
 
-        $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage);
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage));
 
         return redirect()->back()->with('status', "Sent {$rfq->partNumberLabel($part)} back to ".Rfq::stageLabel($validated['target_stage']).'.');
     }
 
     /**
-     * GM Assistant records client details and payment terms and forwards it on
-     * to the General Manager. With a part, just that one part goes on — see
+     * GM Assistant's Submit: forwards it on to the General Manager, with a
+     * comment and photos or files if they gave any — posted to the RFQ's
+     * thread as theirs. With a part, just that one part goes on — see
      * Rfq::recordGmAssistantPart() — otherwise the whole RFQ, which has to be
      * at their step — see Rfq::recordGmAssistantDetails().
      */
@@ -1418,35 +1577,49 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless(
             $request->user()->hasAnyRole(['GM Assistant', 'Admin']),
             403,
-            'Only GM Assistant can add these details.'
+            'Only GM Assistant can submit this.'
         );
 
         $part = $request->filled('part') ? (int) $request->input('part') : null;
 
         if ($part === null) {
-            abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not awaiting GM Assistant details.');
+            abort_unless($rfq->stage === 'gm_assistant', 422, 'This RFQ is not waiting on GM Assistant.');
             $this->abortIfPartOnHold($rfq);
         } else {
             abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
-            abort_unless($rfq->partAwaitsGmAssistant($part), 422, 'This part is not awaiting GM Assistant details.');
+            abort_unless($rfq->partAwaitsGmAssistant($part), 422, 'This part is not waiting on GM Assistant.');
         }
 
-        $validated = $request->validateWithBag('gm_assistant', [
-            'client_details' => ['required', 'string', 'max:2000'],
-            'payment_terms' => ['nullable', 'string', 'max:2000'],
+        $validator = Validator::make($request->all(), ['comment' => ['nullable', 'string', 'max:2000']], [
+            'comment.max' => 'That comment is too long — keep it under 2000 characters.',
         ]);
 
-        if ($part === null) {
-            $rfq->recordGmAssistantDetails($this->doneBy($request, 'GM Assistant'), $validated['client_details'], $validated['payment_terms'] ?? null);
-
-            return redirect()->back()->with('status', 'Forwarded to General Manager.');
+        if ($validator->fails()) {
+            return back()->with('error', $validator->errors()->first());
         }
 
-        $rfq->recordGmAssistantPart($part, $this->doneBy($request, 'GM Assistant'), $validated['client_details'], $validated['payment_terms'] ?? null);
+        $files = $this->attachmentsFrom($request);
+
+        if ($files instanceof RedirectResponse) {
+            return $files;
+        }
+
+        // Photos or files with no words still go on the thread, with the Submit.
+        $comment = trim((string) $request->input('comment'));
+        $comment = $comment === '' && $files === [] ? null : $comment;
+        $submittedBy = $this->doneBy($request, 'GM Assistant');
+
+        if ($part === null) {
+            RfqComment::attachingFiles($rfq, $files, fn () => $rfq->recordGmAssistantDetails($submittedBy, $comment));
+
+            return redirect()->back()->with('status', 'Submitted — forwarded to General Manager.');
+        }
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->recordGmAssistantPart($part, $submittedBy, $comment));
 
         return redirect()->back()->with('status', $rfq->stage === 'gm_review'
-            ? 'Details added — every part is through, forwarded to General Manager.'
-            : "Details added for {$rfq->partNumberLabel($part)} — forwarded to General Manager.");
+            ? 'Submitted — every part is through, forwarded to General Manager.'
+            : "Submitted {$rfq->partNumberLabel($part)} — forwarded to General Manager.");
     }
 
     /**

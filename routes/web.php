@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\MessageController;
+use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RfqCommentController;
 use App\Http\Controllers\Admin\RfqController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\TimeSpentReportController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\SetPasswordController;
 use App\Http\Middleware\CaptureLiveVersion;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +22,10 @@ Route::redirect('/', '/admin');
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'create'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->name('login.store');
+
+    // A new account's welcome email links here — see App\Notifications\AccountCreated.
+    Route::get('set-password/{token}', [SetPasswordController::class, 'create'])->name('password.set');
+    Route::post('set-password', [SetPasswordController::class, 'store'])->middleware('throttle:10,1')->name('password.set.store');
 });
 
 Route::post('logout', [LoginController::class, 'destroy'])
@@ -37,6 +43,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('settings/application', [SettingsController::class, 'updateApplication'])->name('settings.application');
     Route::patch('settings/working-hours', [SettingsController::class, 'updateWorkingHours'])->name('settings.working-hours');
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
+    Route::patch('settings/data-entry-targets', [SettingsController::class, 'updateDataEntryTargets'])->name('settings.data-entry-targets');
+    Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
     Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
@@ -48,6 +56,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
 
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
+    Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');
     Route::resource('roles', RoleController::class)->except('show');
     Route::resource('permissions', PermissionController::class)->except('show');
@@ -74,13 +83,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/reject-bd', [RfqController::class, 'rejectBd'])->name('rfqs.reject-bd');
     Route::patch('rfqs/{rfq}/return-senior-ops', [RfqController::class, 'returnSeniorOps'])->name('rfqs.return-senior-ops');
     Route::patch('rfqs/{rfq}/pass-back-sourcing', [RfqController::class, 'passBackToSourcing'])->name('rfqs.pass-back-sourcing');
+    Route::patch('rfqs/{rfq}/forward-back', [RfqController::class, 'forwardBack'])->name('rfqs.forward-back');
     Route::patch('rfqs/{rfq}/reassign-sourcing', [RfqController::class, 'reassignSourcing'])->name('rfqs.reassign-sourcing');
+    Route::patch('rfqs/{rfq}/start-data-entry', [RfqController::class, 'startDataEntry'])->name('rfqs.start-data-entry');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);
     Route::post('rfqs/{rfq}/comments', [RfqCommentController::class, 'store'])->name('rfqs.comments.store');
+    Route::get('notifications/{notification}', [NotificationController::class, 'open'])->name('notifications.open');
+    Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
     Route::get('messages/{user}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('messages', [MessageController::class, 'store'])->middleware('throttle:30,1')->name('messages.store');
     Route::delete('rfqs/{rfq}/comments/{comment}', [RfqCommentController::class, 'destroy'])->name('rfqs.comments.destroy');
+    Route::get('rfq-attachments/{attachment}', [RfqCommentController::class, 'attachment'])->name('rfqs.attachments.show');
 });

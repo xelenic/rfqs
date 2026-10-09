@@ -4,10 +4,9 @@
     Finalize on a Sourcing part — or (kind "return") Data Entry sending a part back to Sourcing, where
     the comment is the reason — or (kind "return_data_entry") the Sourcing
     member sending a part Data Entry sent to finalize back to Data Entry
-    instead, again with a reason — or (kind "sourcing_to_ops", the Sourcing
-    member on their own part still with them, or "data_entry_to_ops", Data
-    Entry on a part with them) sending it back to Senior Operations to assign
-    again, with a reason (RfqController::returnSeniorOps()). It doesn't act
+    instead, again with a reason — or (kind "sourcing_to_ops") the Sourcing
+    member sending their own part, still with them, back to Senior Operations
+    to assign again, with a reason (RfqController::returnSeniorOps()). It doesn't act
     itself: it opens the prompt
     (_complete_modal.blade.php), pointing it at the right route and part and at
     where to come back to.
@@ -60,7 +59,7 @@
             'bi-arrow-counterclockwise',
         ],
         // Back to Senior Operations, who frees the part to assign again.
-        'sourcing_to_ops', 'data_entry_to_ops' => [
+        'sourcing_to_ops' => [
             route('admin.rfqs.return-senior-ops', $rfq),
             'Senior Operations',
             'Tell Senior Operations what\'s wrong',
@@ -90,7 +89,7 @@
                     ? 'Posted to the RFQ\'s comments. The RFQ only hands off to Data Entry once every part has been completed.'
                     : 'Posted to the RFQ\'s comments as you hand it off to Data Entry.'),
             $forAssignee ? 'What was done, and is there anything Data Entry should know?' : 'What did you do, and is there anything Data Entry should know?',
-            'Mark Complete',
+            'Assign to Data Entry',
             'btn btn-sm btn-success',
             'bi-check2-circle',
         ],

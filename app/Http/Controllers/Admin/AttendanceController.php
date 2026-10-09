@@ -166,8 +166,8 @@ class AttendanceController extends Controller
 
     /**
      * Everyone's mark, as the popup sends it: attendance[user id][status,
-     * half_off, reason, note] — which half they were off on a half day, and
-     * why for a half day or a day on leave.
+     * half_off, note] — which half they were off on a half day, and a note if
+     * there's anything to say. Why they were off isn't asked.
      *
      * @return array<string, array<int, mixed>>
      */
@@ -177,7 +177,6 @@ class AttendanceController extends Controller
             'attendance' => ['required', 'array'],
             'attendance.*.status' => ['required', Rule::in([Attendance::PRESENT, Attendance::HALF_DAY, Attendance::ABSENT])],
             'attendance.*.half_off' => ['nullable', 'required_if:attendance.*.status,'.Attendance::HALF_DAY, Rule::in(array_keys(Attendance::HALVES))],
-            'attendance.*.reason' => ['nullable', 'required_unless:attendance.*.status,'.Attendance::PRESENT, Rule::in(Attendance::REASONS)],
             'attendance.*.note' => ['nullable', 'string', 'max:500'],
         ];
     }
@@ -188,7 +187,6 @@ class AttendanceController extends Controller
     private function markMessages(): array
     {
         return [
-            'attendance.*.reason.required_unless' => 'Say why they were on leave.',
             'attendance.*.half_off.required_if' => 'Say which half they were off.',
         ];
     }
@@ -212,9 +210,10 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Writes everyone's mark onto $sheet.
+     * Writes everyone's mark onto $sheet. Someone marked present again loses
+     * any reason an older sheet gave for their leave.
      *
-     * @param  array<int|string, array{status: string, half_off?: ?string, reason?: ?string, note?: ?string}>  $marks
+     * @param  array<int|string, array{status: string, half_off?: ?string, note?: ?string}>  $marks
      */
     private function saveMarks(AttendanceSheet $sheet, array $marks): void
     {
@@ -224,9 +223,8 @@ class AttendanceController extends Controller
             $sheet->attendances()->updateOrCreate(['user_id' => (int) $userId], [
                 'status' => $mark['status'],
                 'half_off' => $mark['status'] === Attendance::HALF_DAY ? $mark['half_off'] : null,
-                'reason' => $present ? null : $mark['reason'],
                 'note' => $present ? null : ($mark['note'] ?? null),
-            ]);
+            ] + ($present ? ['reason' => null] : []));
         }
     }
 

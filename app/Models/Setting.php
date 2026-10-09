@@ -83,11 +83,39 @@ class Setting extends Model
     public const DEFAULT_SOURCING_TARGETS = ['Low' => 1440, 'Medium' => 960, 'High' => 480, 'Urgent' => 240];
 
     /**
-     * The fewest and most working minutes a Sourcing target can be.
+     * How long, in working minutes, Data Entry has to send a part of each
+     * priority to finalize, from their Start, until an Admin changes it —
+     * what the countdown on their list runs from (Rfq::dataEntryCountdown()).
+     *
+     * @var array<string, int>
+     */
+    public const DEFAULT_DATA_ENTRY_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
+
+    /**
+     * Whether Senior Operations is alerted when someone in Data Entry hasn't
+     * started anything for a while in working time with parts waiting on
+     * them, and after how many working minutes — until an Admin changes it.
+     * See App\Console\Commands\AlertIdleDataEntry.
+     *
+     * @var array{enabled: bool, minutes: int}
+     */
+    public const DEFAULT_DATA_ENTRY_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
+
+    /**
+     * The fewest and most working minutes Data Entry can be idle before the
+     * alert goes out.
      *
      * @var array{0: int, 1: int}
      */
-    public const SOURCING_TARGET_RANGE = [15, 60000];
+    public const DATA_ENTRY_IDLE_MINUTES_RANGE = [1, 480];
+
+    /**
+     * The fewest and most working minutes a target — Sourcing's or Data
+     * Entry's — can be.
+     *
+     * @var array{0: int, 1: int}
+     */
+    public const TARGET_RANGE = [15, 60000];
 
     private const CACHE_KEY = 'settings';
 
@@ -315,6 +343,21 @@ class Setting extends Model
     }
 
     /**
+     * Whether $at falls in the half of a half day someone's off — 'morning'
+     * or 'afternoon' (halfDayOff()) — on its own day, in the working hours'
+     * time zone.
+     */
+    public static function isInHalfDayOff(string $half, CarbonInterface $at): bool
+    {
+        $off = static::halfDayOff()[$half] ?? null;
+        $local = CarbonImmutable::instance($at)->setTimezone(static::timezone());
+
+        return $off !== null
+            && $local >= $local->setTimeFromTimeString($off['start'])
+            && $local < $local->setTimeFromTimeString($off['end']);
+    }
+
+    /**
      * workingSecondsByDay() — all of each day's — with how much of it falls in
      * the morning off and in the afternoon off (halfDayOff()): what a half
      * day off doesn't count, the rest of the day counting as usual.
@@ -343,6 +386,83 @@ class Setting extends Model
         }
 
         return $days;
+    }
+
+    /**
+     * The time that isn't working time over the $days days from $from's own
+     * day — in the working hours' time zone — window by window, each with why:
+     * before the day's hours start, lunch, after they end, a day off. As
+     * [from, to, why] — Unix timestamps — in order. What Data Entry's Start
+     * says when it's off, and when it's back (see offHoursReason()).
+     *
+     * @return array<int, array{0: int, 1: int, 2: string}>
+     */
+    public static function offHoursWindows(CarbonInterface $from, int $days = 7): array
+    {
+        $week = static::workingHours();
+        $first = CarbonImmutable::instance($from)->setTimezone(static::timezone())->startOfDay();
+        $windows = [];
+
+        for ($ahead = 0; $ahead < $days; $ahead++) {
+            $day = $first->addDays($ahead);
+            $next = $day->addDay();
+            $hours = $week[strtolower($day->englishDayOfWeek)];
+
+            if (! $hours['working']) {
+                $windows[] = [$day->getTimestamp(), $next->getTimestamp(), "{$day->englishDayOfWeek} is a day off. ".static::backOn($day, $week)];
+
+                continue;
+            }
+
+            $windows[] = [$day->getTimestamp(), $day->setTimeFromTimeString($hours['start'])->getTimestamp(), "Working hours haven't started yet — they start at {$hours['start']}."];
+
+            if ($hours['lunch_start'] !== null && $hours['lunch_end'] !== null) {
+                $windows[] = [
+                    $day->setTimeFromTimeString($hours['lunch_start'])->getTimestamp(),
+                    $day->setTimeFromTimeString($hours['lunch_end'])->getTimestamp(),
+                    "It's lunch time ({$hours['lunch_start']}–{$hours['lunch_end']}). Start is back at {$hours['lunch_end']}.",
+                ];
+            }
+
+            $windows[] = [$day->setTimeFromTimeString($hours['end'])->getTimestamp(), $next->getTimestamp(), "Working hours are over for today — they ended at {$hours['end']}. ".static::backOn($day, $week)];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * Why $at isn't working time — see offHoursWindows() — or null when it is.
+     */
+    public static function offHoursReason(CarbonInterface $at): ?string
+    {
+        $timestamp = $at->getTimestamp();
+
+        foreach (static::offHoursWindows($at, 1) as [$from, $to, $why]) {
+            if ($timestamp >= $from && $timestamp < $to) {
+                return $why;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * When working time is next back after $day: the next working day's start.
+     *
+     * @param  array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $week
+     */
+    private static function backOn(CarbonImmutable $day, array $week): string
+    {
+        for ($ahead = 1; $ahead <= 7; $ahead++) {
+            $next = $day->addDays($ahead);
+            $hours = $week[strtolower($next->englishDayOfWeek)];
+
+            if ($hours['working']) {
+                return 'Start is back '.($ahead === 1 ? 'tomorrow' : 'on '.$next->englishDayOfWeek)." at {$hours['start']}.";
+            }
+        }
+
+        return 'Start is back once there are working days in Settings.';
     }
 
     /**
@@ -377,17 +497,73 @@ class Setting extends Model
     /**
      * Sourcing's target per priority, in working minutes — what was saved on
      * the Settings page, or DEFAULT_SOURCING_TARGETS, kept within
-     * SOURCING_TARGET_RANGE.
+     * TARGET_RANGE.
      *
      * @return array<string, int>
      */
     public static function sourcingTargets(): array
     {
-        $saved = json_decode((string) static::get('sourcing_targets'), true);
-        $saved = is_array($saved) ? $saved : [];
-        [$fewest, $most] = self::SOURCING_TARGET_RANGE;
+        return static::targets('sourcing_targets', self::DEFAULT_SOURCING_TARGETS);
+    }
 
-        return collect(self::DEFAULT_SOURCING_TARGETS)
+    /**
+     * The Data Entry idle alert — whether it's on, and after how many working
+     * minutes — as saved on the Settings page, or
+     * DEFAULT_DATA_ENTRY_IDLE_ALERT, its minutes kept within
+     * DATA_ENTRY_IDLE_MINUTES_RANGE.
+     *
+     * @return array{enabled: bool, minutes: int}
+     */
+    public static function dataEntryIdleAlert(): array
+    {
+        $saved = json_decode((string) static::get('data_entry_idle_alert'), true);
+        $saved = is_array($saved) ? $saved : [];
+        [$fewest, $most] = self::DATA_ENTRY_IDLE_MINUTES_RANGE;
+
+        return [
+            'enabled' => is_bool($saved['enabled'] ?? null) ? $saved['enabled'] : self::DEFAULT_DATA_ENTRY_IDLE_ALERT['enabled'],
+            'minutes' => is_numeric($saved['minutes'] ?? null)
+                ? max($fewest, min($most, (int) $saved['minutes']))
+                : self::DEFAULT_DATA_ENTRY_IDLE_ALERT['minutes'],
+        ];
+    }
+
+    /**
+     * Saves the Data Entry idle alert — see dataEntryIdleAlert() for its shape.
+     *
+     * @param  array{enabled: bool, minutes: int}  $alert
+     */
+    public static function putDataEntryIdleAlert(array $alert): void
+    {
+        static::put('data_entry_idle_alert', json_encode($alert));
+    }
+
+    /**
+     * Data Entry's target per priority, in working minutes — what was saved
+     * on the Settings page, or DEFAULT_DATA_ENTRY_TARGETS, kept within
+     * TARGET_RANGE.
+     *
+     * @return array<string, int>
+     */
+    public static function dataEntryTargets(): array
+    {
+        return static::targets('data_entry_targets', self::DEFAULT_DATA_ENTRY_TARGETS);
+    }
+
+    /**
+     * The targets saved under $key — each priority's, in working minutes —
+     * or $defaults for any not saved, kept within TARGET_RANGE.
+     *
+     * @param  array<string, int>  $defaults
+     * @return array<string, int>
+     */
+    private static function targets(string $key, array $defaults): array
+    {
+        $saved = json_decode((string) static::get($key), true);
+        $saved = is_array($saved) ? $saved : [];
+        [$fewest, $most] = self::TARGET_RANGE;
+
+        return collect($defaults)
             ->map(fn (int $default, string $priority) => is_numeric($saved[$priority] ?? null)
                 ? max($fewest, min($most, (int) $saved[$priority]))
                 : $default)
@@ -406,6 +582,19 @@ class Setting extends Model
             $remainingSeconds > -60 => 'Due now',
             default => 'Overdue by '.static::hoursLabel(intdiv(-$remainingSeconds, 60)),
         };
+    }
+
+    /**
+     * A countdown to the second as a clock — "09:42", "1:05:00" from an hour
+     * up; "00:00" once it's run out. Mirrored by admin.js.
+     */
+    public static function clockLabel(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+        $hours = intdiv($seconds, 3600);
+        $clock = sprintf('%02d:%02d', intdiv($seconds % 3600, 60), $seconds % 60);
+
+        return $hours > 0 ? $hours.':'.$clock : $clock;
     }
 
     /**

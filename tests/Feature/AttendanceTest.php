@@ -49,14 +49,14 @@ function rileysMorning(): array
 
 /**
  * Submits a new day's sheet from the popup: everyone who belongs on it
- * present, but those in $absent (user id => reason).
+ * present, but those in $absent (user id => a note, or null) on leave.
  *
- * @param  array<int, string>  $absent
+ * @param  array<int, ?string>  $absent
  */
 function makeSheet($by, string $date, array $absent = [])
 {
     $attendance = AttendanceSheet::people()->mapWithKeys(fn ($person) => [$person->id => array_key_exists($person->id, $absent)
-        ? ['status' => 'absent', 'reason' => $absent[$person->id]]
+        ? ['status' => 'absent', 'note' => $absent[$person->id]]
         : ['status' => 'present']])->all();
 
     return test()->actingAs($by)->post(route('admin.attendance.store'), ['date' => $date, 'attendance' => $attendance]);
@@ -77,14 +77,14 @@ function approveSheetAsHr(string $date): void
 
 /**
  * The marks the sheet's form sends: everyone present but those in $absent
- * (user id => reason).
+ * (user id => a note, or null) on leave.
  *
- * @param  array<int, string>  $absent
+ * @param  array<int, ?string>  $absent
  */
 function marks(AttendanceSheet $sheet, array $absent = []): array
 {
     return ['attendance' => $sheet->attendances->mapWithKeys(fn (Attendance $line) => [$line->user_id => array_key_exists($line->user_id, $absent)
-        ? ['status' => 'absent', 'reason' => $absent[$line->user_id]]
+        ? ['status' => 'absent', 'note' => $absent[$line->user_id]]
         : ['status' => 'present']])->all()];
 }
 
@@ -143,7 +143,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     $sheet = AttendanceSheet::query()->sole();
     expect($sheet->created_by)->toBe($ops->id)
         ->and($sheet->attendances()->where('user_id', $riley->id)->value('status'))->toBe('present')
-        ->and($sheet->attendances()->where('user_id', $dataEntry->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave']);
+        ->and($sheet->attendances()->where('user_id', $dataEntry->id)->first())->toMatchArray(['status' => 'absent', 'reason' => null, 'note' => 'Sick leave']);
 
     // A second for the same day is refused — that one's edited instead.
     makeSheet($ops, '2026-10-05')
@@ -151,7 +151,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     expect(AttendanceSheet::query()->count())->toBe(1);
 });
 
-it('lists each day\'s submitted sheet, with who was absent and why, and an Edit that opens it', function () {
+it('lists each day\'s submitted sheet, with who was on leave, and an Edit that opens it', function () {
     ['riley' => $riley] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
     $ops = userWithRole('Senior Operations');
@@ -172,7 +172,7 @@ it('lists each day\'s submitted sheet, with who was absent and why, and an Edit 
         ->toContain(e($ops->name))
         ->toContain('data-action="'.route('admin.attendance.update', $sheet).'"')
         ->toContain('data-sheet-id="'.$sheet->id.'"')
-        ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'half_off' => null, 'reason' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'half_off' => null, 'reason' => 'Casual leave', 'note' => null]])));
+        ->toContain(e(json_encode([$riley->id => ['status' => 'present', 'half_off' => null, 'note' => null], $dataEntry->id => ['status' => 'absent', 'half_off' => null, 'note' => 'Casual leave']])));
 });
 
 it('brings a refused submission back in the popup, as it was sent', function () {
@@ -182,49 +182,60 @@ it('brings a refused submission back in the popup, as it was sent', function () 
     $html = test()->actingAs($ops)
         ->from(route('admin.attendance.index'))
         ->followingRedirects()
-        ->post(route('admin.attendance.store'), ['date' => '2026-10-05', 'attendance' => [$riley->id => ['status' => 'absent', 'note' => 'Called in']]])
+        ->post(route('admin.attendance.store'), ['date' => '2026-10-05', 'attendance' => [$riley->id => ['status' => 'half_day', 'note' => 'Called in']]])
         ->assertOk()
         ->getContent();
 
     $row = Str::betweenFirst(Str::betweenFirst($html, 'id="attendanceModal"', '</form>'), 'data-attendance-user="'.$riley->id.'"', '</tr>');
 
     expect($html)->toContain('bootstrap.Modal.getOrCreateInstance(document.getElementById(\'attendanceModal\')).show()')
-        ->and($row)->toContain('value="absent" autocomplete="off" checked')
+        ->and($row)->toContain('value="half_day" autocomplete="off" checked')
         ->toContain('value="Called in"')
-        ->toContain('Say why they were on leave.');
+        ->toContain('Say which half they were off.');
     expect(AttendanceSheet::query()->count())->toBe(0);
 });
 
-it('marks someone absent, with why, and back again', function () {
+it('marks someone on leave, and back again', function () {
     ['riley' => $riley] = rileysMorning();
     $ops = userWithRole('Senior Operations');
     makeSheet($ops, '2026-10-05');
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
 
-    test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']))
+    test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => null]))
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
         ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Manager for approval.');
 
-    expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => 'Sick leave'])
+    expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => null])
         ->and($sheet->refresh()->updated_by)->toBe($ops->id);
 
+    // Present again, an older sheet's reason for the leave goes too.
+    $sheet->attendances()->where('user_id', $riley->id)->update(['reason' => 'Sick leave']);
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet->load('attendances')))->assertSessionHasNoErrors();
 
     expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'present', 'reason' => null]);
 });
 
-it('needs a reason for an absence, and nothing that isn\'t one', function (?string $reason) {
+it('doesn\'t ask why someone was on leave — on a new sheet or an edit — but keeps an older sheet\'s reason on the list', function () {
     ['riley' => $riley] = rileysMorning();
     $ops = userWithRole('Senior Operations');
-    makeSheet($ops, '2026-10-05');
+
+    expect(Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), 'id="attendanceModal"', '</form>'))
+        ->not->toContain('[reason]')
+        ->not->toContain('Why…');
+
+    makeSheet($ops, '2026-10-05', [$riley->id => null])->assertSessionHasNoErrors();
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
 
-    test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [$riley->id => ['status' => 'absent', 'reason' => $reason]]])
-        ->assertSessionHasErrorsIn('attendance', ["attendance.{$riley->id}.reason"]);
+    // Whatever's sent as a reason is left out.
+    test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [$riley->id => ['status' => 'absent', 'reason' => 'Holiday in Bali']]])
+        ->assertSessionHasNoErrors();
+    expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => null]);
 
-    expect($sheet->attendances()->where('user_id', $riley->id)->value('status'))->toBe('present');
-})->with([null, 'Holiday in Bali']);
+    $sheet->attendances()->where('user_id', $riley->id)->update(['reason' => 'Sick leave']);
+    expect(Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), 'data-attendance-sheet="2026-10-05"', '</tr>'))
+        ->toContain('<span class="badge badge-soft-danger">Sick leave</span>');
+});
 
 it('keeps the sheet to Sourcing, Data Entry and GM Assistant people', function () {
     rileysMorning();
@@ -249,7 +260,7 @@ it('adds someone who joined after the sheet was made when it\'s saved', function
         ->toContain('data-attendance-user="'.$newcomer->id.'"');
 
     $payload = marks($sheet);
-    $payload['attendance'][$newcomer->id] = ['status' => 'absent', 'reason' => 'Personal leave'];
+    $payload['attendance'][$newcomer->id] = ['status' => 'absent'];
 
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), $payload)->assertSessionHasNoErrors();
 
@@ -333,9 +344,10 @@ it('counts days before attendance started, and everything while it\'s off', func
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 7200, 'awaiting' => 0]);
 });
 
-it('credits Data Entry\'s time to whoever finishes it, by their attendance', function () {
+it('credits Data Entry\'s time to whoever started on it, by their attendance', function () {
     ['rfq' => $rfq] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
+    startDataEntryOn($rfq, 1, $dataEntry);
 
     test()->travelTo(atLk('2026-10-05 12:00'));
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);

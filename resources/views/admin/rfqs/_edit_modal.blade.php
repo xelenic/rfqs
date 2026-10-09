@@ -24,6 +24,17 @@
                 </div>
                 <div class="modal-body">
                     @include('admin.rfqs._form', ['mode' => 'edit', 'idPrefix' => 'edit', 'priorities' => $priorities, 'statuses' => $statuses])
+                    {{-- On Business Development's Returns page, for an RFQ that can
+                         go straight back to whoever sent it (data-forward-back on
+                         its Edit button): after saving, send it there rather than on
+                         to Senior Operations — see RfqController::update(). --}}
+                    <div @class(['form-check mt-3', 'd-none' => ! old('forward_back_to')]) id="editForwardBack">
+                        <input class="form-check-input" type="checkbox" name="forward_back" value="1" id="edit-forward_back" @checked(old('forward_back'))>
+                        <label class="form-check-label" for="edit-forward_back">
+                            Then send it straight back to <span id="editForwardBackTo">{{ old('forward_back_to') }}</span>
+                        </label>
+                        <input type="hidden" name="forward_back_to" value="{{ old('forward_back_to') }}">
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

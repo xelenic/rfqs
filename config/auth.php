@@ -99,6 +99,15 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+
+        // A new account's "Set your password" link (App\Notifications\AccountCreated):
+        // good for a week, and once.
+        'new_users' => [
+            'provider' => 'users',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60 * 24 * 7,
+            'throttle' => 0,
+        ],
     ],
 
     /*

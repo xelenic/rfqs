@@ -69,8 +69,10 @@ function progressBranches(Rfq $rfq, User $viewer): array
     preg_match('/<script type="application\/json" id="rfq-progress-data">(.*?)<\/script>/s', $html, $matches);
 
     $tree = json_decode($matches[1], true)['tree'];
-    // RFQ Created → Assigned by Operations → Assigned to Sourcing → the branches.
-    $branches = $tree['children'][0]['children'][0]['children'];
+    // RFQ Created → Assigned by Operations → Assigned to Sourcing → the
+    // branches — Sourcing's own chart starting at Assigned by Operations.
+    $operations = $tree['step'] === 'created' ? $tree['children'][0] : $tree;
+    $branches = $operations['children'][0]['children'];
 
     return array_map(function (array $branch) {
         $steps = [];
@@ -100,7 +102,7 @@ it('shows each split part\'s own progress down its branch, each step going green
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
         $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
     }
-    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant']);
     $rfq->refresh()->approveGmPart(1, $people['gm']);
 
     [$one, $two, $three] = progressBranches($rfq, $people['admin']);
@@ -116,7 +118,7 @@ it('shows each split part\'s own progress down its branch, each step going green
         ->and($one['gm_review']['meta'][0])->toBe('Approved by '.$people['gm']->name)
         // Approved by the General Manager: ready for Business Development to close, whatever the others are up to.
         ->and($one['closed']['meta'])->toBe(['Ready for Business Development'])
-        ->and($two['gm_assistant']['meta'])->toBe(['Awaiting details'])
+        ->and($two['gm_assistant']['meta'])->toBe(['Awaiting GM Assistant'])
         ->and($two['closed']['meta'])->toBe(['Not yet reached'])
         ->and($three['senior_ops']['meta'])->toBe(['Awaiting review'])
         ->and($three['head_of_bd']['meta'])->toBe(['Not yet reached']);
@@ -169,7 +171,7 @@ it('takes an RFQ kept whole green step by step, through to Closed', function () 
     $rfq->refresh()->approveHeadOfBdPart(1, $people['head']);
     expect($tail())->toBe(['senior_ops' => 'done', 'head_of_bd' => 'done', 'gm_assistant' => 'current', 'gm_review' => 'pending', 'closed' => 'pending']);
 
-    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd', null);
+    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant']);
     expect($tail())->toBe(['senior_ops' => 'done', 'head_of_bd' => 'done', 'gm_assistant' => 'done', 'gm_review' => 'current', 'closed' => 'pending']);
 
     $rfq->refresh()->approveGmPart(1, $people['gm']);
@@ -188,7 +190,7 @@ it('closes each branch as Business Development closes its part, and the RFQ once
     foreach ([1, 2] as $part) {
         $rfq->refresh()->approveSeniorOpsPart($part, $people['ops']);
         $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
-        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd', null);
+        $rfq->refresh()->recordGmAssistantPart($part, $people['assistant']);
         $rfq->refresh()->approveGmPart($part, $people['gm']);
     }
 
@@ -254,7 +256,7 @@ it('shows a part the Head sent back as returned on its own branch, and the whole
     expect(progressBranches($rfq->refresh(), $people['admin'])[0]['head_of_bd']['state'])->toBe('done');
 });
 
-it('still masks who approved from Sourcing, on each branch', function () {
+it('still masks who approved from Sourcing, on each branch, as far as their chart goes', function () {
     $people = progressPeople();
     $rfq = rfqThroughDataEntry([1 => $people['sourcing'], 2 => $people['sourcing']], $people['dataEntry']);
     $rfq->approveSeniorOpsPart(1, $people['ops']);
@@ -264,7 +266,42 @@ it('still masks who approved from Sourcing, on each branch', function () {
 
     expect($one['senior_ops']['state'])->toBe('done')
         ->and($one['senior_ops']['meta'][0])->toBe('Restricted')
-        ->and($one['head_of_bd']['meta'][0])->toBe('Approved by Restricted');
+        // Senior Operations' review is as far as Sourcing's chart goes.
+        ->and($one)->not->toHaveKey('head_of_bd');
+});
+
+it('shows Sourcing only the Operations, Sourcing, Data Entry and Senior Operations boxes and tabs', function () {
+    $people = progressPeople();
+    $rfq = rfqThroughDataEntry([1 => $people['sourcing']], $people['dataEntry']);
+
+    $chartSteps = function (User $viewer) use ($rfq) {
+        $html = test()->actingAs($viewer)->get(route('admin.rfqs.show', $rfq).'?status=Pending')->assertOk()->getContent();
+        preg_match('/<script type="application\/json" id="rfq-progress-data">(.*?)<\/script>/s', $html, $matches);
+
+        $steps = [];
+        $walk = function (array $node) use (&$walk, &$steps) {
+            $steps[] = $node['step'];
+            foreach ($node['children'] as $child) {
+                $walk($child);
+            }
+        };
+        $walk(json_decode($matches[1], true)['tree']);
+        preg_match_all('/id="step-tab-([a-z_]+)"/', $html, $tabs);
+        preg_match_all('/id="step-pane-([a-z_]+)"/', $html, $panes);
+
+        return ['steps' => array_values(array_unique($steps)), 'tabs' => $tabs[1], 'panes' => $panes[1]];
+    };
+
+    $sourcing = $chartSteps($people['sourcing']);
+    $mine = ['operations', 'sourcing', 'data_entry', 'finalize', 'senior_ops'];
+
+    expect($sourcing['steps'])->toBe($mine)
+        ->and($sourcing['tabs'])->toBe($mine)
+        ->and($sourcing['panes'])->toBe($mine);
+
+    // Senior Operations — like everyone without a view of their own — sees the whole of it.
+    expect($chartSteps($people['ops'])['steps'])
+        ->toBe(['created', 'operations', 'sourcing', 'data_entry', 'finalize', 'senior_ops', 'head_of_bd', 'gm_assistant', 'gm_review', 'closed']);
 });
 
 it('counts the parts through each stage on its tab while the stage as a whole isn\'t done', function () {
@@ -295,10 +332,11 @@ it('lists each part\'s step on a split\'s tab, with who did it and what the othe
     $rfq->approveSeniorOpsPart(1, $people['ops']);
     $rfq->refresh()->approveSeniorOpsPart(2, $people['ops']);
     $rfq->refresh()->approveHeadOfBdPart(1, $people['head']);
-    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant'], 'Acme Ltd, Colombo', 'Net 30');
+    $rfq->refresh()->recordGmAssistantPart(1, $people['assistant']);
 
-    $html = test()->actingAs($people['admin'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')->assertOk()->getContent();
-    $pane = fn (string $step) => substr($html, strpos($html, 'id="step-pane-'.$step.'"'), 4000);
+    $page = fn () => test()->actingAs($people['admin'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')->assertOk()->getContent();
+    $html = $page();
+    $pane = fn (string $step, ?string $from = null) => substr($from ?? $html, strpos($from ?? $html, 'id="step-pane-'.$step.'"'), 4000);
 
     // Senior Operations: parts 1 and 2 approved, part 3 waiting.
     expect($pane('senior_ops'))
@@ -312,9 +350,14 @@ it('lists each part\'s step on a split\'s tab, with who did it and what the othe
         ->toContain('bg-primary-subtle text-primary-emphasis">Awaiting review')
         ->toContain('bg-secondary-subtle text-secondary-emphasis">Not yet reached');
 
-    // GM Assistant: part 1 done, and the details it gave are there for the RFQ, ahead of the rest.
+    // GM Assistant: part 1 submitted — no client details or payment terms any more.
     expect($pane('gm_assistant'))
         ->toContain(e($people['assistant']->name))
+        ->not->toContain('Client Details');
+
+    // An older RFQ still shows what was given then.
+    $rfq->update(['client_details' => 'Acme Ltd, Colombo', 'payment_terms' => 'Net 30']);
+    expect($pane('gm_assistant', $page()))
         ->toContain('Client Details')
         ->toContain('Acme Ltd, Colombo')
         ->toContain('Payment Terms')
@@ -351,4 +394,52 @@ it('keeps an RFQ kept whole\'s tabs as they were', function () {
         ->and($pane('gm_assistant'))->toContain('Not yet reached.')
         // No part counts on an RFQ that isn't split.
         ->and($html)->not->toContain('parts done">');
+});
+
+it('shows Business Development only Senior Operations\' boxes — the assignment, then each part\'s review', function () {
+    $people = progressPeople();
+    $rfq = rfqThroughDataEntry([1 => $people['sourcing'], 2 => $people['sourcing']], $people['dataEntry']);
+    $rfq->approveSeniorOpsPart(1, $people['ops']);
+
+    $html = test()->actingAs($people['closer'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')->assertOk()->getContent();
+    preg_match('/<script type="application\/json" id="rfq-progress-data">(.*?)<\/script>/s', $html, $matches);
+    $tree = json_decode($matches[1], true)['tree'];
+
+    expect($tree['step'])->toBe('operations')
+        ->and(array_column($tree['children'], 'step'))->toBe(['senior_ops', 'senior_ops'])
+        ->and(array_column($tree['children'], 'rfq_number'))->toBe(['RFQ1001-P1 of P2', 'RFQ1001-P2 of P2'])
+        ->and(array_column($tree['children'], 'state'))->toBe(['done', 'current'])
+        ->and(array_merge(...array_column($tree['children'], 'children')))->toBe([]);
+
+    preg_match_all('/id="step-tab-([a-z_]+)"/', $html, $tabs);
+    preg_match_all('/id="step-pane-([a-z_]+)"/', $html, $panes);
+
+    expect($tabs[1])->toBe(['operations', 'senior_ops'])
+        ->and($panes[1])->toBe(['operations', 'senior_ops'])
+        // Past Senior Operations' assignment, it opens on their review.
+        ->and($html)->toContain('class="tab-pane fade show active" id="step-pane-senior_ops"');
+});
+
+it('shows Data Entry only the Sourcing and Data Entry boxes and tabs', function () {
+    $people = progressPeople();
+    $rfq = rfqThroughDataEntry([1 => $people['sourcing'], 2 => $people['sourcing']], $people['dataEntry']);
+    $rfq->approveSeniorOpsPart(1, $people['ops']);
+
+    $html = test()->actingAs($people['dataEntry'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')->assertOk()->getContent();
+    preg_match('/<script type="application\/json" id="rfq-progress-data">(.*?)<\/script>/s', $html, $matches);
+    $tree = json_decode($matches[1], true)['tree'];
+
+    // Assigned to Sourcing → each part's Sourcing → its Data Entry, and no further.
+    expect($tree['name'])->toBe('Assigned to Sourcing')
+        ->and(array_column($tree['children'], 'step'))->toBe(['sourcing', 'sourcing'])
+        ->and(array_map(fn (array $branch) => array_column($branch['children'], 'step'), $tree['children']))->toBe([['data_entry'], ['data_entry']])
+        ->and(array_merge(...array_map(fn (array $branch) => $branch['children'][0]['children'], $tree['children'])))->toBe([]);
+
+    preg_match_all('/id="step-tab-([a-z_]+)"/', $html, $tabs);
+    preg_match_all('/id="step-pane-([a-z_]+)"/', $html, $panes);
+
+    expect($tabs[1])->toBe(['sourcing', 'data_entry'])
+        ->and($panes[1])->toBe(['sourcing', 'data_entry'])
+        // Past their step, it opens on the latest of theirs: Data Entry.
+        ->and($html)->toContain('class="tab-pane fade show active" id="step-pane-data_entry"');
 });

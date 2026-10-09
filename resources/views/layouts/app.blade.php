@@ -142,6 +142,9 @@
                             <i class="live-dot" aria-hidden="true"></i><span class="live-label">Live</span>
                         </span>
                     @endif
+                    @if (auth()->user()->hasAnyRole(\App\Notifications\DataEntryIdle::RECIPIENT_ROLES))
+                        @include('layouts._notification_bell')
+                    @endif
                     <div class="dropdown">
                         <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>

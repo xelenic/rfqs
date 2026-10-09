@@ -35,7 +35,7 @@ it('lets Admin mark a part complete as the Sourcing member it is assigned to', f
     test()->actingAs($admin)
         ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Quotes gathered', 'acting_user_id' => $riley->id])
         ->assertSessionHasNoErrors()
-        ->assertSessionHas('status', 'Part marked complete — waiting on the rest of the parts.');
+        ->assertSessionHas('status', 'Part assigned to Data Entry — the rest of the parts are still with Sourcing.');
 
     $rfq->refresh();
 
@@ -53,7 +53,7 @@ it('hands off straight away when Admin completes an RFQ\'s only part', function 
 
     test()->actingAs(userWithRole('Admin'))
         ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Done', 'acting_user_id' => $riley->id])
-        ->assertSessionHas('status', 'Marked complete — handed off to Data Entry.');
+        ->assertSessionHas('status', 'Assigned to Data Entry — every part is with them now.');
 
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
 });
@@ -97,7 +97,7 @@ it('still asks Admin for the comment', function () {
 
     test()->actingAs($admin)
         ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'acting_user_id' => $riley->id])
-        ->assertSessionHas('error', 'Add a comment to mark this part complete.');
+        ->assertSessionHas('error', 'Add a comment to assign this part to Data Entry.');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->toBeNull();
 });
@@ -188,8 +188,8 @@ it('offers Admin a Mark Complete for each open part on the RFQ page', function (
 
     $html = test()->actingAs($admin)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
-    expect($html)->toContain('Mark P1 Complete')
-        ->toContain('Mark P2 Complete')
+    expect($html)->toContain('Assign P1 to Data Entry')
+        ->toContain('Assign P2 to Data Entry')
         ->toContain('data-assignee-id="'.$riley->id.'"')
         ->toContain('data-assignee-id="'.$sam->id.'"')
         ->toContain('data-return-to="show"')
@@ -198,8 +198,8 @@ it('offers Admin a Mark Complete for each open part on the RFQ page', function (
     $rfq->refresh()->completeSourcingPart(1);
 
     test()->actingAs($admin)->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertDontSee('Mark P1 Complete')
-        ->assertSee('Mark P2 Complete');
+        ->assertDontSee('Assign P1 to Data Entry')
+        ->assertSee('Assign P2 to Data Entry');
 });
 
 it('does not double up Admin\'s button when Admin also holds the part as Sourcing', function () {
@@ -209,8 +209,8 @@ it('does not double up Admin\'s button when Admin also holds the part as Sourcin
 
     $html = test()->actingAs($admin)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
-    expect(substr_count($html, 'Mark P1 Complete'))->toBe(1)
-        ->and(substr_count($html, 'Mark P2 Complete'))->toBe(1);
+    expect(substr_count($html, 'Assign P1 to Data Entry'))->toBe(1)
+        ->and(substr_count($html, 'Assign P2 to Data Entry'))->toBe(1);
 });
 
 it('shows nobody but Admin the picker, or Mark Complete on parts that are not theirs', function () {
@@ -218,8 +218,8 @@ it('shows nobody but Admin the picker, or Mark Complete on parts that are not th
 
     // A Sourcing member: their own part only, and no "Done by" anywhere.
     $html = test()->actingAs($riley)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
-    expect($html)->toContain('Mark P1 Complete')
-        ->not->toContain('Mark P2 Complete')
+    expect($html)->toContain('Assign P1 to Data Entry')
+        ->not->toContain('Assign P2 to Data Entry')
         ->not->toContain('complete-assignee')
         ->not->toContain('data-assignee-id="'.$riley->id.'"');
 
@@ -228,7 +228,7 @@ it('shows nobody but Admin the picker, or Mark Complete on parts that are not th
 
     foreach (['Business Development', 'Senior Operations', 'Data Entry'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.rfqs.show', $rfq))->assertOk()
-            ->assertDontSee('Mark P1 Complete')
-            ->assertDontSee('Mark P2 Complete');
+            ->assertDontSee('Assign P1 to Data Entry')
+            ->assertDontSee('Assign P2 to Data Entry');
     }
 });

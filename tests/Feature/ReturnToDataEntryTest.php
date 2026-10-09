@@ -76,16 +76,21 @@ it('sends the part back to Data Entry\'s queue with the reason, and posts it to 
         ->and($comment->action)->toBe('returned_to_data_entry')
         ->and($comment->body)->toBe('Unit prices are from the old quote');
 
+    // Back with Data Entry, to start on again — Send to Finalize after.
+    expect($pivot->data_entry_started_at)->toBeNull();
+
     test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('RFQ1001')
         ->assertSee('Returned by Sourcing: Unit prices are from the old quote')
-        ->assertSee('data-action="'.route('admin.rfqs.complete-data-entry', $rfq).'"', false);
+        ->assertSee('action="'.route('admin.rfqs.start-data-entry', $rfq).'"', false)
+        ->assertDontSee('data-action="'.route('admin.rfqs.complete-data-entry', $rfq).'"', false);
 });
 
 it('can go round again — Data Entry sends it to finalize, and it can be finalized on to review', function () {
     $riley = userWithRole('Sourcing');
     $rfq = sentToFinalize([1 => $riley]);
     returnsToDataEntry($riley, $rfq, ['part' => 1, 'reason' => 'Wrong currency']);
+    startDataEntryOn($rfq, 1);
 
     test()->actingAs(userWithRole('Data Entry'))
         ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Fixed the currency'])

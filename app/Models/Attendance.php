@@ -10,9 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One person's line on a day's attendance sheet (AttendanceSheet): present —
  * the time tracked as theirs that day (RfqStep::worked_by) counts — absent
- * (on leave), and why, so it doesn't — or a half day: off the morning or the
- * afternoon (half_off), and why, so the time that half takes
- * (Setting::halfDayOff()) doesn't count and the rest of the day does. It
+ * (on leave), so it doesn't — or a half day: off the morning or the
+ * afternoon (half_off), so the time that half takes
+ * (Setting::halfDayOff()) doesn't count and the rest of the day does, with
+ * a note if there's anything to say. (Why they were off isn't asked any
+ * more; an older line keeps the reason it was given.) It
  * only stands once HR Manager has
  * approved the sheet; until then — like a day nobody's marked them for — the
  * day is unmarked, and doesn't count yet either. Read through book() and
@@ -45,13 +47,6 @@ class Attendance extends Model
     public const AFTERNOON_OFF = 'afternoon_off';
 
     public const UNMARKED = 'unmarked';
-
-    /**
-     * Why someone was absent.
-     *
-     * @var array<int, string>
-     */
-    public const REASONS = ['Casual leave', 'Sick leave', 'Personal leave', 'Other'];
 
     protected $fillable = [
         'attendance_sheet_id',
@@ -114,6 +109,20 @@ class Attendance extends Model
         }
 
         return $book[$userId][$date] ?? self::UNMARKED;
+    }
+
+    /**
+     * $userId's line on $date's sheet ("Y-m-d"), approved or not — what
+     * Senior Operations has marked so far, which is enough to know who's on
+     * leave today (User::dataEntryIdleness()). Null if there's none.
+     */
+    public static function markOn(int $userId, string $date): ?self
+    {
+        return static::query()
+            ->join('attendance_sheets', 'attendance_sheets.id', '=', 'attendances.attendance_sheet_id')
+            ->whereDate('attendance_sheets.date', $date)
+            ->where('attendances.user_id', $userId)
+            ->first(['attendances.user_id', 'attendances.status', 'attendances.half_off']);
     }
 
     /**

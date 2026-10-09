@@ -178,7 +178,7 @@ it('lets the rest of the RFQ carry on without a cancelled part — through to cl
 
     $rfq->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Client: ACME', null);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
     $rfq->refresh()->approveGmPart(1, userWithRole('General Manager'));
     $rfq->refresh()->closePart(1, userWithRole('Business Development'), 'REF-1');
 
@@ -194,7 +194,7 @@ it('moves the RFQ straight on to where its other parts are, once the part it wai
     finalizeRfqPart($rfq, 1);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'), 'Client: ACME', null);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
     $rfq->refresh()->approveGmPart(1, $gm = userWithRole('General Manager'));
     expect($rfq->refresh()->stage)->toBeNull();
 

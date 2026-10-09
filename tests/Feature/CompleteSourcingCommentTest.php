@@ -40,7 +40,7 @@ it('says what is missing when the comment is', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
     completeAs($riley, $rfq, ['part' => 1])
-        ->assertSessionHas('error', 'Add a comment to mark this part complete.');
+        ->assertSessionHas('error', 'Add a comment to assign this part to Data Entry.');
 
     completeAs($riley, $rfq, ['part' => 1, 'comment' => str_repeat('a', 2001)])
         ->assertSessionHas('error', 'That comment is too long — keep it under 2000 characters.');
@@ -173,8 +173,8 @@ it('asks for the comment on the RFQ\'s own page too', function () {
     $html = test()->actingAs($riley)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
     expect($html)->toContain('data-return-to="show"')
-        ->toContain('Mark P1 Complete')
-        ->toContain('Mark P2 Complete')
+        ->toContain('Assign P1 to Data Entry')
+        ->toContain('Assign P2 to Data Entry')
         ->toContain('id="completeModal"');
 
     // With nothing left to complete there's nothing to ask.

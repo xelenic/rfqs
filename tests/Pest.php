@@ -102,3 +102,15 @@ function operationsTabs(array $query = [], ?string $role = null): array
 
     return [substr($html, 0, $assignedAt), substr($html, $assignedAt), $html];
 }
+
+/**
+ * Data Entry starts on $part of $rfq — their time on it counts from now —
+ * straight through the model (no working-hours check), as whoever's given or
+ * a Data Entry person of its own.
+ */
+function startDataEntryOn(Rfq $rfq, int $part, ?User $by = null): Rfq
+{
+    $rfq->refresh()->startDataEntryPart($part, $by ?? userWithRole('Data Entry'));
+
+    return $rfq->refresh();
+}

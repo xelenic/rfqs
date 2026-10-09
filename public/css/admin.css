@@ -3837,6 +3837,254 @@ h6, .h6 { font-size: 0.85rem; }
   }
 }
 
+/* ---------- Add user: how they'll sign in ---------- */
+.sign-in-option {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--bs-border-radius);
+  cursor: pointer;
+}
+
+.sign-in-option:has(input:checked) {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+}
+
+.sign-in-option .form-check-input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+/* ---------- Data Entry's idle countdown ----------
+   On their Ready for Data Entry page: the clock to Senior Operations being
+   told they haven't started, its bar running down — amber in its last
+   quarter, red once it's up or sent, grey while paused
+   (_data_entry_idle_banner, admin.js). */
+.idle-banner {
+  --idle-accent: #4f6df5;
+  --idle-soft: rgba(79, 109, 245, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rfq-border);
+  border-left: 4px solid var(--idle-accent);
+  border-radius: var(--bs-border-radius-lg, 0.5rem);
+  background: var(--idle-soft);
+}
+
+.idle-banner.is-urgent { --idle-accent: #d97706; --idle-soft: rgba(245, 158, 11, 0.1); }
+.idle-banner.is-due,
+.idle-banner.is-alerted { --idle-accent: #dc3545; --idle-soft: rgba(220, 53, 69, 0.08); }
+.idle-banner.is-paused { --idle-accent: #94a3b8; --idle-soft: rgba(100, 116, 139, 0.08); }
+
+.idle-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--idle-accent);
+  color: #fff;
+}
+
+.idle-banner:not(.is-paused):not(.is-alerted) .idle-banner-icon i {
+  animation: idle-banner-turn 2.4s ease-in-out infinite;
+}
+
+@keyframes idle-banner-turn {
+  0%, 40% { transform: rotate(0); }
+  50%, 90% { transform: rotate(180deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.idle-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.idle-banner-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.idle-banner-text {
+  color: var(--rfq-text-muted);
+  font-size: 0.8rem;
+}
+
+.idle-banner-track {
+  height: 0.3rem;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.18);
+  overflow: hidden;
+}
+
+.idle-banner-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--idle-accent);
+  transition: width 1s linear, background-color 0.3s ease;
+}
+
+.idle-banner-clock {
+  flex-shrink: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--idle-accent);
+  letter-spacing: 0.02em;
+}
+
+.idle-banner.is-due .idle-banner-clock {
+  animation: idle-banner-blink 1s steps(2, start) infinite;
+}
+
+@keyframes idle-banner-blink {
+  to { visibility: hidden; }
+}
+
+@media (max-width: 575.98px) {
+  .idle-banner { flex-wrap: wrap; }
+  .idle-banner-clock { font-size: 1.3rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idle-banner-icon i,
+  .idle-banner.is-due .idle-banner-clock {
+    animation: none !important;
+  }
+
+  .idle-banner-bar { transition: none; }
+}
+
+/* ---------- The top bar's bell ----------
+   Alerts for Senior Operations and Admin (layouts/_notification_bell),
+   kept current by live.js. */
+.notification-bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rfq-text);
+  font-size: 1rem;
+}
+
+.notification-bell-btn:hover,
+.notification-bell-btn[aria-expanded="true"] {
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+}
+
+.notification-bell-count {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.35rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #dc3545;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.15rem;
+  text-align: center;
+}
+
+.notification-bell-count.is-bumped {
+  animation: nav-count-bump 0.7s ease;
+}
+
+.notification-menu {
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0;
+  overflow: hidden;
+}
+
+.notification-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--rfq-border);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.notification-menu-items {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--rfq-border);
+  color: var(--rfq-text);
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+
+.notification-item:last-child {
+  border-bottom: 0;
+}
+
+.notification-item:hover {
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-text);
+}
+
+.notification-item.is-unread {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.notification-item.is-unread .notification-item-text {
+  font-weight: 600;
+}
+
+.notification-item-icon {
+  color: #d97706;
+  margin-top: 0.1rem;
+}
+
+.notification-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.notification-item-time {
+  color: var(--rfq-text-muted);
+  font-size: 0.72rem;
+}
+
+.notification-empty {
+  padding: 1.25rem 0.9rem;
+  color: var(--rfq-text-muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-bell-count.is-bumped {
+    animation: none;
+  }
+}
+
 /* ---------- Settings page ---------- */
 
 /* Settings → Working Hours: two times either side of "to" per range, and a
@@ -3863,8 +4111,12 @@ h6, .h6 { font-size: 0.85rem; }
   max-width: 22rem;
 }
 
-/* Sourcing's Pending list: a part's countdown, dimmed while it's paused
-   outside working hours (see admin.js). */
+.settings-narrow-field {
+  max-width: 16rem;
+}
+
+/* Sourcing's Pending list, and Data Entry's: a part's countdown, dimmed
+   while it's paused outside working hours (see admin.js). */
 .sourcing-countdown {
   display: inline-flex;
   align-items: center;
@@ -4007,6 +4259,67 @@ h6, .h6 { font-size: 0.85rem; }
   font-size: 1.15rem;
 }
 
+/* ---------- Comment attachments ---------- */
+/* A comment's photos as thumbnails that open full size, its other files as
+   chips that download (_comment_attachments.blade.php). */
+
+.comment-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.comment-attachment-photo {
+  display: block;
+  width: 84px;
+  height: 84px;
+  border: 1px solid var(--rfq-border);
+  border-radius: 0.4rem;
+  overflow: hidden;
+  background: var(--rfq-bg);
+}
+
+.comment-attachment-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.comment-attachment-photo:hover {
+  border-color: var(--rfq-primary);
+}
+
+.comment-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-surface);
+  color: var(--rfq-text);
+  font-size: 0.74rem;
+}
+
+.comment-attachment-file:hover {
+  border-color: var(--rfq-primary);
+  color: var(--rfq-text);
+}
+
+.comment-attachment-file i {
+  color: var(--rfq-primary);
+  font-size: 0.95rem;
+}
+
+.comment-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
 /* ---------- Theme picker (Settings → Preferences) ---------- */
 /* Two cards, each a little picture of the panel in that theme. */
 
@@ -4061,6 +4374,109 @@ h6, .h6 { font-size: 0.85rem; }
 .theme-pick[data-theme-preview="dark"] .theme-pick-swatch { background: #0f131c; }
 .theme-pick[data-theme-preview="dark"] .theme-pick-sidebar { background: #141925; border: 1px solid #2a3142; }
 .theme-pick[data-theme-preview="dark"] .theme-pick-card { background: #171c27; border: 1px solid #2a3142; }
+
+/* ---------- Data Entry's Start: off out of working hours ----------
+   The hint sits on a wrapper (a disabled button takes no hover) — see
+   _start_data_entry_button.blade.php. */
+.start-hint { border-radius: var(--bs-border-radius-sm); }
+.start-hint:focus-visible { outline: 2px solid var(--rfq-primary); outline-offset: 2px; }
+.start-hint.is-off { cursor: not-allowed; }
+.tooltip-inner { max-width: 260px; text-align: left; }
+
+/* ---------- Data Entry's running parts ----------
+   A part Data Entry has started glows, its colour slowly shifting, with a
+   flowing bar down its left edge and a "Running" pill — all still, and
+   greyed, while it's paused outside working hours (see admin.js). */
+@keyframes rfq-running-glow {
+  0%, 100% { background-color: rgba(79, 109, 245, 0.07); }
+  33% { background-color: rgba(139, 92, 246, 0.09); }
+  66% { background-color: rgba(20, 184, 166, 0.08); }
+}
+
+@keyframes rfq-running-flow {
+  from { background-position: 0 0; }
+  to { background-position: 0 300%; }
+}
+
+@keyframes rfq-running-pill {
+  from { background-position: 0 0; }
+  to { background-position: 300% 0; }
+}
+
+@keyframes rfq-running-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.55); opacity: 0.5; }
+}
+
+.table > tbody > tr.rfq-running > td {
+  animation: rfq-running-glow 6s ease-in-out infinite;
+}
+
+.table > tbody > tr.rfq-running > td:first-child {
+  position: relative;
+}
+
+.table > tbody > tr.rfq-running > td:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #4f6df5, #8b5cf6, #14b8a6, #4f6df5);
+  background-size: 100% 300%;
+  animation: rfq-running-flow 3s linear infinite;
+}
+
+.running-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 0.25rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(90deg, #4f6df5, #8b5cf6, #14b8a6, #4f6df5);
+  background-size: 300% 100%;
+  animation: rfq-running-pill 4s linear infinite;
+}
+
+.running-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #fff;
+  animation: rfq-running-pulse 1.2s ease-in-out infinite;
+}
+
+.table > tbody > tr.rfq-running.is-paused > td {
+  animation: none;
+  background-color: rgba(100, 116, 139, 0.06);
+}
+
+.table > tbody > tr.rfq-running.is-paused > td:first-child::before,
+.rfq-running.is-paused .running-pill {
+  animation: none;
+  background: #94a3b8;
+}
+
+.rfq-running.is-paused .running-dot {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table > tbody > tr.rfq-running > td,
+  .table > tbody > tr.rfq-running > td:first-child::before,
+  .running-pill,
+  .running-dot {
+    animation: none;
+  }
+
+  .table > tbody > tr.rfq-running > td {
+    background-color: rgba(79, 109, 245, 0.07);
+  }
+}
 
 /* ---------- Dark theme ---------- */
 /* A person's choice in Settings → Preferences (User::theme()): the layout
@@ -4210,3 +4626,16 @@ h6, .h6 { font-size: 0.85rem; }
 [data-theme="dark"] .table .time-out-of-hours { --bs-table-bg: rgba(245, 158, 11, 0.12); background: rgba(245, 158, 11, 0.12); }
 
 [data-theme="dark"] .btn-check:checked + .theme-pick { box-shadow: 0 0 0 0.2rem rgba(91, 120, 246, 0.25); }
+
+/* Data Entry's running parts: a little stronger against the dark. */
+@keyframes rfq-running-glow-dark {
+  0%, 100% { background-color: rgba(91, 120, 246, 0.14); }
+  33% { background-color: rgba(139, 92, 246, 0.16); }
+  66% { background-color: rgba(20, 184, 166, 0.13); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-theme="dark"] .table > tbody > tr.rfq-running > td { animation-name: rfq-running-glow-dark; }
+}
+[data-theme="dark"] .table > tbody > tr.rfq-running.is-paused > td { background-color: rgba(148, 163, 184, 0.08); }
+[data-theme="dark"] .rfq-running.is-paused .running-pill { background: #475569; }

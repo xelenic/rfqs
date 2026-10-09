@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class RfqComment extends Model
 {
@@ -17,7 +20,7 @@ class RfqComment extends Model
      * @var array<string, array{label: string, icon: string, tone: string}>
      */
     public const ACTIONS = [
-        'sourcing_completed' => ['label' => 'Marked complete', 'icon' => 'bi-check-circle-fill', 'tone' => 'success'],
+        'sourcing_completed' => ['label' => 'Assigned to Data Entry', 'icon' => 'bi-check-circle-fill', 'tone' => 'success'],
         'data_entry_completed' => ['label' => 'Sent to Finalize', 'icon' => 'bi-send-check', 'tone' => 'success'],
         'returned_to_sourcing' => ['label' => 'Returned to Sourcing', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
         'returned_to_data_entry' => ['label' => 'Returned to Data Entry', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger'],
@@ -27,6 +30,8 @@ class RfqComment extends Model
         'resumed' => ['label' => 'Resumed', 'icon' => 'bi-play-circle-fill', 'tone' => 'success'],
         'reopened' => ['label' => 'Reopened', 'icon' => 'bi-arrow-repeat', 'tone' => 'success'],
         'reassigned' => ['label' => 'Reassigned', 'icon' => 'bi-person-gear', 'tone' => 'info'],
+        'forwarded_back' => ['label' => 'Sent straight back', 'icon' => 'bi-skip-forward-fill', 'tone' => 'success'],
+        'gm_assistant_submitted' => ['label' => 'Submitted to General Manager', 'icon' => 'bi-send-check', 'tone' => 'success'],
     ];
 
     protected $fillable = [
@@ -124,6 +129,70 @@ class RfqComment extends Model
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    protected static function booted(): void
+    {
+        // Its files, and its replies', go with it — the rows themselves go by
+        // the database's cascade, which leaves the files behind.
+        static::deleting(function (self $comment) {
+            Storage::disk(RfqCommentAttachment::DISK)->delete(RfqCommentAttachment::query()
+                ->whereIn('rfq_comment_id', $comment->replies()->pluck('id')->push($comment->id))
+                ->pluck('path')
+                ->all());
+        });
+    }
+
+    /**
+     * The photos and files attached to it.
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(RfqCommentAttachment::class)->oldest('id');
+    }
+
+    /**
+     * Keeps $files on the private disk, attached to this comment.
+     *
+     * @param  array<int, UploadedFile>  $files
+     */
+    public function storeAttachments(array $files): void
+    {
+        foreach ($files as $file) {
+            $this->attachments()->create([
+                'rfq_id' => $this->rfq_id,
+                'path' => $file->store('rfq-attachments/'.$this->rfq_id, RfqCommentAttachment::DISK),
+                'original_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
+                'size' => $file->getSize(),
+            ]);
+        }
+    }
+
+    /**
+     * Runs $action — something that posts to $rfq's thread: a comment, or the
+     * reason an action gives — and attaches $files to what it posted. Where it
+     * posts more than one, the last: a reject sending parts back to Sourcing
+     * posts each part's return first, then its own reason.
+     *
+     * @template TResult
+     *
+     * @param  array<int, UploadedFile>  $files
+     * @param  Closure(): TResult  $action
+     * @return TResult
+     */
+    public static function attachingFiles(Rfq $rfq, array $files, Closure $action): mixed
+    {
+        if ($files === []) {
+            return $action();
+        }
+
+        $before = static::query()->where('rfq_id', $rfq->id)->max('id') ?? 0;
+        $result = $action();
+
+        static::query()->where('rfq_id', $rfq->id)->where('id', '>', $before)->latest('id')->first()?->storeAttachments($files);
+
+        return $result;
     }
 
     /**

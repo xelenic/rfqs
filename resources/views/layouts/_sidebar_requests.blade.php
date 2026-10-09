@@ -43,7 +43,7 @@
         auth()->user()->hasRole('Sourcing') => "{$pendingBadgeCount} to complete or finalize",
         auth()->user()->hasRole('Data Entry') => "{$pendingBadgeCount} not marked complete",
         auth()->user()->hasRole('Head of Business Development') => "{$pendingBadgeCount} awaiting your review",
-        auth()->user()->hasRole('GM Assistant') => "{$pendingBadgeCount} awaiting client details",
+        auth()->user()->hasRole('GM Assistant') => "{$pendingBadgeCount} awaiting your submit",
         auth()->user()->hasRole('General Manager') => "{$pendingBadgeCount} awaiting your approval",
         default => '',
     };

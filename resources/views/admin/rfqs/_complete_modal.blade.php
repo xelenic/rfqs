@@ -12,7 +12,7 @@
 --}}
 <div class="modal fade" id="completeModal" tabindex="-1" aria-labelledby="completeModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <form method="POST" id="completeForm" action="#" novalidate class="modal-content">
+        <form method="POST" id="completeForm" action="#" novalidate class="modal-content" enctype="multipart/form-data">
             @csrf
             @method('PATCH')
             <input type="hidden" name="part" value="">
@@ -23,7 +23,7 @@
 
             <div class="modal-header">
                 <div>
-                    <h5 class="modal-title" id="completeModalLabel">Mark complete</h5>
+                    <h5 class="modal-title" id="completeModalLabel">Assign to Data Entry</h5>
                     <div class="text-muted-soft small" id="complete-subtitle"></div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -45,6 +45,8 @@
                     <span class="text-nowrap" id="complete-count">0 / 2000</span>
                 </div>
                 <div class="text-danger small mt-2 d-none" id="complete-error" role="alert"></div>
+
+                @include('admin.rfqs._attachments_input', ['attachmentsId' => 'complete-attachments'])
 
                 {{-- Admin's "Done by" — JS shows whichever one the button that
                      opened this asks for (data-actor-role) and lets only that
@@ -68,7 +70,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" id="complete-cancel" data-bs-dismiss="modal">Cancel</button>
                 <button type="submit" class="btn btn-success" id="complete-submit">
-                    <i class="bi bi-check2-circle"></i> Mark Complete
+                    <i class="bi bi-check2-circle"></i> Assign to Data Entry
                 </button>
             </div>
         </form>

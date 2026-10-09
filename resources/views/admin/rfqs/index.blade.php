@@ -75,6 +75,11 @@
 @section('title', $lensRole ? $pageTitle.' · '.$lensRole : $pageTitle)
 
 @section('content')
+    {{-- Data Entry's countdown to Senior Operations hearing they haven't started. --}}
+    @if ($myDataEntryIdle)
+        @include('admin.rfqs._data_entry_idle_banner', ['idle' => $myDataEntryIdle])
+    @endif
+
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <form method="GET" class="d-flex gap-2">
@@ -119,6 +124,8 @@
                             <th>WC Number</th>
                             <th>RFQ Number</th>
                             <th>Subject</th>
+                            <th>Priority</th>
+                            <th>Time Left</th>
                             <th>Sourcing</th>
                             <th>Assigned At</th>
                             <th>Completed At</th>
@@ -134,7 +141,14 @@
                                      out of it) — handled in admin.js rather than
                                      data-bs-toggle directly on the row, so the nested Mark
                                      Complete button still works on its own. --}}
-                                <tr class="js-de-sourcing-row" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
+                                {{-- A started part is running: the row glows, shifting colour,
+                                     and counts down its priority's target — both paused
+                                     outside working hours (admin.js). --}}
+                                @php
+                                    $deCountdown = $rfq->dataEntryCountdown($assignee->pivot->part_number);
+                                    $isOffHours = ! \App\Models\Setting::isWorkingTime(now());
+                                @endphp
+                                <tr @class(['js-de-sourcing-row', 'rfq-running js-running-row' => $deCountdown, 'is-paused' => $deCountdown && $isOffHours]) data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
                                     <td>
@@ -147,6 +161,27 @@
                                                 Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
                                             </div>
                                         @endif
+                                        @if ($assignee->pivot->hasDataEntryStarted())
+                                            <div class="rfq-list-subnote">
+                                                @if ($deCountdown)
+                                                    <span class="running-pill">
+                                                        <span class="running-dot"></span>
+                                                        <span class="running-pill-label">{{ $isOffHours ? 'Paused' : 'Running' }}</span>
+                                                    </span>
+                                                @else
+                                                    <i class="bi bi-play-circle"></i>
+                                                @endif
+                                                Started {{ $assignee->pivot->data_entry_started_at->format('M d, g:i A') }}{{ $assignee->pivot->dataEntryStartedBy ? ' by '.$assignee->pivot->dataEntryStartedBy->name : '' }}
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td class="text-nowrap">
+                                        @if ($deCountdown)
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize'])
+                                        @else
+                                            <span class="text-muted-soft small" title="Counts down from Start">Not started</span>
+                                        @endif
                                     </td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">{{ $assignee->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
@@ -156,17 +191,26 @@
                                              RfqController::completeDataEntry() and returnSourcing(),
                                              which never touch any other part on the same RFQ. Each
                                              asks for a comment first. --}}
+                                        {{-- Send to Finalize once they've started on it; Start
+                                             till then (only in working hours). --}}
                                         <div class="d-inline-flex gap-2">
-                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry_to_ops', 'who' => $assignee->name])
+                                            {{-- Sent back by a reviewer further on: straight back to them. --}}
+                                            @if ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number))
+                                                @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
+                                            @endif
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'return', 'who' => $assignee->name])
-                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
+                                            @if ($assignee->pivot->hasDataEntryStarted())
+                                                @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
+                                            @else
+                                                @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
                             @endforeach
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center text-muted-soft py-4">
+                                <td colspan="9" class="text-center text-muted-soft py-4">
                                     Nothing's been completed by Sourcing yet.
                                 </td>
                             </tr>
@@ -174,6 +218,11 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- What the countdowns above tick against — see admin.js. --}}
+            @if ($countdownSchedule)
+                <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
+            @endif
 
             @if ($bySourcingRfqs->hasPages())
                 <div class="card-footer bg-white">
@@ -231,6 +280,10 @@
                                         </a>
                                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => 'returns'])
                                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => 'returns'])
+                                        {{-- Sent back by a reviewer further on: straight back to them. --}}
+                                        @if ($forwardBack = $rfq->openReturnFor($myAssignment->pivot->part_number))
+                                            @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $myAssignment->pivot->part_number])
+                                        @endif
                                     </td>
                                 </tr>
                             @endforeach
@@ -429,6 +482,9 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
+                                        @if ($scopedToHeadOfBdReturns && ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number)))
+                                            @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
+                                        @endif
                                         {{-- Only this one part — see
                                              RfqController::approveHeadOfBdPart() and rejectHeadOfBd(). --}}
                                         <form action="{{ route('admin.rfqs.approve-head-of-bd-part', $rfq) }}" method="POST" class="d-inline"
@@ -515,9 +571,8 @@
         @elseif ($scopedToGmAssistant || $scopedToGmAssistantReturns)
             {{-- GM Assistant's queue — one row per part Head of Business
                  Development has approved, each as it comes rather than once the
-                 whole RFQ has been, waiting on client details and payment terms
-                 before going on to the General Manager. The details belong to
-                 the RFQ, so the form comes with what's already been given. The
+                 whole RFQ has been, waiting on their Submit before going on to
+                 the General Manager. The
                  RFQ goes on to the General Manager once every part has been
                  through. An RFQ kept whole is one row. See
                  RfqController::index() ($scopedToGmAssistant),
@@ -571,16 +626,7 @@
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part — see RfqController::submitGmAssistantDetails(). --}}
-                                        <button type="button" class="btn btn-sm btn-primary js-gm-assistant-rfq"
-                                                data-bs-toggle="modal" data-bs-target="#gmAssistantModal"
-                                                data-action="{{ route('admin.rfqs.gm-assistant-details', $rfq) }}"
-                                                data-rfq-id="{{ $rfq->id }}"
-                                                data-part="{{ $assignee->pivot->part_number }}"
-                                                data-label="{{ $partLabel }}"
-                                                data-client-details="{{ $rfq->client_details }}"
-                                                data-payment-terms="{{ $rfq->payment_terms }}">
-                                            <i class="bi bi-pencil-square"></i> Add Details
-                                        </button>
+                                        @include('admin.rfqs._gm_assistant_submit', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route($rejectRouteName, $rfq) }}"
@@ -620,14 +666,7 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <button type="button" class="btn btn-sm btn-primary js-gm-assistant-rfq"
-                                                data-bs-toggle="modal" data-bs-target="#gmAssistantModal"
-                                                data-action="{{ route('admin.rfqs.gm-assistant-details', $rfq) }}"
-                                                data-rfq-id="{{ $rfq->id }}"
-                                                data-client-details="{{ $rfq->client_details }}"
-                                                data-payment-terms="{{ $rfq->payment_terms }}">
-                                            <i class="bi bi-pencil-square"></i> Add Details
-                                        </button>
+                                        @include('admin.rfqs._gm_assistant_submit', ['rfq' => $rfq, 'part' => null])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route($rejectRouteName, $rfq) }}"
@@ -653,7 +692,7 @@
             </div>
         @elseif ($scopedToGmReview)
             {{-- General Manager's final approval queue — one row per part GM
-                 Assistant has finished adding client details/payment terms to,
+                 Assistant has submitted,
                  each as it comes rather than once the whole RFQ has been.
                  Approving a part is on its own; the RFQ is ready for Business
                  Development to close once every part has been approved.
@@ -670,7 +709,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sourcing</th>
-                            <th>Details Added</th>
+                            <th>Submitted</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -812,6 +851,9 @@
                                         <i class="bi bi-arrow-counterclockwise"></i>
                                         Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
                                     </div>
+                                    @if ($rfq->latestRejection)
+                                        @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
+                                    @endif
                                 </td>
                                 <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                 <td>
@@ -822,6 +864,10 @@
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                         <i class="bi bi-eye"></i>
                                     </a>
+                                    {{-- Straight back to the reviewer who sent it, skipping the steps between. --}}
+                                    @foreach ($rfq->openReturnsTo($rfq->reject_target_stage ?? '') as $returnsFrom)
+                                        @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => $returnsFrom, 'part' => null])
+                                    @endforeach
                                     @can('rfqs.edit')
                                         @if ($backToAssignment)
                                             {{-- Each freed part straight back to whoever had it — see
@@ -901,6 +947,9 @@
                                         <i class="bi bi-arrow-counterclockwise"></i>
                                         Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
                                     </div>
+                                    @if ($rfq->latestRejection)
+                                        @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
+                                    @endif
                                 </td>
                                 <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                 <td class="text-muted-soft">{{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}</td>
@@ -908,8 +957,14 @@
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                         <i class="bi bi-eye"></i>
                                     </a>
+                                    {{-- Straight back to the reviewer who sent it, skipping the steps between. --}}
+                                    @php $bdForwardBack = $rfq->openReturnsTo('business_development'); @endphp
+                                    @foreach ($bdForwardBack as $returnsFrom)
+                                        @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => $returnsFrom, 'part' => null])
+                                    @endforeach
                                     @can('rfqs.edit')
                                         <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
+                                                @if ($bdForwardBack->count() === 1) data-forward-back="{{ \App\Models\Rfq::stageLabel($bdForwardBack->keys()->first()) }}" @endif
                                                 data-bs-toggle="modal" data-bs-target="#editRfqModal"
                                                 data-action="{{ route('admin.rfqs.update', $rfq) }}"
                                                 data-id="{{ $rfq->id }}"
@@ -1108,13 +1163,7 @@
                                              outside working hours. --}}
                                         @php $countdown = $iHaveCompletedMyPart ? null : $rfq->sourcingCountdown($myPart); @endphp
                                         @if ($countdown)
-                                            @php $isPaused = ! \App\Models\Setting::isWorkingTime(now()); @endphp
-                                            <span class="badge sourcing-countdown {{ \App\Models\Setting::countdownBadgeClass($countdown['remaining'], $countdown['target']) }} @if ($isPaused) is-paused @endif"
-                                                  data-countdown data-remaining="{{ $countdown['remaining'] }}" data-target="{{ $countdown['target'] }}"
-                                                  title="{{ $isPaused ? 'Paused — outside working hours' : 'Working time left to mark it complete' }}">
-                                                <i class="bi {{ $isPaused ? 'bi-pause-circle' : 'bi-stopwatch' }}"></i>
-                                                <span class="sourcing-countdown-label">{{ \App\Models\Setting::countdownLabel($countdown['remaining']) }}</span>
-                                            </span>
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => 'Working time left to mark it complete'])
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif
@@ -1370,7 +1419,7 @@
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
     @endif
     @if ($scopedToGmAssistant || $scopedToGmAssistantReturns)
-        @include('admin.rfqs._gm_assistant_modal')
+        @include('admin.rfqs._gm_assistant_submit_modal')
     @endif
     @if ($scopedToBdClosing)
         @include('admin.rfqs._close_modal')
@@ -1411,22 +1460,6 @@
                     var form = document.getElementById('rejectRfqForm');
                     if (modalEl && form) {
                         form.action = @json(route($rejectRouteName, ['rfq' => old('reject_rfq_id')]));
-                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                    }
-                });
-            </script>
-        @endpush
-    @endif
-
-    {{-- Same idea, for a failed GM Assistant details submission. --}}
-    @if ($errors->gm_assistant->any() && old('gm_assistant_rfq_id'))
-        @push('scripts')
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    var modalEl = document.getElementById('gmAssistantModal');
-                    var form = document.getElementById('gmAssistantForm');
-                    if (modalEl && form) {
-                        form.action = @json(route('admin.rfqs.gm-assistant-details', ['rfq' => old('gm_assistant_rfq_id')]));
                         bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     }
                 });

@@ -4,6 +4,7 @@ use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -63,7 +64,7 @@ function actingRfqAt(string $stage, array $people): Rfq
             $rfq->refresh()->approveHeadOfBdPart($part, $people['head']);
         }
         if ($level >= 4) {
-            $rfq->refresh()->recordGmAssistantPart($part, $people['assistant'], 'Acme Ltd', null);
+            $rfq->refresh()->recordGmAssistantPart($part, $people['assistant']);
         }
         if ($level >= 5) {
             $rfq->refresh()->approveGmPart($part, $people['gm']);
@@ -110,6 +111,7 @@ it('records the Sourcing assignment, and its category, as Senior Operations\' wh
 it('records Data Entry\'s completion and its return as the Data Entry person Admin picks', function () {
     $people = actingPeople();
     $rfq = actingRfqAt('sourcing_done', $people);
+    startDataEntryOn($rfq, 1, $people['dataEntry']);
 
     test()->actingAs($people['admin'])
         ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Entered', 'acting_user_id' => $people['dataEntry']->id])
@@ -155,12 +157,18 @@ it('records the whole-RFQ approval and close as the person Admin picks too', fun
     expect($rfq->refresh()->bd_closed_by)->toBe($people['bd']->id);
 });
 
-it('records GM Assistant\'s details as the GM Assistant person Admin picks', function () {
+it('records GM Assistant\'s Submit as the GM Assistant person Admin picks', function () {
     $people = actingPeople();
     $rfq = actingRfqAt('head_approved', $people);
 
+    // The picker is in the Submit prompt.
+    expect(Str::betweenFirst(
+        test()->actingAs($people['admin'])->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'gm-assistant']))->assertOk()->getContent(),
+        'id="gmAssistantSubmitForm"', '</form>'
+    ))->toContain('id="gm-assistant-acting-as"')->toContain('Submitted by');
+
     test()->actingAs($people['admin'])
-        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'client_details' => 'Acme Ltd', 'acting_user_id' => $people['assistant']->id])
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'acting_user_id' => $people['assistant']->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_by)->toBe($people['assistant']->id);
@@ -267,7 +275,7 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
     'Ready to Close' => [['role' => 'business-development', 'view' => 'closing'], 'gm_approved', 'Business Development', 'bd', 'id="close-acting-as"'],
 ]);
 
-it('puts the picker in each stage\'s modal too — rejecting, GM Assistant\'s details, assigning, Data Entry\'s prompt', function () {
+it('puts the picker in each stage\'s modal too — rejecting, assigning, Data Entry\'s prompt', function () {
     $people = actingPeople();
     actingRfqAt('sourcing_done', $people);
     $admin = fn (array $query) => test()->actingAs($people['admin'])->get(route('admin.rfqs.index', ['status' => 'Pending'] + $query))->assertOk()->getContent();
@@ -275,9 +283,6 @@ it('puts the picker in each stage\'s modal too — rejecting, GM Assistant\'s de
     // Rejecting, from wherever the Head or the General Manager is.
     expect($admin(['role' => 'head-of-business-development']))->toContain('id="reject-acting-as"')->toContain('Rejected by');
     expect($admin(['role' => 'general-manager']))->toContain('id="reject-acting-as"');
-
-    // GM Assistant's client details.
-    expect($admin(['role' => 'gm-assistant']))->toContain('id="gm-assistant-acting-as"')->toContain('Added by');
 
     // The Assign Sourcing wizard's review step.
     expect($admin(['role' => 'senior-operations']))->toContain('id="assign-acting-as"')->toContain('Assigned by');
