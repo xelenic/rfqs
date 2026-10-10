@@ -84,36 +84,56 @@
                         </div>
                     </div>
 
-                    <form method="POST" action="{{ route('admin.settings.profile') }}" novalidate>
-                        @csrf
-                        @method('PATCH')
+                    {{-- Only those who keep people's details change their own
+                         (User::USER_DETAILS_ROLES); everyone else sees theirs. --}}
+                    @if ($user->canChangeUserDetails())
+                        <form method="POST" action="{{ route('admin.settings.profile') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
 
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label for="settings-name" class="form-label">Full name</label>
+                                    <input type="text" name="name" id="settings-name" class="form-control @error('name', 'profile') is-invalid @enderror"
+                                           value="{{ old('name', $user->name) }}" maxlength="255" required autocomplete="name">
+                                    @error('name', 'profile')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="settings-email" class="form-label">Email address</label>
+                                    <input type="email" name="email" id="settings-email" class="form-control @error('email', 'profile') is-invalid @enderror"
+                                           value="{{ old('email', $user->email) }}" maxlength="255" required autocomplete="email">
+                                    @error('email', 'profile')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <p class="text-muted-soft small mt-3 mb-0">Your role is set by an Admin.</p>
+
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save profile</button>
+                            </div>
+                        </form>
+                    @else
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label for="settings-name" class="form-label">Full name</label>
-                                <input type="text" name="name" id="settings-name" class="form-control @error('name', 'profile') is-invalid @enderror"
-                                       value="{{ old('name', $user->name) }}" maxlength="255" required autocomplete="name">
-                                @error('name', 'profile')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                <input type="text" id="settings-name" class="form-control" value="{{ $user->name }}" readonly>
                             </div>
 
                             <div class="col-md-6">
                                 <label for="settings-email" class="form-label">Email address</label>
-                                <input type="email" name="email" id="settings-email" class="form-control @error('email', 'profile') is-invalid @enderror"
-                                       value="{{ old('email', $user->email) }}" maxlength="255" required autocomplete="email">
-                                @error('email', 'profile')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                <input type="email" id="settings-email" class="form-control" value="{{ $user->email }}" readonly>
                             </div>
                         </div>
 
-                        <p class="text-muted-soft small mt-3 mb-0">Your role is set by an Admin.</p>
-
-                        <div class="mt-3">
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save profile</button>
-                        </div>
-                    </form>
+                        <p class="text-muted-soft small mt-3 mb-0">
+                            <i class="bi bi-lock"></i> Your name, email and role are kept by an Admin or HR Manager — ask them to change anything here. Your password is yours to change, on the Password tab.
+                        </p>
+                    @endif
                 </div>
             </div>
         </div>

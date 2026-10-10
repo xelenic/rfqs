@@ -115,8 +115,8 @@ function rfqmsBoot() {
             form.querySelector('[name="user_id"]').value = button.dataset.id || '';
             form.querySelector('#edit-name').value = button.dataset.name || '';
             form.querySelector('#edit-email').value = button.dataset.email || '';
-            form.querySelector('#edit-password').value = '';
-            form.querySelector('#edit-password_confirmation').value = '';
+            // Only an Admin's form has a password (see users/_form.blade.php).
+            form.querySelectorAll('#edit-password, #edit-password_confirmation').forEach(function (field) { field.value = ''; });
 
             var roles = (button.dataset.roles || '').split(',').filter(Boolean);
             form.querySelectorAll('input[name="roles[]"]').forEach(function (checkbox) {
@@ -1276,6 +1276,24 @@ function rfqmsBoot() {
         var activeTab = document.querySelector('[data-ops-tab].active');
         if (activeTab) tabInput.value = activeTab.dataset.opsTab;
     })();
+
+    // Data Entry's Ready and Completed tabs: the one open is kept in the
+    // address (?tab=completed), so a reload, a live update or coming back
+    // after an action opens it again.
+    document.querySelectorAll('[data-de-tab]').forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function () {
+            var url = new URL(window.location.href);
+            if (tab.dataset.deTab === 'completed') {
+                url.searchParams.set('tab', 'completed');
+            } else {
+                url.searchParams.delete('tab');
+            }
+            window.history.replaceState(null, '', url);
+
+            var searchTab = document.getElementById('deTabInput');
+            if (searchTab) searchTab.disabled = tab.dataset.deTab !== 'completed';
+        });
+    });
 
     // Populate the shared "Assign Operations" modal from the clicked row's data-* attributes.
     document.querySelectorAll('.js-assign-operations-rfq').forEach(function (button) {

@@ -23,6 +23,7 @@
     @stack('styles')
 </head>
 <body>
+    @include('layouts._preloader')
     <div class="app-shell">
         <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 

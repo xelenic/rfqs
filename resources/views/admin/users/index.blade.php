@@ -42,8 +42,10 @@
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->format('M d, Y') }}</td>
                             <td class="text-end">
+                                {{-- Only an Admin touches an Admin's account (UserController). --}}
+                                @php $canManage = auth()->user()->hasRole('Admin') || ! $user->hasRole('Admin'); @endphp
                                 {{-- A fresh set-password email — for a link that expired or went astray. --}}
-                                @can('users.create')
+                                @if ($canManage && auth()->user()->can('users.create'))
                                     <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
                                           data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
                                         @csrf
@@ -51,8 +53,8 @@
                                             <i class="bi bi-envelope"></i>
                                         </button>
                                     </form>
-                                @endcan
-                                @can('users.edit')
+                                @endif
+                                @if ($canManage && auth()->user()->can('users.edit'))
                                     <button type="button" class="btn btn-sm btn-outline-secondary js-edit-user"
                                             data-bs-toggle="modal" data-bs-target="#editUserModal"
                                             data-action="{{ route('admin.users.update', $user) }}"
@@ -62,7 +64,7 @@
                                             data-roles="{{ $user->roles->pluck('name')->join(',') }}">
                                         <i class="bi bi-pencil"></i>
                                     </button>
-                                @endcan
+                                @endif
                                 @can('users.delete')
                                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST" class="d-inline" data-confirm="Delete this user?">
                                         @csrf

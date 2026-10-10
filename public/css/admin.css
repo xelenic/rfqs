@@ -3837,6 +3837,55 @@ h6, .h6 { font-size: 0.85rem; }
   }
 }
 
+/* ---------- Page preloader ----------
+   public/preloader.gif over everything while a page loads
+   (layouts/_preloader). In the light theme the backdrop is the GIF's own
+   near-white, so it sits seamlessly; in the dark theme the GIF is a lit
+   panel on the dark page. Above modals and tooltips. */
+.app-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #f5f6f8;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.app-preloader.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.app-preloader-img {
+  width: min(480px, 86vw);
+  height: auto;
+  /* The GIF's own backdrop isn't flat: fade its edges out, the logo in the
+     middle untouched, so no rectangle shows. */
+  -webkit-mask-image: radial-gradient(ellipse closest-side, #000 70%, transparent 100%);
+  mask-image: radial-gradient(ellipse closest-side, #000 70%, transparent 100%);
+}
+
+[data-theme="dark"] .app-preloader {
+  background: var(--rfq-bg);
+}
+
+[data-theme="dark"] .app-preloader-img {
+  -webkit-mask-image: none;
+  mask-image: none;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-preloader {
+    transition: none;
+  }
+}
+
 /* ---------- Add user: how they'll sign in ---------- */
 .sign-in-option {
   display: flex;

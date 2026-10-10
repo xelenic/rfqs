@@ -49,9 +49,15 @@ class SettingsController extends Controller
         ]);
     }
 
+    /**
+     * Your own name and email — only for those who keep people's details
+     * (User::USER_DETAILS_ROLES); everyone else's are kept for them.
+     */
     public function updateProfile(Request $request): RedirectResponse
     {
         $user = $request->user();
+
+        abort_unless($user->canChangeUserDetails(), 403, 'Only an Admin or HR Manager can change your name or email.');
 
         $validated = $request->validateWithBag('profile', [
             'name' => ['required', 'string', 'max:255'],

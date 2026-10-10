@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -20,7 +21,7 @@ beforeEach(function () {
     }
 
     Role::findOrCreate('Admin')->givePermissionTo(Permission::all());
-    Role::findOrCreate('HR Manager')->givePermissionTo(['users.view', 'users.create']);
+    Role::findOrCreate('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
     Role::findOrCreate('Data Entry');
 });
 
@@ -103,16 +104,46 @@ it('never lets anyone but an Admin make an Admin', function () {
     expect(User::query()->where('email', 'morgan@company.lk')->sole()->hasRole('Admin'))->toBeTrue();
 });
 
-it('keeps adding people to those allowed to', function () {
+it('keeps people\'s details to Admin and HR Manager', function () {
     $dataEntry = personAs('Data Entry', 'Sam');
 
     test()->actingAs($dataEntry)->get(route('admin.users.index'))->assertForbidden();
     addMorgan($dataEntry)->assertForbidden();
+    test()->actingAs($dataEntry)->put(route('admin.users.update', $dataEntry), ['name' => 'X', 'email' => 'x@y.lk'])->assertForbidden();
 
-    // HR Manager adds — editing and deleting stay Admin's.
+    // HR Manager changes someone's details — deleting stays Admin's.
     $alex = personAs('HR Manager', 'Alex Silva');
+    test()->actingAs($alex)->put(route('admin.users.update', $dataEntry), ['name' => 'Sam Fernando', 'email' => 'sam@company.lk', 'roles' => ['Data Entry']])
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('status', 'User updated successfully.');
+    expect($dataEntry->refresh())->name->toBe('Sam Fernando')->email->toBe('sam@company.lk');
+
     test()->actingAs($alex)->delete(route('admin.users.destroy', $dataEntry))->assertForbidden();
-    test()->actingAs($alex)->put(route('admin.users.update', $dataEntry), ['name' => 'X', 'email' => 'x@y.lk'])->assertForbidden();
+});
+
+it('never lets HR Manager touch an Admin\'s account, or set a password', function () {
+    Notification::fake();
+    $alex = personAs('HR Manager', 'Alex Silva');
+    $root = personAs('Admin', 'Root');
+    $sam = personAs('Data Entry', 'Sam');
+
+    $row = Str::betweenFirst(test()->actingAs($alex)->get(route('admin.users.index'))->getContent(), '<td>'.$root->email.'</td>', '</tr>');
+    expect($row)->not->toContain('js-edit-user')->not->toContain('password-link');
+
+    test()->actingAs($alex)->put(route('admin.users.update', $root), ['name' => 'Root', 'email' => 'alex@company.lk'])->assertForbidden();
+    test()->actingAs($alex)->post(route('admin.users.password-link', $root))->assertForbidden();
+    expect($root->refresh()->email)->not->toBe('alex@company.lk');
+    Notification::assertNothingSent();
+
+    // No password field for them; one sent anyway is refused.
+    expect(test()->actingAs($alex)->get(route('admin.users.index'))->getContent())->not->toContain('id="edit-password"');
+    test()->actingAs($alex)->put(route('admin.users.update', $sam), ['name' => 'Sam', 'email' => $sam->email, 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
+        ->assertSessionHasErrorsIn('edit', ['password' => 'Only an Admin can set someone\'s password — send them a link instead.']);
+
+    // An Admin can do all of it.
+    test()->actingAs($root)->put(route('admin.users.update', $sam), ['name' => 'Sam', 'email' => $sam->email, 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
+        ->assertSessionHasNoErrors();
+    expect(Hash::check('quotes-2026', $sam->refresh()->password))->toBeTrue();
 });
 
 it('sets their password from the link, once, and signs them in', function () {

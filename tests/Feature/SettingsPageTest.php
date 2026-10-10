@@ -63,8 +63,8 @@ it('is reached from the sidebar and the account menu, and is not one of the live
 
 // ---- profile ---------------------------------------------------------------
 
-it('changes your name and email', function () {
-    $user = userWithRole('Sourcing');
+it('changes your name and email — for Admin and HR Manager', function (string $role) {
+    $user = userWithRole($role);
 
     test()->actingAs($user)
         ->patch(route('admin.settings.profile'), ['name' => 'Riley Chen', 'email' => 'riley@example.test'])
@@ -72,10 +72,24 @@ it('changes your name and email', function () {
         ->assertSessionHas('status', 'Profile updated.');
 
     expect($user->refresh())->name->toBe('Riley Chen')->email->toBe('riley@example.test');
-});
+})->with(['Admin', 'HR Manager']);
+
+it('keeps everyone else\'s name and email for them — shown, not changed', function (string $role) {
+    $user = userWithRole($role);
+    $before = $user->only(['name', 'email']);
+
+    $profile = Str::betweenFirst(test()->actingAs($user)->get(route('admin.settings.edit'))->assertOk()->getContent(), 'id="settings-pane-profile"', 'id="settings-pane-password"');
+    expect($profile)->not->toContain('action="'.route('admin.settings.profile').'"')
+        ->toContain('value="'.e($user->email).'" readonly')
+        ->toContain('kept by an Admin or HR Manager');
+
+    test()->actingAs($user)->patch(route('admin.settings.profile'), ['name' => 'Riley Chen', 'email' => 'riley@example.test'])->assertForbidden();
+
+    expect($user->refresh()->only(['name', 'email']))->toBe($before);
+})->with(['Sourcing', 'Data Entry', 'Senior Operations', 'General Manager']);
 
 it('lets you keep your own email, but not take somebody else\'s', function () {
-    $user = userWithRole('Sourcing');
+    $user = userWithRole('HR Manager');
     $other = User::factory()->create(['email' => 'taken@example.test']);
 
     test()->actingAs($user)
@@ -90,7 +104,7 @@ it('lets you keep your own email, but not take somebody else\'s', function () {
 });
 
 it('needs a name and a real email', function (array $input, string $field) {
-    test()->actingAs(userWithRole('Sourcing'))
+    test()->actingAs(userWithRole('Admin'))
         ->patch(route('admin.settings.profile'), $input)
         ->assertSessionHasErrorsIn('profile', $field);
 })->with([

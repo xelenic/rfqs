@@ -26,13 +26,13 @@ function hrManager(): User
     return User::factory()->create()->assignRole('HR Manager');
 }
 
-it('seeds HR Manager with a description, adding people, and no RFQ permissions', function () {
+it('seeds HR Manager with a description, adding and keeping people, and no RFQ permissions', function () {
     test()->seed([RolePermissionSeeder::class, BusinessRoleSeeder::class]);
 
     $role = Role::findByName('HR Manager');
 
     expect($role->description)->toContain('attendance sheet')
-        ->and($role->permissions->pluck('name')->sort()->values()->all())->toBe(['users.create', 'users.view']);
+        ->and($role->permissions->pluck('name')->sort()->values()->all())->toBe(['users.create', 'users.edit', 'users.view']);
 });
 
 it('lets HR Manager review the attendance sheets, but not fill them in', function () {

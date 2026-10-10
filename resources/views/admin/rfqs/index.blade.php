@@ -97,6 +97,10 @@
                 @if ($opsFilters)
                     @include('admin.rfqs._ops_filters_carry')
                 @endif
+                {{-- Data Entry's tab, kept up by admin.js as it changes. --}}
+                @if ($scopedToDataEntry)
+                    <input type="hidden" name="tab" id="deTabInput" value="completed" @disabled($dataEntryTab !== 'completed')>
+                @endif
                 <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search WC number, RFQ number, subject..." style="min-width:260px;">
                 <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
             </form>
@@ -117,118 +121,201 @@
                  completed part, shown as soon as *they* mark it done, each
                  by each, rather than waiting for every assignee on a split
                  RFQ to finish. See RfqController::index() ($bySourcingRfqs). --}}
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>WC Number</th>
-                            <th>RFQ Number</th>
-                            <th>Subject</th>
-                            <th>Priority</th>
-                            <th>Time Left</th>
-                            <th>Sourcing</th>
-                            <th>Assigned At</th>
-                            <th>Completed At</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($bySourcingRfqs as $rfq)
-                            @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
-                                {{-- Clicking the row opens a quick-detail modal scoped to
-                                     this one assignee (subject, description, their own
-                                     comments only — other split sourcers' comments stay
-                                     out of it) — handled in admin.js rather than
-                                     data-bs-toggle directly on the row, so the nested Mark
-                                     Complete button still works on its own. --}}
-                                {{-- A started part is running: the row glows, shifting colour,
-                                     and counts down its priority's target — both paused
-                                     outside working hours (admin.js). --}}
-                                @php
-                                    $deCountdown = $rfq->dataEntryCountdown($assignee->pivot->part_number);
-                                    $isOffHours = ! \App\Models\Setting::isWorkingTime(now());
-                                @endphp
-                                <tr @class(['js-de-sourcing-row', 'rfq-running js-running-row' => $deCountdown, 'is-paused' => $deCountdown && $isOffHours]) data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
-                                    <td class="fw-semibold">{{ $rfq->wc_number }}</td>
-                                    <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
-                                    <td>
-                                        {{ $rfq->subject }}
-                                        {{-- Its Sourcing member sent it back instead of finalizing it
-                                             (Rfq::returnToDataEntry()). --}}
-                                        @if ($assignee->pivot->data_entry_returned_at)
-                                            <div class="rfq-list-subnote rfq-list-subnote-returned">
-                                                <i class="bi bi-arrow-counterclockwise"></i>
-                                                Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
-                                            </div>
-                                        @endif
-                                        @if ($assignee->pivot->hasDataEntryStarted())
-                                            <div class="rfq-list-subnote">
-                                                @if ($deCountdown)
-                                                    <span class="running-pill">
-                                                        <span class="running-dot"></span>
-                                                        <span class="running-pill-label">{{ $isOffHours ? 'Paused' : 'Running' }}</span>
-                                                    </span>
-                                                @else
-                                                    <i class="bi bi-play-circle"></i>
-                                                @endif
-                                                Started {{ $assignee->pivot->data_entry_started_at->format('M d, g:i A') }}{{ $assignee->pivot->dataEntryStartedBy ? ' by '.$assignee->pivot->dataEntryStartedBy->name : '' }}
-                                            </div>
-                                        @endif
-                                    </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
-                                    <td class="text-nowrap">
-                                        @if ($deCountdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize'])
-                                        @else
-                                            <span class="text-muted-soft small" title="Counts down from Start">Not started</span>
-                                        @endif
-                                    </td>
-                                    <td>{{ $assignee->name }}</td>
-                                    <td class="text-muted-soft">{{ $assignee->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
-                                    <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
-                                    <td class="text-end text-nowrap">
-                                        {{-- Only this one part — see
-                                             RfqController::completeDataEntry() and returnSourcing(),
-                                             which never touch any other part on the same RFQ. Each
-                                             asks for a comment first. --}}
-                                        {{-- Send to Finalize once they've started on it; Start
-                                             till then (only in working hours). --}}
-                                        <div class="d-inline-flex gap-2">
-                                            {{-- Sent back by a reviewer further on: straight back to them. --}}
-                                            @if ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number))
-                                                @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
-                                            @endif
-                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'return', 'who' => $assignee->name])
-                                            @if ($assignee->pivot->hasDataEntryStarted())
-                                                @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
-                                            @else
-                                                @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
-                                            @endif
-                                        </div>
-                                    </td>
+            {{-- Two tabs, like Senior Operations' Unassigned and Assigned:
+                 Ready — the queue — and Completed: what they've sent to
+                 finalize, following it on from there. Each counts its parts,
+                 and the tab is kept in the address (?tab=). See
+                 RfqController::index() ($dataEntryTab). --}}
+            @php $deOnCompleted = $dataEntryTab === 'completed'; @endphp
+            <ul class="nav nav-pills rfq-view-toggle m-3 mb-0" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {{ $deOnCompleted ? '' : 'active' }}" data-bs-toggle="pill" data-bs-target="#rfq-de-ready" data-de-tab="ready" type="button" role="tab" aria-selected="{{ $deOnCompleted ? 'false' : 'true' }}">
+                        <i class="bi bi-inbox"></i> Ready <span class="rfq-tab-count">{{ $dataEntryCounts['ready'] }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {{ $deOnCompleted ? 'active' : '' }}" data-bs-toggle="pill" data-bs-target="#rfq-de-completed" data-de-tab="completed" type="button" role="tab" aria-selected="{{ $deOnCompleted ? 'true' : 'false' }}">
+                        <i class="bi bi-check2-all"></i> Completed <span class="rfq-tab-count">{{ $dataEntryCounts['completed'] }}</span>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane fade {{ $deOnCompleted ? '' : 'show active' }}" id="rfq-de-ready" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>WC Number</th>
+                                    <th>RFQ Number</th>
+                                    <th>Subject</th>
+                                    <th>Priority</th>
+                                    <th>Time Left</th>
+                                    <th>Sourcing</th>
+                                    <th>Assigned At</th>
+                                    <th>Completed At</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
-                            @endforeach
-                        @empty
-                            <tr>
-                                <td colspan="9" class="text-center text-muted-soft py-4">
-                                    Nothing's been completed by Sourcing yet.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                            </thead>
+                            <tbody>
+                                @forelse ($bySourcingRfqs as $rfq)
+                                    @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
+                                        {{-- Clicking the row opens a quick-detail modal scoped to
+                                             this one assignee (subject, description, their own
+                                             comments only — other split sourcers' comments stay
+                                             out of it) — handled in admin.js rather than
+                                             data-bs-toggle directly on the row, so the nested Mark
+                                             Complete button still works on its own. --}}
+                                        {{-- A started part is running: the row glows, shifting colour,
+                                             and counts down its priority's target — both paused
+                                             outside working hours (admin.js). --}}
+                                        @php
+                                            $deCountdown = $rfq->dataEntryCountdown($assignee->pivot->part_number);
+                                            $isOffHours = ! \App\Models\Setting::isWorkingTime(now());
+                                        @endphp
+                                        <tr @class(['js-de-sourcing-row', 'rfq-running js-running-row' => $deCountdown, 'is-paused' => $deCountdown && $isOffHours]) data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
+                                            <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                            <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
+                                            <td>
+                                                {{ $rfq->subject }}
+                                                {{-- Its Sourcing member sent it back instead of finalizing it
+                                                     (Rfq::returnToDataEntry()). --}}
+                                                @if ($assignee->pivot->data_entry_returned_at)
+                                                    <div class="rfq-list-subnote rfq-list-subnote-returned">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                        Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
+                                                    </div>
+                                                @endif
+                                                @if ($assignee->pivot->hasDataEntryStarted())
+                                                    <div class="rfq-list-subnote">
+                                                        @if ($deCountdown)
+                                                            <span class="running-pill">
+                                                                <span class="running-dot"></span>
+                                                                <span class="running-pill-label">{{ $isOffHours ? 'Paused' : 'Running' }}</span>
+                                                            </span>
+                                                        @else
+                                                            <i class="bi bi-play-circle"></i>
+                                                        @endif
+                                                        Started {{ $assignee->pivot->data_entry_started_at->format('M d, g:i A') }}{{ $assignee->pivot->dataEntryStartedBy ? ' by '.$assignee->pivot->dataEntryStartedBy->name : '' }}
+                                                    </div>
+                                                @endif
+                                            </td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td class="text-nowrap">
+                                                @if ($deCountdown)
+                                                    @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize'])
+                                                @else
+                                                    <span class="text-muted-soft small" title="Counts down from Start">Not started</span>
+                                                @endif
+                                            </td>
+                                            <td>{{ $assignee->name }}</td>
+                                            <td class="text-muted-soft">{{ $assignee->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                            <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
+                                            <td class="text-end text-nowrap">
+                                                {{-- Only this one part — see
+                                                     RfqController::completeDataEntry() and returnSourcing(),
+                                                     which never touch any other part on the same RFQ. Each
+                                                     asks for a comment first. --}}
+                                                {{-- Send to Finalize once they've started on it; Start
+                                                     till then (only in working hours). --}}
+                                                <div class="d-inline-flex gap-2">
+                                                    {{-- Sent back by a reviewer further on: straight back to them. --}}
+                                                    @if ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number))
+                                                        @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
+                                                    @endif
+                                                    @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'return', 'who' => $assignee->name])
+                                                    @if ($assignee->pivot->hasDataEntryStarted())
+                                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
+                                                    @else
+                                                        @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
+                                                    @endif
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted-soft py-4">
+                                            Nothing's been completed by Sourcing yet.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
 
-            {{-- What the countdowns above tick against — see admin.js. --}}
-            @if ($countdownSchedule)
-                <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
-            @endif
+                    {{-- What the countdowns above tick against — see admin.js. --}}
+                    @if ($countdownSchedule)
+                        <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
+                    @endif
 
-            @if ($bySourcingRfqs->hasPages())
-                <div class="card-footer bg-white">
-                    {{ $bySourcingRfqs->links() }}
+                    @if ($bySourcingRfqs->hasPages())
+                        <div class="card-footer bg-white">
+                            {{ $bySourcingRfqs->links() }}
+                        </div>
+                    @endif
                 </div>
-            @endif
+
+                {{-- What they've sent to finalize — one row a part, latest first,
+                     with where it's got to since (RfqAssignment::whereNow()). --}}
+                <div class="tab-pane fade {{ $deOnCompleted ? 'show active' : '' }}" id="rfq-de-completed" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>WC Number</th>
+                                    <th>RFQ Number</th>
+                                    <th>Subject</th>
+                                    <th>Priority</th>
+                                    <th>Sourcing</th>
+                                    @if ($dataEntryCompletedBy === null)
+                                        <th>Data Entry</th>
+                                    @endif
+                                    <th>Sent to Finalize</th>
+                                    <th>Where it is now</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($dataEntryCompletedRfqs as $rfq)
+                                    @foreach ($rfq->assignees->whereNotNull('pivot.data_entry_completed_at')->when($dataEntryCompletedBy, fn ($parts) => $parts->where('pivot.data_entry_completed_by', $dataEntryCompletedBy))->sortByDesc('pivot.data_entry_completed_at') as $assignee)
+                                        @php [$nowLabel, $nowClass] = $rfq->isStopped() ? [$rfq->status, 'badge-soft-secondary'] : $assignee->pivot->whereNow(); @endphp
+                                        <tr>
+                                            <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                            <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
+                                            <td>{{ $rfq->subject }}</td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td>{{ $assignee->name }}</td>
+                                            @if ($dataEntryCompletedBy === null)
+                                                <td>{{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) ?? '—' }}</td>
+                                            @endif
+                                            <td class="text-muted-soft text-nowrap">{{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</td>
+                                            <td><span class="badge {{ $nowClass }}">{{ $nowLabel }}</span></td>
+                                            <td class="text-end">
+                                                <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="{{ $dataEntryCompletedBy === null ? 9 : 8 }}" class="text-center text-muted-soft py-4">
+                                            {{ $search !== '' ? 'Nothing you\'ve completed matches that search.' : 'Nothing\'s been sent to finalize yet.' }}
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if ($dataEntryCompletedRfqs->hasPages())
+                        <div class="card-footer bg-white">
+                            {{ $dataEntryCompletedRfqs->links() }}
+                        </div>
+                    @endif
+                </div>
+            </div>
 
             @foreach ($bySourcingRfqs as $rfq)
                 @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)

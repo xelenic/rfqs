@@ -4,6 +4,7 @@ use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -270,9 +271,10 @@ it('sends a part back to Data Entry', function () {
         ->and($rfq->stage)->toBeNull()
         ->and($rfq->data_entry_completed_at)->toBeNull();
 
-    test()->actingAs($dataEntry)->get(headReviewUrl())
-        ->assertSee('RFQ1001-P1 of P2')
-        ->assertDontSee('RFQ1001-P2 of P2');
+    // Back on their Ready tab — part 2, still done, stays on their Completed tab.
+    $ready = Str::betweenFirst(test()->actingAs($dataEntry)->get(headReviewUrl())->getContent(), 'id="rfq-de-ready"', 'id="rfq-de-completed"');
+    expect($ready)->toContain('RFQ1001-P1 of P2')
+        ->not->toContain('RFQ1001-P2 of P2');
 });
 
 it('sends a part back to Sourcing', function () {

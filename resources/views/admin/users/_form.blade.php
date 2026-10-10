@@ -28,7 +28,10 @@
         @enderror
     </div>
 
-    @if ($mode === 'edit')
+    @if ($mode === 'edit' && ! auth()->user()->hasRole('Admin'))
+        {{-- Only an Admin sets someone's password; HR Manager sends a link
+             (the envelope on the list). --}}
+    @elseif ($mode === 'edit')
         <div class="col-md-6">
             <label for="{{ $idPrefix }}-password" class="form-label">
                 Password <span class="text-muted-soft fw-normal">(leave blank to keep current)</span>

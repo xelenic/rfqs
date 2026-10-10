@@ -173,6 +173,31 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * Where this part has got to now — the furthest step it's through — for
+     * following it on once it's out of someone's hands (Data Entry's
+     * Completed tab): stopped on its own, closed, waiting on Business
+     * Development to close it, or with whoever's next. As [label, badge
+     * class].
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function whereNow(): array
+    {
+        return match (true) {
+            $this->isCancelled() => ['Cancelled', 'badge-soft-secondary'],
+            $this->isOnHold() => ['On hold', 'badge-soft-info'],
+            $this->bd_closed_at !== null => ['Closed', 'badge-soft-success'],
+            $this->gm_approved_at !== null => ['Ready to close', 'badge-soft-success'],
+            $this->gm_assistant_completed_at !== null => ['With General Manager', 'badge-soft-primary'],
+            $this->head_of_bd_approved_at !== null => ['With GM Assistant', 'badge-soft-primary'],
+            $this->senior_ops_reviewed_at !== null => ['With Head of Business Development', 'badge-soft-primary'],
+            $this->finalized_at !== null => ['With Senior Operations (review)', 'badge-soft-primary'],
+            $this->data_entry_completed_at !== null => ['With Sourcing to finalize', 'badge-soft-info'],
+            default => [$this->progressLabel(), $this->progressBadgeClass()],
+        };
+    }
+
+    /**
      * Whether Senior Operations has approved this part.
      */
     public function isSeniorOpsApproved(): bool

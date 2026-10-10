@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
 </head>
 <body>
+    @include('layouts._preloader')
     <div class="auth-shell">
         <div class="auth-card">
             <div class="text-center mb-4">

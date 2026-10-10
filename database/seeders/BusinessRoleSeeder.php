@@ -53,7 +53,7 @@ class BusinessRoleSeeder extends Seeder
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
             'GM Assistant' => [
-                'description' => 'Adds client details and payment terms before forwarding an approved RFQ to the General Manager for final approval.',
+                'description' => 'Submits an RFQ the Head of Business Development approved on to the General Manager for final approval, with a comment if needed.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
             'General Manager' => [
@@ -62,11 +62,11 @@ class BusinessRoleSeeder extends Seeder
             ],
             // No part in the RFQ workflow: attendance and the Time Spent
             // report go by role (User::TIME_SPENT_REPORT_ROLES), not
-            // permission. They add people — never as Admin (see
-            // Admin\UserController::store()).
+            // permission. They add people and change their details — never
+            // an Admin's, nor as Admin (see Admin\UserController).
             'HR Manager' => [
-                'description' => 'Approves the daily attendance sheet, sees the Time Spent report, and adds new people — who get an email to set their password.',
-                'permissions' => ['users.view', 'users.create'],
+                'description' => 'Approves the daily attendance sheet, sees the Time Spent report, and adds people and keeps their details — new people get an email to set their password.',
+                'permissions' => ['users.view', 'users.create', 'users.edit'],
             ],
         ];
 

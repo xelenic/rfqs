@@ -78,6 +78,15 @@ class User extends Authenticatable
     public const ATTENDANCE_APPROVER_ROLES = ['Admin', 'HR Manager'];
 
     /**
+     * The roles that change people's details — a name, an email — their
+     * own on Settings → Profile, and others' on the Users page (with
+     * users.edit). Everyone else's are kept for them.
+     *
+     * @var array<int, string>
+     */
+    public const USER_DETAILS_ROLES = ['Admin', 'HR Manager'];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -98,6 +107,15 @@ class User extends Authenticatable
     public function preference(string $key): mixed
     {
         return $this->preferences[$key] ?? self::PREFERENCE_DEFAULTS[$key] ?? null;
+    }
+
+    /**
+     * Whether this person changes people's details, their own included —
+     * see USER_DETAILS_ROLES.
+     */
+    public function canChangeUserDetails(): bool
+    {
+        return $this->hasAnyRole(self::USER_DETAILS_ROLES);
     }
 
     /**

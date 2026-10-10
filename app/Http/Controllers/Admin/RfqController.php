@@ -176,7 +176,17 @@ class RfqController extends Controller implements HasMiddleware
 
         $search = $request->string('search')->trim()->toString();
 
-        $applyCommonFilters = function ($query) use ($status, $search) {
+        $applySearch = function ($query) use ($search) {
+            $query->when($search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('wc_number', 'like', "%{$search}%")
+                        ->orWhere('rfq_number', 'like', "%{$search}%")
+                        ->orWhere('subject', 'like', "%{$search}%");
+                });
+            });
+        };
+
+        $applyCommonFilters = function ($query) use ($status, $applySearch) {
             // The Closed list is the RFQs that have been closed and, beside
             // them, the closed parts of split RFQs still open — a part shows
             // there as soon as Business Development closes it.
@@ -185,13 +195,7 @@ class RfqController extends Controller implements HasMiddleware
             $query->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
                 ->when(in_array($status, [Rfq::ON_HOLD, Rfq::CANCELLED], true), fn ($query) => $query->stoppedAs($status))
                 ->when($status === 'Pending', fn ($query) => $query->where('status', $status))
-                ->when($search, function ($query, $search) {
-                    $query->where(function ($q) use ($search) {
-                        $q->where('wc_number', 'like', "%{$search}%")
-                            ->orWhere('rfq_number', 'like', "%{$search}%")
-                            ->orWhere('subject', 'like', "%{$search}%");
-                    });
-                });
+                ->tap($applySearch);
         };
 
         $jobCategories = JobCategory::orderBy('name')->get();
@@ -282,6 +286,40 @@ class RfqController extends Controller implements HasMiddleware
                 ->withQueryString()
             : null;
 
+        // Data Entry's page has two tabs, like Senior Operations' (below):
+        // Ready (above), and Completed (?tab=completed) — the parts they've
+        // sent to finalize, their own (on Admin's view of the page, everyone's),
+        // latest first, whatever's become of them since. Each tab counts its
+        // parts, the search narrowing both.
+        $dataEntryTab = $request->query('tab') === 'completed' ? 'completed' : 'ready';
+        $dataEntryCompletedBy = $user->hasRole('Admin') ? null : $user->id;
+        $isDataEntryDone = fn ($parts) => $parts->whereNotNull('rfq_user.data_entry_completed_at')
+            ->when($dataEntryCompletedBy, fn ($mine) => $mine->where('rfq_user.data_entry_completed_by', $dataEntryCompletedBy));
+
+        $dataEntryCompletedRfqs = $scopedToDataEntry
+            ? Rfq::query()
+                ->with('assignees')
+                ->whereHas('assignees', $isDataEntryDone)
+                ->tap($applySearch)
+                ->orderByDesc(DB::table('rfq_user')->selectRaw('max(rfq_user.data_entry_completed_at)')->whereColumn('rfq_user.rfq_id', 'rfqs.id')->tap($isDataEntryDone))
+                ->paginate(10, ['*'], 'completed_page')
+                ->withQueryString()
+                ->appends(['tab' => 'completed'])
+            : null;
+
+        $dataEntryCounts = $scopedToDataEntry ? [
+            'ready' => DB::table('rfq_user')
+                ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->where('rfqs.status', 'Pending')->tap($applySearch))
+                ->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')
+                ->count(),
+            'completed' => DB::table('rfq_user')
+                ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applySearch))
+                ->tap($isDataEntryDone)
+                ->count(),
+        ] : null;
+
+        $bySourcingRfqs?->appends(['tab' => 'ready']);
+
         // Operations' "Assigned" tab — a reference view alongside
         // "Unassigned" (above) of what's already been routed to Sourcing
         // but is still Pending overall.
@@ -326,7 +364,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->pluck('name', 'id')
             : collect();
 
-        $dataEntryNames = $namesOfWhoDid($seniorOpsReviewRfqs, 'data_entry_completed_by');
+        $dataEntryNames = $namesOfWhoDid($seniorOpsReviewRfqs ?? ($dataEntryCompletedBy === null ? $dataEntryCompletedRfqs : null), 'data_entry_completed_by');
         $seniorOpsNames = $namesOfWhoDid($scopedToHeadOfBdReview || $scopedToHeadOfBdReturns ? $rfqs : null, 'senior_ops_reviewed_by');
         $headOfBdNames = $namesOfWhoDid($scopedToGmAssistant || $scopedToGmAssistantReturns ? $rfqs : null, 'head_of_bd_approved_by');
         $gmAssistantNames = $namesOfWhoDid($scopedToGmReview ? $rfqs : null, 'gm_assistant_completed_by');
@@ -341,6 +379,10 @@ class RfqController extends Controller implements HasMiddleware
             'gmNames' => $gmNames,
             'bdClosedNames' => $bdClosedNames,
             'bySourcingRfqs' => $bySourcingRfqs,
+            'dataEntryTab' => $dataEntryTab,
+            'dataEntryCompletedRfqs' => $dataEntryCompletedRfqs,
+            'dataEntryCompletedBy' => $dataEntryCompletedBy,
+            'dataEntryCounts' => $dataEntryCounts,
             'assignedRfqs' => $assignedRfqs,
             'seniorOpsReviewRfqs' => $seniorOpsReviewRfqs,
             'dataEntryNames' => $dataEntryNames,

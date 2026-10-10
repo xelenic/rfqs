@@ -13,7 +13,7 @@
                     <img src="{{ $attachment->url() }}" alt="{{ $attachment->original_name }}" loading="lazy">
                 </a>
             @else
-                <a href="{{ $attachment->url(download: true) }}" class="comment-attachment-file" title="Download {{ $attachment->original_name }}">
+                <a href="{{ $attachment->url(download: true) }}" download="{{ $attachment->original_name }}" class="comment-attachment-file" title="Download {{ $attachment->original_name }}">
                     <i class="bi {{ $attachment->icon() }}"></i>
                     <span class="comment-attachment-name">{{ $attachment->original_name }}</span>
                     <span class="text-muted-soft">{{ $attachment->sizeLabel() }}</span>

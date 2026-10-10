@@ -53,6 +53,15 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
+     * Only an Admin touches an Admin's account: anyone else changing its
+     * email, or sending it a password link, could take it over.
+     */
+    private function abortUnlessCanManage(User $by, User $user): void
+    {
+        abort_if($user->hasRole('Admin') && ! $by->hasRole('Admin'), 403, 'Only an Admin can change an Admin\'s account.');
+    }
+
+    /**
      * The roles $user can give someone: any, for an Admin — and every one
      * but Admin for anyone else who adds people (HR Manager).
      *
@@ -119,6 +128,8 @@ class UserController extends Controller implements HasMiddleware
      */
     public function sendPasswordLink(Request $request, User $user): RedirectResponse
     {
+        $this->abortUnlessCanManage($request->user(), $user);
+
         return $this->emailPasswordLink($request, $user, "A fresh link to set their password is on its way to {$user->email}.");
     }
 
@@ -140,15 +151,23 @@ class UserController extends Controller implements HasMiddleware
         return redirect()->route('admin.users.index')->with('status', $sent);
     }
 
+    /**
+     * Changes someone's details and roles — Admin, or HR Manager (who holds
+     * users.edit too). Only an Admin changes an Admin's, or sets anyone's
+     * password: HR Manager sends a link to set it instead.
+     */
     public function update(Request $request, User $user): RedirectResponse
     {
+        $this->abortUnlessCanManage($request->user(), $user);
+
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+            'password' => $request->user()->hasRole('Admin') ? ['nullable', 'string', 'min:8', 'confirmed'] : ['prohibited'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
         ], [
+            'password.prohibited' => 'Only an Admin can set someone\'s password — send them a link instead.',
             'roles.*.in' => 'Pick from the roles listed.',
         ]);
 
