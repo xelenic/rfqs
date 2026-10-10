@@ -19,11 +19,14 @@
     $busyHint = $runningElsewhere
         ? "You're already on {$runningElsewhere->rfq->partNumberLabel($runningElsewhere->part_number)} — send it to finalize before starting another."
         : null;
-    $offHoursReason = \App\Models\Setting::offHoursReason(now());
+    // The viewer's working hours, own extra hours included — Admin, starting
+    // on someone's behalf, goes by everyone's (the server checks the person).
+    $hoursOf = auth()->user()->hasRole('Admin') ? null : auth()->id();
+    $offHoursReason = \App\Models\Setting::offHoursReason(now(), $hoursOf);
     $onHint = 'Start — your time on it counts from now.';
 @endphp
 @once
-    <script type="application/json" id="off-hours">{!! json_encode(\App\Models\Setting::offHoursWindows(now())) !!}</script>
+    <script type="application/json" id="off-hours">{!! json_encode(\App\Models\Setting::offHoursWindows(now(), 7, $hoursOf)) !!}</script>
 @endonce
 <form action="{{ route('admin.rfqs.start-data-entry', $rfq) }}" method="POST" class="d-inline-flex align-items-center gap-2">
     @csrf

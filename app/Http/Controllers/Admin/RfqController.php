@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ExtraWorkingHour;
 use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\RfqAssignment;
@@ -414,7 +415,13 @@ class RfqController extends Controller implements HasMiddleware
                 ? $user->dataEntryIdleness()
                 : null,
             'countdownSchedule' => ($scopedToMe && ! $sourcingOverview) || $scopedToDataEntry
-                ? ['now' => now()->getTimestamp(), 'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14))]
+                ? [
+                    'now' => now()->getTimestamp(),
+                    'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14)),
+                    // Whoever works their own extra hours: theirs (ExtraWorkingHour).
+                    'people' => collect(ExtraWorkingHour::byUser())
+                        ->map(fn ($ranges, int $userId) => Setting::workingPeriodsBetween(now(), now()->addDays(14), $userId)),
+                ]
                 : null,
             'lensRole' => $lensRole,
             'sourcingOverview' => $sourcingOverview,
@@ -1193,8 +1200,9 @@ class RfqController extends Controller implements HasMiddleware
                 .$running->rfq->partNumberLabel($running->part_number).' — send it to finalize before starting another.');
         }
 
-        if (! Setting::isWorkingTime(now())) {
-            return back()->with('error', 'Start is off right now — '.(Setting::offHoursReason(now()) ?? 'it\'s outside working hours.'));
+        // Their working time — their own extra hours included.
+        if (! Setting::isWorkingTime(now(), $starter->id)) {
+            return back()->with('error', 'Start is off right now — '.(Setting::offHoursReason(now(), $starter->id) ?? 'it\'s outside working hours.'));
         }
 
         $rfq->startDataEntryPart($part, $starter);

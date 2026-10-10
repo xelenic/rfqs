@@ -229,21 +229,22 @@ class Setting extends Model
      * The working minutes between $from and $to: only the time inside some
      * day's working hours, less lunch, in the working hours' own time zone —
      * nights, lunches and days off don't count. Seconds are added up first,
-     * so many short stretches don't lose a minute each.
+     * so many short stretches don't lose a minute each. With $userId, that
+     * person's own extra hours count too (ExtraWorkingHour).
      */
-    public static function workingMinutesBetween(CarbonInterface $from, CarbonInterface $to): int
+    public static function workingMinutesBetween(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): int
     {
-        return intdiv(static::workingSecondsBetween($from, $to), 60);
+        return intdiv(static::workingSecondsBetween($from, $to, $userId), 60);
     }
 
     /**
      * workingMinutesBetween(), to the second.
      */
-    public static function workingSecondsBetween(CarbonInterface $from, CarbonInterface $to): int
+    public static function workingSecondsBetween(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): int
     {
         $seconds = 0;
 
-        foreach (static::workingPeriodsBetween($from, $to) as [$periodStart, $periodEnd]) {
+        foreach (static::workingPeriodsBetween($from, $to, $userId) as [$periodStart, $periodEnd]) {
             $seconds += $periodEnd - $periodStart;
         }
 
@@ -253,12 +254,13 @@ class Setting extends Model
     /**
      * The working periods between $from and $to — each day's working hours
      * either side of lunch, in the working hours' own time zone, clipped to
-     * $from and $to — as Unix timestamps, earliest first. What the countdown
-     * on Sourcing's Pending list ticks against in the browser.
+     * $from and $to — as Unix timestamps, earliest first. With $userId, that
+     * person's own extra hours too (ExtraWorkingHour), merged in where they
+     * meet or overlap. What the countdowns tick against in the browser.
      *
      * @return array<int, array{0: int, 1: int}>
      */
-    public static function workingPeriodsBetween(CarbonInterface $from, CarbonInterface $to): array
+    public static function workingPeriodsBetween(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): array
     {
         $zone = static::timezone();
         $from = CarbonImmutable::instance($from)->setTimezone($zone);
@@ -292,7 +294,76 @@ class Setting extends Model
             }
         }
 
+        $extras = static::extraPeriodsBetween($from, $to, $userId);
+
+        return $extras === [] ? $periods : static::mergedPeriods([...$periods, ...$extras]);
+    }
+
+    /**
+     * $userId's own extra hours (ExtraWorkingHour) between $from and $to, day
+     * by day — each from the day it counts from, until it was taken away —
+     * clipped to them, as Unix timestamps. None for most people.
+     *
+     * @return array<int, array{0: int, 1: int}>
+     */
+    private static function extraPeriodsBetween(CarbonInterface $from, CarbonInterface $to, ?int $userId): array
+    {
+        $ranges = ExtraWorkingHour::forUser($userId);
+
+        if ($ranges === []) {
+            return [];
+        }
+
+        $zone = static::timezone();
+        $from = CarbonImmutable::instance($from)->setTimezone($zone);
+        $to = CarbonImmutable::instance($to)->setTimezone($zone);
+        $periods = [];
+
+        for ($day = $from->startOfDay(); $day < $to; $day = $day->addDay()) {
+            $weekday = strtolower($day->englishDayOfWeek);
+            $date = $day->toDateString();
+
+            foreach ($ranges as $range) {
+                // Only from the day it counts from, and until it was taken away.
+                if (! in_array($weekday, $range['days'], true) || $date < $range['starts_on']) {
+                    continue;
+                }
+
+                $start = max($from, $day->setTimeFromTimeString($range['start']))->getTimestamp();
+                $end = min($to, $day->setTimeFromTimeString($range['end']))->getTimestamp();
+                $end = $range['ended_at'] !== null ? min($end, $range['ended_at']) : $end;
+
+                if ($end > $start) {
+                    $periods[] = [$start, $end];
+                }
+            }
+        }
+
         return $periods;
+    }
+
+    /**
+     * $periods in order, those that meet or overlap made one.
+     *
+     * @param  array<int, array{0: int, 1: int}>  $periods
+     * @return array<int, array{0: int, 1: int}>
+     */
+    private static function mergedPeriods(array $periods): array
+    {
+        usort($periods, fn (array $one, array $other) => $one[0] <=> $other[0]);
+        $merged = [];
+
+        foreach ($periods as [$start, $end]) {
+            $last = count($merged) - 1;
+
+            if ($last >= 0 && $start <= $merged[$last][1]) {
+                $merged[$last][1] = max($merged[$last][1], $end);
+            } else {
+                $merged[] = [$start, $end];
+            }
+        }
+
+        return $merged;
     }
 
     /**
@@ -302,12 +373,12 @@ class Setting extends Model
      *
      * @return array<string, int>
      */
-    public static function workingSecondsByDay(CarbonInterface $from, CarbonInterface $to): array
+    public static function workingSecondsByDay(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): array
     {
         $zone = static::timezone();
         $days = [];
 
-        foreach (static::workingPeriodsBetween($from, $to) as [$periodStart, $periodEnd]) {
+        foreach (static::workingPeriodsBetween($from, $to, $userId) as [$periodStart, $periodEnd]) {
             $date = CarbonImmutable::createFromTimestamp($periodStart, $zone)->toDateString();
             $days[$date] = ($days[$date] ?? 0) + $periodEnd - $periodStart;
         }
@@ -360,17 +431,18 @@ class Setting extends Model
     /**
      * workingSecondsByDay() — all of each day's — with how much of it falls in
      * the morning off and in the afternoon off (halfDayOff()): what a half
-     * day off doesn't count, the rest of the day counting as usual.
+     * day off doesn't count, the rest of the day counting as usual. With
+     * $userId, their own extra hours count too.
      *
      * @return array<string, array{all: int, morning: int, afternoon: int}>
      */
-    public static function workingSecondsWithHalfDaysOff(CarbonInterface $from, CarbonInterface $to): array
+    public static function workingSecondsWithHalfDaysOff(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): array
     {
         $zone = static::timezone();
         $halves = static::halfDayOff();
         $days = [];
 
-        foreach (static::workingPeriodsBetween($from, $to) as [$periodStart, $periodEnd]) {
+        foreach (static::workingPeriodsBetween($from, $to, $userId) as [$periodStart, $periodEnd]) {
             $day = CarbonImmutable::createFromTimestamp($periodStart, $zone);
             $date = $day->toDateString();
 
@@ -393,11 +465,13 @@ class Setting extends Model
      * day — in the working hours' time zone — window by window, each with why:
      * before the day's hours start, lunch, after they end, a day off. As
      * [from, to, why] — Unix timestamps — in order. What Data Entry's Start
-     * says when it's off, and when it's back (see offHoursReason()).
+     * says when it's off, and when it's back (see offHoursReason()). With
+     * $userId, less that person's own extra hours: a window they cut short
+     * says when those start.
      *
      * @return array<int, array{0: int, 1: int, 2: string}>
      */
-    public static function offHoursWindows(CarbonInterface $from, int $days = 7): array
+    public static function offHoursWindows(CarbonInterface $from, int $days = 7, ?int $userId = null): array
     {
         $week = static::workingHours();
         $first = CarbonImmutable::instance($from)->setTimezone(static::timezone())->startOfDay();
@@ -427,17 +501,57 @@ class Setting extends Model
             $windows[] = [$day->setTimeFromTimeString($hours['end'])->getTimestamp(), $next->getTimestamp(), "Working hours are over for today — they ended at {$hours['end']}. ".static::backOn($day, $week)];
         }
 
-        return $windows;
+        $extras = static::extraPeriodsBetween($first, $first->addDays($days), $userId);
+
+        return $extras === [] ? $windows : static::windowsWithout($windows, static::mergedPeriods($extras));
     }
 
     /**
-     * Why $at isn't working time — see offHoursWindows() — or null when it is.
+     * $windows (offHoursWindows()) less $extras — someone's own extra hours —
+     * split around them. A piece cut short by extra hours says when they
+     * start; the rest say what they did.
+     *
+     * @param  array<int, array{0: int, 1: int, 2: string}>  $windows
+     * @param  array<int, array{0: int, 1: int}>  $extras  merged, in order
+     * @return array<int, array{0: int, 1: int, 2: string}>
      */
-    public static function offHoursReason(CarbonInterface $at): ?string
+    private static function windowsWithout(array $windows, array $extras): array
+    {
+        $zone = static::timezone();
+        $pieces = [];
+
+        foreach ($windows as [$from, $to, $why]) {
+            $cursor = $from;
+
+            foreach ($extras as [$extraStart, $extraEnd]) {
+                if ($extraEnd <= $cursor || $extraStart >= $to) {
+                    continue;
+                }
+
+                if ($extraStart > $cursor) {
+                    $pieces[] = [$cursor, $extraStart, 'Outside working hours — your extra hours start at '.CarbonImmutable::createFromTimestamp($extraStart, $zone)->format('H:i').'.'];
+                }
+
+                $cursor = max($cursor, $extraEnd);
+            }
+
+            if ($cursor < $to) {
+                $pieces[] = [$cursor, $to, $why];
+            }
+        }
+
+        return $pieces;
+    }
+
+    /**
+     * Why $at isn't working time — for $userId, if given — see
+     * offHoursWindows(); null when it is.
+     */
+    public static function offHoursReason(CarbonInterface $at, ?int $userId = null): ?string
     {
         $timestamp = $at->getTimestamp();
 
-        foreach (static::offHoursWindows($at, 1) as [$from, $to, $why]) {
+        foreach (static::offHoursWindows($at, 1, $userId) as [$from, $to, $why]) {
             if ($timestamp >= $from && $timestamp < $to) {
                 return $why;
             }
@@ -486,12 +600,13 @@ class Setting extends Model
     }
 
     /**
-     * Whether $at falls inside the working hours — when a countdown is
-     * ticking rather than paused.
+     * Whether $at falls inside the working hours — or, for $userId, theirs,
+     * their own extra hours included — when a countdown is ticking rather
+     * than paused.
      */
-    public static function isWorkingTime(CarbonInterface $at): bool
+    public static function isWorkingTime(CarbonInterface $at, ?int $userId = null): bool
     {
-        return static::workingSecondsBetween($at, CarbonImmutable::instance($at)->addSecond()) > 0;
+        return static::workingSecondsBetween($at, CarbonImmutable::instance($at)->addSecond(), $userId) > 0;
     }
 
     /**

@@ -25,3 +25,6 @@ Since 2026-10-09 GM Assistant's step is a confirmed Submit that forwards the par
 
 ## Rejects save a snapshot so the part can be sent straight back
 Rfq::rejectToStage()/rejectPartToStage() call recordReturn() first, saving each part's rfq_user row and the RFQ's workflow columns (RfqReturn). The receiving role's "Send back to …" button (Rfq::forwardBack()) restores that snapshot, skipping the steps between. Any new reject path must call recordReturn() before it clears anything. Availability is Rfq::openReturns(): each part's latest unforwarded return, still positionally where it was sent. Pitfall: on an Eloquent collection, only()/except() filter by model id, not collection key, so use filter() for part numbers.
+
+## Working time is per person: pass the worker's id
+Setting::workingPeriodsBetween(), workingSecondsBetween(), workingSecondsWithHalfDaysOff(), isWorkingTime(), offHoursWindows() and offHoursReason() take an optional $userId. With it, that person's ExtraWorkingHour ranges are merged into the company hours. Pass the worker wherever someone's time is measured: RfqStep::workerId(), the Data Entry starter, the countdown's data-worker. ExtraWorkingHour rows are never deleted: removing one sets ended_at, and each range counts only from starts_on, because time is recomputed on every view and past figures must not change.

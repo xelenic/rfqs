@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Notification;
 class AlertIdleDataEntry extends Command
 {
     /**
-     * Run every minute (routes/console.php). In working time, each Data
+     * Run every minute (routes/console.php). In their working time, each Data
      * Entry person who's been idle — nothing running, with parts waiting —
      * for as many working minutes as Setting::dataEntryIdleAlert() allows
      * (User::dataEntryIdleness()) gets Senior Operations and Admin alerted
@@ -28,7 +28,7 @@ class AlertIdleDataEntry extends Command
     {
         $now = CarbonImmutable::now();
 
-        if (! Setting::dataEntryIdleAlert()['enabled'] || ! Setting::isWorkingTime($now)) {
+        if (! Setting::dataEntryIdleAlert()['enabled']) {
             return self::SUCCESS;
         }
 
@@ -38,6 +38,11 @@ class AlertIdleDataEntry extends Command
             ->get();
 
         foreach ($dataEntry as $person) {
+            // Only in their working time — their own extra hours included.
+            if (! Setting::isWorkingTime($now, $person->id)) {
+                continue;
+            }
+
             $idle = $person->dataEntryIdleness($now);
 
             if ($idle === null || $idle['alerted_at'] !== null || $idle['idle_seconds'] < $idle['alert_after']

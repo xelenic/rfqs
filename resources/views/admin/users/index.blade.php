@@ -30,8 +30,24 @@
                 </thead>
                 <tbody>
                     @forelse ($users as $user)
+                        @php
+                            // Sourcing, Data Entry and GM Assistant: their time is tracked,
+                            // so they can have extra hours (ExtraWorkingHour) — Admin sets them.
+                            $hasTrackedTime = $user->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty();
+                        @endphp
                         <tr>
-                            <td class="fw-semibold">{{ $user->name }}</td>
+                            <td class="fw-semibold">
+                                {{ $user->name }}
+                                @if ($hasTrackedTime && $user->extraWorkingHours->isNotEmpty())
+                                    <div class="d-flex flex-wrap gap-1 mt-1">
+                                        @foreach ($user->extraWorkingHours as $range)
+                                            <span class="badge badge-soft-info fw-normal" title="Extra hours, counting from {{ $range->starts_on->format('M d, Y') }}">
+                                                <i class="bi bi-moon-stars"></i> {{ $range->daysLabel() }} {{ $range->start }}–{{ $range->end }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </td>
                             <td>{{ $user->email }}</td>
                             <td>
                                 @forelse ($user->roles as $role)
@@ -42,6 +58,11 @@
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->format('M d, Y') }}</td>
                             <td class="text-end">
+                                @if ($hasTrackedTime && auth()->user()->hasRole('Admin'))
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}" title="Extra hours">
+                                        <i class="bi bi-moon-stars"></i>
+                                    </button>
+                                @endif
                                 {{-- Only an Admin touches an Admin's account (UserController). --}}
                                 @php $canManage = auth()->user()->hasRole('Admin') || ! $user->hasRole('Admin'); @endphp
                                 {{-- A fresh set-password email — for a link that expired or went astray. --}}
@@ -141,6 +162,29 @@
             </div>
         </div>
     </div>
+
+    {{-- Each tracked person's Extra hours window — Admin only. --}}
+    @if (auth()->user()->hasRole('Admin'))
+        @foreach ($users as $user)
+            @if ($user->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty())
+                @include('admin.users._extra_hours_modal', ['user' => $user])
+            @endif
+        @endforeach
+    @endif
+
+    {{-- Extra hours that didn't go in: their window open again, as it was sent. --}}
+    @if ($errors->extra_hours->any() && old('return_to') === 'users')
+        @push('scripts')
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var modalEl = document.getElementById(@json('extraHoursModal-'.old('user_id')));
+                    if (modalEl) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                });
+            </script>
+        @endpush
+    @endif
 
     @if ($errors->create->any() || $errors->edit->any())
         @push('scripts')

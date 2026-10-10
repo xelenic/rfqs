@@ -171,9 +171,10 @@
                                              outside working hours (admin.js). --}}
                                         @php
                                             $deCountdown = $rfq->dataEntryCountdown($assignee->pivot->part_number);
-                                            $isOffHours = ! \App\Models\Setting::isWorkingTime(now());
+                                            // Whoever started on it: their working hours, own extra hours included.
+                                            $isOffHours = ! \App\Models\Setting::isWorkingTime(now(), $assignee->pivot->data_entry_started_by);
                                         @endphp
-                                        <tr @class(['js-de-sourcing-row', 'rfq-running js-running-row' => $deCountdown, 'is-paused' => $deCountdown && $isOffHours]) data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
+                                        <tr @class(['js-de-sourcing-row', 'rfq-running js-running-row' => $deCountdown, 'is-paused' => $deCountdown && $isOffHours]) data-worker="{{ $assignee->pivot->data_entry_started_by }}" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $assignee->pivot->part_number }}" role="button" tabindex="0">
                                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                             <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
                                             <td>
@@ -203,7 +204,7 @@
                                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                             <td class="text-nowrap">
                                                 @if ($deCountdown)
-                                                    @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize'])
+                                                    @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize', 'workerId' => $assignee->pivot->data_entry_started_by])
                                                 @else
                                                     <span class="text-muted-soft small" title="Counts down from Start">Not started</span>
                                                 @endif
@@ -1250,7 +1251,7 @@
                                              outside working hours. --}}
                                         @php $countdown = $iHaveCompletedMyPart ? null : $rfq->sourcingCountdown($myPart); @endphp
                                         @if ($countdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => 'Working time left to mark it complete'])
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => 'Working time left to mark it complete', 'workerId' => auth()->id()])
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif

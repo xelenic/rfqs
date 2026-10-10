@@ -4,7 +4,8 @@
     an RFQ, then — one tab per lens: Pending, Deadline exceeded, Out of working
     hours, Closed, All — every RFQ some role has started on, with each role's
     time on it and how it stands against Sourcing's deadline. Each time is its
-    working time — only the working hours set in Settings count — with the
+    working time — only the working hours set in Settings count, and each
+    person's own extra hours (ExtraWorkingHour) for their time — with the
     elapsed (clock) time under it. Work done out of hours (RfqStep::
     isOutOfHoursWork()) is highlighted, with how much of it fell outside them.
     A role still on an RFQ counts up to now.
@@ -96,8 +97,9 @@
                 <span class="fw-semibold text-body">Working time</span>, within the
                 @if (auth()->user()->hasRole('Admin'))
                     <a href="{{ route('admin.settings.edit', ['tab' => 'working-hours']) }}">working hours</a>
+                    and anyone's own <a href="{{ route('admin.settings.edit', ['tab' => 'extra-hours']) }}">extra hours</a>
                 @else
-                    working hours
+                    working hours and anyone's own extra hours
                 @endif
                 · <span title="Clock time, nights and days off included">elapsed</span> under it
                 · <span class="time-out-of-hours-key"><i class="bi bi-moon-stars"></i> out of hours</span>

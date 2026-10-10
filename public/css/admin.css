@@ -3886,6 +3886,16 @@ h6, .h6 { font-size: 0.85rem; }
   }
 }
 
+/* ---------- Users page: someone's extra hours ---------- */
+.extra-hours-list li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+}
+
+.extra-hours-list li:first-child {
+  padding-top: 0;
+}
+
 /* ---------- Add user: how they'll sign in ---------- */
 .sign-in-option {
   display: flex;

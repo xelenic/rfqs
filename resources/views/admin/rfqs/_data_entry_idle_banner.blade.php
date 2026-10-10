@@ -26,7 +26,7 @@
 @else
     @php
         $remaining = $idle['alert_after'] - $idle['idle_seconds'];
-        $isPaused = ! \App\Models\Setting::isWorkingTime(now());
+        $isPaused = ! \App\Models\Setting::isWorkingTime(now(), auth()->id());
         $state = match (true) {
             $remaining <= 0 => 'due',
             $isPaused => 'paused',
@@ -39,7 +39,7 @@
         ];
     @endphp
     <div @class(['idle-banner js-idle-countdown mb-3', 'is-due' => $state === 'due', 'is-paused' => $state === 'paused', 'is-urgent' => $state === 'running' && $remaining <= $idle['alert_after'] / 4]) role="timer" aria-live="off"
-         data-remaining="{{ $remaining }}" data-alert-after="{{ $idle['alert_after'] }}"
+         data-remaining="{{ $remaining }}" data-alert-after="{{ $idle['alert_after'] }}" data-worker="{{ auth()->id() }}"
          data-running-text="{{ $texts['running'] }}" data-paused-text="{{ $texts['paused'] }}" data-due-text="{{ $texts['due'] }}">
         <span class="idle-banner-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
         <div class="idle-banner-body">

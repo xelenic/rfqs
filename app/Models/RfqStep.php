@@ -93,7 +93,18 @@ class RfqStep extends Model
      */
     public function workingSeconds(?CarbonInterface $now = null): int
     {
-        return Setting::workingSecondsBetween($this->started_at, $this->ended_at ?? $now ?? now());
+        return Setting::workingSecondsBetween($this->started_at, $this->ended_at ?? $now ?? now(), $this->workerId());
+    }
+
+    /**
+     * Whose working hours this stretch runs on — theirs, own extra hours and
+     * all (ExtraWorkingHour): whoever it's credited to, or while a part's
+     * with Sourcing, its member. Nobody's in particular otherwise (GM
+     * Assistant's before one of them sends it on): the working hours alone.
+     */
+    public function workerId(): ?int
+    {
+        return $this->worked_by ?? (in_array($this->step, self::ROLE_STEPS['Sourcing'], true) ? $this->assignee_id : null);
     }
 
     /**
@@ -108,14 +119,14 @@ class RfqStep extends Model
     /**
      * Whether this stretch is work done out of hours: the role ended it
      * themselves — completed it, sent it on, sent it back — at a time outside
-     * the working hours. A part that just sat overnight or over a weekend
+     * the working hours (theirs, own extra hours included). A part that just sat overnight or over a weekend
      * isn't; nor is one ended by something else, like the RFQ being held.
      */
     public function isOutOfHoursWork(): bool
     {
         return $this->ended_by_role
             && $this->ended_at !== null
-            && ! Setting::isWorkingTime($this->ended_at);
+            && ! Setting::isWorkingTime($this->ended_at, $this->workerId());
     }
 
     /**
@@ -146,7 +157,7 @@ class RfqStep extends Model
     {
         $split = ['present' => 0, 'absent' => 0, 'unmarked' => 0, 'unattributed' => 0];
 
-        foreach (Setting::workingSecondsWithHalfDaysOff($this->started_at, $this->ended_at ?? $now ?? now()) as $date => $seconds) {
+        foreach (Setting::workingSecondsWithHalfDaysOff($this->started_at, $this->ended_at ?? $now ?? now(), $this->workerId()) as $date => $seconds) {
             $status = Attendance::statusIn($book, $this->worked_by, $date);
 
             if ($status === Attendance::UNMARKED && $this->worked_by === null && $this->ended_at !== null) {

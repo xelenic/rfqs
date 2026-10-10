@@ -1771,6 +1771,22 @@ function rfqmsBoot() {
     // page — a live refresh brings a fresh schedule and starts it over.
     // Labels and colours as in Setting::countdownLabel() /
     // countdownBadgeClass().
+    // How much working time has passed since the schedule was made, and
+    // whether it's paused now — by $worker's own hours where they work extra
+    // ones (schedule.people, ExtraWorkingHour), else everyone's.
+    var workingClock = function (schedule, worker, now) {
+        var periods = (worker && schedule.people && schedule.people[worker]) || schedule.periods;
+        var worked = 0;
+        var paused = true;
+
+        periods.forEach(function (period) {
+            worked += Math.max(0, Math.min(now, period[1]) - Math.max(schedule.now, period[0]));
+            if (now >= period[0] && now < period[1]) paused = false;
+        });
+
+        return { worked: worked, paused: paused };
+    };
+
     clearInterval(window.__rfqmsCountdownTimer);
     var countdownScheduleEl = document.getElementById('countdown-schedule');
     if (countdownScheduleEl) {
@@ -1791,15 +1807,11 @@ function rfqmsBoot() {
 
         var tickCountdowns = function () {
             var now = Date.now() / 1000 + clockOffset;
-            var worked = 0;
-            var paused = true;
-
-            countdownSchedule.periods.forEach(function (period) {
-                worked += Math.max(0, Math.min(now, period[1]) - Math.max(countdownSchedule.now, period[0]));
-                if (now >= period[0] && now < period[1]) paused = false;
-            });
 
             document.querySelectorAll('[data-countdown]').forEach(function (badge) {
+                var clock = workingClock(countdownSchedule, badge.dataset.worker, now);
+                var worked = clock.worked;
+                var paused = clock.paused;
                 var remaining = Math.round(Number(badge.dataset.remaining) - worked);
                 var target = Number(badge.dataset.target);
 
@@ -1813,6 +1825,7 @@ function rfqmsBoot() {
             });
 
             document.querySelectorAll('.js-running-row').forEach(function (row) {
+                var paused = workingClock(countdownSchedule, row.dataset.worker, now).paused;
                 row.classList.toggle('is-paused', paused);
                 var label = row.querySelector('.running-pill-label');
                 if (label) label.textContent = paused ? 'Paused' : 'Running';
@@ -1852,15 +1865,10 @@ function rfqmsBoot() {
 
         var tick = function () {
             var now = Date.now() / 1000 + offset;
-            var worked = 0;
-            var paused = true;
+            var clock = workingClock(schedule, banner.dataset.worker, now);
+            var paused = clock.paused;
 
-            schedule.periods.forEach(function (period) {
-                worked += Math.max(0, Math.min(now, period[1]) - Math.max(schedule.now, period[0]));
-                if (now >= period[0] && now < period[1]) paused = false;
-            });
-
-            var remaining = Math.round(startRemaining - worked);
+            var remaining = Math.round(startRemaining - clock.worked);
             var state = remaining <= 0 ? 'due' : (paused ? 'paused' : 'running');
 
             clock.textContent = clockLabel(remaining);

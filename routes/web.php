@@ -45,6 +45,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
     Route::patch('settings/data-entry-targets', [SettingsController::class, 'updateDataEntryTargets'])->name('settings.data-entry-targets');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
+    Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');
+    Route::delete('settings/extra-hours/{extraHours}', [SettingsController::class, 'destroyExtraHours'])->name('settings.extra-hours.destroy');
     Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');

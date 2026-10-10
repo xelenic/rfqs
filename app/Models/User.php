@@ -172,6 +172,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Their own working time on top of everyone's working hours — see
+     * ExtraWorkingHour.
+     */
+    public function extraWorkingHours(): HasMany
+    {
+        return $this->hasMany(ExtraWorkingHour::class)->orderBy('start');
+    }
+
+    /**
      * Private messages sent to this user — the unread ones are the count on
      * their Messages link.
      */
@@ -193,7 +202,8 @@ class User extends Authenticatable
      * (Setting::dataEntryIdleAlert()) at $now: idle since the latest of the
      * start of today, when they last had a part running, and when the oldest
      * part waiting for Data Entry came in (Rfq::dataEntryWaitingSince()) —
-     * that many working seconds, less the half of a half day they're off —
+     * that many of their working seconds (own extra hours included), less
+     * the half of a half day they're off —
      * and when Senior Operations was told about it, if they have been
      * (DataEntryIdle, sent by App\Console\Commands\AlertIdleDataEntry).
      * Null when it doesn't apply: the alert's off, nothing's waiting, they've
@@ -232,7 +242,7 @@ class User extends Authenticatable
 
         return [
             'idle_from' => $idleFrom,
-            'idle_seconds' => (int) collect(Setting::workingSecondsWithHalfDaysOff($idleFrom, $now))
+            'idle_seconds' => (int) collect(Setting::workingSecondsWithHalfDaysOff($idleFrom, $now, $this->id))
                 ->sum(fn (array $day) => $day['all'] - ($halfOff !== null ? $day[$halfOff] : 0)),
             'alert_after' => $alert['minutes'] * 60,
             'waiting' => $waiting->count(),

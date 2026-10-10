@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AttendanceSheet;
+use App\Models\ExtraWorkingHour;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -43,6 +45,10 @@ class SettingsController extends Controller
             'sourcingTargets' => Setting::sourcingTargets(),
             'dataEntryTargets' => Setting::dataEntryTargets(),
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
+            'extraHours' => $user->hasRole('Admin')
+                ? ExtraWorkingHour::query()->current()->with('user.roles')->get()->sortBy(fn (ExtraWorkingHour $range) => [$range->user?->name, $range->start])->values()
+                : collect(),
+            'extraHoursPeople' => $user->hasRole('Admin') ? AttendanceSheet::people() : collect(),
             'dataEntryIdleMinutesRange' => Setting::DATA_ENTRY_IDLE_MINUTES_RANGE,
             'attendanceSince' => Setting::attendanceSince(),
             'halfDayOff' => Setting::halfDayOff(),
@@ -249,6 +255,74 @@ class SettingsController extends Controller
         ]);
 
         return $this->backToTab('idle-alert', 'Idle alert saved.');
+    }
+
+    /**
+     * Adds a range of someone's own working time on top of everyone's
+     * working hours — on the days picked, from one time to a later one that
+     * day, counting from the day given (today, or earlier for time already
+     * worked that way). For the people whose time is tracked
+     * (AttendanceSheet::people()). See ExtraWorkingHour.
+     */
+    public function storeExtraHours(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change anyone\'s working hours.');
+
+        $validated = $request->validateWithBag('extra_hours', [
+            'user_id' => ['required', 'integer', Rule::in(AttendanceSheet::people()->pluck('id'))],
+            'days' => ['required', 'array', 'min:1'],
+            'days.*' => ['string', Rule::in(Setting::WEEKDAYS)],
+            'start' => ['required', 'date_format:H:i'],
+            'end' => ['required', 'date_format:H:i', 'after:start'],
+            'starts_on' => ['required', 'date_format:Y-m-d'],
+        ], [
+            'user_id.required' => 'Pick who it\'s for.',
+            'user_id.in' => 'Extra hours are for Sourcing, Data Entry and GM Assistant people.',
+            'days.required' => 'Pick at least one day.',
+            'start.required' => 'Give the time it starts.',
+            'end.required' => 'Give the time it ends.',
+            'start.date_format' => 'Give a time like 19:00.',
+            'end.date_format' => 'Give a time like 20:00.',
+            'end.after' => 'It has to end after it starts, the same day — one that runs past midnight is two ranges.',
+            'starts_on.required' => 'Give the day it counts from.',
+            'starts_on.date_format' => 'Give the day it counts from, like 2026-10-12.',
+        ]);
+
+        $range = ExtraWorkingHour::query()->create([
+            'user_id' => (int) $validated['user_id'],
+            'days' => array_values(array_intersect(Setting::WEEKDAYS, $validated['days'])),
+            'start' => $validated['start'],
+            'end' => $validated['end'],
+            'starts_on' => $validated['starts_on'],
+            'created_by' => $request->user()->id,
+        ]);
+
+        return $this->backToExtraHours($request, "Extra hours added for {$range->user->name}: {$range->daysLabel()}, {$range->start}–{$range->end}.");
+    }
+
+    /**
+     * Takes away one of someone's extra ranges from now on: ended, not
+     * deleted, so the time it counted until now stays counted.
+     */
+    public function destroyExtraHours(Request $request, ExtraWorkingHour $extraHours): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change anyone\'s working hours.');
+        abort_if($extraHours->ended_at !== null, 404);
+
+        $extraHours->update(['ended_at' => now()]);
+
+        return $this->backToExtraHours($request, "Extra hours removed for {$extraHours->user->name} — from now on; time already worked in them still counts.");
+    }
+
+    /**
+     * Back to where extra hours were changed from: the Users page (return_to
+     * "users"), just as it was, or Settings → Extra Hours.
+     */
+    private function backToExtraHours(Request $request, string $status): RedirectResponse
+    {
+        return $request->input('return_to') === 'users'
+            ? back()->with('status', $status)
+            : $this->backToTab('extra-hours', $status);
     }
 
     /**

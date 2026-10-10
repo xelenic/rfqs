@@ -2,7 +2,7 @@
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
     settings, the Working Hours, the Half Day, the Sourcing and Data Entry
-    Targets, and the Idle Alert. Each tab is its own
+    Targets, the Idle Alert, and people's Extra Hours. Each tab is its own
     form with its own error bag. The tab that opens is the one a form was
     just saved from (session settings_tab) or failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
@@ -12,7 +12,9 @@
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
-    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange,
+    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $extraHours
+    (ExtraWorkingHour, with user.roles), $extraHoursPeople
+    (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
     (Setting::halfDayOff()).
 --}}
@@ -34,6 +36,7 @@
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => 'data_entry_targets'],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
+            'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
         ] : [];
         $allTabs = $accountTabs + $adminTabs;
         $hasErrors = fn (array $tab) => $tab['bag'] !== null && $errors->getBag($tab['bag'])->any();
@@ -565,6 +568,94 @@
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save idle alert</button>
                         </form>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade {{ $activeTab === 'extra-hours' ? 'show active' : '' }}" id="settings-pane-extra-hours" role="tabpanel" aria-labelledby="settings-tab-extra-hours" tabindex="0">
+                {{-- People's own working time on top of everyone's working hours —
+                     their time counts in it too. See ExtraWorkingHour and
+                     SettingsController::storeExtraHours(). --}}
+                @php
+                    $extraFailed = $errors->extra_hours->any() && old('return_to') !== 'users';
+                @endphp
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Extra Hours
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted-soft small">
+                            For someone who also works outside the working hours — say 19:00 to 20:00 in the evening. Their time counts in those hours as well as the working hours: on the Time Spent sheet, in their countdowns, and for Data Entry's Start. Everyone else keeps the working hours alone.
+                        </p>
+
+                        <form method="POST" action="{{ route('admin.settings.extra-hours.store') }}" class="extra-hours-form" novalidate>
+                            @csrf
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-4">
+                                    <label for="extra-hours-user" class="form-label">Person</label>
+                                    <select name="user_id" id="extra-hours-user" class="form-select @error('user_id', 'extra_hours') is-invalid @enderror" required>
+                                        <option value="">Pick someone…</option>
+                                        @foreach ($extraHoursPeople as $person)
+                                            <option value="{{ $person->id }}" @selected($extraFailed && (string) old('user_id') === (string) $person->id)>
+                                                {{ $person->name }} — {{ $person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->join(', ') }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    @error('user_id', 'extra_hours')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                @include('admin.settings._extra_hours_fields', ['idPrefix' => 'extra-hours', 'showOld' => $extraFailed])
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add extra hours</button>
+                                    <span class="form-text ms-2">Set an earlier day for time already worked this way — it's counted again with these hours.</span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Person</th>
+                                    <th>Role</th>
+                                    <th>Days</th>
+                                    <th>Extra hours</th>
+                                    <th>Counting from</th>
+                                    <th class="text-end"><span class="visually-hidden">Remove</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($extraHours as $range)
+                                    <tr>
+                                        <td class="fw-semibold">{{ $range->user?->name ?? 'Unknown' }}</td>
+                                        <td>
+                                            @foreach ($range->user?->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) ?? [] as $roleName)
+                                                <span class="badge badge-soft-secondary">{{ $roleName }}</span>
+                                            @endforeach
+                                        </td>
+                                        <td>{{ $range->daysLabel() }}</td>
+                                        <td class="text-nowrap" style="font-variant-numeric: tabular-nums;">{{ $range->start }} – {{ $range->end }}</td>
+                                        <td class="text-muted-soft text-nowrap">{{ $range->starts_on->format('M d, Y') }}</td>
+                                        <td class="text-end">
+                                            <form method="POST" action="{{ route('admin.settings.extra-hours.destroy', $range) }}" class="d-inline"
+                                                  data-confirm="Remove {{ $range->user?->name }}'s extra hours ({{ $range->daysLabel() }}, {{ $range->start }}–{{ $range->end }})? Their time in them stops counting from now on — time already worked in them still counts.">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted-soft py-4">Nobody has extra hours — everyone works the working hours.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

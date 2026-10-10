@@ -34,7 +34,7 @@ class UserController extends Controller implements HasMiddleware
     public function index(Request $request): View
     {
         $users = User::query()
-            ->with('roles')
+            ->with(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current()])
             ->when($request->string('search')->trim()->toString(), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
