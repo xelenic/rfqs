@@ -401,15 +401,15 @@ class Rfq extends Model
     /**
      * Whether $user can edit this RFQ's details — its numbers, priority,
      * subject and the rest (RfqController::update()): an Admin, any RFQ;
-     * Senior Operations, any not yet closed; Business Development, one sent
-     * back to them to fix. Only an Admin changes its status from there.
+     * Senior Operations and Business Development, any not yet closed — one
+     * sent back to Business Development to fix among them. Only an Admin
+     * changes its status from there.
      */
     public function canBeEditedBy(User $user): bool
     {
         return match (true) {
             $user->hasRole('Admin') => true,
-            $user->hasRole('Senior Operations') => $this->status !== 'Completed',
-            $user->hasRole('Business Development') => $this->isReturnedToBusinessDevelopment(),
+            $user->hasAnyRole(['Senior Operations', 'Business Development']) => $this->status !== 'Completed',
             default => false,
         };
     }

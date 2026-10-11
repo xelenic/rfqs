@@ -134,15 +134,39 @@ it('leaves a rejection to any other stage alone when the RFQ is edited', functio
         ->reject_reason->toBe('Totals don\'t add up');
 });
 
-it('shows Business Development the Edit button on a returned RFQ, and not otherwise', function () {
+it('shows Business Development the Edit button on a returned RFQ, as on any other open one — not a closed one', function () {
     ['bd' => $bd, 'rfq' => $rfq] = returnedToBd();
-    $untouched = Rfq::factory()->create(['rfq_number' => 'RFQ3001']);
+    $open = Rfq::factory()->create(['rfq_number' => 'RFQ3001']);
+    $closed = Rfq::factory()->create(['rfq_number' => 'RFQ3002', 'status' => 'Completed']);
 
     test()->actingAs($bd)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('data-action="'.route('admin.rfqs.update', $rfq).'"', false);
 
-    test()->actingAs($bd)->get(route('admin.rfqs.show', $untouched))->assertOk()
-        ->assertDontSee('data-action="'.route('admin.rfqs.update', $untouched).'"', false);
+    test()->actingAs($bd)->get(route('admin.rfqs.show', $open))->assertOk()
+        ->assertSee('data-action="'.route('admin.rfqs.update', $open).'"', false);
+
+    test()->actingAs($bd)->get(route('admin.rfqs.show', $closed))->assertOk()
+        ->assertDontSee('data-action="'.route('admin.rfqs.update', $closed).'"', false);
+});
+
+it('leaves a returned RFQ on another stage\'s Returns page when Business Development edits it', function () {
+    $rfq = Rfq::factory()->create(['reject_target_stage' => 'data_entry', 'reject_reason' => 'Totals don\'t add up']);
+
+    test()->actingAs(userWithRole('Business Development'))
+        ->put(route('admin.rfqs.update', $rfq), [
+            'wc_number' => $rfq->wc_number,
+            'rfq_number' => $rfq->rfq_number,
+            'priority_level' => 'Medium',
+            'number_of_items' => 5,
+            'status' => 'Pending',
+            'subject' => 'Clearer wording',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($rfq->refresh())
+        ->subject->toBe('Clearer wording')
+        ->reject_target_stage->toBe('data_entry')
+        ->reject_reason->toBe('Totals don\'t add up');
 });
 
 it('gives Business Development no status field to choose from, even editing a returned RFQ', function () {

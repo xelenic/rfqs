@@ -32,8 +32,8 @@ function editPayload(Rfq $rfq, array $changes = []): array
     ];
 }
 
-it('lets Senior Operations edit an RFQ\'s details, from its page and their lists', function () {
-    $ops = userWithRole('Senior Operations');
+it('lets Senior Operations and Business Development edit an RFQ\'s details, from its page and their lists', function (string $role) {
+    $ops = userWithRole($role);
     $rfq = Rfq::factory()->create(['subject' => 'Replace exit signs', 'priority_level' => 'Low']);
 
     test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -41,7 +41,7 @@ it('lets Senior Operations edit an RFQ\'s details, from its page and their lists
         // The details — not the status, which they stop and resume from the RFQ's page.
         ->assertDontSee('id="edit-status"', false);
 
-    // Their Unassigned list too.
+    // Their Pending list too.
     test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('data-action="'.route('admin.rfqs.update', $rfq).'"', false);
 
@@ -53,10 +53,10 @@ it('lets Senior Operations edit an RFQ\'s details, from its page and their lists
         ->subject->toBe('Replace exit signs — all floors')
         ->priority_level->toBe('Urgent')
         ->status->toBe('Pending');
-});
+})->with(['Senior Operations', 'Business Development']);
 
-it('never lets Senior Operations close an RFQ through Edit, or change a stopped one\'s status', function () {
-    $ops = userWithRole('Senior Operations');
+it('never lets Senior Operations or Business Development close an RFQ through Edit, or change a stopped one\'s status', function (string $role) {
+    $ops = userWithRole($role);
     $open = Rfq::factory()->create();
     $held = Rfq::factory()->create(['status' => Rfq::ON_HOLD]);
 
@@ -65,10 +65,10 @@ it('never lets Senior Operations close an RFQ through Edit, or change a stopped 
 
     expect($open->refresh()->status)->toBe('Pending')
         ->and($held->refresh())->status->toBe(Rfq::ON_HOLD)->subject->toBe('Paused for now');
-});
+})->with(['Senior Operations', 'Business Development']);
 
-it('keeps a closed RFQ out of Senior Operations\' reach — no Edit, and refused', function () {
-    $ops = userWithRole('Senior Operations');
+it('keeps a closed RFQ out of Senior Operations\' and Business Development\'s reach — no Edit, and refused', function (string $role) {
+    $ops = userWithRole($role);
     $closed = Rfq::factory()->create(['status' => 'Completed', 'subject' => 'Done and dusted']);
 
     expect(test()->actingAs($ops)->get(route('admin.rfqs.show', $closed))->assertOk()->getContent())
@@ -85,7 +85,7 @@ it('keeps a closed RFQ out of Senior Operations\' reach — no Edit, and refused
     test()->actingAs(userWithRole('Admin'))->put(route('admin.rfqs.update', $closed), editPayload($closed, ['subject' => 'Corrected', 'status' => 'Completed']))
         ->assertSessionHasNoErrors();
     expect($closed->refresh()->subject)->toBe('Corrected');
-});
+})->with(['Senior Operations', 'Business Development']);
 
 it('keeps editing from everyone else', function (string $role) {
     $rfq = Rfq::factory()->create(['subject' => 'Untouched']);
@@ -95,4 +95,4 @@ it('keeps editing from everyone else', function (string $role) {
 
     test()->actingAs(userWithRole($role))->put(route('admin.rfqs.update', $rfq), editPayload($rfq, ['subject' => 'Changed']))->assertForbidden();
     expect($rfq->refresh()->subject)->toBe('Untouched');
-})->with(['Sourcing', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager', 'Business Development']);
+})->with(['Sourcing', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager']);

@@ -162,7 +162,7 @@
                 @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $stoppedAssignee->pivot])
             @endforeach
         @endif
-        {{-- Admin; Senior Operations, till it's closed; Business Development, sent back to them (Rfq::canBeEditedBy()). --}}
+        {{-- Admin; Senior Operations and Business Development, till it's closed (Rfq::canBeEditedBy()). --}}
         @if ($rfq->canBeEditedBy(auth()->user()))
             <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
                     data-bs-toggle="modal" data-bs-target="#editRfqModal"

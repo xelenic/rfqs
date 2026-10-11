@@ -630,7 +630,7 @@
                     @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment, 'showLabel' => true])
                 @endif
             @endcan
-            {{-- Admin; Senior Operations, till it's closed; Business Development, sent back to them (Rfq::canBeEditedBy()). --}}
+            {{-- Admin; Senior Operations and Business Development, till it's closed (Rfq::canBeEditedBy()). --}}
             @if ($rfq->canBeEditedBy(auth()->user()))
                 <button type="button" class="btn btn-sm btn-primary js-edit-rfq"
                         data-bs-toggle="modal" data-bs-target="#editRfqModal"

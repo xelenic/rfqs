@@ -592,13 +592,13 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * Edits an RFQ's own details (WC/RFQ number, priority, subject,
-     * description, status). The Edit button itself is only ever shown to
-     * Admin, and to Business Development on an RFQ currently sent back to
-     * them (Rfq::isReturnedToBusinessDevelopment()) — that's when
-     * something about it needs fixing before it can go on. In that one
-     * case, whatever status is submitted is overridden back to Pending:
-     * closing it out is still the very end of the approval chain, not
-     * theirs to skip to from here.
+     * description, status) — for whoever Rfq::canBeEditedBy() lets: Admin,
+     * any RFQ; Senior Operations and Business Development, any not yet
+     * closed. Only an Admin's status is kept; anyone else's edit leaves the
+     * status as it was, and one sent back to Business Development
+     * (Rfq::isReturnedToBusinessDevelopment()) is Pending again: closing it
+     * out is still the very end of the approval chain, not theirs to skip
+     * to from here.
      *
      * Saving an edit to an RFQ sent back to Business Development — by them,
      * or by Admin, who can act at every stage — counts as fixing it: it
