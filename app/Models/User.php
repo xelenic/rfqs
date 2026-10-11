@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -178,6 +179,63 @@ class User extends Authenticatable
     public function extraWorkingHours(): HasMany
     {
         return $this->hasMany(ExtraWorkingHour::class)->orderBy('start');
+    }
+
+    /**
+     * What the top bar's bell lists for them (layouts/_notification_bell),
+     * newest first, up to $limit: their alerts (database notifications, such
+     * as DataEntryIdle) and the private messages sent to them — one line per
+     * person, their latest message, saying how many are unread. And how many
+     * of both are unread, for its count.
+     *
+     * @return array{items: \Illuminate\Support\Collection<int, array{kind: string, at: CarbonInterface, unread: bool, url: string, icon: string, text: string, note: string}>, unread: int}
+     */
+    public function bellItems(int $limit = 8): array
+    {
+        $alerts = $this->notifications()->latest()->limit($limit)->get()
+            ->map(fn ($alert) => [
+                'kind' => 'alert',
+                'at' => $alert->created_at,
+                'unread' => $alert->read_at === null,
+                'url' => route('admin.notifications.open', $alert->id),
+                'icon' => 'bi-hourglass-bottom',
+                'text' => $alert->data['message'] ?? 'Alert',
+                'note' => 'message them',
+            ]);
+
+        $unreadBySender = $this->receivedMessages()->unread()->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id');
+
+        $latestFromEach = PrivateMessage::query()
+            ->whereIn('id', $this->receivedMessages()->groupBy('sender_id')->selectRaw('max(id)'))
+            ->with('sender')
+            ->latest('id')
+            ->limit($limit)
+            ->get();
+
+        $messages = $latestFromEach
+            ->filter(fn (PrivateMessage $message) => $message->sender !== null)
+            ->map(function (PrivateMessage $message) use ($unreadBySender) {
+                $unread = (int) ($unreadBySender[$message->sender_id] ?? 0);
+
+                return [
+                    'kind' => 'message',
+                    'at' => $message->created_at,
+                    'unread' => $unread > 0,
+                    'url' => route('admin.messages.show', $message->sender),
+                    'icon' => 'bi-chat-dots',
+                    'text' => $message->sender->name.': '.Str::limit($message->body, 80),
+                    'note' => match (true) {
+                        $unread > 1 => "{$unread} new messages",
+                        $unread === 1 => 'new message',
+                        default => 'message',
+                    },
+                ];
+            });
+
+        return [
+            'items' => $alerts->concat($messages)->sortByDesc('at')->take($limit)->values(),
+            'unread' => $this->unreadNotifications()->count() + (int) $unreadBySender->sum(),
+        ];
     }
 
     /**

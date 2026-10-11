@@ -66,10 +66,15 @@ it('ignores a status sent along with a new RFQ', function () {
     expect(Rfq::sole()->status)->toBe('Pending');
 });
 
-it('still lets an existing RFQ\'s status be edited', function () {
+it('still lets an Admin edit an existing RFQ\'s status — not Business Development, outside a return', function () {
     $rfq = Rfq::factory()->create();
 
     test()->actingAs(userWithRole('Business Development'))
+        ->put(route('admin.rfqs.update', $rfq), newRfqPayload(['rfq_number' => $rfq->rfq_number, 'status' => 'Completed']))
+        ->assertForbidden();
+    expect($rfq->refresh()->status)->toBe('Pending');
+
+    test()->actingAs(userWithRole('Admin'))
         ->put(route('admin.rfqs.update', $rfq), newRfqPayload(['rfq_number' => $rfq->rfq_number, 'status' => 'Completed']))
         ->assertSessionHasNoErrors();
 

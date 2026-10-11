@@ -5,6 +5,7 @@ use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -208,6 +209,91 @@ it('shows the unread count on the Messages link, and only theirs', function () {
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))
         ->assertSee('Messages')
         ->assertDontSee(' unread"', false);
+});
+
+// ---- in the bell -----------------------------------------------------------
+
+it('lists the messages sent to someone in their bell, one line per person, with what they said last', function () {
+    [$me, $riley, $priya] = [userWithRole('Data Entry'), userWithRole('Sourcing'), userWithRole('Sourcing')];
+
+    PrivateMessage::factory()->create(['sender_id' => $riley->id, 'recipient_id' => $me->id, 'body' => 'First from Riley']);
+    PrivateMessage::factory()->create(['sender_id' => $riley->id, 'recipient_id' => $me->id, 'body' => 'Second from Riley']);
+    PrivateMessage::factory()->read()->create(['sender_id' => $priya->id, 'recipient_id' => $me->id, 'body' => 'Old news from Priya', 'created_at' => now()->subHour()]);
+    // What I said, and what others said to each other, aren't mine to be told about.
+    PrivateMessage::factory()->create(['sender_id' => $me->id, 'recipient_id' => $riley->id, 'body' => 'My note to Riley']);
+    PrivateMessage::factory()->create(['sender_id' => $riley->id, 'recipient_id' => $priya->id, 'body' => 'Between Riley and Priya']);
+
+    $bell = $me->bellItems();
+
+    expect($bell['unread'])->toBe(2)
+        ->and($bell['items'])->toHaveCount(2)
+        ->and($bell['items'][0])->toMatchArray([
+            'kind' => 'message',
+            'unread' => true,
+            'url' => route('admin.messages.show', $riley),
+            'text' => "{$riley->name}: Second from Riley",
+            'note' => '2 new messages',
+        ])
+        ->and($bell['items'][1])->toMatchArray([
+            'unread' => false,
+            'url' => route('admin.messages.show', $priya),
+            'text' => "{$priya->name}: Old news from Priya",
+            'note' => 'message',
+        ]);
+
+    test()->actingAs($me)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('<span class="notification-bell-count" title="2 unread">2</span>', false)
+        ->assertSee('href="'.route('admin.messages.show', $riley).'"', false)
+        ->assertSeeInOrder(["{$riley->name}: Second from Riley", '2 new messages', "{$priya->name}: Old news from Priya"])
+        ->assertDontSee('My note to Riley')
+        ->assertDontSee('Between Riley and Priya');
+});
+
+it('counts alerts and messages together, newest first, in the bell', function () {
+    [$me, $riley] = [userWithRole('Senior Operations'), userWithRole('Sourcing')];
+
+    $me->notifications()->create([
+        'id' => (string) Str::uuid(),
+        'type' => 'App\\Notifications\\DataEntryIdle',
+        'data' => ['message' => 'Morgan (Data Entry) hasn\'t started anything for 10m — 1 part is waiting.'],
+        'created_at' => now()->subMinutes(5),
+    ]);
+    PrivateMessage::factory()->create(['sender_id' => $riley->id, 'recipient_id' => $me->id, 'body' => 'Quote is attached']);
+
+    test()->actingAs($me)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('<span class="notification-bell-count" title="2 unread">2</span>', false)
+        ->assertSeeInOrder(["{$riley->name}: Quote is attached", 'new message', 'Morgan (Data Entry) hasn\'t started anything']);
+});
+
+it('takes a message off the bell\'s count once its conversation is opened', function () {
+    [$me, $riley] = [userWithRole('Data Entry'), userWithRole('Sourcing')];
+    PrivateMessage::factory()->create(['sender_id' => $riley->id, 'recipient_id' => $me->id, 'body' => 'Quote is attached']);
+
+    test()->actingAs($me)->get(route('admin.messages.show', $riley))->assertOk();
+
+    test()->actingAs($me)->get(route('admin.dashboard'))->assertOk()
+        ->assertDontSee('notification-bell-count', false)
+        ->assertSee("{$riley->name}: Quote is attached");
+});
+
+it('marks the messages in the bell read along with the alerts — only the ones sent to them', function () {
+    [$me, $riley] = [userWithRole('Data Entry'), userWithRole('Sourcing')];
+    PrivateMessage::factory()->count(2)->create(['sender_id' => $riley->id, 'recipient_id' => $me->id]);
+    PrivateMessage::factory()->create(['sender_id' => $me->id, 'recipient_id' => $riley->id]);
+
+    test()->actingAs($me)->from(route('admin.dashboard'))
+        ->post(route('admin.notifications.read-all'))
+        ->assertRedirect(route('admin.dashboard'));
+
+    expect($me->receivedMessages()->unread()->count())->toBe(0)
+        // What I sent Riley is still unread for Riley.
+        ->and($riley->receivedMessages()->unread()->count())->toBe(1);
+});
+
+it('says so when the bell has nothing in it', function () {
+    test()->actingAs(userWithRole('Sourcing'))->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('id="notificationBell"', false)
+        ->assertSee('No alerts or messages yet.');
 });
 
 // ---- names on comments -----------------------------------------------------

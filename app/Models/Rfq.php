@@ -399,6 +399,22 @@ class Rfq extends Model
     }
 
     /**
+     * Whether $user can edit this RFQ's details — its numbers, priority,
+     * subject and the rest (RfqController::update()): an Admin, any RFQ;
+     * Senior Operations, any not yet closed; Business Development, one sent
+     * back to them to fix. Only an Admin changes its status from there.
+     */
+    public function canBeEditedBy(User $user): bool
+    {
+        return match (true) {
+            $user->hasRole('Admin') => true,
+            $user->hasRole('Senior Operations') => $this->status !== 'Completed',
+            $user->hasRole('Business Development') => $this->isReturnedToBusinessDevelopment(),
+            default => false,
+        };
+    }
+
+    /**
      * Whether this RFQ is held on a Returns page (RETURNS_PAGE_STAGES) other
      * than $ownStage's — sent back there and not yet dealt with. While it
      * is, no other review stage can act on any part of it.
@@ -1285,36 +1301,62 @@ class Rfq extends Model
     }
 
     /**
-     * Whether $part can go to another Sourcing member: it's still with
-     * Sourcing — assigned and not yet marked complete (a part sent back for
-     * rework included), going ahead — on an RFQ in progress. Once Sourcing has
-     * marked it complete it's on to Data Entry, and stays with whoever did it.
+     * Whether $part's Sourcing member can be replaced by another
+     * (replaceSourcingPart()): someone holds it, it isn't closed or
+     * cancelled, and the RFQ is open or on hold — at whatever step the part
+     * has got to.
      */
-    public function canReassignPart(int $part): bool
+    public function canReplaceSourcing(int $part): bool
     {
-        $assignment = $this->activePart($part);
+        $holder = $this->assigneeForPart($part)?->pivot;
 
-        return $this->status === 'Pending' && $assignment !== null && $assignment->completed_at === null;
+        return in_array($this->status, ['Pending', self::ON_HOLD], true)
+            && $holder !== null
+            && $holder->bd_closed_at === null
+            && ! $holder->isCancelled();
     }
 
     /**
-     * Senior Operations gives $part to another Sourcing member, $to, while
-     * it's still with Sourcing (canReassignPart()): it starts afresh with them
-     * — a new assignment, the round and its countdown theirs (syncSteps()) —
-     * and leaves the member who had it. The thread says who it went from and
-     * to, naming the part.
+     * Senior Operations replaces $part's Sourcing member with $to, wherever
+     * the part has got to: it's theirs from now — on their lists, theirs to
+     * finalize or rework, and theirs to send straight back if it's waiting
+     * on that (RfqReturn) — and everything done on it so far stands. The time
+     * the member who had it put in stays theirs; a Sourcing countdown starts
+     * afresh with $to, while Data Entry's or GM Assistant's carries on as it
+     * was. The thread says who it went from and to (and why, if given),
+     * naming the part. A no-op if nobody holds it, or $to already does.
      *
-     * Caller is responsible for verifying it's allowed, and that $to holds the
-     * Sourcing role.
+     * Caller is responsible for verifying it's allowed (canReplaceSourcing()),
+     * and that $to holds the Sourcing role.
      */
-    public function reassignSourcingPart(int $part, User $to, User $by): void
+    public function replaceSourcingPart(int $part, User $to, User $by, ?string $reason = null): void
     {
         $from = $this->assigneeForPart($part);
 
-        $this->freePart($part);
-        $this->assignSourcingParts([$part => $to->id]);
+        if (! $from || $from->is($to)) {
+            return;
+        }
 
-        $this->postActionComment($by, 'reassigned', "From {$from->name} to {$to->name}.", $this->partContext($part));
+        $openStretches = fn () => RfqStep::query()->where('rfq_id', $this->id)->where('part_number', $part)->whereNull('ended_at');
+
+        // Their stretch at Sourcing's own steps ends here, credited to them;
+        // anyone else's on the part goes on, the part's holder now $to.
+        $openStretches()->whereIn('step', RfqStep::ROLE_STEPS['Sourcing'])->whereNull('worked_by')->update(['worked_by' => $from->id]);
+        $openStretches()->whereNotIn('step', RfqStep::ROLE_STEPS['Sourcing'])->update(['assignee_id' => $to->id]);
+
+        DB::table('rfq_user')
+            ->where('rfq_id', $this->id)
+            ->where('part_number', $part)
+            ->update(['user_id' => $to->id, 'updated_at' => now()]);
+
+        $this->returns()->where('part_number', $part)->whereNull('forwarded_at')->where('user_id', $from->id)->update(['user_id' => $to->id]);
+
+        $this->load('assignees');
+        $this->unsetRelation('returns');
+
+        $this->postActionComment($by, 'reassigned', trim("Sourcing replaced: from {$from->name} to {$to->name}. ".($reason ?? '')), $this->partContext($part));
+
+        $this->syncSteps();
     }
 
     /**

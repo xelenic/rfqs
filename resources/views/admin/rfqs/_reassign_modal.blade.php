@@ -1,9 +1,10 @@
 {{--
-    Reassign — Senior Operations gives a part still with Sourcing (not yet
-    marked complete) to another Sourcing member, from the Assigned tab. Shared
-    across the part lines, pointed at a part by the Reassign button that opens
-    it (admin.js, .js-reassign-part); after a refused submission it comes back
-    open against the same part. See RfqController::reassignSourcing().
+    Replace Sourcing — Senior Operations gives a part to another Sourcing
+    member at whatever step it's got to, its progress kept, from the Assigned
+    tab or the RFQ's page. Shared across the parts, pointed at one by the
+    Replace button that opens it (admin.js, .js-reassign-part); after a
+    refused submission it comes back open against the same part. See
+    RfqController::reassignSourcing(), Rfq::replaceSourcingPart().
 
     Expects: $sourcingUsers (the Sourcing members, with their workload
     counts — User::scopeWithSourcingWorkloadCounts()).
@@ -26,16 +27,16 @@
 
             <div class="modal-header">
                 <div>
-                    <h5 class="modal-title" id="reassignModalLabel">Reassign Sourcing</h5>
+                    <h5 class="modal-title" id="reassignModalLabel">Replace Sourcing</h5>
                     <div class="text-muted-soft small" id="reassignTarget">{{ $isFailedReassign ? old('reassign_target') : '' }}</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <div class="modal-body">
-                <p class="text-muted-soft small">Sourcing hasn't marked it complete yet, so it can go to someone else. It leaves its current member's list and starts afresh — and its countdown — with whoever takes it over.</p>
+                <p class="text-muted-soft small">Whoever takes it over has it from here, at whatever step it's at — on their list, theirs to finalize or rework. Everything done on it so far stays, and the time already spent stays with the current member.</p>
 
-                <label for="reassign-user" class="form-label">Give it to</label>
+                <label for="reassign-user" class="form-label">Who takes it over</label>
                 <select name="user_id" id="reassign-user" class="form-select @error('user_id', 'reassign') is-invalid @enderror">
                     <option value="">Pick a Sourcing member…</option>
                     @foreach ($sourcingUsers as $member)
@@ -48,14 +49,22 @@
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror
 
+                <label for="reassign-reason" class="form-label mt-3">Reason <span class="text-muted-soft fw-normal">(optional)</span></label>
+                <textarea name="reason" id="reassign-reason" rows="2" maxlength="1000" class="form-control @error('reason', 'reassign') is-invalid @enderror"
+                          placeholder="Say, they're on leave this week">{{ $isFailedReassign ? old('reason') : '' }}</textarea>
+                <div class="form-text">Posted to the RFQ's comments with the change.</div>
+                @error('reason', 'reassign')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+
                 <div class="mt-3">
-                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'reassign-acting-as', 'label' => 'Reassigned by'])
+                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'reassign-acting-as', 'label' => 'Replaced by'])
                 </div>
             </div>
 
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-person-gear"></i> Reassign</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-person-gear"></i> Replace</button>
             </div>
         </form>
     </div>

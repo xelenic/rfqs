@@ -606,6 +606,12 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function update(Request $request, Rfq $rfq): RedirectResponse
     {
+        abort_unless(
+            $rfq->canBeEditedBy($request->user()),
+            403,
+            $rfq->status === 'Completed' ? 'A closed RFQ can\'t be edited.' : 'You can\'t edit this RFQ.'
+        );
+
         $isBdReturn = $request->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment();
         $resolvesBdReturn = $rfq->isReturnedToBusinessDevelopment() && $request->user()->hasAnyRole(['Business Development', 'Admin']);
 
@@ -624,8 +630,11 @@ class RfqController extends Controller implements HasMiddleware
 
         $validated = $validator->validated();
 
-        if ($isBdReturn) {
-            $validated['status'] = 'Pending';
+        // Only an Admin changes the status from here: Senior Operations has
+        // its own way to stop and resume one (changeStatus()), and closing is
+        // Business Development's — whose returned RFQ is Pending again.
+        if (! $request->user()->hasRole('Admin')) {
+            $validated['status'] = $isBdReturn ? 'Pending' : $rfq->status;
         }
 
         if ($rfq->isStopped()) {
@@ -1008,27 +1017,30 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Senior Operations gives a part still with Sourcing — not yet marked
-     * complete — to another Sourcing member, from the Assigned tab
-     * (Rfq::reassignSourcingPart()). Once it's gone on to Data Entry, or past,
-     * it can't be. Admin can too, as one of Senior Operations (doneBy()).
+     * Senior Operations replaces a part's Sourcing member with another, at
+     * whatever step the part has got to — from the Assigned tab or the RFQ's
+     * page — with a reason if they like. The part keeps its progress
+     * (Rfq::replaceSourcingPart()). Not a closed or cancelled one. Admin can
+     * too, as one of Senior Operations (doneBy()).
      */
     public function reassignSourcing(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can reassign Sourcing.');
+        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can replace Sourcing.');
 
         $validated = $request->validateWithBag('reassign', [
             'part' => ['required', 'integer'],
             'user_id' => ['required', 'integer'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ], [
             'user_id.required' => 'Pick who takes it over.',
+            'reason.max' => 'Keep the reason under 1000 characters.',
         ]);
 
         $part = (int) $validated['part'];
         $current = $rfq->assigneeForPart($part);
 
         abort_unless($current, 404, 'That part is not assigned on this RFQ.');
-        abort_unless($rfq->canReassignPart($part), 422, 'This part has moved on past Sourcing — it can\'t be reassigned now.');
+        abort_unless($rfq->canReplaceSourcing($part), 422, 'This part is closed or cancelled — its Sourcing can\'t be replaced now.');
 
         $to = User::role('Sourcing')->find($validated['user_id']);
 
@@ -1038,9 +1050,10 @@ class RfqController extends Controller implements HasMiddleware
             ], 'reassign');
         }
 
-        $rfq->reassignSourcingPart($part, $to, $this->doneBy($request, 'Senior Operations'));
+        $reason = trim((string) ($validated['reason'] ?? ''));
+        $rfq->replaceSourcingPart($part, $to, $this->doneBy($request, 'Senior Operations'), $reason !== '' ? $reason : null);
 
-        return redirect()->back()->with('status', "Reassigned {$rfq->partNumberLabel($part)} from {$current->name} to {$to->name}.");
+        return redirect()->back()->with('status', "Replaced Sourcing on {$rfq->partNumberLabel($part)}: {$current->name} → {$to->name}.");
     }
 
     /**

@@ -62,12 +62,13 @@
     </div>
 
     @if ($mode === 'edit')
-        {{-- Business Development only ever opens this while fixing an RFQ
-             that's been sent back to them (RfqController::update()) —
-             always Pending, and not theirs to close from here regardless
-             of what's submitted, so there's nothing to choose: a hidden
-             field carries it instead of the picker everyone else gets. --}}
-        @if (auth()->user()->hasRole('Business Development'))
+        {{-- Only an Admin changes the status from here (RfqController::update()):
+             Senior Operations stops and resumes one from the RFQ's own page,
+             and Business Development only opens this while fixing an RFQ sent
+             back to them — always Pending. Whatever they send, it's kept as it
+             is, so there's nothing to choose: a hidden field instead of the
+             picker. --}}
+        @unless (auth()->user()->hasRole('Admin'))
             <input type="hidden" name="status" value="Pending">
         @else
             <div class="col-md-6">
@@ -89,7 +90,7 @@
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror
             </div>
-        @endif
+        @endunless
     @endif
 
     <div class="col-12">

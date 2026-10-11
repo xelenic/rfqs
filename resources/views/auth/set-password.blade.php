@@ -20,7 +20,7 @@
     <div class="auth-shell">
         <div class="auth-card">
             <div class="text-center mb-4">
-                <span class="brand-mark d-inline-flex mb-2" style="width:44px;height:44px;font-size:1rem;">RFQ</span>
+                <img src="{{ asset('logo.jpg') }}?v={{ filemtime(public_path('logo.jpg')) }}" alt="{{ \App\Models\Setting::companyName() }}" class="auth-logo mb-3">
                 <h1 class="h4 fw-bold mb-1">Set your password</h1>
                 <p class="text-muted-soft mb-0">Welcome to {{ \App\Models\Setting::companyName() }} — choose a password to sign in with.</p>
             </div>

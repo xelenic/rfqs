@@ -630,7 +630,8 @@
                     @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment, 'showLabel' => true])
                 @endif
             @endcan
-            @if (auth()->user()->hasRole('Admin') || (auth()->user()->hasRole('Business Development') && $rfq->isReturnedToBusinessDevelopment()))
+            {{-- Admin; Senior Operations, till it's closed; Business Development, sent back to them (Rfq::canBeEditedBy()). --}}
+            @if ($rfq->canBeEditedBy(auth()->user()))
                 <button type="button" class="btn btn-sm btn-primary js-edit-rfq"
                         data-bs-toggle="modal" data-bs-target="#editRfqModal"
                         data-action="{{ route('admin.rfqs.update', $rfq) }}"
@@ -844,6 +845,10 @@
                     @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
                         <p class="text-muted-soft mb-0">Not yet assigned.</p>
                     @else
+                        {{-- Senior Operations (and Admin) replace a part's Sourcing
+                             member from here, at whatever step it's at — see
+                             Rfq::canReplaceSourcing(). --}}
+                        @php $canReplaceSourcing = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']); @endphp
                         <div class="table-responsive">
                             <table class="table table-sm mb-0 align-middle">
                                 <thead>
@@ -851,6 +856,9 @@
                                         <th>Assignee</th>
                                         <th>Split</th>
                                         <th>Status</th>
+                                        @if ($canReplaceSourcing)
+                                            <th class="text-end"><span class="visually-hidden">Replace</span></th>
+                                        @endif
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -874,6 +882,23 @@
                                                 <td class="text-muted-soft">Unassigned</td>
                                                 <td>{{ $part['number'] }}</td>
                                                 <td><span class="badge bg-warning-subtle text-warning-emphasis">Open — waiting for a Sourcing member</span></td>
+                                            @endif
+                                            @if ($canReplaceSourcing)
+                                                <td class="text-end">
+                                                    @if ($tabAssignee && $rfq->canReplaceSourcing($part['part']))
+                                                        <button type="button" class="btn btn-sm btn-outline-primary js-reassign-part"
+                                                                data-bs-toggle="modal" data-bs-target="#reassignModal"
+                                                                data-action="{{ route('admin.rfqs.reassign-sourcing', $rfq) }}"
+                                                                data-rfq-id="{{ $rfq->id }}"
+                                                                data-part="{{ $part['part'] }}"
+                                                                data-label="{{ $rfq->isSplit() ? $part['number'] : $rfq->rfq_number }}"
+                                                                data-current-id="{{ $tabAssignee->id }}"
+                                                                data-current-name="{{ $tabAssignee->name }}"
+                                                                title="Give this part to another Sourcing member — its progress kept">
+                                                            <i class="bi bi-person-gear"></i> Replace
+                                                        </button>
+                                                    @endif
+                                                </td>
                                             @endif
                                         </tr>
                                     @endforeach
@@ -1401,6 +1426,9 @@
     </div>
 
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
+    @if (auth()->user()->hasAnyRole(['Senior Operations', 'Admin']))
+        @include('admin.rfqs._reassign_modal', ['sourcingUsers' => $sourcingUsers])
+    @endif
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty() || $finalizableParts->isNotEmpty())

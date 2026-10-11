@@ -10,9 +10,9 @@
     once it has been, set going again — until it's closed; an RFQ kept whole
     is put on hold or cancelled from its one line, the whole RFQ with it.
 
-    A part still with Sourcing — not yet marked complete — can be reassigned
-    to another Sourcing member from its line (Reassign, _reassign_modal);
-    once it's gone on to Data Entry, it can't (Rfq::canReassignPart()).
+    A part's Sourcing member can be replaced by another from its line, at
+    whatever step it's got to, its progress kept (Replace, _reassign_modal,
+    Rfq::canReplaceSourcing()) — not once it's closed or cancelled.
 
     Expects: $rfq (with its assignees), $columns (the table's column count).
 --}}
@@ -81,7 +81,7 @@
                     </span>
 
                     @php
-                        $canReassign = $canReassignSourcing && $rfq->canReassignPart($part['part']);
+                        $canReassign = $canReassignSourcing && $rfq->canReplaceSourcing($part['part']);
                         $canChangeThisStatus = $canChangeStatus && (! $isSplit || ! $pivot->isBdClosed());
                     @endphp
                     @if ($canReassign || $canChangeThisStatus)
@@ -95,8 +95,8 @@
                                         data-label="{{ $isSplit ? $part['number'] : $rfq->rfq_number }}"
                                         data-current-id="{{ $assignee->id }}"
                                         data-current-name="{{ $assignee->name }}"
-                                        title="Give this part to another Sourcing member">
-                                    <i class="bi bi-person-gear"></i> Reassign
+                                        title="Give this part to another Sourcing member — its progress kept">
+                                    <i class="bi bi-person-gear"></i> Replace
                                 </button>
                             @endif
                             @if ($canChangeThisStatus && ! $isSplit)

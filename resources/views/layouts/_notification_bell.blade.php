@@ -1,27 +1,26 @@
 {{--
-    The top bar's bell: the signed-in user's alerts — their database
-    notifications, such as App\Notifications\DataEntryIdle — latest first,
-    and how many are unread. Opening one reads it and goes on to what it's
-    about (Admin\NotificationController). live.js keeps the count and the
-    list up to date. Only for those who get alerts
-    (DataEntryIdle::RECIPIENT_ROLES).
+    The top bar's bell, for everyone: their alerts — database notifications,
+    such as App\Notifications\DataEntryIdle — and the private messages sent
+    to them, one line per person, newest first, with how many of both are
+    unread (User::bellItems()). An alert opens on what it's about
+    (Admin\NotificationController); a message, on the conversation, which
+    reads it. live.js keeps the count and the list up to date.
 --}}
 @php
-    $alerts = auth()->user()->notifications()->latest()->limit(8)->get();
-    $unreadAlerts = auth()->user()->unreadNotifications()->count();
+    ['items' => $bellItems, 'unread' => $unreadCount] = auth()->user()->bellItems();
 @endphp
 <div class="dropdown notification-bell" id="notificationBell">
     <button type="button" class="notification-bell-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Alerts">
-        <i class="bi {{ $unreadAlerts ? 'bi-bell-fill' : 'bi-bell' }}" aria-hidden="true"></i>
+        <i class="bi {{ $unreadCount ? 'bi-bell-fill' : 'bi-bell' }}" aria-hidden="true"></i>
         <span class="visually-hidden">Alerts</span>
-        @if ($unreadAlerts)
-            <span class="notification-bell-count" title="{{ $unreadAlerts }} unread">{{ $unreadAlerts }}</span>
+        @if ($unreadCount)
+            <span class="notification-bell-count" title="{{ $unreadCount }} unread">{{ $unreadCount }}</span>
         @endif
     </button>
     <div class="dropdown-menu dropdown-menu-end notification-menu">
         <div class="notification-menu-head">
             <span>Alerts</span>
-            @if ($unreadAlerts)
+            @if ($unreadCount)
                 <form method="POST" action="{{ route('admin.notifications.read-all') }}">
                     @csrf
                     <button type="submit" class="btn btn-link btn-sm p-0">Mark all as read</button>
@@ -29,18 +28,18 @@
             @endif
         </div>
         <div class="notification-menu-items">
-            @forelse ($alerts as $alert)
-                <a href="{{ route('admin.notifications.open', $alert->id) }}" @class(['notification-item', 'is-unread' => $alert->read_at === null])>
-                    <i class="bi bi-hourglass-bottom notification-item-icon" aria-hidden="true"></i>
+            @forelse ($bellItems as $item)
+                <a href="{{ $item['url'] }}" @class(['notification-item', 'is-unread' => $item['unread'], 'is-message' => $item['kind'] === 'message'])>
+                    <i class="bi {{ $item['icon'] }} notification-item-icon" aria-hidden="true"></i>
                     <span class="notification-item-body">
-                        <span class="notification-item-text">{{ $alert->data['message'] ?? 'Alert' }}</span>
-                        <span class="notification-item-time" title="{{ $alert->created_at->setTimezone(\App\Models\Setting::timezone())->format('M d, Y g:i A') }}">
-                            {{ $alert->created_at->diffForHumans() }} &middot; message them
+                        <span class="notification-item-text">{{ $item['text'] }}</span>
+                        <span class="notification-item-time" title="{{ $item['at']->copy()->setTimezone(\App\Models\Setting::timezone())->format('M d, Y g:i A') }}">
+                            {{ $item['at']->diffForHumans() }} &middot; {{ $item['note'] }}
                         </span>
                     </span>
                 </a>
             @empty
-                <div class="notification-empty">No alerts yet.</div>
+                <div class="notification-empty">No alerts or messages yet.</div>
             @endforelse
         </div>
     </div>

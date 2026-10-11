@@ -1457,6 +1457,8 @@ function rfqmsBoot() {
 
             select.value = '';
             select.classList.remove('is-invalid');
+            var reason = form.querySelector('[name="reason"]');
+            if (reason) reason.value = '';
             Array.prototype.forEach.call(select.options, function (option) {
                 option.disabled = option.value !== '' && option.value === button.dataset.currentId;
             });

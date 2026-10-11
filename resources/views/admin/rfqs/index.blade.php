@@ -1050,7 +1050,7 @@
                                     @foreach ($bdForwardBack as $returnsFrom)
                                         @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => $returnsFrom, 'part' => null])
                                     @endforeach
-                                    @can('rfqs.edit')
+                                    @if ($rfq->canBeEditedBy(auth()->user()))
                                         <button type="button" class="btn btn-sm btn-outline-secondary js-edit-rfq"
                                                 @if ($bdForwardBack->count() === 1) data-forward-back="{{ \App\Models\Rfq::stageLabel($bdForwardBack->keys()->first()) }}" @endif
                                                 data-bs-toggle="modal" data-bs-target="#editRfqModal"
@@ -1066,7 +1066,7 @@
                                                 title="Edit">
                                             <i class="bi bi-pencil"></i>
                                         </button>
-                                    @endcan
+                                    @endif
                                 </td>
                             </tr>
                         @empty
