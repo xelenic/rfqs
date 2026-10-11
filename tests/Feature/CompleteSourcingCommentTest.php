@@ -184,3 +184,14 @@ it('asks for the comment on the RFQ\'s own page too', function () {
     $html = test()->actingAs($riley)->get(route('admin.rfqs.show', $rfq))->getContent();
     expect($html)->not->toContain('js-complete"')->not->toContain('id="completeModal"');
 });
+
+it('shows it on the activity timeline as "Assigned to Data Entry"', function () {
+    $sam = userWithRole('Sourcing');
+    $sam->update(['name' => 'Sam Rivera']);
+    $rfq = splitAmong(Rfq::factory()->create(), [1 => $sam]);
+    $rfq->completeSourcingPart(1);
+
+    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
+        ->assertSee('<div class="rfq-timeline-title">Assigned to Data Entry</div>', false)
+        ->assertDontSee('Marked Complete by Sourcing');
+});

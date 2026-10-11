@@ -16,7 +16,7 @@
         'created' => ['bi-file-earmark-plus', 'primary', 'RFQ Created'],
         'operations_assigned' => ['bi-diagram-2', 'primary', 'Assigned by Operations'],
         'sourcing_assigned' => ['bi-person-check', 'secondary', 'Assigned to Sourcing'],
-        'sourcing_completed' => ['bi-check-circle-fill', 'success', 'Marked Complete by Sourcing'],
+        'sourcing_completed' => ['bi-check-circle-fill', 'success', 'Assigned to Data Entry'],
         'sourcing_returned' => ['bi-arrow-counterclockwise', 'danger', 'Returned to Sourcing'],
         'sourcing_handoff' => ['bi-clipboard-check', 'info', 'Handed off to Data Entry'],
         'data_entry_part_completed' => ['bi-send-check', 'success', 'Sent to Finalize by Data Entry'],
