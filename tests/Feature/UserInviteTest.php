@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Notifications\AccountCreated;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
@@ -12,6 +13,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Symfony\Component\Mailer\Exception\TransportException;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -193,12 +195,15 @@ it('stops the link working after 7 days, and sends a fresh one that replaces it'
 });
 
 it('keeps the account when the email can\'t be sent, and says so', function () {
+    // Reported, not written to the real log.
+    Exceptions::fake();
     config(['mail.default' => 'smtp', 'mail.mailers.smtp.host' => '127.0.0.1', 'mail.mailers.smtp.port' => 1]);
 
     addMorgan(personAs('HR Manager', 'Alex Silva'))
         ->assertSessionHas('error', 'The email to morgan@company.lk couldn\'t be sent — check the mail settings, then use Send link to try again.');
 
     expect(User::query()->where('email', 'morgan@company.lk')->exists())->toBeTrue();
+    Exceptions::assertReported(TransportException::class);
 });
 
 it('lets an Admin set a password instead — no email — or send the link, their choice', function () {

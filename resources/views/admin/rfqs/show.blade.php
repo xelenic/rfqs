@@ -383,16 +383,27 @@
         $sourcingDone = $assignee->pivot->completed_at !== null;
         $deIsDone = $assignee->pivot->data_entry_completed_at !== null;
         $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
-        $deActorName = $restrictSourcingView ? 'Data Entry' : ($assignee->pivot->dataEntryCompletedBy?->name ?? 'Unknown');
-
         // Its Sourcing member sent it back instead of finalizing it.
         $deIsReturnedBySourcing = ! $deIsDone && $assignee->pivot->data_entry_returned_at !== null;
+        $deIsRunning = ! $deIsDone && $assignee->pivot->hasDataEntryStarted();
+
+        // The Data Entry box is Data Entry's: whoever sent it to finalize, or
+        // is on it now (their Start) — the part's Sourcing member is on the
+        // Sourcing and Finalize boxes. Nobody yet: just "Data Entry". Sourcing
+        // never learns who in Data Entry it was.
+        $deWorker = match (true) {
+            $deIsDone => $assignee->pivot->dataEntryCompletedBy,
+            $deIsRunning => $assignee->pivot->dataEntryStartedBy,
+            default => null,
+        };
+        $deNameLabel = $restrictSourcingView || $deWorker === null ? 'Data Entry' : $deWorker->name;
 
         $deMeta = match (true) {
-            $deIsDone => [$deActorName, $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
+            $deIsDone => ['Sent to finalize', $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
+            $deIsRunning => ['Working on it', 'Started '.$assignee->pivot->data_entry_started_at->format('M d, Y g:i A')],
             $deIsReturned => ['Returned — rework needed'],
             $deIsReturnedBySourcing => ['Returned by Sourcing'],
-            $sourcingDone => ['Awaiting review'],
+            $sourcingDone => ['Awaiting Start'],
             default => ['Awaiting Sourcing'],
         };
 
@@ -414,7 +425,7 @@
         ];
 
         $dataEntryNode = [
-            'name' => $nameLabel,
+            'name' => $deNameLabel,
             'role' => 'Data Entry',
             'step' => 'data_entry',
             'rfq_number' => $rfqNumber,

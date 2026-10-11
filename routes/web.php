@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LivePulseController;
+use App\Http\Controllers\Admin\LogController;
 use App\Http\Controllers\Admin\MessageController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\PermissionController;
@@ -57,6 +58,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
 
+    Route::get('logs', [LogController::class, 'index'])->name('logs.index');
+    Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');
     Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');

@@ -443,3 +443,57 @@ it('shows Data Entry only the Sourcing and Data Entry boxes and tabs', function 
         // Past their step, it opens on the latest of theirs: Data Entry.
         ->and($html)->toContain('class="tab-pane fade show active" id="step-pane-data_entry"');
 });
+
+/**
+ * Each part's Data Entry box on the RFQ page, as $viewer sees it: [name, meta].
+ *
+ * @return array<int, array{name: string, meta: array<int, string>}>
+ */
+function dataEntryBoxes(Rfq $rfq, User $viewer): array
+{
+    $html = test()->actingAs($viewer)->get(route('admin.rfqs.show', $rfq).'?status=Pending')->assertOk()->getContent();
+    preg_match('/<script type="application\/json" id="rfq-progress-data">(.*?)<\/script>/s', $html, $matches);
+
+    $boxes = [];
+    $walk = function (array $node) use (&$walk, &$boxes) {
+        if (($node['step'] ?? null) === 'data_entry' && ($node['role'] ?? null) === 'Data Entry') {
+            $boxes[] = ['name' => $node['name'], 'meta' => $node['meta']];
+        }
+        foreach ($node['children'] ?? [] as $child) {
+            $walk($child);
+        }
+    };
+    $walk(json_decode($matches[1], true)['tree']);
+
+    return $boxes;
+}
+
+it('names each Data Entry box after who in Data Entry did it, or is on it — not the Sourcing member', function () {
+    $people = progressPeople();
+    $morgan = $people['dataEntry'];
+    $morgan->update(['name' => 'Morgan Ito']);
+    $people['sourcing']->update(['name' => 'Sam Rivera']);
+    $casey = userWithRole('Data Entry');
+    $casey->update(['name' => 'Casey Fernando']);
+
+    // Part 1 sent to finalize by Morgan; part 2 started by Casey; part 3 waiting.
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1020']), [1 => $people['sourcing'], 2 => $people['sourcing'], 3 => $people['sourcing']]);
+    foreach ([1, 2, 3] as $part) {
+        $rfq->refresh()->completeSourcingPart($part);
+    }
+    startDataEntryOn($rfq, 1, $morgan);
+    $rfq->refresh()->completeDataEntryPart(1, $morgan);
+    startDataEntryOn($rfq, 2, $casey);
+
+    [$one, $two, $three] = dataEntryBoxes($rfq->refresh(), $people['admin']);
+
+    expect($one['name'])->toBe('Morgan Ito')
+        ->and($one['meta'][0])->toBe('Sent to finalize')
+        ->and($two['name'])->toBe('Casey Fernando')
+        ->and($two['meta'][0])->toBe('Working on it')
+        ->and($three['name'])->toBe('Data Entry')
+        ->and($three['meta'])->toBe(['Awaiting Start']);
+
+    // Sourcing never learns who in Data Entry it was.
+    expect(collect(dataEntryBoxes($rfq, $people['sourcing']))->pluck('name')->unique()->all())->toBe(['Data Entry']);
+});

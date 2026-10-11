@@ -3886,6 +3886,59 @@ h6, .h6 { font-size: 0.85rem; }
   }
 }
 
+/* ---------- Logs (Admin\LogController) ---------- */
+.log-levels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+}
+
+.log-level-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  color: var(--rfq-text);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.log-level-chip:hover,
+.log-level-chip.is-active {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-text);
+}
+
+.log-table .log-message {
+  min-width: 320px;
+  word-break: break-word;
+}
+
+.log-details-row:hover > td {
+  background: transparent;
+}
+
+.log-details {
+  max-height: 420px;
+  margin: 0 1rem 1rem;
+  padding: 0.75rem 1rem;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--rfq-bg);
+  color: var(--rfq-text);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  /* Long lines wrap rather than push the table wider than the page. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Users page: someone's extra hours ---------- */
 .extra-hours-list li {
   padding: 0.6rem 0;

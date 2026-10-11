@@ -2309,7 +2309,11 @@ window.renderRfqProgressChart = function () {
         currentPad = pad;
 
         var minHeight = chartEl.parentElement ? chartEl.parentElement.clientHeight : 0;
-        chartEl.style.width = (depth * (nodeWidth + columnGap) + pad * 2) + 'px';
+        // Columns a node's width plus a gap apart, the first and last node
+        // whole inside the padding — the tree places node centres, so its
+        // edges sit half a node in from the padding. The same geometry the
+        // scroll-to-a-step below works from.
+        chartEl.style.width = ((depth - 1) * (nodeWidth + columnGap) + nodeWidth + pad * 2) + 'px';
         chartEl.style.height = Math.max(leaves * (nodeHeight + rowGap) + 40, minHeight, 140) + 'px';
         chart.resize();
 
@@ -2321,8 +2325,8 @@ window.renderRfqProgressChart = function () {
                 data: [rootNode],
                 top: 20 * zoom,
                 bottom: 20 * zoom,
-                left: pad,
-                right: pad,
+                left: pad + nodeWidth / 2,
+                right: pad + nodeWidth / 2,
                 orient: 'LR',
                 edgeShape: 'curve',
                 roam: false,
