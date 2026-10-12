@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -80,6 +81,15 @@ class DashboardController extends Controller
     public const ADMIN_DEFAULT_PERIOD = 'week';
 
     /**
+     * How often the open Critical monitor fetches itself again, and how long
+     * the top bar's count of what's critical is kept before it's worked out
+     * again — in seconds.
+     */
+    public const CRITICAL_REFRESH_SECONDS = 30;
+
+    public const CRITICAL_COUNT_SECONDS = 60;
+
+    /**
      * Display the admin dashboard.
      */
     public function index(Request $request): View
@@ -138,6 +148,105 @@ class DashboardController extends Controller
                 : null,
             'notifications' => $this->notifications($request),
         ]);
+    }
+
+    /**
+     * The Critical monitor, opened from the top bar (layouts/_critical_modal)
+     * and fetched into it — on opening, then every CRITICAL_REFRESH_SECONDS:
+     * everything that needs attention now. The tasks overdue or nearly so
+     * (ongoingTasks()), and the share on time; who in Data Entry is idle with
+     * parts waiting (dataEntryFloor()); the Urgent and High RFQs still open,
+     * longest-waiting first; what's been sent back and is waiting on
+     * someone; and the viewer's own unread alerts and messages. For those
+     * who run the operation (User::canSeeCriticalMonitor()).
+     */
+    public function critical(Request $request): View
+    {
+        abort_unless($request->user()->canSeeCriticalMonitor(), 403, 'Only Admin and Senior Operations have the Critical monitor.');
+
+        $now = CarbonImmutable::now();
+        $today = $now->setTimezone(Setting::timezone())->startOfDay();
+        $user = $request->user();
+        $isAdmin = $user->hasRole('Admin');
+
+        $ongoing = $this->ongoingTasks($now);
+        $overdue = $ongoing->where('state', 'overdue')->sortBy('remaining')->values();
+        $timed = $ongoing->whereNotNull('target');
+        $floor = $this->dataEntryFloor($now, $today);
+        $idle = $floor['people']->where('state', 'Idle')->sortByDesc('seconds')->values();
+
+        $urgentCounts = Rfq::query()->where('status', 'Pending')->whereIn('priority_level', ['Urgent', 'High'])
+            ->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
+        $urgent = Rfq::query()
+            ->where('status', 'Pending')
+            ->whereIn('priority_level', ['Urgent', 'High'])
+            ->with('assignees')
+            ->orderByRaw("case priority_level when 'Urgent' then 0 else 1 end")
+            ->oldest()
+            ->limit(8)
+            ->get()
+            ->map(fn (Rfq $rfq) => [
+                'rfq' => $rfq,
+                'where' => match (true) {
+                    $rfq->reject_target_stage !== null => 'Sent back to '.Rfq::stageLabel($rfq->reject_target_stage),
+                    $rfq->stage !== null => Rfq::stageLabel($rfq->stage),
+                    $rfq->hasUnassignedParts() => 'Awaiting assignment',
+                    default => 'With Sourcing or Data Entry',
+                },
+            ]);
+
+        $queues = Rfq::queueCounts();
+        $returnsPage = fn (string $role) => $isAdmin
+            ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns', 'role' => $role])
+            : ($role === 'senior-operations' ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) : null);
+        $returns = collect([
+            ['label' => 'Business Development', 'count' => $queues['bd_returns'], 'url' => $returnsPage('business-development')],
+            ['label' => 'Senior Operations', 'count' => $queues['ops_returns'], 'url' => $returnsPage('senior-operations')],
+            ['label' => 'Sourcing', 'count' => $queues['sourcing_returns'], 'url' => $returnsPage('sourcing')],
+            ['label' => 'Head of Business Development', 'count' => $queues['head_of_bd_returns'], 'url' => $returnsPage('head-of-business-development')],
+            ['label' => 'GM Assistant', 'count' => $queues['gm_assistant_returns'], 'url' => $returnsPage('gm-assistant')],
+        ]);
+
+        $bell = $user->bellItems(20);
+        $count = $overdue->count() + $idle->count();
+        Cache::put('critical-monitor.count', $count, self::CRITICAL_COUNT_SECONDS);
+
+        return view('admin.critical.monitor', [
+            'count' => $count,
+            'refreshSeconds' => self::CRITICAL_REFRESH_SECONDS,
+            'overdue' => $overdue,
+            'dueSoon' => $ongoing->where('state', 'due_soon')->count(),
+            'ongoingCount' => $ongoing->count(),
+            'health' => $timed->isEmpty() ? null : (int) round($timed->where('state', '!==', 'overdue')->count() / $timed->count() * 100),
+            'timedCount' => $timed->count(),
+            'floor' => $floor,
+            'idle' => $idle,
+            'alertMinutes' => Setting::dataEntryIdleAlert()['minutes'],
+            'urgent' => $urgent,
+            'urgentCounts' => ['Urgent' => (int) ($urgentCounts['Urgent'] ?? 0), 'High' => (int) ($urgentCounts['High'] ?? 0)],
+            'returns' => $returns,
+            'alerts' => collect($bell['items'])->where('kind', 'alert')->where('unread', true)->values(),
+            'messages' => collect($bell['items'])->where('kind', 'message')->where('unread', true)->values(),
+            'unreadAlerts' => $user->unreadNotifications()->count(),
+            'unreadMessages' => $user->receivedMessages()->unread()->count(),
+        ]);
+    }
+
+    /**
+     * How many things are critical right now — tasks overdue, and people in
+     * Data Entry idle with parts waiting — for the count on the top bar's
+     * Critical monitor button. Kept CRITICAL_COUNT_SECONDS (every page
+     * shows it), and put back fresh whenever the monitor itself is opened.
+     */
+    public static function criticalCount(): int
+    {
+        return (int) Cache::remember('critical-monitor.count', self::CRITICAL_COUNT_SECONDS, function () {
+            $dashboard = app(static::class);
+            $now = CarbonImmutable::now();
+
+            return $dashboard->ongoingTasks($now)->where('state', 'overdue')->count()
+                + $dashboard->dataEntryFloor($now, $now->setTimezone(Setting::timezone())->startOfDay())['idleCount'];
+        });
     }
 
     /**

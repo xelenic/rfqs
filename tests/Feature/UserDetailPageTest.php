@@ -97,10 +97,10 @@ it('shows a Sourcing member\'s work: what they\'ve sourced, what\'s in their han
         ->assertSeeInOrder(['Working time', 'On RFQs, last 30 days'])
         ->assertDontSee('RFQs created')
         // In their hands: the one still with them, not the one handed on.
-        ->assertSeeInOrder(['In their hands', 'RFQ2101', 'Lobby lights', 'In progress', 'Recent activity'])
+        ->assertSeeInOrder(['id="user-pane-in-hand"', 'RFQ2101', 'Lobby lights', 'In progress', 'id="user-pane-activity"'], false)
         ->assertSee('href="'.route('admin.rfqs.show', $open).'?status=Pending"', false)
         // What they did, linking to the RFQ.
-        ->assertSeeInOrder(['Recent activity', 'Assigned to Data Entry <strong>RFQ2102</strong>'], false)
+        ->assertSeeInOrder(['id="user-pane-activity"', 'Assigned to Data Entry <strong>RFQ2102</strong>'], false)
         ->assertSee('href="'.route('admin.rfqs.show', $done).'" class="today-feed-item tone-success"', false);
 });
 
@@ -115,9 +115,9 @@ it('shows Business Development the RFQs they\'ve created and closed — and no a
         ->assertDontSee('Working time')
         ->assertDontSee('Parts sourced')
         ->assertSee('Created <strong>RFQ2202</strong>', false)
-        ->assertDontSee('<span>Attendance</span>', false)
-        ->assertDontSee('Last two weeks')
-        ->assertDontSee('In their hands');
+        ->assertDontSee('id="user-tab-attendance"', false)
+        ->assertDontSee('id="user-tab-extra-hours"', false)
+        ->assertDontSee('id="user-tab-in-hand"', false);
 });
 
 it('shows Data Entry the part they\'ve started', function () {
@@ -128,13 +128,13 @@ it('shows Data Entry the part they\'ve started', function () {
 
     userPage($dataEntry)
         ->assertSeeInOrder(['Sent to finalize', '0', 'Parts entered'])
-        ->assertSeeInOrder(['In their hands', 'RFQ2301', 'Data Entry started']);
+        ->assertSeeInOrder(['id="user-pane-in-hand"', 'RFQ2301', 'Data Entry started'], false);
 });
 
 it('says so when they\'ve done nothing on an RFQ yet', function () {
     userPage(userWithRole('Sourcing'))
         ->assertSee('Nothing done on any RFQ yet.')
-        ->assertDontSee('In their hands');
+        ->assertSee('Nothing in their hands right now.');
 });
 
 it('names the RFQs to HR Manager without linking into them — they can\'t open RFQs', function () {
@@ -177,7 +177,7 @@ it('lists the working days of the last two weeks\' attendance, as HR Manager app
 
 it('says so while attendance isn\'t kept', function () {
     userPage(userWithRole('Data Entry'))
-        ->assertSee('<span>Attendance</span>', false)
+        ->assertSee('id="user-tab-attendance"', false)
         ->assertSee('Attendance isn\'t being kept yet', false);
 });
 
@@ -235,4 +235,45 @@ it('keeps an Admin\'s Edit and password link to Admins, as the list does', funct
         ->assertDontSee('js-edit-user', false)
         ->assertDontSee(route('admin.users.password-link', $admin))
         ->assertSee('href="'.route('admin.messages.show', $admin).'"', false);
+});
+
+// ---- the tabs --------------------------------------------------------------
+
+it('splits the page into tabs — the ones that fit the person', function () {
+    $tabsOf = fn (User $user) => preg_match_all('/data-user-tab="([a-z-]+)"/', userPage($user)->getContent(), $matches) ? $matches[1] : [];
+
+    expect($tabsOf(userWithRole('Sourcing')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'extra-hours'])
+        ->and($tabsOf(userWithRole('Business Development')))->toBe(['overview', 'activity'])
+        ->and($tabsOf(userWithRole('GM Assistant')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'extra-hours']);
+});
+
+it('opens on Overview — its figures and details — or the tab in the address', function () {
+    $riley = userWithRole('Sourcing');
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2501']), [1 => $riley]);
+    $rfq->completeSourcingPart(1, 'Quotes attached');
+
+    userPage($riley)
+        ->assertSee('class="nav-link active" id="user-tab-overview"', false)
+        ->assertSee('class="tab-pane fade show active" id="user-pane-overview"', false)
+        ->assertSeeInOrder(['<dt>Last step taken</dt>', 'Assigned to Data Entry RFQ2501'], false);
+
+    test()->actingAs(detailAdmin())->get(route('admin.users.show', [$riley, 'tab' => 'attendance']))->assertOk()
+        ->assertSee('class="nav-link active" id="user-tab-attendance"', false)
+        ->assertSee('class="tab-pane fade show active" id="user-pane-attendance"', false)
+        ->assertDontSee('class="tab-pane fade show active" id="user-pane-overview"', false);
+
+    // A tab they haven't got is Overview.
+    test()->actingAs(detailAdmin())->get(route('admin.users.show', [userWithRole('Business Development'), 'tab' => 'attendance']))->assertOk()
+        ->assertSee('class="nav-link active" id="user-tab-overview"', false);
+});
+
+it('counts the parts in their hands and their extra hours on the tabs', function () {
+    $riley = userWithRole('Sourcing');
+    splitAmong(Rfq::factory()->create(), [1 => $riley]);
+    splitAmong(Rfq::factory()->create(), [1 => $riley]);
+    ExtraWorkingHour::factory()->create(['user_id' => $riley->id]);
+
+    userPage($riley)
+        ->assertSeeInOrder(['id="user-tab-in-hand"', 'In their hands', '<span class="rfq-tab-count">2</span>'], false)
+        ->assertSeeInOrder(['id="user-tab-extra-hours"', 'Extra hours', '<span class="rfq-tab-count">1</span>'], false);
 });

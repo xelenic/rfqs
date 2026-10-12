@@ -2089,6 +2089,21 @@ function rfqmsBoot() {
         });
     });
 
+    // A person's page (users/show): the tab open is kept in the address
+    // (?tab=), so a reload — or a live update — opens it again. Overview,
+    // the first, needs none.
+    document.querySelectorAll('[data-user-tab]').forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function () {
+            var url = new URL(window.location.href);
+            if (tab.dataset.userTab === 'overview') {
+                url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tab.dataset.userTab);
+            }
+            window.history.replaceState(null, '', url);
+        });
+    });
+
     // On a narrow screen the tabs are a row that scrolls: bring the open one
     // into view, so it's plain which one you're on.
     var settingsTabs = document.querySelector('.settings-tabs');

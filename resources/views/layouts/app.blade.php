@@ -146,6 +146,9 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-3">
+                    @if (auth()->user()->canSeeCriticalMonitor())
+                        @include('layouts._critical_button')
+                    @endif
                     @if (auth()->user()->preference('live_updates'))
                         <span class="live-indicator" id="liveIndicator" data-state="live" role="status" title="This page updates by itself">
                             <i class="live-dot" aria-hidden="true"></i><span class="live-label">Live</span>
@@ -208,6 +211,9 @@
     </div>
 
     @include('layouts._user_card')
+    @if (auth()->user()->canSeeCriticalMonitor())
+        @include('layouts._critical_modal')
+    @endif
     @if (auth()->user()->preference('celebrations'))
         @include('layouts._celebration')
     @endif
@@ -215,6 +221,9 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ asset('js/admin.js') }}?v={{ filemtime(public_path('js/admin.js')) }}"></script>
     <script src="{{ asset('js/live.js') }}?v={{ filemtime(public_path('js/live.js')) }}"></script>
+    @if (auth()->user()->canSeeCriticalMonitor())
+        <script src="{{ asset('js/critical-monitor.js') }}?v={{ filemtime(public_path('js/critical-monitor.js')) }}"></script>
+    @endif
     @stack('scripts')
 </body>
 </html>

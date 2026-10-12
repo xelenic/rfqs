@@ -176,6 +176,7 @@
                 version = freshVersion.content;
                 patchSidebar(doc);
                 patchBell(doc);
+                patchCritical(doc);
 
                 if (bodyIsLive) {
                     pending = freshMain;
@@ -244,6 +245,22 @@
         button.innerHTML = freshButton.innerHTML;
         menu.innerHTML = freshMenu.innerHTML;
         if (grew) bump(button.querySelector('.notification-bell-count'));
+    }
+
+    // The top bar's Critical monitor button: its count and whether it glows.
+    function patchCritical(doc) {
+        var current = document.getElementById('criticalMonitorBtn');
+        var fresh = doc.getElementById('criticalMonitorBtn');
+        if (!current || !fresh) return;
+
+        var count = current.querySelector('.critical-btn-count');
+        var wanted = fresh.querySelector('.critical-btn-count');
+        var grew = wanted && (!count || Number(wanted.textContent) > Number(count.textContent));
+
+        current.className = fresh.className;
+        current.title = fresh.title;
+        current.innerHTML = fresh.innerHTML;
+        if (grew) bump(current.querySelector('.critical-btn-count'));
     }
 
     function bump(badge) {

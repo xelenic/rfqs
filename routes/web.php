@@ -36,6 +36,7 @@ Route::post('logout', [LoginController::class, 'destroy'])
 Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('live', LivePulseController::class)->name('live');
+    Route::get('critical-monitor', [DashboardController::class, 'critical'])->name('critical-monitor');
 
     Route::get('settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::patch('settings/profile', [SettingsController::class, 'updateProfile'])->name('settings.profile');

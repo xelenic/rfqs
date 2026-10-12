@@ -165,6 +165,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person has the Critical monitor in their top bar
+     * (DashboardController::critical()) — what's overdue, idle or urgent
+     * across the operation: Admin, and Senior Operations, who run it.
+     */
+    public function canSeeCriticalMonitor(): bool
+    {
+        return $this->hasAnyRole(['Admin', 'Senior Operations']);
+    }
+
+    /**
      * Whether this person can send a Sourcing part, still with Sourcing, back
      * to Senior Operations to assign again (RfqController::returnSeniorOps())
      * — Admin alone, on the member's behalf. Sourcing's own Return to Senior
