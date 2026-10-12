@@ -43,8 +43,8 @@ it('gives Sourcing a dashboard of its own', function () {
         ->assertDontSee('Recent RFQs');
 });
 
-it('leaves Admin and the other roles with the general dashboard', function () {
-    foreach (['Admin', 'Senior Operations', 'Data Entry', 'General Manager'] as $role) {
+it('leaves the other roles with the general dashboard, and Admin with its own', function () {
+    foreach (['Senior Operations', 'Data Entry', 'General Manager'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()
@@ -54,7 +54,7 @@ it('leaves Admin and the other roles with the general dashboard', function () {
     // An Admin who also holds Sourcing keeps Admin's.
     test()->actingAs(userWithRole('Admin')->assignRole('Sourcing'))
         ->get(route('admin.dashboard'))
-        ->assertViewIs('admin.dashboard');
+        ->assertViewIs('admin.dashboard.admin');
 });
 
 it('counts only their own parts, by where each stands', function () {

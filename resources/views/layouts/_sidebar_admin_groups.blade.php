@@ -15,9 +15,11 @@
     heading carries its queue's count (the parent's, all of them added up) so
     nothing waiting is hidden.
 
-    A role's pages that aren't RFQ lists — Senior Operations' Attendance and
-    Time Spent — sit in its group too, as plain links to their own route. And
-    every group ends with Closed RFQs, as every role's own sidebar does.
+    Every group ends with Closed RFQs, as every role's own sidebar does.
+
+    After it, "Human Resource", laid out the same way: the people side, with
+    HR Manager as its step — the attendance sheets (and what's waiting there
+    to make, correct or approve) and everyone's time spent.
 --}}
 @php
     // Besides the queues: the attendance sheets to make (working days still
@@ -35,6 +37,7 @@
     // page's "view" is the role's second queue; its first has none. A page
     // that isn't an RFQ list has a "route" (and the routes it's active on)
     // instead.
+
     $groups = [
         [
             'role' => 'Business Development', 'badge' => ['closing', 'bd_returns'],
@@ -55,8 +58,6 @@
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'sent back by a reviewer'],
                 ['label' => 'On Hold', 'icon' => 'bi-pause-circle', 'status' => \App\Models\Rfq::ON_HOLD, 'view' => null, 'count' => 'on_hold', 'hint' => 'on hold'],
                 ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
-                ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
-                ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
@@ -100,9 +101,24 @@
         ],
     ];
 
-    // The parent's heading, while it's collapsed, holds every group's count
-    // added up.
-    $allGroupsCount = collect($groups)->sum(fn (array $group) => collect($group['badge'])->sum(fn (string $key) => $counts[$key]));
+    // The two parents, each a timeline of its steps: the RFQ workflow, and
+    // Human Resource with HR Manager's pages.
+    $trees = [
+        ['slug' => 'role-stages', 'label' => 'RFQ Management', 'icon' => 'bi-layers', 'groups' => $groups],
+        ['slug' => 'human-resource', 'label' => 'Human Resource', 'icon' => 'bi-person-vcard', 'groups' => [
+            [
+                'role' => 'HR Manager', 'badge' => ['attendance'],
+                'links' => [
+                    ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
+                    ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
+                ],
+            ],
+        ]],
+    ];
+
+    // What a group's heading, or a parent's (all its groups added up), shows
+    // while it's collapsed.
+    $groupCountOf = fn (array $group) => collect($group['badge'])->sum(fn (string $key) => $counts[$key]);
 
     // Whether a page is the one being viewed. Every group has Closed RFQs —
     // the company-wide list, the same whichever group it's opened from, but
@@ -115,65 +131,68 @@
             && ($currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development')));
 @endphp
 
-{{-- The root: one node, "RFQ Management", with each role's group under it as a
-     numbered step of the timeline. --}}
-<div class="sidebar-group sidebar-group-root" data-sidebar-group="role-stages">
-    <button type="button" class="sidebar-section-title sidebar-group-title"
-            data-bs-toggle="collapse" data-bs-target="#sidebar-group-role-stages"
-            aria-expanded="true" aria-controls="sidebar-group-role-stages">
-        <i class="bi bi-chevron-right sidebar-group-chevron"></i>
-        <i class="bi bi-layers"></i>
-        <span class="sidebar-group-name">RFQ Management</span>
-        @if ($allGroupsCount > 0)
-            <span class="nav-link-count sidebar-group-count" title="{{ $allGroupsCount }} waiting">{{ $allGroupsCount }}</span>
-        @endif
-    </button>
-    <div class="collapse show sidebar-group-children" id="sidebar-group-role-stages">
-        @foreach ($groups as $group)
-            @php
-                $groupSlug = \Illuminate\Support\Str::slug($group['role']);
-                $groupCount = collect($group['badge'])->sum(fn (string $key) => $counts[$key]);
-                $isCurrentStep = collect($group['links'])->contains(fn (array $link) => $isLinkActive($group, $link));
-                $stepState = match (true) {
-                    $isCurrentStep => 'is-current',
-                    $groupCount > 0 => 'is-waiting',
-                    default => '',
-                };
-            @endphp
-            <div class="sidebar-group" data-sidebar-group="{{ $groupSlug }}">
-                <button type="button" class="sidebar-section-title sidebar-group-title sidebar-step-title"
-                        data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $groupSlug }}"
-                        aria-expanded="true" aria-controls="sidebar-group-{{ $groupSlug }}">
-                    <span class="sidebar-step-number {{ $stepState }}" aria-hidden="true">{{ $loop->iteration }}</span>
-                    <span class="sidebar-group-name"><span class="visually-hidden">Stage {{ $loop->iteration }}: </span>{{ $group['role'] }}</span>
-                    @if ($groupCount > 0)
-                        <span class="nav-link-count sidebar-group-count" title="{{ $groupCount }} waiting">{{ $groupCount }}</span>
-                    @endif
-                    <i class="bi bi-chevron-right sidebar-group-chevron"></i>
-                </button>
-                <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
-                    @foreach ($group['links'] as $link)
-                        @php
-                            $isActive = $isLinkActive($group, $link);
-                            $count = $link['count'] ? $counts[$link['count']] : 0;
-                            $linkUrl = isset($link['route'])
-                                ? route($link['route'])
-                                : route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $groupSlug]));
-                        @endphp
-                        <a href="{{ $linkUrl }}"
-                           class="nav-link {{ $isActive ? 'active' : '' }}">
-                            <i class="bi {{ $link['icon'] }}"></i>
-                            <span class="nav-link-label">{{ $link['label'] }}</span>
-                            @if ($count > 0)
-                                <span class="nav-link-count" title="{{ $count }} {{ $link['hint'] }}">{{ $count }}</span>
-                            @endif
-                        </a>
-                    @endforeach
+{{-- Each parent — "RFQ Management", then "Human Resource" — one node with its
+     role groups under it as the numbered steps of a timeline. --}}
+@foreach ($trees as $tree)
+    @php $treeCount = collect($tree['groups'])->sum($groupCountOf); @endphp
+    <div class="sidebar-group sidebar-group-root" data-sidebar-group="{{ $tree['slug'] }}">
+        <button type="button" class="sidebar-section-title sidebar-group-title"
+                data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $tree['slug'] }}"
+                aria-expanded="true" aria-controls="sidebar-group-{{ $tree['slug'] }}">
+            <i class="bi bi-chevron-right sidebar-group-chevron"></i>
+            <i class="bi {{ $tree['icon'] }}"></i>
+            <span class="sidebar-group-name">{{ $tree['label'] }}</span>
+            @if ($treeCount > 0)
+                <span class="nav-link-count sidebar-group-count" title="{{ $treeCount }} waiting">{{ $treeCount }}</span>
+            @endif
+        </button>
+        <div class="collapse show sidebar-group-children" id="sidebar-group-{{ $tree['slug'] }}">
+            @foreach ($tree['groups'] as $group)
+                @php
+                    $groupSlug = \Illuminate\Support\Str::slug($group['role']);
+                    $groupCount = $groupCountOf($group);
+                    $isCurrentStep = collect($group['links'])->contains(fn (array $link) => $isLinkActive($group, $link));
+                    $stepState = match (true) {
+                        $isCurrentStep => 'is-current',
+                        $groupCount > 0 => 'is-waiting',
+                        default => '',
+                    };
+                @endphp
+                <div class="sidebar-group" data-sidebar-group="{{ $groupSlug }}">
+                    <button type="button" class="sidebar-section-title sidebar-group-title sidebar-step-title"
+                            data-bs-toggle="collapse" data-bs-target="#sidebar-group-{{ $groupSlug }}"
+                            aria-expanded="true" aria-controls="sidebar-group-{{ $groupSlug }}">
+                        <span class="sidebar-step-number {{ $stepState }}" aria-hidden="true">{{ $loop->iteration }}</span>
+                        <span class="sidebar-group-name"><span class="visually-hidden">Stage {{ $loop->iteration }}: </span>{{ $group['role'] }}</span>
+                        @if ($groupCount > 0)
+                            <span class="nav-link-count sidebar-group-count" title="{{ $groupCount }} waiting">{{ $groupCount }}</span>
+                        @endif
+                        <i class="bi bi-chevron-right sidebar-group-chevron"></i>
+                    </button>
+                    <div class="collapse show sidebar-group-links" id="sidebar-group-{{ $groupSlug }}">
+                        @foreach ($group['links'] as $link)
+                            @php
+                                $isActive = $isLinkActive($group, $link);
+                                $count = $link['count'] ? $counts[$link['count']] : 0;
+                                $linkUrl = isset($link['route'])
+                                    ? route($link['route'])
+                                    : route('admin.rfqs.index', array_filter(['status' => $link['status'], 'view' => $link['view'], 'role' => $groupSlug]));
+                            @endphp
+                            <a href="{{ $linkUrl }}"
+                               class="nav-link {{ $isActive ? 'active' : '' }}">
+                                <i class="bi {{ $link['icon'] }}"></i>
+                                <span class="nav-link-label">{{ $link['label'] }}</span>
+                                @if ($count > 0)
+                                    <span class="nav-link-count" title="{{ $count }} {{ $link['hint'] }}">{{ $count }}</span>
+                                @endif
+                            </a>
+                        @endforeach
+                    </div>
                 </div>
-            </div>
-        @endforeach
+            @endforeach
+        </div>
     </div>
-</div>
+@endforeach
 
 {{-- Inline, straight after the groups, so the ones left collapsed last time
      are already collapsed on first paint rather than snapping shut once

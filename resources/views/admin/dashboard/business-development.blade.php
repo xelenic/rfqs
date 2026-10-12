@@ -57,14 +57,8 @@
 
     @php
         $timezone = \App\Models\Setting::timezone();
-        $periodFrom = \Carbon\CarbonImmutable::parse($period['from'], $timezone);
-        $periodTo = \Carbon\CarbonImmutable::parse($period['to'], $timezone);
         $todayDate = now($timezone)->toDateString();
-        $periodDates = match (true) {
-            $period['from'] === $period['to'] => $periodFrom->format('l, M j'.($periodFrom->year === now($timezone)->year ? '' : ', Y')),
-            $periodFrom->year === $periodTo->year => $periodFrom->format('M j').' – '.$periodTo->format('M j'.($periodTo->year === now($timezone)->year ? '' : ', Y')),
-            default => $periodFrom->format('M j, Y').' – '.$periodTo->format('M j, Y'),
-        };
+        $periodDates = $period['dates'];
         $periodLabels = collect(\App\Http\Controllers\Admin\DashboardController::SUMMARY_PERIODS)->map->label->all() + ['custom' => 'Custom'];
     @endphp
     <div class="card mb-4">

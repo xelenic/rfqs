@@ -31,6 +31,7 @@
         ];
         $adminTabs = $isAdmin ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
+            'wc-validation' => ['label' => 'WC Validation', 'icon' => 'bi-patch-check', 'bag' => null],
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
@@ -45,30 +46,35 @@
         $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
     @endphp
 
-    {{-- Tabs across the top — the Admin's own after a divider — and the open
-         one's form below, full width. On a narrow screen the row scrolls. --}}
-    <ul class="nav nav-tabs settings-tabs mb-3" role="tablist" aria-label="Settings">
-        @foreach ($allTabs as $slug => $tab)
-            @if ($slug === array_key_first($adminTabs))
-                <li class="settings-tabs-divider" role="presentation">
-                    <span class="badge badge-soft-primary">Admin</span>
-                </li>
-            @endif
-            <li class="nav-item" role="presentation">
-                <button type="button" class="nav-link {{ $activeTab === $slug ? 'active' : '' }}" id="settings-tab-{{ $slug }}"
-                        data-bs-toggle="tab" data-bs-target="#settings-pane-{{ $slug }}" data-settings-tab="{{ $slug }}"
-                        role="tab" aria-controls="settings-pane-{{ $slug }}" aria-selected="{{ $activeTab === $slug ? 'true' : 'false' }}">
-                    <i class="bi {{ $tab['icon'] }}"></i>
-                    {{ $tab['label'] }}
-                    @if ($hasErrors($tab))
-                        <i class="bi bi-exclamation-circle-fill text-danger" title="Something here needs fixing"></i>
+    {{-- Tabs down the left — the Admin's own under their heading — and the
+         open one's form beside them. On a narrow screen they're a row across
+         the top, which scrolls. --}}
+    <div class="settings-layout">
+        <div class="settings-nav">
+            <ul class="nav settings-tabs" role="tablist" aria-label="Settings" aria-orientation="vertical">
+                @foreach ($allTabs as $slug => $tab)
+                    @if ($slug === array_key_first($adminTabs))
+                        <li class="settings-tabs-divider" role="presentation">
+                            <span class="badge badge-soft-primary">Admin</span>
+                        </li>
                     @endif
-                </button>
-            </li>
-        @endforeach
-    </ul>
+                    <li class="nav-item" role="presentation">
+                        <button type="button" class="nav-link {{ $activeTab === $slug ? 'active' : '' }}" id="settings-tab-{{ $slug }}"
+                                data-bs-toggle="tab" data-bs-target="#settings-pane-{{ $slug }}" data-settings-tab="{{ $slug }}"
+                                role="tab" aria-controls="settings-pane-{{ $slug }}" aria-selected="{{ $activeTab === $slug ? 'true' : 'false' }}">
+                            <i class="bi {{ $tab['icon'] }}"></i>
+                            {{ $tab['label'] }}
+                            @if ($hasErrors($tab))
+                                <i class="bi bi-exclamation-circle-fill text-danger" title="Something here needs fixing"></i>
+                            @endif
+                        </button>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
 
-    <div class="tab-content">
+    {{-- The open tab's form, beside the tabs (.settings-layout). --}}
+    <div class="tab-content settings-content">
         <div class="tab-pane fade {{ $activeTab === 'profile' ? 'show active' : '' }}" id="settings-pane-profile" role="tabpanel" aria-labelledby="settings-tab-profile" tabindex="0">
             <div class="card mb-4">
                 <div class="card-header">Profile</div>
@@ -274,6 +280,32 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save application settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'wc-validation' ? 'show active' : '' }}" id="settings-pane-wc-validation" role="tabpanel" aria-labelledby="settings-tab-wc-validation" tabindex="0">
+                {{-- The WC0000 format for WC numbers — see Setting::wcFormatRequired(). --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        WC Validation
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.wc-validation') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">When it's on, a new RFQ's WC number has to be in the format <strong>WC0000</strong> — WC and four digits, like WC0123. It can be typed in small letters; it's saved in capitals. Existing RFQs keep their WC numbers, and are only checked if their WC number is changed.</p>
+
+                            <div class="form-check form-switch mb-3">
+                                <input type="hidden" name="enabled" value="0">
+                                <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="wc-validation-enabled" value="1" @checked($wcFormatRequired)>
+                                <label class="form-check-label" for="wc-validation-enabled">Require the WC0000 format</label>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save WC validation</button>
                         </form>
                     </div>
                 </div>
@@ -661,4 +693,5 @@
             </div>
         @endif
     </div>
+    </div>{{-- .settings-layout --}}
 @endsection

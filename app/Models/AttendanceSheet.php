@@ -142,7 +142,13 @@ class AttendanceSheet extends Model
      */
     public static function people(): Collection
     {
-        return User::role(array_keys(RfqStep::ROLE_STEPS))->with('roles')->orderBy('name')->get();
+        // By name, like User::scopeHoldingRole(): Spatie's role() throws for
+        // a role that hasn't been made yet, and there's just nobody in it.
+        return User::query()
+            ->whereHas('roles', fn ($roles) => $roles->whereIn('name', array_keys(RfqStep::ROLE_STEPS)))
+            ->with('roles')
+            ->orderBy('name')
+            ->get();
     }
 
     /**

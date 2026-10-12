@@ -46,6 +46,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
     Route::patch('settings/data-entry-targets', [SettingsController::class, 'updateDataEntryTargets'])->name('settings.data-entry-targets');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
+    Route::patch('settings/wc-validation', [SettingsController::class, 'updateWcValidation'])->name('settings.wc-validation');
     Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');
     Route::delete('settings/extra-hours/{extraHours}', [SettingsController::class, 'destroyExtraHours'])->name('settings.extra-hours.destroy');
     Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
@@ -60,7 +61,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
 
     Route::get('logs', [LogController::class, 'index'])->name('logs.index');
     Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');
-    Route::resource('users', UserController::class)->except(['show', 'create', 'edit']);
+    Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');
     Route::resource('roles', RoleController::class)->except('show');

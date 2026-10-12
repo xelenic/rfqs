@@ -634,7 +634,8 @@ class RfqController extends Controller implements HasMiddleware
         // RFQ Number is auto-generated (WP0001, WP0002, ...), never taken
         // from user input — see Rfq::nextRfqNumber(). Nor is the status: a
         // new RFQ always starts Pending, whatever the request says.
-        $validator = Validator::make($request->all(), Arr::except($this->rules(requireRfqNumber: false), 'status'));
+        [$input, $rules] = $this->wcNumberChecked($request->all(), Arr::except($this->rules(requireRfqNumber: false), 'status'));
+        $validator = Validator::make($input, $rules, $this->wcNumberMessages());
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'create')->withInput();
@@ -688,7 +689,9 @@ class RfqController extends Controller implements HasMiddleware
             $rules['status'] = ['nullable'];
         }
 
-        $validator = Validator::make($request->all(), $rules);
+        // An older RFQ keeps its WC number as it was; a new one is checked.
+        [$input, $rules] = $this->wcNumberChecked($request->all(), $rules, unless: $rfq->wc_number);
+        $validator = Validator::make($input, $rules, $this->wcNumberMessages());
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'edit')->withInput();
@@ -1985,6 +1988,40 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * @return array<string, array<int, mixed>>
      */
+    /**
+     * $input and $rules with the WC number checked, while Settings has it on
+     * (Setting::wcFormatRequired()): in the WC0000 format, typed in any case
+     * and saved in capitals. Not when it's $unless — an RFQ's own WC number,
+     * kept as it was through an edit.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  array<string, array<int, mixed>>  $rules
+     * @return array{0: array<string, mixed>, 1: array<string, array<int, mixed>>}
+     */
+    protected function wcNumberChecked(array $input, array $rules, ?string $unless = null): array
+    {
+        $wcNumber = $input['wc_number'] ?? null;
+
+        if (! Setting::wcFormatRequired() || ! is_string($wcNumber) || $wcNumber === $unless) {
+            return [$input, $rules];
+        }
+
+        $input['wc_number'] = strtoupper(trim($wcNumber));
+        $rules['wc_number'][] = 'regex:'.Setting::WC_NUMBER_PATTERN;
+
+        return [$input, $rules];
+    }
+
+    /**
+     * What to say when a WC number isn't in the WC0000 format.
+     *
+     * @return array<string, string>
+     */
+    protected function wcNumberMessages(): array
+    {
+        return ['wc_number.regex' => 'Use the WC0000 format — WC and four digits, like WC0123.'];
+    }
+
     protected function rules(bool $requireRfqNumber = true): array
     {
         return [

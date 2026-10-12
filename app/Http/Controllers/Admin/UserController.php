@@ -3,13 +3,22 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
+use App\Models\Rfq;
+use App\Models\RfqComment;
+use App\Models\RfqStep;
+use App\Models\Setting;
 use App\Models\User;
 use App\Notifications\AccountCreated;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
@@ -50,6 +59,209 @@ class UserController extends Controller implements HasMiddleware
             'search' => $request->string('search')->toString(),
             'roles' => $this->assignableRoles($request->user()),
         ]);
+    }
+
+    /**
+     * One person's page, opened from the Users list: who they are and what
+     * they do here — their RFQ work in numbers (workOf()), the parts in
+     * their hands now, what they've done lately and, for the people whose
+     * time is tracked, the last two weeks' attendance and their extra hours.
+     * The list's own actions are here too, and come back to this page.
+     */
+    public function show(Request $request, User $user): View
+    {
+        $user->load(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current()]);
+        $isTracked = $user->hasAnyRole(array_keys(RfqStep::ROLE_STEPS));
+
+        return view('admin.users.show', [
+            'user' => $user,
+            'isTracked' => $isTracked,
+            'canManage' => $request->user()->hasRole('Admin') || ! $user->hasRole('Admin'),
+            'roles' => $this->assignableRoles($request->user()),
+            'work' => $this->workOf($user, $isTracked),
+            'partsInHand' => $this->partsInHand($user),
+            'activity' => $this->activityOf($user),
+            'attendance' => $isTracked ? $this->recentAttendanceOf($user) : null,
+        ]);
+    }
+
+    /**
+     * Their RFQ work in numbers. Each figure is for whoever holds the role
+     * it's about — or has done it anyway, like someone who's since changed
+     * role: the RFQs they've created and closed, the Sourcing parts they've
+     * done, the parts they've sent to finalize. And for the people whose
+     * time is tracked, their working time on RFQs begun in the last 30 days,
+     * counted as the Time Spent report does — only the days they were
+     * present.
+     *
+     * @return array<int, array{label: string, value: string, caption: string, icon: string, tone: string}>
+     */
+    private function workOf(User $user, bool $isTracked): array
+    {
+        $figures = [
+            ['role' => 'Business Development', 'label' => 'RFQs created', 'count' => Rfq::query()->where('created_by', $user->id)->count(), 'caption' => 'All time', 'icon' => 'bi-plus-circle', 'tone' => 'primary'],
+            ['role' => 'Sourcing', 'label' => 'Parts sourced', 'count' => DB::table('rfq_user')->where('user_id', $user->id)->whereNotNull('completed_at')->count(), 'caption' => 'Assigned to Data Entry', 'icon' => 'bi-check2-circle', 'tone' => 'success'],
+            ['role' => 'Data Entry', 'label' => 'Sent to finalize', 'count' => DB::table('rfq_user')->where('data_entry_completed_by', $user->id)->count(), 'caption' => 'Parts entered', 'icon' => 'bi-send-check', 'tone' => 'violet'],
+            ['role' => 'Business Development', 'label' => 'RFQs closed', 'count' => Rfq::query()->where('bd_closed_by', $user->id)->count(), 'caption' => 'All time', 'icon' => 'bi-flag-fill', 'tone' => 'teal'],
+        ];
+
+        $work = collect($figures)
+            ->filter(fn (array $figure) => $figure['count'] > 0 || $user->hasRole($figure['role']))
+            ->map(fn (array $figure) => [
+                'label' => $figure['label'],
+                'value' => (string) $figure['count'],
+                'caption' => $figure['caption'],
+                'icon' => $figure['icon'],
+                'tone' => $figure['tone'],
+            ])
+            ->values()
+            ->all();
+
+        if ($isTracked) {
+            $now = now();
+            $book = Attendance::book([$user->id]);
+            $seconds = RfqStep::query()
+                ->where('started_at', '>=', $now->copy()->subDays(30))
+                ->where(fn ($steps) => $steps
+                    ->where('worked_by', $user->id)
+                    ->orWhere(fn ($unclaimed) => $unclaimed->whereNull('worked_by')->where('assignee_id', $user->id)))
+                ->get()
+                ->filter(fn (RfqStep $step) => $step->workerId() === $user->id)
+                ->sum(fn (RfqStep $step) => $step->secondsByAttendance($book, $now)['present']);
+
+            $work[] = ['label' => 'Working time', 'value' => Setting::durationLabel((int) $seconds), 'caption' => 'On RFQs, last 30 days', 'icon' => 'bi-stopwatch', 'tone' => 'warning'];
+        }
+
+        return $work;
+    }
+
+    /**
+     * The parts in their hands now, longest-held first: Sourcing's to
+     * complete — those sent back for rework among them — or to finalize, and
+     * the one Data Entry has started and not yet sent on. Only RFQs still
+     * pending, and no part stopped on its own.
+     *
+     * @return SupportCollection<int, array{rfq: Rfq, label: string, state: string, badge: string, since: ?CarbonInterface}>
+     */
+    private function partsInHand(User $user): SupportCollection
+    {
+        $isSourcingWork = fn ($parts) => $parts->where('rfq_user.user_id', $user->id)
+            ->whereNull('rfq_user.finalized_at')
+            ->where(fn ($open) => $open->whereNull('rfq_user.completed_at')->orWhereNotNull('rfq_user.data_entry_completed_at'));
+        $isDataEntryWork = fn ($parts) => $parts->where('rfq_user.data_entry_started_by', $user->id)
+            ->whereNull('rfq_user.data_entry_completed_at');
+
+        return Rfq::query()
+            ->where('rfqs.status', 'Pending')
+            ->whereHas('assignees', fn ($parts) => $parts->whereNull('rfq_user.status')
+                ->where(fn ($either) => $either->where($isSourcingWork)->orWhere($isDataEntryWork)))
+            ->with('assignees')
+            ->get()
+            ->flatMap(fn (Rfq $rfq) => $rfq->assignees
+                ->filter(fn (User $holder) => $holder->pivot->status === null)
+                ->map(function (User $holder) use ($rfq, $user) {
+                    $part = $holder->pivot;
+                    $isTheirs = $holder->id === $user->id;
+
+                    [$state, $badge, $since] = match (true) {
+                        $isTheirs && $part->isAwaitingFinalize() => ['To finalize', 'badge-soft-info', $part->data_entry_completed_at],
+                        $isTheirs && $part->completed_at === null => [$part->progressLabel(), $part->progressBadgeClass(), $part->returned_at ?? $part->created_at],
+                        (int) $part->data_entry_started_by === $user->id && $part->data_entry_started_at !== null && $part->data_entry_completed_at === null => ['Data Entry started', 'badge-soft-primary', $part->data_entry_started_at],
+                        default => [null, null, null],
+                    };
+
+                    return $state === null ? null : [
+                        'rfq' => $rfq,
+                        'label' => $rfq->partNumberLabel($part->part_number),
+                        'state' => $state,
+                        'badge' => $badge,
+                        'since' => $since,
+                    ];
+                })
+                ->filter())
+            ->sortBy(fn (array $item) => $item['since']?->getTimestamp() ?? 0)
+            ->values();
+    }
+
+    /**
+     * What they've done lately, latest first: each workflow step they took —
+     * the comment it left (RfqComment::ACTIONS) — and each RFQ they created.
+     *
+     * @return SupportCollection<int, array{at: CarbonInterface, rfq: Rfq, label: string, context: ?string, icon: string, tone: string}>
+     */
+    private function activityOf(User $user, int $limit = 10): SupportCollection
+    {
+        $actions = RfqComment::query()
+            ->where('user_id', $user->id)
+            ->whereNotNull('action')
+            ->with('rfq')
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->filter(fn (RfqComment $comment) => $comment->rfq !== null)
+            ->map(fn (RfqComment $comment) => [
+                'at' => $comment->created_at,
+                'rfq' => $comment->rfq,
+                'label' => (string) $comment->actionLabel(),
+                'context' => $comment->actionContext(),
+                'icon' => $comment->actionIcon(),
+                'tone' => $comment->actionTone(),
+            ]);
+
+        $created = Rfq::query()
+            ->where('created_by', $user->id)
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(fn (Rfq $rfq) => [
+                'at' => $rfq->created_at,
+                'rfq' => $rfq,
+                'label' => 'Created',
+                'context' => null,
+                'icon' => 'bi-plus-circle',
+                'tone' => 'primary',
+            ]);
+
+        return $actions->concat($created)->sortByDesc('at')->take($limit)->values();
+    }
+
+    /**
+     * Their attendance on each working day of the last two weeks, latest
+     * first, as HR Manager approved it (Attendance::statusIn()) — from the
+     * day attendance started; null while it isn't kept
+     * (Setting::attendanceSince()).
+     *
+     * @return array<int, array{date: CarbonImmutable, status: string}>|null
+     */
+    private function recentAttendanceOf(User $user): ?array
+    {
+        $since = Setting::attendanceSince();
+
+        if ($since === null) {
+            return null;
+        }
+
+        $book = Attendance::book([$user->id]);
+        $week = Setting::workingHours();
+        $today = CarbonImmutable::now(Setting::timezone())->startOfDay();
+
+        return collect(range(0, 13))
+            ->map(fn (int $daysAgo) => $today->subDays($daysAgo))
+            ->filter(fn (CarbonImmutable $day) => $day->toDateString() >= $since && $week[strtolower($day->format('l'))]['working'])
+            ->map(fn (CarbonImmutable $day) => ['date' => $day, 'status' => Attendance::statusIn($book, $user->id, $day->toDateString())])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Back to where something was done to $user from: their own page
+     * (return_to "show"), or the Users list.
+     */
+    private function backFrom(Request $request, User $user): RedirectResponse
+    {
+        return $request->input('return_to') === 'show'
+            ? redirect()->route('admin.users.show', $user)
+            : redirect()->route('admin.users.index');
     }
 
     /**
@@ -135,7 +347,8 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * Sends AccountCreated to $user with a new "new_users" token, then back
-     * to the list saying $sent — or, if the mail couldn't go, why not.
+     * to the list — or their own page — saying $sent, or, if the mail
+     * couldn't go, why not.
      */
     private function emailPasswordLink(Request $request, User $user, string $sent): RedirectResponse
     {
@@ -144,11 +357,11 @@ class UserController extends Controller implements HasMiddleware
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('admin.users.index')
+            return $this->backFrom($request, $user)
                 ->with('error', "The email to {$user->email} couldn't be sent — check the mail settings, then use Send link to try again.");
         }
 
-        return redirect()->route('admin.users.index')->with('status', $sent);
+        return $this->backFrom($request, $user)->with('status', $sent);
     }
 
     /**
@@ -187,7 +400,7 @@ class UserController extends Controller implements HasMiddleware
         $user->save();
         $user->syncRoles($validated['roles'] ?? []);
 
-        return redirect()->route('admin.users.index')->with('status', 'User updated successfully.');
+        return $this->backFrom($request, $user)->with('status', 'User updated successfully.');
     }
 
     public function destroy(Request $request, User $user): RedirectResponse

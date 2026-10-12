@@ -117,6 +117,12 @@ class Setting extends Model
      */
     public const TARGET_RANGE = [15, 60000];
 
+    /**
+     * The format a WC number has to have while the WC check is on
+     * (wcFormatRequired()): "WC" and four digits, like WC0123.
+     */
+    public const WC_NUMBER_PATTERN = '/^WC\d{4}$/';
+
     private const CACHE_KEY = 'settings';
 
     /**
@@ -641,6 +647,16 @@ class Setting extends Model
                 ? max($fewest, min($most, (int) $saved['minutes']))
                 : self::DEFAULT_DATA_ENTRY_IDLE_ALERT['minutes'],
         ];
+    }
+
+    /**
+     * Whether a new RFQ's WC number — and a changed one — has to be in the
+     * WC0000 format (WC_NUMBER_PATTERN). Off until an Admin turns it on, on
+     * Settings → WC Validation. See RfqController::wcNumberChecked().
+     */
+    public static function wcFormatRequired(): bool
+    {
+        return static::get('wc_format_required') === '1';
     }
 
     /**

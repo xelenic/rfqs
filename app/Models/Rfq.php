@@ -2448,7 +2448,7 @@ class Rfq extends Model
      * @param  Collection<int, RfqStep>  $stretches
      * @return Collection<int, Collection<int, RfqStep>>
      */
-    private static function roundsOf(Collection $stretches): Collection
+    public static function roundsOf(Collection $stretches): Collection
     {
         $rounds = collect();
         $latestRound = [];

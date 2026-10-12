@@ -45,6 +45,7 @@ class SettingsController extends Controller
             'sourcingTargets' => Setting::sourcingTargets(),
             'dataEntryTargets' => Setting::dataEntryTargets(),
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
+            'wcFormatRequired' => Setting::wcFormatRequired(),
             'extraHours' => $user->hasRole('Admin')
                 ? ExtraWorkingHour::query()->current()->with('user.roles')->get()->sortBy(fn (ExtraWorkingHour $range) => [$range->user?->name, $range->start])->values()
                 : collect(),
@@ -255,6 +256,19 @@ class SettingsController extends Controller
         ]);
 
         return $this->backToTab('idle-alert', 'Idle alert saved.');
+    }
+
+    /**
+     * Whether a new RFQ's WC number has to be in the WC0000 format — and a
+     * changed one. See Setting::wcFormatRequired().
+     */
+    public function updateWcValidation(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the WC validation.');
+
+        Setting::put('wc_format_required', $request->boolean('enabled') ? '1' : null);
+
+        return $this->backToTab('wc-validation', $request->boolean('enabled') ? 'WC validation turned on.' : 'WC validation turned off.');
     }
 
     /**

@@ -2089,6 +2089,14 @@ function rfqmsBoot() {
         });
     });
 
+    // On a narrow screen the tabs are a row that scrolls: bring the open one
+    // into view, so it's plain which one you're on.
+    var settingsTabs = document.querySelector('.settings-tabs');
+    var openSettingsTab = settingsTabs && settingsTabs.querySelector('.nav-link.active');
+    if (openSettingsTab && settingsTabs.scrollWidth > settingsTabs.clientWidth) {
+        settingsTabs.scrollLeft = openSettingsTab.offsetLeft - (settingsTabs.clientWidth - openSettingsTab.offsetWidth) / 2;
+    }
+
     // Settings → Working Hours: a day switched off greys out and locks its
     // times (they're kept, and come back when it's switched on again), and
     // each day's hours — and the week's — follow what's typed. Same sum as

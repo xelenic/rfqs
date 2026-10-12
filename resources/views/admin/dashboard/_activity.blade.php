@@ -3,8 +3,10 @@
     over time — still pending versus done — and its table twin, and
     optionally the selected period's two totals.
 
-    Expects: $rfqActivity. Optional: $showTotals (default true) and
-    $completedLabel (default "Completed") — what the finished series is called.
+    Expects: $rfqActivity. Optional: $showTotals (default true),
+    $completedLabel (default "Completed") — what the finished series is called
+    — and $showRange (default true): false where the page's own period filter
+    sets the range (Admin's dashboard).
 --}}
 @php
     $completedLabel = $completedLabel ?? 'Completed';
@@ -12,22 +14,24 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
     <h2 class="h6 fw-bold mb-0">RFQ Activity</h2>
 
-    <div class="range-filter" role="group" aria-label="Time range">
-        @foreach (\App\Http\Controllers\Admin\DashboardController::RANGES as $r)
-            @php
-                $rangeLabel = match ($r) {
-                    1 => '1 Day',
-                    7 => '7 Days',
-                    30 => '1 Month',
-                    90 => '3 Months',
-                };
-            @endphp
-            <a href="{{ request()->fullUrlWithQuery(['range' => $r]) }}"
-               class="range-filter-btn {{ $rfqActivity['range'] === $r ? 'active' : '' }}">
-                {{ $rangeLabel }}
-            </a>
-        @endforeach
-    </div>
+    @if ($showRange ?? true)
+        <div class="range-filter" role="group" aria-label="Time range">
+            @foreach (\App\Http\Controllers\Admin\DashboardController::RANGES as $r)
+                @php
+                    $rangeLabel = match ($r) {
+                        1 => '1 Day',
+                        7 => '7 Days',
+                        30 => '1 Month',
+                        90 => '3 Months',
+                    };
+                @endphp
+                <a href="{{ request()->fullUrlWithQuery(['range' => $r]) }}"
+                   class="range-filter-btn {{ $rfqActivity['range'] === $r ? 'active' : '' }}">
+                    {{ $rangeLabel }}
+                </a>
+            @endforeach
+        </div>
+    @endif
 </div>
 
 @if ($showTotals ?? true)

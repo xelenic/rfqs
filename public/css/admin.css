@@ -29,6 +29,11 @@
   /* The RFQ activity chart's two lines (public/js/rfq-chart.js reads them). */
   --rfq-chart-pending: #3b53d1;
   --rfq-chart-completed: #157347;
+  /* Admin's dashboard charts, by the role whose work it is (public/js/admin-dashboard.js) —
+     validated together for colorblind separation on each theme's surface. */
+  --rfq-role-sourcing: #3b53d1;
+  --rfq-role-data-entry: #e2620f;
+  --rfq-role-gm-assistant: #13a374;
 }
 
 * {
@@ -117,7 +122,7 @@ h6, .h6 { font-size: 0.85rem; }
 }
 
 .sidebar {
-  width: 230px;
+  width: 280px;
   flex-shrink: 0;
   background: var(--rfq-sidebar-bg);
   border-right: 1px solid var(--rfq-border);
@@ -254,14 +259,31 @@ h6, .h6 { font-size: 0.85rem; }
    line that runs down to the next step's number, with the step's pages
    beside the line. The last step's line ends at its number. --step-center is
    how far down a step its number's centre sits (the heading's top margin and
-   padding, plus half the number), so the line joins one centre to the next. */
+   padding, plus half the number), so the line joins one centre to the next.
+
+   The timeline hangs from its parent's heading above it ("RFQ Management",
+   "Human Resource"): set in so
+   each number sits under the heading's icon (its caret, the gap and half the
+   icon in, less the step heading's own padding and half a number), with a
+   line from that icon down to the first number. */
 .sidebar-group-children {
-  margin-left: 0.15rem;
+  --step-size: 1.25rem;
+  --step-center: calc(0.2rem + 0.4rem + var(--step-size) / 2);
+  position: relative;
+  margin-left: calc(0.5rem + 0.65rem + 0.4rem + 0.4rem - 0.5rem - var(--step-size) / 2);
+}
+
+.sidebar-group-children::before {
+  content: "";
+  position: absolute;
+  left: calc(0.5rem + var(--step-size) / 2 - 1px);
+  top: -0.3rem;
+  height: calc(0.3rem + var(--step-center));
+  border-left: 2px solid var(--rfq-tree-line-soft);
+  pointer-events: none;
 }
 
 .sidebar-group-children > .sidebar-group {
-  --step-size: 1.25rem;
-  --step-center: calc(0.2rem + 0.4rem + var(--step-size) / 2);
   position: relative;
 }
 
@@ -417,11 +439,24 @@ h6, .h6 { font-size: 0.85rem; }
   font-size: 0.95rem;
   font-weight: 700;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .topbar .breadcrumb {
   margin: 0;
   font-size: 0.74rem;
+}
+
+/* The title side gives way to the account menu on a narrow screen — where
+   the breadcrumb, which only repeats the title's way there, is left out. */
+.topbar > :first-child {
+  min-width: 0;
+}
+
+@media (max-width: 575.98px) {
+  .topbar .breadcrumb {
+    display: none;
+  }
 }
 
 .user-menu-btn {
@@ -693,6 +728,16 @@ h6, .h6 { font-size: 0.85rem; }
   --tone-soft: #fde8e8;
 }
 
+.tone-info {
+  --tone: #0e7490;
+  --tone-soft: #e0f4f8;
+}
+
+.tone-warning {
+  --tone: #b45309;
+  --tone-soft: #fef3e2;
+}
+
 .today-tiles {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -900,6 +945,291 @@ h6, .h6 { font-size: 0.85rem; }
   .pipeline-row {
     grid-template-columns: 8.5rem 1fr 1.75rem;
   }
+}
+
+/* ---------- Admin's dashboard (dashboard/admin.blade.php) ---------- */
+
+/* The period the dashboard covers: a toolbar under the greeting. */
+.dashboard-period {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+  box-shadow: var(--rfq-shadow);
+}
+
+.dashboard-period-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rfq-text-muted);
+}
+
+.dashboard-period .ops-custom-range {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.dashboard-period .ops-custom-range input[type="date"] {
+  flex: 1 1 7.5rem;
+  width: auto;
+  min-width: 0;
+}
+
+.dashboard-period-dates {
+  margin-left: auto;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-period-dates {
+    margin-left: 0;
+  }
+
+  .dashboard-period .range-filter-btn {
+    padding-inline: 0.5rem;
+  }
+}
+
+/* A headline figure: its name and icon over the number, a caption under. */
+.kpi-card {
+  height: 100%;
+}
+
+.kpi-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.kpi-card .stat-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 0.9rem;
+}
+
+.stat-card-link:hover .kpi-card {
+  transform: translateY(-1px);
+}
+
+/* A long table keeps to its card, scrolling within it. */
+.dash-scroll {
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.dash-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.task-sheet td,
+.team-table td {
+  vertical-align: middle;
+}
+
+.task-sheet-task {
+  max-width: 220px;
+}
+
+.task-sheet .dash-person {
+  max-width: 170px;
+}
+
+.team-figure {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A person: their initial in a circle, then their name. */
+.dash-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+
+.dash-person > span {
+  min-width: 0;
+}
+
+a.dash-person:hover {
+  color: var(--rfq-primary-dark);
+}
+
+.dash-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.dash-avatar.is-team {
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+}
+
+/* Time against a target: a thin track filling in its state's color, the
+   figures under it. */
+.task-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 110px;
+}
+
+.task-progress-track {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--tone-soft, var(--rfq-bg));
+  overflow: hidden;
+}
+
+.task-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--tone, var(--rfq-primary));
+}
+
+.task-progress-text {
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.task-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.task-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.task-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+/* A stage's name leads to its page. */
+.pipeline-label {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.pipeline-label:hover {
+  color: var(--rfq-primary-dark);
+  text-decoration: underline;
+}
+
+/* The open RFQs by priority: one bar in parts, 2px apart, and its key. */
+.priority-meter {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-bottom: 0.9rem;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.priority-meter-part {
+  flex-basis: 0;
+  min-width: 4px;
+  background: var(--dot);
+}
+
+.priority-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+}
+
+/* Data Entry now: three figures, then each person and where they stand. */
+.floor-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.floor-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+}
+
+.floor-figure-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.floor-figure.tone-danger .floor-figure-value {
+  color: var(--tone);
+}
+
+.floor-figure-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+.floor-people {
+  margin-top: 0.9rem;
+}
+
+.floor-people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+  font-size: 0.82rem;
+}
+
+.floor-people li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.dash-chart {
+  position: relative;
 }
 
 .dash-item {
@@ -4418,24 +4748,48 @@ h6, .h6 { font-size: 0.85rem; }
 
 /* Settings: the tabs in one row across the top — scrolling sideways when
    they don't fit — with the Admin's own after a divider. */
+/* Settings: the tabs down the left and the open one's form beside them —
+   on a narrow screen, a row across the top that scrolls. */
+.settings-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings-content {
+  min-width: 0;
+}
+
 .settings-tabs {
+  position: relative;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+  border-bottom: 1px solid var(--rfq-border);
 }
 
 .settings-tabs .nav-link {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.55rem;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
   white-space: nowrap;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--rfq-text-muted);
 }
 
+.settings-tabs .nav-link:hover {
+  color: var(--rfq-text);
+}
+
 .settings-tabs .nav-link.active {
+  border-bottom-color: var(--rfq-primary);
   color: var(--rfq-primary-dark);
   font-weight: 600;
 }
@@ -4446,6 +4800,128 @@ h6, .h6 { font-size: 0.85rem; }
   margin: 0 0.35rem 0 0.6rem;
   padding-left: 0.85rem;
   border-left: 1px solid var(--rfq-border);
+}
+
+@media (min-width: 768px) {
+  .settings-layout {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 1.5rem;
+  }
+
+  .settings-nav {
+    flex: 0 0 220px;
+    position: sticky;
+    top: 4.5rem;
+    padding: 0.5rem;
+    border: 1px solid var(--rfq-border);
+    border-radius: var(--rfq-radius);
+    background: var(--rfq-surface);
+    box-shadow: var(--rfq-shadow);
+  }
+
+  .settings-content {
+    flex: 1 1 auto;
+  }
+
+  .settings-tabs {
+    flex-direction: column;
+    gap: 2px;
+    overflow: visible;
+    border-bottom: 0;
+  }
+
+  .settings-tabs .nav-link {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 0;
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .settings-tabs .nav-link:hover {
+    background: var(--rfq-bg);
+  }
+
+  .settings-tabs .nav-link.active {
+    border-left-color: var(--rfq-primary);
+    background: var(--rfq-primary-soft);
+  }
+
+  .settings-tabs-divider {
+    margin: 0.5rem 0.25rem 0.35rem;
+    padding: 0.6rem 0.5rem 0;
+    border-left: 0;
+    border-top: 1px solid var(--rfq-border);
+  }
+}
+
+/* A person's own page (users/show): their avatar, who they are, and the
+   actions beside — under them on a narrow screen. */
+.user-profile {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.user-profile-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 1.35rem;
+}
+
+.user-profile-who {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.user-profile-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.user-profile-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--rfq-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.user-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.user-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.user-name-link:hover {
+  color: var(--rfq-primary-dark);
+  text-decoration: underline;
+}
+
+.user-attendance li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rfq-border);
+  font-size: 0.82rem;
+}
+
+.user-attendance li:last-child {
+  border-bottom: 0;
 }
 
 .settings-identity {
@@ -4715,6 +5191,9 @@ h6, .h6 { font-size: 0.85rem; }
   --rfq-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.45);
   --rfq-chart-pending: #7b91ff;
   --rfq-chart-completed: #3ccf91;
+  --rfq-role-sourcing: #5b78f6;
+  --rfq-role-data-entry: #eb6517;
+  --rfq-role-gm-assistant: #1baf7a;
 
   --bs-body-bg: var(--rfq-surface);
   --bs-body-bg-rgb: 23, 28, 39;

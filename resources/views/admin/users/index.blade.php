@@ -37,7 +37,7 @@
                         @endphp
                         <tr>
                             <td class="fw-semibold">
-                                {{ $user->name }}
+                                <a href="{{ route('admin.users.show', $user) }}" class="user-name-link">{{ $user->name }}</a>
                                 @if ($hasTrackedTime && $user->extraWorkingHours->isNotEmpty())
                                     <div class="d-flex flex-wrap gap-1 mt-1">
                                         @foreach ($user->extraWorkingHours as $range)
@@ -58,6 +58,9 @@
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->format('M d, Y') }}</td>
                             <td class="text-end">
+                                <a href="{{ route('admin.users.show', $user) }}" class="btn btn-sm btn-outline-secondary" title="View details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
                                 @if ($hasTrackedTime && auth()->user()->hasRole('Admin'))
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}" title="Extra hours">
                                         <i class="bi bi-moon-stars"></i>
@@ -140,28 +143,7 @@
     </div>
 
     {{-- Edit user modal (shared — populated via JS per row, see public/js/admin.js) --}}
-    <div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <form method="POST" id="editUserForm" action="{{ old('user_id') ? route('admin.users.update', old('user_id')) : '#' }}">
-                    @csrf
-                    @method('PUT')
-                    <input type="hidden" name="user_id" value="{{ old('user_id') }}">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="editUserModalLabel">Edit user</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        @include('admin.users._form', ['mode' => 'edit', 'idPrefix' => 'edit', 'roles' => $roles])
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save changes</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    @include('admin.users._edit_modal')
 
     {{-- Each tracked person's Extra hours window — Admin only. --}}
     @if (auth()->user()->hasRole('Admin'))

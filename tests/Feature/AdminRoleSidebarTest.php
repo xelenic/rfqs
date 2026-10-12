@@ -25,8 +25,9 @@ it('groups the workflow by role in the Admin sidebar', function () {
         ->get(indexUrl(['status' => 'Pending']))
         ->assertOk();
 
-    // A node for each role, and the "RFQ Management" parent they all hang from.
-    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 1);
+    // A node for each role, the "RFQ Management" parent they all hang from,
+    // and Human Resource after it, with HR Manager under it.
+    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 3);
 
     foreach ([
         ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development'],
@@ -311,15 +312,26 @@ it('leaves Assign Operations off Admin\'s list and RFQ pages, but not off everyo
     }
 });
 
-it('gives Admin Senior Operations\' Attendance and Time Spent pages in that role\'s group, not in a Reports section of its own', function () {
+it('gives Admin Attendance and Time Spent under Human Resource\'s HR Manager step, after RFQ Management — not in Senior Operations\' group, or a Reports section', function () {
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.attendance.index'))->assertOk()->getContent();
-    $group = Str::betweenFirst($html, 'id="sidebar-group-senior-operations">', '</div>');
+    $humanResource = Str::betweenFirst($html, 'id="sidebar-group-hr-manager">', '</div>');
+    $seniorOperations = Str::betweenFirst($html, 'id="sidebar-group-senior-operations">', '</div>');
 
-    expect($group)->toContain('href="'.route('admin.attendance.index').'"')
+    expect($html)->toContain('<span class="sidebar-group-name">Human Resource</span>')
+        ->and(strpos($html, 'Human Resource</span>'))->toBeGreaterThan(strpos($html, 'RFQ Management</span>'))
+        // HR Manager is its one step, numbered 1 — and the current one, with Attendance open.
+        ->and(Str::after($html, 'Human Resource</span>'))->toMatch('/<span class="sidebar-step-number is-current" aria-hidden="true">1<\/span>\s*<span class="sidebar-group-name"><span class="visually-hidden">Stage 1: <\/span>HR Manager<\/span>/')
+        ->and($humanResource)->toContain('href="'.route('admin.attendance.index').'"')
         ->toContain('href="'.route('admin.reports.time-spent').'"')
         // Open on Attendance: its link is the current one.
         ->toMatch('/href="'.preg_quote(route('admin.attendance.index'), '/').'"\s+class="nav-link active"/')
+        ->and($seniorOperations)->not->toContain(route('admin.attendance.index'))
+        ->not->toContain(route('admin.reports.time-spent'))
         ->and($html)->not->toContain('<div class="sidebar-section-title">Reports</div>');
+
+    // On Time Spent, that's the current one.
+    expect(test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.time-spent'))->assertOk()->getContent())
+        ->toMatch('/href="'.preg_quote(route('admin.reports.time-spent'), '/').'"\s+class="nav-link active"/');
 
     // Senior Operations keeps its own Reports section.
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()

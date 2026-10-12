@@ -51,7 +51,7 @@ it('hands the chart the RFQs created over the period, pending and done, by day',
     Rfq::factory()->create(['status' => 'Pending', 'created_at' => now()->subDay()]);
 
     $payload = activityChartPayload(
-        test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard', ['range' => 7]))->getContent(),
+        test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard', ['range' => 7]))->getContent(),
     );
 
     expect($payload['labels'])->toHaveCount(7)
@@ -59,6 +59,14 @@ it('hands the chart the RFQs created over the period, pending and done, by day',
         ->and(array_slice($payload['pending'], -2))->toBe([1, 2])
         ->and(array_slice($payload['completed'], -2))->toBe([0, 1])
         ->and($payload['seriesLabels'])->toBe(['completed' => 'Completed']);
+
+    // Admin's own dashboard has the same chart, the finished series called Closed.
+    $adminPayload = activityChartPayload(
+        test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard', ['range' => 7]))->getContent(),
+    );
+
+    expect(array_slice($adminPayload['completed'], -2))->toBe([0, 1])
+        ->and($adminPayload['seriesLabels'])->toBe(['completed' => 'Closed']);
 });
 
 it('calls the finished series Closed for Business Development', function () {

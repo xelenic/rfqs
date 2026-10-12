@@ -14,11 +14,23 @@
 
 <div class="row g-3">
     <div class="col-md-6">
+        {{-- In the WC0000 format while Settings has it on (Setting::wcFormatRequired()) —
+             the browser checks a new one as it's typed; an edit is checked
+             only if it's changed, so an older RFQ's number can stay. --}}
+        @php $wcFormatRequired = \App\Models\Setting::wcFormatRequired(); @endphp
         <label for="{{ $idPrefix }}-wc_number" class="form-label">WC Number</label>
         <input type="text" name="wc_number" id="{{ $idPrefix }}-wc_number" class="form-control @error('wc_number', $idPrefix) is-invalid @enderror"
-               value="{{ $showOld ? old('wc_number') : '' }}" required>
+               value="{{ $showOld ? old('wc_number') : '' }}" required
+               @if ($wcFormatRequired)
+                   placeholder="WC0000" autocapitalize="characters"
+                   @if ($mode === 'create') pattern="[Ww][Cc][0-9]{4}" maxlength="6" title="WC and four digits, like WC0123" @endif
+               @endif>
         @error('wc_number', $idPrefix)
             <div class="invalid-feedback">{{ $message }}</div>
+        @else
+            @if ($wcFormatRequired)
+                <div class="form-text">WC and four digits, like WC0123.</div>
+            @endif
         @enderror
     </div>
 

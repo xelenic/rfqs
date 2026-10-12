@@ -54,8 +54,8 @@
                     @endif
                 @endcan
 
-                {{-- Admin has these in Senior Operations' group, with the rest of
-                     that role's pages (_sidebar_admin_groups). --}}
+                {{-- Admin has these in a Human Resource group of their own, after
+                     RFQ Management (_sidebar_admin_groups). --}}
                 @if (auth()->user()->canViewTimeSpentReport() && ! (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view')))
                     <div class="sidebar-section-title">Reports</div>
                     @if (auth()->user()->canViewAttendance())
@@ -155,7 +155,7 @@
                     <div class="dropdown">
                         <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>
-                            <span>{{ auth()->user()->name ?? 'Account' }}</span>
+                            <span class="d-none d-sm-inline">{{ auth()->user()->name ?? 'Account' }}</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><h6 class="dropdown-header">{{ auth()->user()->email ?? '' }}</h6></li>

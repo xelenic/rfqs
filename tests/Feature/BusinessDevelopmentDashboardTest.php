@@ -75,8 +75,8 @@ it('gives Business Development a dashboard of its own', function () {
         ->assertDontSee('Permissions');
 });
 
-it('keeps the general dashboard for everyone else, Admin included', function () {
-    foreach (['Senior Operations', 'Data Entry', 'Head of Business Development', 'Admin'] as $role) {
+it('keeps the general dashboard for everyone else, and Admin\'s own for Admin', function () {
+    foreach (['Senior Operations', 'Data Entry', 'Head of Business Development'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()
@@ -87,7 +87,7 @@ it('keeps the general dashboard for everyone else, Admin included', function () 
     // Holding Business Development too doesn't take Admin's dashboard away.
     test()->actingAs(userWithRole('Admin')->assignRole('Business Development'))
         ->get(route('admin.dashboard'))
-        ->assertViewIs('admin.dashboard');
+        ->assertViewIs('admin.dashboard.admin');
 });
 
 it('counts the queues and where the pending RFQs sit', function () {

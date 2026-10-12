@@ -10,3 +10,6 @@ rfq_user has its own `status` column (a part stopped on its own, Rfq::changePart
 
 ## Count "a day" in Setting::timezone(), query in UTC
 Times are stored in the app timezone (UTC), but a business day is the working hours' timezone (Setting::timezone(), Asia/Colombo by default). Build day/period boundaries with CarbonImmutable::now(Setting::timezone())->startOfDay(), then ->setTimezone(config('app.timezone')) before passing them to a query: query bindings format a Carbon as-is without converting zones. A bare now()->startOfDay() is UTC midnight (5:30 AM in Colombo). See DashboardController::summaryPeriod(). Count returns from rfq_comments with action 'rejected' (meta.stage = target label), not rfqs.rejected_at, which is cleared once Business Development fixes the RFQ.
+
+## Look people up by role name, not Spatie's role()
+Spatie's User::role('X') throws RoleDoesNotExist when a role hasn't been created, and tests (and a fresh install) create only the roles they need. Any page-level lookup of who holds a role goes through User::scopeHoldingRole() or whereHas('roles', fn ($r) => $r->whereIn('name', [...])). AttendanceSheet::people() does this since 2026-10-12, after Admin's dashboard 500'd on it.
