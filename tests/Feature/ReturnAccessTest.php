@@ -38,17 +38,39 @@ function partToBdClosing(Rfq $rfq, int $part): void
 
 // ---- Sourcing and Data Entry → Senior Operations ----------------------------
 
-it('lets Sourcing send their own part back to Senior Operations, freeing it to assign again', function () {
+it('gives Sourcing no Return to Senior Operations — not on their lists, their Returns or the part\'s quick view, and refused if sent', function () {
+    $riley = userWithRole('Sourcing');
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15000']), [1 => $riley]);
+    $returned = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15009']), [1 => $riley]);
+    $returned->completeSourcingPart(1);
+    $returned->refresh()->returnSourcingPart(1, 'Missing the quote', userWithRole('Data Entry'));
+
+    foreach ([['status' => 'Pending'], ['status' => 'Pending', 'view' => 'returns']] as $page) {
+        test()->actingAs($riley)->get(route('admin.rfqs.index', $page))->assertOk()
+            ->assertSee('data-action="'.route('admin.rfqs.complete-sourcing', $page === ['status' => 'Pending'] ? $rfq : $returned).'"', false)
+            ->assertDontSee('admin/rfqs/'.$rfq->id.'/return-senior-ops', false)
+            ->assertDontSee('admin/rfqs/'.$returned->id.'/return-senior-ops', false)
+            ->assertDontSee('Return to Senior Operations');
+    }
+
+    test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
+        ->assertForbidden();
+
+    expect($rfq->refresh()->assigneeForPart(1)?->id)->toBe($riley->id)
+        ->and($rfq->reject_target_stage)->toBeNull();
+});
+
+it('lets Admin send a Sourcing part back to Senior Operations on its member\'s behalf, freeing it to assign again', function () {
+    $admin = userWithRole('Admin');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15001']), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
-    test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs($admin)->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'sourcing']))->assertOk()
         ->assertSee('data-action="'.route('admin.rfqs.return-senior-ops', $rfq).'"', false)
         ->assertSee('Return to Senior Operations');
 
-    test()->actingAs($riley)
-        ->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Electrical, not plumbing — not mine', 'redirect_status' => 'Pending'])
-        ->assertRedirect(route('admin.rfqs.index', ['status' => 'Pending']))
+    test()->actingAs($admin)
+        ->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Electrical, not plumbing — not mine'])
         ->assertSessionHas('status', 'Sent RFQ15001-P1 of P2 back to Senior Operations.');
 
     expect($rfq->refresh())
@@ -63,16 +85,13 @@ it('lets Sourcing send their own part back to Senior Operations, freeing it to a
         ->assertSee('Electrical, not plumbing — not mine');
 });
 
-it('lets only the part\'s own Sourcing member send it back, and only while it\'s with them', function () {
-    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
-    $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => $sam]);
-
-    test()->actingAs($sam)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
-        ->assertForbidden();
+it('lets Admin send a part back only while it\'s still with Sourcing', function () {
+    $riley = userWithRole('Sourcing');
+    $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
     // Assigned to Data Entry now — past sending back.
     $rfq->refresh()->completeSourcingPart(1);
-    test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
+    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine'])
         ->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(1))->not->toBeNull();
@@ -190,7 +209,7 @@ it('lets Senior Operations pass a part sent back to them straight back to its So
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15006']), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
-    test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Which site is this for?']);
+    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Which site is this for?']);
 
     $returnsUrl = route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']);
     test()->actingAs($ops)->get($returnsUrl)->assertOk()
@@ -231,7 +250,7 @@ it('offers no pass back for a part nobody has held, or whose member is no longer
     $ops = userWithRole('Senior Operations');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
-    test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine']);
+    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine']);
 
     $riley->removeRole('Sourcing');
 
@@ -246,7 +265,7 @@ it('offers no pass back for a part nobody has held, or whose member is no longer
 it('lets only Senior Operations and Admin pass a part back', function () {
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
-    test()->actingAs($riley)->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine']);
+    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine']);
 
     foreach (['Sourcing', 'Business Development', 'Data Entry'] as $role) {
         test()->actingAs(userWithRole($role))->patch(route('admin.rfqs.pass-back-sourcing', $rfq))->assertForbidden();

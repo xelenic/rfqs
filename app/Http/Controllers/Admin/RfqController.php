@@ -1572,12 +1572,13 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Sourcing sends their own part, still with them, back to Senior
-     * Operations, with a required reason: the part is freed for them to
-     * assign again, and the RFQ is on their Returns page until they have
-     * (Rfq::rejectPartToStage() to 'operations'). Recorded as the part's own
-     * member — Admin can, on their behalf. Once Sourcing has assigned it to
-     * Data Entry, it's past this.
+     * A Sourcing part, still with its member, sent back to Senior Operations
+     * with a required reason: the part is freed for them to assign again,
+     * and the RFQ is on their Returns page until they have
+     * (Rfq::rejectPartToStage() to 'operations'). Only Admin, on the
+     * member's behalf (User::canSendSourcingPartsBackToSeniorOps()) —
+     * Sourcing themselves no longer can. Recorded as the part's own member.
+     * Once Sourcing has assigned it to Data Entry, it's past this.
      */
     public function returnSeniorOps(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1594,9 +1595,9 @@ class RfqController extends Controller implements HasMiddleware
         $this->abortIfStopped($rfq, $assignee);
 
         abort_unless(
-            ($user->hasRole('Sourcing') && $assignee->id === $user->id) || $user->hasRole('Admin'),
+            $user->canSendSourcingPartsBackToSeniorOps(),
             403,
-            'Only the Sourcing member assigned to this part can send it back to Senior Operations.'
+            'Sourcing can\'t send a part back to Senior Operations — an Admin can, on their behalf.'
         );
         abort_unless($assignee->pivot->completed_at === null, 422, 'This part has moved on past Sourcing.');
 

@@ -64,13 +64,15 @@
                             @if ($partAssignment->pivot->isAwaitingFinalize())
                                 @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $partAssignment->pivot->part_number, 'redirectRole' => 'sourcing'])
                             @else
-                                @include('admin.rfqs._complete_button', [
-                                    'rfq' => $rfq,
-                                    'part' => $partAssignment->pivot->part_number,
-                                    'kind' => 'sourcing_to_ops',
-                                    'redirectRole' => 'sourcing',
-                                    'redirectView' => $scopedToReturns ? 'returns' : '',
-                                ])
+                                @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
+                                    @include('admin.rfqs._complete_button', [
+                                        'rfq' => $rfq,
+                                        'part' => $partAssignment->pivot->part_number,
+                                        'kind' => 'sourcing_to_ops',
+                                        'redirectRole' => 'sourcing',
+                                        'redirectView' => $scopedToReturns ? 'returns' : '',
+                                    ])
+                                @endif
                                 @include('admin.rfqs._complete_button', [
                                     'rfq' => $rfq,
                                     'part' => $partAssignment->pivot->part_number,

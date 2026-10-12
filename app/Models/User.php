@@ -165,6 +165,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person can send a Sourcing part, still with Sourcing, back
+     * to Senior Operations to assign again (RfqController::returnSeniorOps())
+     * — Admin alone, on the member's behalf. Sourcing's own Return to Senior
+     * Operations button was taken away on 2026-10-12.
+     */
+    public function canSendSourcingPartsBackToSeniorOps(): bool
+    {
+        return $this->hasRole('Admin');
+    }
+
+    /**
      * RFQs this user (typically a Sourcing team member) is assigned to.
      */
     public function assignedRfqs(): BelongsToMany

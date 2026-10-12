@@ -25,7 +25,7 @@ it('groups the workflow by role in the Admin sidebar', function () {
         ->get(indexUrl(['status' => 'Pending']))
         ->assertOk();
 
-    // A node for each role, and the "Role Stages" parent they all hang from.
+    // A node for each role, and the "RFQ Management" parent they all hang from.
     expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 1);
 
     foreach ([
@@ -44,11 +44,11 @@ it('groups the workflow by role in the Admin sidebar', function () {
     }
 });
 
-it('hangs every role\'s group under one "Role Stages" parent node', function () {
+it('hangs every role\'s group under one "RFQ Management" parent node', function () {
     $html = test()->actingAs(userWithRole('Admin'))
         ->get(indexUrl(['status' => 'Pending']))
         ->assertOk()
-        ->assertSee('Role Stages')
+        ->assertSee('RFQ Management')
         ->getContent();
 
     // The parent is one collapsible node of its own…
@@ -86,7 +86,7 @@ it('makes each group collapsible, showing its queue count on the heading', funct
     // are still unassigned, and two of them are in review — while Head of
     // Business Development's one is its own. A group with nothing waiting
     // shows no count.
-    // Role Stages, the parent, adds all of them up: 5 and 1 make 6.
+    // RFQ Management, the parent, adds all of them up: 5 and 1 make 6.
     $response->assertSee('class="nav-link-count sidebar-group-count" title="5 waiting"', false)
         ->assertSee('class="nav-link-count sidebar-group-count" title="1 waiting"', false)
         ->assertSee('class="nav-link-count sidebar-group-count" title="6 waiting"', false);

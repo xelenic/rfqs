@@ -5,7 +5,7 @@
     ?role=<slug> so Admin sees it as that role does — see
     RfqController::index() ($lensRole).
 
-    Laid out as a numbered timeline under one parent, "Role Stages": every
+    Laid out as a numbered timeline under one parent, "RFQ Management": every
     role is a step, numbered in workflow order, with a line running down from
     one step's number to the next and its pages beside it (see
     .sidebar-step-number in admin.css). A step's number is highlighted while
@@ -115,7 +115,7 @@
             && ($currentRole === $group['role'] || ($currentRole === null && $group['role'] === 'Business Development')));
 @endphp
 
-{{-- The root: one node, "Role Stages", with each role's group under it as a
+{{-- The root: one node, "RFQ Management", with each role's group under it as a
      numbered step of the timeline. --}}
 <div class="sidebar-group sidebar-group-root" data-sidebar-group="role-stages">
     <button type="button" class="sidebar-section-title sidebar-group-title"
@@ -123,7 +123,7 @@
             aria-expanded="true" aria-controls="sidebar-group-role-stages">
         <i class="bi bi-chevron-right sidebar-group-chevron"></i>
         <i class="bi bi-layers"></i>
-        <span class="sidebar-group-name">Role Stages</span>
+        <span class="sidebar-group-name">RFQ Management</span>
         @if ($allGroupsCount > 0)
             <span class="nav-link-count sidebar-group-count" title="{{ $allGroupsCount }} waiting">{{ $allGroupsCount }}</span>
         @endif

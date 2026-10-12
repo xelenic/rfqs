@@ -174,10 +174,13 @@ it('words each prompt for whoever is next in line', function () {
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
-    // Sourcing completes to hand on to Data Entry — and sends back to Senior Operations…
+    // Sourcing completes to hand on to Data Entry…
     $sourcingHtml = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
-    expect($sourcingHtml)->toMatch('/data-kind="sourcing"[^>]*data-audience="Data Entry"/')
-        ->toMatch('/data-kind="sourcing_to_ops"[^>]*data-audience="Senior Operations"/');
+    expect($sourcingHtml)->toMatch('/data-kind="sourcing"[^>]*data-audience="Data Entry"/');
+
+    // …and Admin, on Sourcing's page, can send back to Senior Operations…
+    $adminHtml = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'sourcing']))->assertOk()->getContent();
+    expect($adminHtml)->toMatch('/data-kind="sourcing_to_ops"[^>]*data-audience="Senior Operations"/');
 
     // …and Data Entry, once started on it, to send back to them to finalize.
     $rfq->refresh()->completeSourcingPart(1);

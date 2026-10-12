@@ -4,9 +4,10 @@
     Finalize on a Sourcing part — or (kind "return") Data Entry sending a part back to Sourcing, where
     the comment is the reason — or (kind "return_data_entry") the Sourcing
     member sending a part Data Entry sent to finalize back to Data Entry
-    instead, again with a reason — or (kind "sourcing_to_ops") the Sourcing
-    member sending their own part, still with them, back to Senior Operations
-    to assign again, with a reason (RfqController::returnSeniorOps()). It doesn't act
+    instead, again with a reason — or (kind "sourcing_to_ops") Admin sending a
+    Sourcing part, still with its member, back to Senior Operations to assign
+    again, with a reason (RfqController::returnSeniorOps(); Sourcing's own
+    button is gone — User::canSendSourcingPartsBackToSeniorOps()). It doesn't act
     itself: it opens the prompt
     (_complete_modal.blade.php), pointing it at the right route and part and at
     where to come back to.

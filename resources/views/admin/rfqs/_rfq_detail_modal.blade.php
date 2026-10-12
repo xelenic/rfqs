@@ -128,7 +128,9 @@
                      there comes back here. --}}
                 @if ($canCompleteAsSourcing)
                     <div class="d-flex gap-2">
-                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'sourcing_to_ops', 'backModal' => $modalId])
+                        @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
+                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'sourcing_to_ops', 'backModal' => $modalId])
+                        @endif
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
                     </div>
                 @elseif ($canFinalize)

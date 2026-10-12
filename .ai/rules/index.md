@@ -9,5 +9,6 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Http/Controllers/** | .ai/rules/controllers.md |
 | database/migrations/** | .ai/rules/migrations.md |
 | app/Models/** | .ai/rules/models.md |
+| resources/views/admin/rfqs/** | .ai/rules/rfqs.md |
 | routes/console.php | .ai/rules/routes.md |
 | resources/views/admin/settings/** | .ai/rules/settings.md |

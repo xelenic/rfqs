@@ -345,7 +345,9 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => 'returns'])
+                                        @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
+                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => 'returns'])
+                                        @endif
                                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => 'returns'])
                                         {{-- Sent back by a reviewer further on: straight back to them. --}}
                                         @if ($forwardBack = $rfq->openReturnFor($myAssignment->pivot->part_number))
@@ -1238,7 +1240,9 @@
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         @if (! $iHaveCompletedMyPart)
-                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart, 'kind' => 'sourcing_to_ops'])
+                                            @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
+                                                @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart, 'kind' => 'sourcing_to_ops'])
+                                            @endif
                                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart])
                                         @elseif ($rfq->partAwaitsFinalize($myPart))
                                             @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $myPart])

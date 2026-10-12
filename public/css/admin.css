@@ -184,7 +184,7 @@ h6, .h6 { font-size: 0.85rem; }
 
 /* Admin's sidebar is the workflow, role by role: each role a numbered step,
    its pages under it. A heading is the button that collapses it — the step's
-   number (or, on the "Role Stages" root, a caret and icon) leads, then the
+   number (or, on the "RFQ Management" root, a caret and icon) leads, then the
    name, and — only while collapsed — the queue count, with a caret at the end
    on a step. */
 .sidebar-group-title {
@@ -242,7 +242,7 @@ h6, .h6 { font-size: 0.85rem; }
   display: inline-flex;
 }
 
-/* The root, "Role Stages": its heading is set a little above the role steps
+/* The root, "RFQ Management": its heading is set a little above the role steps
    under it. */
 .sidebar-group-root > .sidebar-group-title {
   margin-top: 0.75rem;
