@@ -174,11 +174,11 @@ it('sorts by newest, oldest or priority', function (string $sort, array $expecte
     'something else' => ['sideways', ['Latest job', 'Recent job', 'Middle job', 'Old job']],
 ]);
 
-it('keeps filters and sorting away from everyone else\'s lists', function () {
-    opsRfq('Old job', ['created_at' => now()->subDays(20)]);
+it('keeps its filters and sorting away from everyone else\'s lists — the dates and priority are on their own bar', function () {
+    opsRfq('Old job', ['created_at' => now()->subDays(20), 'priority_level' => 'Low']);
 
     test()->actingAs(userWithRole('Business Development'))
-        ->get(route('admin.rfqs.index', ['status' => 'Pending', 'range' => 'today', 'priority' => ['Urgent']]))
+        ->get(route('admin.rfqs.index', ['status' => 'Pending', 'part_status' => 'returned', 'sort' => 'oldest']))
         ->assertOk()
         ->assertSee('Old job')
         ->assertDontSee('id="opsFilterForm"', false);

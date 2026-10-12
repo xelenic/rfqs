@@ -22,7 +22,7 @@
                     90 => '3 Months',
                 };
             @endphp
-            <a href="{{ route('admin.dashboard', ['range' => $r]) }}"
+            <a href="{{ request()->fullUrlWithQuery(['range' => $r]) }}"
                class="range-filter-btn {{ $rfqActivity['range'] === $r ? 'active' : '' }}">
                 {{ $rangeLabel }}
             </a>

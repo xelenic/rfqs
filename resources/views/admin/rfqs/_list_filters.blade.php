@@ -1,0 +1,85 @@
+{{--
+    The bar above every RFQ list: search (WC number, RFQ number, subject),
+    when the RFQs were created — all time, today, the last 3 days, the last
+    month (30 days), or dates of your own (RfqController::createdRange()) —
+    and their priority, one or several. A preset applies as it's picked,
+    Custom once its dates are, a priority after a moment (so a few clicks go
+    as one), the search on Enter (admin.js, .js-period-filter). It carries
+    where you are — the list, a role's second view, Admin's role page, Data
+    Entry's tab, Senior Operations' filters — so filtering keeps you there.
+    On Senior Operations' Unassigned page, whose own filters have the dates
+    and priority, it's the search alone.
+
+    Expects: $statusFilter, $lensRole, $opsFilters, $listRange, $listPriority,
+    $search, $scopedToDataEntry, $dataEntryTab.
+--}}
+@php
+    $filterToday = now(\App\Models\Setting::timezone())->toDateString();
+    $isCustomRange = $listRange && $listRange['range'] === 'custom';
+    $rangeLabels = ['all' => 'All time'] + \App\Http\Controllers\Admin\RfqController::LIST_RANGES + ['custom' => 'Custom'];
+    // Senior Operations' own filters have their Clear, which keeps the search.
+    $isFiltered = $listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== []);
+@endphp
+<form method="GET" action="{{ route('admin.rfqs.index') }}" id="rfqListFilterForm" class="list-filter js-period-filter"
+      data-period-field="range" data-period-default="all" data-today="{{ $filterToday }}">
+    @if ($statusFilter)
+        <input type="hidden" name="status" value="{{ $statusFilter }}">
+    @endif
+    {{-- Keep the queue being searched: a role's second view
+         (Returns, Review, …) and Admin's per-role page. --}}
+    @if (in_array(request('view'), \App\Models\Rfq::QUEUE_VIEWS, true))
+        <input type="hidden" name="view" value="{{ request('view') }}">
+    @endif
+    @if ($lensRole)
+        <input type="hidden" name="role" value="{{ \Illuminate\Support\Str::slug($lensRole) }}">
+    @endif
+    @if ($opsFilters)
+        @include('admin.rfqs._ops_filters_carry')
+    @endif
+    {{-- Data Entry's tab, kept up by admin.js as it changes. --}}
+    @if ($scopedToDataEntry)
+        <input type="hidden" name="tab" id="deTabInput" value="completed" @disabled($dataEntryTab !== 'completed')>
+    @endif
+
+    <div class="list-filter-search">
+        <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search WC number, RFQ number, subject..." aria-label="Search RFQs">
+        <button class="btn btn-sm btn-outline-secondary" type="submit" aria-label="Search"><i class="bi bi-search"></i></button>
+    </div>
+
+    @if ($listRange)
+        <div class="range-filter ops-range" role="radiogroup" aria-label="Created">
+            @foreach ($rangeLabels as $value => $label)
+                <label class="range-filter-btn">
+                    <input type="radio" name="range" value="{{ $value }}" @checked($listRange['range'] === $value)>
+                    <span>{{ $label }}</span>
+                </label>
+            @endforeach
+        </div>
+
+        <div class="ops-custom-range js-custom-range {{ $isCustomRange ? '' : 'd-none' }}">
+            <input type="date" name="from" class="form-control form-control-sm" aria-label="Created from"
+                   value="{{ $listRange['from'] }}" max="{{ $listRange['to'] ?? $filterToday }}">
+            <span class="text-muted-soft">to</span>
+            <input type="date" name="to" class="form-control form-control-sm" aria-label="Created up to"
+                   value="{{ $listRange['to'] }}" min="{{ $listRange['from'] }}" max="{{ $filterToday }}">
+        </div>
+    @endif
+
+    @if ($listPriority !== null)
+        <div class="ops-chips" role="group" aria-label="Priority">
+            @foreach (array_reverse(\App\Models\Rfq::PRIORITIES) as $priority)
+                <label class="priority-chip priority-chip-{{ strtolower($priority) }}">
+                    <input type="checkbox" name="priority[]" value="{{ $priority }}" @checked(in_array($priority, $listPriority, true))>
+                    <span class="priority-chip-dot"></span>
+                    <span>{{ $priority }}</span>
+                </label>
+            @endforeach
+        </div>
+    @endif
+
+    @if ($isFiltered)
+        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
+            <i class="bi bi-x-circle"></i> Clear
+        </a>
+    @endif
+</form>

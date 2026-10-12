@@ -82,28 +82,7 @@
 
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <form method="GET" class="d-flex gap-2">
-                @if ($statusFilter)
-                    <input type="hidden" name="status" value="{{ $statusFilter }}">
-                @endif
-                {{-- Keep the queue being searched: a role's second view
-                     (Returns, Review, …) and Admin's per-role page. --}}
-                @if (in_array(request('view'), \App\Models\Rfq::QUEUE_VIEWS, true))
-                    <input type="hidden" name="view" value="{{ request('view') }}">
-                @endif
-                @if ($lensRole)
-                    <input type="hidden" name="role" value="{{ \Illuminate\Support\Str::slug($lensRole) }}">
-                @endif
-                @if ($opsFilters)
-                    @include('admin.rfqs._ops_filters_carry')
-                @endif
-                {{-- Data Entry's tab, kept up by admin.js as it changes. --}}
-                @if ($scopedToDataEntry)
-                    <input type="hidden" name="tab" id="deTabInput" value="completed" @disabled($dataEntryTab !== 'completed')>
-                @endif
-                <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search WC number, RFQ number, subject..." style="min-width:260px;">
-                <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
-            </form>
+            @include('admin.rfqs._list_filters')
 
             @can('rfqs.create')
                 <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createRfqModal">

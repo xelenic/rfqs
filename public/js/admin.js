@@ -1277,6 +1277,93 @@ function rfqmsBoot() {
         if (activeTab) tabInput.value = activeTab.dataset.opsTab;
     })();
 
+    // The period filters — Business Development's dashboard summary
+    // (?period=) and the bar above the RFQ lists (?range=, _list_filters):
+    // a preset goes straight there; Custom shows its two dates and goes once
+    // both are set, or on Enter / Apply; a priority after a short pause, so a
+    // few quick clicks go as one. Only what's set goes in the address, so the
+    // default period, empty fields and the dates of a preset stay out.
+    document.querySelectorAll('.js-period-filter').forEach(function (form) {
+        var field = form.dataset.periodField;
+        var fallback = form.dataset.periodDefault;
+        var customRange = form.querySelector('.js-custom-range');
+        var from = form.elements.from;
+        var to = form.elements.to;
+        var today = form.dataset.today;
+        var timer = null;
+
+        function chosen() {
+            var picked = form.querySelector('input[name="' + field + '"]:checked');
+            return picked ? picked.value : fallback;
+        }
+
+        function applyPeriod() {
+            var isCustom = chosen() === 'custom';
+            var hasDates = from && to && (from.value || to.value);
+            var params = new URLSearchParams();
+
+            new FormData(form).forEach(function (value, key) {
+                var isDate = key === 'from' || key === 'to';
+                if (value === '' || (isDate && !isCustom)) return;
+                // A custom range with no dates is the default.
+                if (key === field && (value === fallback || (value === 'custom' && !hasDates))) return;
+                params.append(key, value);
+            });
+
+            var card = form.closest('.card');
+            if (card) card.classList.add('is-loading');
+            var query = params.toString();
+            window.location.assign(form.action + (query ? '?' + query : ''));
+        }
+
+        // The two dates can't cross, or go past today.
+        function limitDates() {
+            from.max = to.value || today;
+            to.min = from.value || '';
+            to.max = today;
+        }
+
+        form.addEventListener('change', function (event) {
+            var target = event.target;
+
+            if (target.name === field) {
+                var isCustom = target.value === 'custom';
+                if (customRange) customRange.classList.toggle('d-none', !isCustom);
+                if (isCustom) {
+                    limitDates();
+                    (from.value ? to : from).focus();
+                    return; // nothing to filter on until a date's picked
+                }
+                applyPeriod();
+            }
+
+            if (target.name === 'from' || target.name === 'to') {
+                limitDates();
+                if (from.value && to.value) applyPeriod();
+            }
+
+            if (target.type === 'checkbox') {
+                clearTimeout(timer);
+                timer = setTimeout(applyPeriod, 500);
+            }
+        });
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            applyPeriod();
+        });
+    });
+
+    // Coming back with the browser's Back button shows the page as it was
+    // left, the period filter's card dimmed and all.
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted) return;
+        document.querySelectorAll('.js-period-filter').forEach(function (form) {
+            var card = form.closest('.card');
+            if (card) card.classList.remove('is-loading');
+        });
+    });
+
     // Data Entry's Ready and Completed tabs: the one open is kept in the
     // address (?tab=completed), so a reload, a live update or coming back
     // after an action opens it again.

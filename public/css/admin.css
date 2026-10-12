@@ -741,6 +741,87 @@ h6, .h6 { font-size: 0.85rem; }
   color: var(--rfq-text-muted);
 }
 
+.today-tile-note {
+  font-size: 0.68rem;
+  color: var(--tone);
+}
+
+/* Business Development's summary: its title, and the period filter beside it. */
+.summary-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.summary-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.summary-filter .ops-custom-range,
+.list-filter .ops-custom-range {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.summary-filter .ops-custom-range input[type="date"],
+.list-filter .ops-custom-range input[type="date"] {
+  flex: 1 1 7.5rem;
+  width: auto;
+  min-width: 0;
+}
+
+/* On a phone, the period pills and the priority chips keep to a line each. */
+@media (max-width: 575.98px) {
+  .summary-filter .range-filter-btn,
+  .list-filter .range-filter-btn {
+    padding-inline: 0.5rem;
+  }
+
+  .list-filter .ops-chips {
+    gap: 0.35rem;
+  }
+
+  .list-filter .priority-chip {
+    gap: 0.35rem;
+    padding-inline: 0.55rem;
+  }
+}
+
+/* The bar above the RFQ lists: search, then when they were created. */
+.list-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.list-filter-search {
+  display: flex;
+  gap: 0.5rem;
+  flex: 0 1 300px;
+  min-width: min(100%, 220px);
+}
+
+.list-filter-clear {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--rfq-danger);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.list-filter-clear:hover {
+  text-decoration: underline;
+}
+
 .today-heading {
   margin-bottom: 0.4rem;
   font-size: 0.72rem;

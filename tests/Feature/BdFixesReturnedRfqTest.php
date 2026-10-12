@@ -238,7 +238,7 @@ it('flags a second and third time round differently from a first, on the Returns
     ['bd' => $bd, 'priya' => $priya, 'riley' => $riley, 'rfq' => $rfq] = returnedToBd();
 
     $first = test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()->getContent();
-    expect($first)->not->toContain('time</span>');
+    expect($first)->not->toContain('title="Sent back to Business Development');
 
     // Senior Operations re-assigns it…
     test()->actingAs($priya)->patch(route('admin.rfqs.assign', $rfq), [

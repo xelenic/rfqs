@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\Rfq;
+use App\Models\Setting;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
 
@@ -16,9 +19,44 @@ beforeEach(function () {
     }
 });
 
-function businessDevelopmentDashboard(): TestResponse
+/**
+ * Business Development's dashboard, with $query in its address — the
+ * summary's period, say.
+ *
+ * @param  array<string, mixed>  $query
+ */
+function businessDevelopmentDashboard(array $query = []): TestResponse
 {
-    return test()->actingAs(userWithRole('Business Development'))->get(route('admin.dashboard'))->assertOk();
+    return test()->actingAs(userWithRole('Business Development'))->get(route('admin.dashboard', $query))->assertOk();
+}
+
+/**
+ * $rfq sent back to $stageLabel at $at — the comment every send-back
+ * leaves (Rfq::rejectToStage()), which the summary counts.
+ */
+function bdSummaryReturn(Rfq $rfq, string $stageLabel, CarbonInterface $at): void
+{
+    $rfq->comments()->forceCreate([
+        'user_id' => null,
+        'action' => 'rejected',
+        'body' => 'Needs another look.',
+        'meta' => ['stage' => $stageLabel],
+        'created_at' => $at,
+        'updated_at' => $at,
+    ]);
+}
+
+/**
+ * The summary Business Development's dashboard shows for $query.
+ *
+ * @param  array<string, mixed>  $query
+ * @return array{period: array<string, mixed>, summary: array<string, int>}
+ */
+function bdSummaryFor(array $query = []): array
+{
+    $view = businessDevelopmentDashboard($query)->viewData('overview');
+
+    return ['period' => businessDevelopmentDashboard($query)->viewData('period'), 'summary' => $view['summary']];
 }
 
 it('gives Business Development a dashboard of its own', function () {
@@ -92,20 +130,20 @@ it('summarises today only', function () {
     $yesterday = now()->subDay();
 
     // Yesterday's — none of it counts.
-    Rfq::factory()->create([
-        'created_at' => $yesterday, 'gm_approved_at' => $yesterday,
-        'rejected_at' => $yesterday, 'bd_closed_at' => $yesterday,
+    bdSummaryReturn(Rfq::factory()->create([
+        'created_at' => $yesterday, 'gm_approved_at' => $yesterday, 'bd_closed_at' => $yesterday,
         'status' => 'Completed', 'stage' => 'closed',
-    ]);
+    ]), 'Data Entry', $yesterday);
 
     // Today's.
     Rfq::factory()->count(2)->create();
     Rfq::factory()->create(['created_at' => $yesterday, 'gm_approved_at' => now()->subHour(), 'stage' => 'bd_closing']);
-    Rfq::factory()->create(['created_at' => $yesterday, 'rejected_at' => now()->subHour()]);
+    bdSummaryReturn(Rfq::factory()->create(['created_at' => $yesterday]), 'Data Entry', now()->subHour());
     Rfq::factory()->create(['created_at' => $yesterday, 'bd_closed_at' => now()->subHours(2), 'status' => 'Completed', 'stage' => 'closed']);
 
     businessDevelopmentDashboard()->assertViewHas('overview', function (array $overview) {
-        expect($overview['today'])->toBe(['created' => 2, 'approved' => 1, 'sentBack' => 1, 'closed' => 1]);
+        expect($overview['summary'])->toBe(['created' => 2, 'approved' => 1, 'returned' => 1, 'returnedToBd' => 0, 'closed' => 1])
+            ->and($overview['closedToday'])->toBe(1);
 
         return true;
     });
@@ -133,6 +171,109 @@ it('lists what happened today, latest first, with who did it', function () {
 
             return true;
         });
+});
+
+// ---- the summary's period --------------------------------------------------
+
+it('counts a day as the working hours\' time zone has it, not UTC', function () {
+    // Midday UTC is 5:30 PM in Colombo: 8 PM UTC yesterday was already
+    // 1:30 AM today there, while 6 PM UTC yesterday was 11:30 PM yesterday.
+    Rfq::factory()->create(['created_at' => now()->subDay()->setTime(20, 0)]);
+    Rfq::factory()->create(['created_at' => now()->subDay()->setTime(18, 0)]);
+
+    expect(bdSummaryFor()['summary']['created'])->toBe(1);
+});
+
+it('covers today, the last 3 days or the week, today included', function () {
+    foreach ([0, 2, 3, 6, 7] as $daysAgo) {
+        Rfq::factory()->create(['created_at' => now()->subDays($daysAgo)]);
+    }
+
+    expect(bdSummaryFor()['summary']['created'])->toBe(1)
+        ->and(bdSummaryFor(['period' => 'today'])['summary']['created'])->toBe(1)
+        ->and(bdSummaryFor(['period' => '3d'])['summary']['created'])->toBe(2)
+        ->and(bdSummaryFor(['period' => 'week'])['summary']['created'])->toBe(4);
+
+    expect(bdSummaryFor(['period' => '3d'])['period'])->toMatchArray([
+        'key' => '3d',
+        'from' => now()->subDays(2)->toDateString(),
+        'to' => now()->toDateString(),
+        'isToday' => false,
+    ]);
+});
+
+it('covers a custom range — either way round, from a date to today, or a single day', function () {
+    foreach (['2026-09-01', '2026-09-15', '2026-09-30', '2026-10-05'] as $day) {
+        Rfq::factory()->create(['created_at' => Carbon::parse("{$day} 06:00")]);
+    }
+    test()->travelTo(Carbon::parse('2026-10-10 12:00'));
+
+    expect(bdSummaryFor(['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-09-30'])['summary']['created'])->toBe(3)
+        ->and(bdSummaryFor(['period' => 'custom', 'from' => '2026-09-30', 'to' => '2026-09-01'])['period'])->toMatchArray(['from' => '2026-09-01', 'to' => '2026-09-30'])
+        ->and(bdSummaryFor(['period' => 'custom', 'from' => '2026-09-15'])['summary']['created'])->toBe(3)
+        ->and(bdSummaryFor(['period' => 'custom', 'from' => '2026-09-15'])['period'])->toMatchArray(['from' => '2026-09-15', 'to' => '2026-10-10'])
+        ->and(bdSummaryFor(['period' => 'custom', 'to' => '2026-09-15'])['summary']['created'])->toBe(1);
+});
+
+it('falls back to today for a period it doesn\'t know, or a custom one with no dates', function (array $query) {
+    expect(bdSummaryFor($query)['period'])->toMatchArray(['key' => 'today', 'isToday' => true]);
+})->with([
+    'unknown' => [['period' => 'year']],
+    'custom, no dates' => [['period' => 'custom']],
+    'custom, not dates' => [['period' => 'custom', 'from' => 'last tuesday', 'to' => '10/01/2026']],
+    'dates, not custom' => [['from' => '2026-09-01', 'to' => '2026-09-30']],
+]);
+
+it('counts each RFQ returned once, says how many came back to Business Development, and keeps them counted once fixed', function () {
+    $ops = userWithRole('Senior Operations');
+
+    // Returned to Business Development, and already fixed.
+    $fixed = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'stage' => 'senior_ops_review']);
+    $fixed->rejectToStage('business_development', 'Which building?', $ops, 'senior_ops_review');
+    $fixed->resolveBusinessDevelopmentReturn();
+    expect($fixed->refresh()->rejected_at)->toBeNull();
+
+    // Returned twice, elsewhere.
+    $twice = Rfq::factory()->create(['rfq_number' => 'RFQ2002']);
+    bdSummaryReturn($twice, 'Data Entry', now()->subHours(3));
+    bdSummaryReturn($twice, 'Sourcing', now()->subHours(2));
+
+    // Last week's doesn't count today — but does for the week.
+    bdSummaryReturn(Rfq::factory()->create(), 'Business Development', now()->subDays(5));
+
+    expect(bdSummaryFor()['summary'])->toMatchArray(['returned' => 2, 'returnedToBd' => 1])
+        ->and(bdSummaryFor(['period' => 'week'])['summary'])->toMatchArray(['returned' => 3, 'returnedToBd' => 2]);
+
+    businessDevelopmentDashboard()
+        ->assertSee('1 to Business Development')
+        ->assertSeeInOrder(['RFQ2001', 'returned to Business Development', $ops->name, 'RFQ2002', 'returned to Sourcing'])
+        ->assertSee('returned to Data Entry');
+});
+
+it('shows the period picked, with dates on the activity once it\'s more than a day', function () {
+    Rfq::factory()->create(['rfq_number' => 'RFQ3001', 'created_at' => now()->subDays(2)->setTime(6, 0)]);
+
+    $when = now()->subDays(2)->setTime(6, 0)->setTimezone(Setting::timezone());
+
+    businessDevelopmentDashboard(['period' => '3d'])
+        ->assertDontSee('Today\'s summary', false)
+        ->assertSeeInOrder(['<span>', 'Summary', '</span>', '<h3 class="today-heading">', 'Activity', '</h3>'], false)
+        ->assertSee('value="3d" checked', false)
+        ->assertSee('id="summaryCustomRange"', false)
+        ->assertSee($when->format('M j, g:i A'))
+        // The chart's own range keeps the period.
+        ->assertSee('period=3d&amp;range=30', false);
+
+    businessDevelopmentDashboard(['period' => 'custom', 'from' => '2026-01-01', 'to' => '2026-01-31'])
+        ->assertSee('value="custom" checked', false)
+        ->assertSee('value="2026-01-01"', false)
+        ->assertSee('Nothing happened in this period.');
+
+    businessDevelopmentDashboard()
+        ->assertSee('Today\'s summary', false)
+        ->assertDontSee('@else', false)
+        ->assertSee('value="today" checked', false)
+        ->assertSee('class="ops-custom-range js-custom-range d-none" id="summaryCustomRange"', false);
 });
 
 it('says so when nothing has happened today', function () {

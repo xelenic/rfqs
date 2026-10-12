@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Rfq;
 use App\Models\RfqAssignment;
+use App\Models\RfqComment;
+use App\Models\Setting;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -23,6 +26,23 @@ class DashboardController extends Controller
     public const RANGES = [1, 7, 30, 90];
 
     /**
+     * The periods Business Development's summary can cover, besides a custom
+     * one: how many days back, today included, and what the filter calls it.
+     *
+     * @var array<string, array{days: int, label: string}>
+     */
+    public const SUMMARY_PERIODS = [
+        'today' => ['days' => 1, 'label' => 'Today'],
+        '3d' => ['days' => 3, 'label' => '3 days'],
+        'week' => ['days' => 7, 'label' => 'Week'],
+    ];
+
+    /**
+     * How many events the summary's activity list shows, latest first.
+     */
+    public const SUMMARY_FEED_SIZE = 8;
+
+    /**
      * Display the admin dashboard.
      */
     public function index(Request $request): View
@@ -34,8 +54,11 @@ class DashboardController extends Controller
         // the pending RFQs sit in the workflow, and what happened today. Admin,
         // which sees every role's side, keeps the general one.
         if ($canViewRfqs && $user->hasRole('Business Development') && ! $user->hasRole('Admin')) {
+            $period = $this->summaryPeriod($request);
+
             return view('admin.dashboard.business-development', [
-                'overview' => $this->businessDevelopmentOverview(),
+                'period' => $period,
+                'overview' => $this->businessDevelopmentOverview($period),
                 'rfqActivity' => $this->rfqActivity($request->integer('range', 7)),
                 'recentRfqs' => Rfq::query()->with('assignees')->latest()->limit(6)->get(),
                 'notifications' => $this->notifications($request),
@@ -66,24 +89,75 @@ class DashboardController extends Controller
     }
 
     /**
+     * The period Business Development's summary covers, from ?period= — and
+     * ?from= / ?to= for a custom one — in whole days of the working hours'
+     * time zone (Setting::timezone()); today when nothing (or nothing
+     * sensible) is asked for. A custom range needs a date: from one on its
+     * own it runs to today, a "to" on its own is just that day, and dates
+     * the wrong way round are swapped. 'start' and 'end' are in the app's
+     * time zone, as the times are stored.
+     *
+     * @return array{key: string, from: string, to: string, start: CarbonImmutable, end: CarbonImmutable, isToday: bool}
+     */
+    protected function summaryPeriod(Request $request): array
+    {
+        $timezone = Setting::timezone();
+        $today = CarbonImmutable::now($timezone)->startOfDay();
+        $date = fn (mixed $value) => is_string($value) && CarbonImmutable::canBeCreatedFromFormat($value, 'Y-m-d')
+            ? CarbonImmutable::createFromFormat('Y-m-d', $value, $timezone)->startOfDay()
+            : null;
+
+        $key = (string) $request->query('period');
+        $from = $date($request->query('from'));
+        $to = $date($request->query('to'));
+
+        if ($key === 'custom' && ($from || $to)) {
+            $to ??= $today;
+            $from ??= $to;
+
+            if ($from->gt($to)) {
+                [$from, $to] = [$to, $from];
+            }
+        } else {
+            $key = array_key_exists($key, self::SUMMARY_PERIODS) ? $key : 'today';
+            $from = $today->subDays(self::SUMMARY_PERIODS[$key]['days'] - 1);
+            $to = $today;
+        }
+
+        return [
+            'key' => $key,
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'start' => $from->setTimezone(config('app.timezone')),
+            'end' => $to->endOfDay()->setTimezone(config('app.timezone')),
+            'isToday' => $from->eq($today) && $to->eq($today),
+        ];
+    }
+
+    /**
      * What Business Development's dashboard shows: how big each queue is,
-     * where the pending RFQs currently sit in the workflow, and what's
-     * happened today. Company-wide, like the Pending and Closed lists they
-     * see.
+     * where the pending RFQs currently sit in the workflow, and a summary of
+     * $period (summaryPeriod()) — how many RFQs were created, approved by
+     * the General Manager, returned and closed in it, and what happened.
+     * Company-wide, like the Pending and Closed lists they see.
      *
-     * Today's activity is the approval chain's milestones — created through
+     * The activity is the approval chain's milestones — created through
      * closed — since the Sourcing and Data Entry detail is restricted for
-     * Business Development (see Rfq::APPROVAL_CHAIN_TIMELINE_TYPES).
+     * Business Development (see Rfq::APPROVAL_CHAIN_TIMELINE_TYPES). A
+     * return is each send-back's own comment (Rfq::rejectToStage(), action
+     * 'rejected'), so one stays counted after the RFQ is fixed and its
+     * rejected_at cleared, and one RFQ returned twice counts once.
      *
+     * @param  array{start: CarbonImmutable, end: CarbonImmutable}  $period
      * @return array{
-     *     pending: int, urgent: int, inReview: int, readyToClose: int, closed: int,
+     *     pending: int, urgent: int, inReview: int, readyToClose: int, closed: int, closedToday: int,
      *     stages: array<int, array{label: string, tone: string, count: int}>,
-     *     today: array{created: int, approved: int, sentBack: int, closed: int},
+     *     summary: array{created: int, approved: int, returned: int, returnedToBd: int, closed: int},
      *     feed: Collection<int, array{rfq: Rfq, at: Carbon, actor: ?string, icon: string, tone: string, text: string}>,
      *     readyToCloseRfqs: Collection<int, Rfq>
      * }
      */
-    protected function businessDevelopmentOverview(): array
+    protected function businessDevelopmentOverview(array $period): array
     {
         $pending = fn () => Rfq::query()->where('status', 'Pending');
         $beforeDataEntry = fn () => $pending()->whereNull('stage');
@@ -104,43 +178,51 @@ class DashboardController extends Controller
             ['label' => 'Ready to close', 'tone' => 'success', 'count' => $inStage['bd_closing'] ?? 0],
         ];
 
-        $todayStart = now()->startOfDay();
-        $since = fn (string $column) => Rfq::query()->where($column, '>=', $todayStart)->count();
+        $window = [$period['start'], $period['end']];
+        $within = fn (string $column) => Rfq::query()->whereBetween($column, $window)->count();
+        $returns = fn () => RfqComment::query()->where('action', 'rejected')->whereBetween('created_at', $window);
 
-        // Each dated milestone: who did it, how it looks, and what to say —
-        // 'text' is either the fixed wording, or (rejected_at, sent back by
-        // whichever of the three stages it was) a closure given the RFQ.
+        // Each dated milestone: who did it, how it looks, and what to say.
         $milestones = [
             'created_at' => ['actor' => 'creator', 'icon' => 'bi-plus-circle', 'tone' => 'primary', 'text' => 'created'],
             'senior_ops_reviewed_at' => ['actor' => 'seniorOpsReviewedBy', 'icon' => 'bi-clipboard2-check', 'tone' => 'violet', 'text' => 'passed Senior Operations review'],
             'head_of_bd_approved_at' => ['actor' => 'headOfBdApprovedBy', 'icon' => 'bi-person-check', 'tone' => 'violet', 'text' => 'approved by Head of Business Development'],
-            'rejected_at' => ['actor' => 'rejectedBy', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'text' => fn (Rfq $rfq) => 'sent back by '.Rfq::stageLabel($rfq->reject_from_stage)],
             'gm_assistant_completed_at' => ['actor' => 'gmAssistantCompletedBy', 'icon' => 'bi-file-earmark-text', 'tone' => 'violet', 'text' => 'submitted to the General Manager by GM Assistant'],
             'gm_approved_at' => ['actor' => 'gmApprovedBy', 'icon' => 'bi-award', 'tone' => 'success', 'text' => 'approved by the General Manager — ready to close'],
             'bd_closed_at' => ['actor' => 'bdClosedBy', 'icon' => 'bi-flag-fill', 'tone' => 'success', 'text' => 'closed'],
         ];
 
-        $feed = Rfq::query()
-            ->with(collect($milestones)->pluck('actor')->all())
-            ->where(function ($query) use ($milestones, $todayStart) {
-                foreach (array_keys($milestones) as $column) {
-                    $query->orWhere($column, '>=', $todayStart);
-                }
-            })
-            ->get()
-            ->flatMap(fn (Rfq $rfq) => collect($milestones)
-                ->filter(fn (array $milestone, string $column) => $rfq->{$column} !== null && $rfq->{$column} >= $todayStart)
-                ->map(fn (array $milestone, string $column) => [
+        $feed = collect($milestones)
+            ->flatMap(fn (array $milestone, string $column) => Rfq::query()
+                ->with($milestone['actor'])
+                ->whereBetween($column, $window)
+                ->latest($column)
+                ->limit(self::SUMMARY_FEED_SIZE)
+                ->get()
+                ->map(fn (Rfq $rfq) => [
                     'rfq' => $rfq,
                     'at' => $rfq->{$column},
                     'actor' => $rfq->{$milestone['actor']}?->name,
                     'icon' => $milestone['icon'],
                     'tone' => $milestone['tone'],
-                    'text' => is_callable($milestone['text']) ? $milestone['text']($rfq) : $milestone['text'],
-                ])
-                ->values())
+                    'text' => $milestone['text'],
+                ]))
+            ->concat($returns()
+                ->with(['rfq', 'author'])
+                ->latest()
+                ->limit(self::SUMMARY_FEED_SIZE)
+                ->get()
+                ->filter(fn (RfqComment $comment) => $comment->rfq !== null)
+                ->map(fn (RfqComment $comment) => [
+                    'rfq' => $comment->rfq,
+                    'at' => $comment->created_at,
+                    'actor' => $comment->author?->name,
+                    'icon' => 'bi-arrow-counterclockwise',
+                    'tone' => 'danger',
+                    'text' => 'returned to '.($comment->meta['stage'] ?? 'an earlier step'),
+                ]))
             ->sortByDesc('at')
-            ->take(8)
+            ->take(self::SUMMARY_FEED_SIZE)
             ->values();
 
         return [
@@ -149,12 +231,14 @@ class DashboardController extends Controller
             'inReview' => collect(Rfq::REVIEW_STAGES)->sum(fn (string $stage) => $inStage[$stage] ?? 0),
             'readyToClose' => Rfq::bdClosingCount(),
             'closed' => Rfq::query()->where('status', 'Completed')->count(),
+            'closedToday' => Rfq::query()->where('bd_closed_at', '>=', CarbonImmutable::now(Setting::timezone())->startOfDay()->setTimezone(config('app.timezone')))->count(),
             'stages' => $stages,
-            'today' => [
-                'created' => $since('created_at'),
-                'approved' => $since('gm_approved_at'),
-                'sentBack' => $since('rejected_at'),
-                'closed' => $since('bd_closed_at'),
+            'summary' => [
+                'created' => $within('created_at'),
+                'approved' => $within('gm_approved_at'),
+                'returned' => $returns()->distinct()->count('rfq_id'),
+                'returnedToBd' => $returns()->where('meta->stage', Rfq::stageLabel('business_development'))->distinct()->count('rfq_id'),
+                'closed' => $within('bd_closed_at'),
             ],
             'feed' => $feed,
             // Longest-waiting first — they're the ones to close next.

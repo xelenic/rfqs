@@ -12,6 +12,7 @@ use App\Models\RfqReturn;
 use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -36,6 +37,15 @@ class RfqController extends Controller implements HasMiddleware
      * @var array<string, int>
      */
     public const OPERATIONS_RANGES = ['today' => 1, '3d' => 3, '7d' => 7, '30d' => 30];
+
+    /**
+     * The "created within" presets on the bar above every other RFQ list
+     * (_list_filters.blade.php) — some of OPERATIONS_RANGES, by what the bar
+     * calls them. A month is the last 30 days.
+     *
+     * @var array<string, string>
+     */
+    public const LIST_RANGES = ['today' => 'Today', '3d' => '3 days', '30d' => 'Month'];
 
     /**
      * How those two tabs can be sorted.
@@ -177,14 +187,22 @@ class RfqController extends Controller implements HasMiddleware
 
         $search = $request->string('search')->trim()->toString();
 
-        $applySearch = function ($query) use ($search) {
+        // When the RFQs were created, and how urgent they are, from the bar
+        // above the list — except on Senior Operations' Unassigned page,
+        // whose own filters (below) ask both.
+        $listRange = $scopedToUnassigned ? null : $this->createdRange($request, array_intersect_key(self::OPERATIONS_RANGES, self::LIST_RANGES));
+        $listPriority = $scopedToUnassigned ? null : $this->prioritiesFromQuery($request);
+
+        $applySearch = function ($query) use ($search, $listRange, $listPriority) {
             $query->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('wc_number', 'like', "%{$search}%")
                         ->orWhere('rfq_number', 'like', "%{$search}%")
                         ->orWhere('subject', 'like', "%{$search}%");
                 });
-            });
+            })
+                ->when($listRange, fn ($query, array $range) => $this->applyCreatedRange($query, $range))
+                ->when($listPriority, fn ($query, array $priorities) => $query->whereIn('rfqs.priority_level', $priorities));
         };
 
         $applyCommonFilters = function ($query) use ($status, $applySearch) {
@@ -388,6 +406,8 @@ class RfqController extends Controller implements HasMiddleware
             'seniorOpsReviewRfqs' => $seniorOpsReviewRfqs,
             'dataEntryNames' => $dataEntryNames,
             'search' => $search,
+            'listRange' => $listRange,
+            'listPriority' => $listPriority,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
@@ -448,22 +468,9 @@ class RfqController extends Controller implements HasMiddleware
      */
     protected function operationsFilters(Request $request, array $categories, array $sourcingIds): array
     {
-        $range = (string) $request->query('range');
-        $from = $this->dateFromQuery($request->query('from'));
-        $to = $this->dateFromQuery($request->query('to'));
+        ['range' => $range, 'from' => $from, 'to' => $to] = $this->createdRange($request, self::OPERATIONS_RANGES);
 
-        // A custom range needs at least one end; anything unknown is "all".
-        if ($range !== 'custom' || (! $from && ! $to)) {
-            $range = array_key_exists($range, self::OPERATIONS_RANGES) ? $range : 'all';
-        }
-
-        if ($range !== 'custom') {
-            $from = $to = null;
-        } elseif ($from && $to && $from->gt($to)) {
-            [$from, $to] = [$to, $from];
-        }
-
-        $priority = array_values(array_intersect(Rfq::PRIORITIES, array_filter((array) $request->query('priority'), 'is_string')));
+        $priority = $this->prioritiesFromQuery($request);
 
         $category = $request->query('category');
         $category = is_string($category) && in_array($category, $categories, true) ? $category : null;
@@ -478,8 +485,8 @@ class RfqController extends Controller implements HasMiddleware
 
         return [
             'range' => $range,
-            'from' => $from?->toDateString(),
-            'to' => $to?->toDateString(),
+            'from' => $from,
+            'to' => $to,
             'priority' => $priority,
             'category' => $category,
             'member' => $member,
@@ -488,6 +495,66 @@ class RfqController extends Controller implements HasMiddleware
             'tab' => $request->query('tab') === 'assigned' ? 'assigned' : 'unassigned',
             'count' => (int) ($range !== 'all') + (int) ($priority !== []) + (int) ($category !== null) + (int) ($member !== null) + (int) ($partStatus !== null),
         ];
+    }
+
+    /**
+     * When the RFQs listed were created, read from the query string: ?range=
+     * one of $presets (key => days, today the first), or "custom" with
+     * ?from= and/or ?to= — at least one, the two put the right way round.
+     * Anything else is "all".
+     *
+     * @param  array<string, int>  $presets
+     * @return array{range: string, from: ?string, to: ?string}
+     */
+    protected function createdRange(Request $request, array $presets): array
+    {
+        $range = (string) $request->query('range');
+        $from = $this->dateFromQuery($request->query('from'));
+        $to = $this->dateFromQuery($request->query('to'));
+
+        if ($range !== 'custom' || (! $from && ! $to)) {
+            $range = array_key_exists($range, $presets) ? $range : 'all';
+        }
+
+        if ($range !== 'custom') {
+            $from = $to = null;
+        } elseif ($from && $to && $from->gt($to)) {
+            [$from, $to] = [$to, $from];
+        }
+
+        return ['range' => $range, 'from' => $from?->toDateString(), 'to' => $to?->toDateString()];
+    }
+
+    /**
+     * Narrows $query to the RFQs created in $range (createdRange()) — whole
+     * days in the working hours' time zone (Setting::timezone()), compared
+     * with the stored times in the app's own.
+     *
+     * @param  Builder<Rfq>  $query
+     * @param  array{range: string, from: ?string, to: ?string}  $range
+     */
+    protected function applyCreatedRange(Builder $query, array $range): void
+    {
+        $timezone = Setting::timezone();
+        $day = fn (string $date) => CarbonImmutable::createFromFormat('Y-m-d', $date, $timezone)->startOfDay();
+        $stored = fn (CarbonImmutable $moment) => $moment->setTimezone(config('app.timezone'));
+
+        $query
+            ->when(self::OPERATIONS_RANGES[$range['range']] ?? null, fn ($query, int $days) => $query
+                ->where('rfqs.created_at', '>=', $stored(CarbonImmutable::now($timezone)->startOfDay()->subDays($days - 1))))
+            ->when($range['from'], fn ($query, string $from) => $query->where('rfqs.created_at', '>=', $stored($day($from))))
+            ->when($range['to'], fn ($query, string $to) => $query->where('rfqs.created_at', '<=', $stored($day($to)->endOfDay())));
+    }
+
+    /**
+     * The priority levels asked for (?priority[]=), in Rfq::PRIORITIES'
+     * order — anything that isn't one is dropped.
+     *
+     * @return array<int, string>
+     */
+    protected function prioritiesFromQuery(Request $request): array
+    {
+        return array_values(array_intersect(Rfq::PRIORITIES, array_filter((array) $request->query('priority'), 'is_string')));
     }
 
     /**
@@ -509,10 +576,9 @@ class RfqController extends Controller implements HasMiddleware
      */
     protected function applyOperationsFilters(Builder $query, array $filters): void
     {
+        $this->applyCreatedRange($query, $filters);
+
         $query
-            ->when(self::OPERATIONS_RANGES[$filters['range']] ?? null, fn ($query, int $days) => $query->where('created_at', '>=', now()->subDays($days - 1)->startOfDay()))
-            ->when($filters['from'], fn ($query, string $from) => $query->whereDate('created_at', '>=', $from))
-            ->when($filters['to'], fn ($query, string $to) => $query->whereDate('created_at', '<=', $to))
             ->when($filters['priority'], fn ($query, array $priorities) => $query->whereIn('priority_level', $priorities))
             ->when($filters['category'], fn ($query, string $category) => $query->where('category', $category))
             // Member and part status describe the same part, so they're

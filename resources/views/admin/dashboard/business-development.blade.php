@@ -1,9 +1,10 @@
 {{--
     Business Development's dashboard — its queues, where the pending RFQs
-    sit in the workflow, and what happened today. See
-    DashboardController::businessDevelopmentOverview().
+    sit in the workflow, and a summary of a period they pick (today, the
+    last 3 days, the week, or their own dates). See
+    DashboardController::businessDevelopmentOverview() and summaryPeriod().
 
-    Expects: $overview, $rfqActivity, $recentRfqs, $notifications.
+    Expects: $period, $overview, $rfqActivity, $recentRfqs, $notifications.
 --}}
 @extends('layouts.app')
 
@@ -35,7 +36,7 @@
             [
                 'label' => 'Closed RFQs', 'value' => $overview['closed'], 'icon' => 'bi-check2-circle', 'iconClass' => 'stat-icon-success',
                 'url' => route('admin.rfqs.index', ['status' => 'Completed']),
-                'caption' => $overview['today']['closed'].' closed today',
+                'caption' => $overview['closedToday'].' closed today',
                 'alert' => false,
             ],
         ] as $card)
@@ -54,33 +55,87 @@
         @endforeach
     </div>
 
+    @php
+        $timezone = \App\Models\Setting::timezone();
+        $periodFrom = \Carbon\CarbonImmutable::parse($period['from'], $timezone);
+        $periodTo = \Carbon\CarbonImmutable::parse($period['to'], $timezone);
+        $todayDate = now($timezone)->toDateString();
+        $periodDates = match (true) {
+            $period['from'] === $period['to'] => $periodFrom->format('l, M j'.($periodFrom->year === now($timezone)->year ? '' : ', Y')),
+            $periodFrom->year === $periodTo->year => $periodFrom->format('M j').' – '.$periodTo->format('M j'.($periodTo->year === now($timezone)->year ? '' : ', Y')),
+            default => $periodFrom->format('M j, Y').' – '.$periodTo->format('M j, Y'),
+        };
+        $periodLabels = collect(\App\Http\Controllers\Admin\DashboardController::SUMMARY_PERIODS)->map->label->all() + ['custom' => 'Custom'];
+    @endphp
     <div class="card mb-4">
-        <div class="card-header d-flex align-items-center justify-content-between">
-            <span>Today's summary</span>
-            <span class="text-muted-soft small fw-normal">{{ now()->format('l, M j') }}</span>
+        <div class="card-header summary-card-header">
+            <div>
+                <span>
+                    @if ($period['isToday'])
+                        Today's summary
+                    @else
+                        Summary
+                    @endif
+                </span>
+                <span class="text-muted-soft small fw-normal ms-1">{{ $periodDates }}</span>
+            </div>
+
+            {{-- A preset goes straight there; Custom waits for its dates (admin.js, .js-period-filter). --}}
+            <form method="GET" action="{{ route('admin.dashboard') }}" id="summaryFilterForm" class="summary-filter js-period-filter"
+                  data-period-field="period" data-period-default="today" data-today="{{ $todayDate }}">
+                @if (request()->filled('range'))
+                    <input type="hidden" name="range" value="{{ request()->integer('range') }}">
+                @endif
+                <div class="range-filter ops-range" role="radiogroup" aria-label="Summary period">
+                    @foreach ($periodLabels as $value => $label)
+                        <label class="range-filter-btn">
+                            <input type="radio" name="period" value="{{ $value }}" @checked($period['key'] === $value)>
+                            <span>{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+                <div class="ops-custom-range js-custom-range {{ $period['key'] === 'custom' ? '' : 'd-none' }}" id="summaryCustomRange">
+                    <input type="date" name="from" class="form-control form-control-sm" aria-label="From"
+                           value="{{ $period['key'] === 'custom' ? $period['from'] : '' }}" max="{{ $period['key'] === 'custom' ? $period['to'] : $todayDate }}">
+                    <span class="text-muted-soft">to</span>
+                    <input type="date" name="to" class="form-control form-control-sm" aria-label="To"
+                           value="{{ $period['key'] === 'custom' ? $period['to'] : '' }}" min="{{ $period['key'] === 'custom' ? $period['from'] : '' }}" max="{{ $todayDate }}">
+                    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                </div>
+            </form>
         </div>
         <div class="card-body">
             <div class="row g-4">
                 <div class="col-lg-5">
                     <div class="today-tiles">
                         @foreach ([
-                            ['New RFQs', $overview['today']['created'], 'bi-plus-circle', 'primary'],
-                            ['Approved by GM', $overview['today']['approved'], 'bi-award', 'violet'],
-                            ['Sent back', $overview['today']['sentBack'], 'bi-arrow-counterclockwise', 'danger'],
-                            ['Closed', $overview['today']['closed'], 'bi-flag-fill', 'success'],
-                        ] as [$label, $value, $icon, $tone])
+                            ['Created', $overview['summary']['created'], 'bi-plus-circle', 'primary', null],
+                            ['Approved by GM', $overview['summary']['approved'], 'bi-award', 'violet', null],
+                            ['Returned', $overview['summary']['returned'], 'bi-arrow-counterclockwise', 'danger', $overview['summary']['returnedToBd'] > 0 ? $overview['summary']['returnedToBd'].' to Business Development' : null],
+                            ['Closed', $overview['summary']['closed'], 'bi-flag-fill', 'success', null],
+                        ] as [$label, $value, $icon, $tone, $note])
                             <div class="today-tile tone-{{ $tone }}">
                                 <span class="today-tile-icon"><i class="bi {{ $icon }}"></i></span>
                                 <span class="today-tile-value">{{ $value }}</span>
                                 <span class="today-tile-label">{{ $label }}</span>
+                                @if ($note)
+                                    <span class="today-tile-note">{{ $note }}</span>
+                                @endif
                             </div>
                         @endforeach
                     </div>
                 </div>
 
                 <div class="col-lg-7">
-                    <h3 class="today-heading">Today's activity</h3>
+                    <h3 class="today-heading">
+                        @if ($period['isToday'])
+                            Today's activity
+                        @else
+                            Activity
+                        @endif
+                    </h3>
                     @forelse ($overview['feed'] as $event)
+                        @php $eventAt = $event['at']->copy()->setTimezone($timezone); @endphp
                         <a href="{{ route('admin.rfqs.show', $event['rfq']) }}" class="today-feed-item tone-{{ $event['tone'] }}">
                             <span class="today-feed-icon"><i class="bi {{ $event['icon'] }}"></i></span>
                             <span class="today-feed-text">
@@ -89,10 +144,10 @@
                                     <span class="text-muted-soft">· {{ $event['actor'] }}</span>
                                 @endif
                             </span>
-                            <span class="today-feed-time">{{ $event['at']->format('g:i A') }}</span>
+                            <span class="today-feed-time">{{ $eventAt->format($period['from'] === $period['to'] ? 'g:i A' : 'M j, g:i A') }}</span>
                         </a>
                     @empty
-                        <p class="text-muted-soft small mb-0">Nothing has happened yet today.</p>
+                        <p class="text-muted-soft small mb-0">{{ $period['isToday'] ? 'Nothing has happened yet today.' : 'Nothing happened in this period.' }}</p>
                     @endforelse
                 </div>
             </div>
