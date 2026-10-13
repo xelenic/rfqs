@@ -93,7 +93,7 @@ it('can go round again — Data Entry sends it to finalize, and it can be finali
     startDataEntryOn($rfq, 1);
 
     test()->actingAs(userWithRole('Data Entry'))
-        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Fixed the currency'])
+        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Fixed the currency'])
         ->assertSessionHasNoErrors();
 
     $pivot = $rfq->refresh()->assigneeForPart(1)->pivot;

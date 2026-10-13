@@ -2,6 +2,7 @@
 
 use App\Models\Rfq;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -250,4 +251,97 @@ it('leaves the dates off the lists when none are asked for', function () {
     listFilterRfq('Ancient job', 400);
 
     expect(listedSubjects([], ['Ancient job']))->toBe(['Ancient job']);
+});
+
+// ---- grouping --------------------------------------------------------------
+
+/**
+ * A list as $role sees it, with $query in its address.
+ *
+ * @param  array<string, mixed>  $query
+ */
+function groupedList(array $query, string $role = 'Admin'): TestResponse
+{
+    return test()->actingAs(userWithRole($role))->get(route('admin.rfqs.index', $query))->assertOk();
+}
+
+it('offers grouping on the plain lists, not on a role\'s own queue', function (string $role, array $query, bool $offered) {
+    $html = groupedList($query, $role)->getContent();
+
+    expect(str_contains($html, '<select name="group"'))->toBe($offered);
+})->with([
+    'All RFQs' => ['Admin', [], true],
+    'Business Development\'s Pending' => ['Business Development', ['status' => 'Pending'], true],
+    'the Closed list' => ['Business Development', ['status' => 'Completed'], true],
+    'On Hold' => ['Senior Operations', ['status' => 'On Hold'], true],
+    'Senior Operations\' Unassigned' => ['Senior Operations', ['status' => 'Pending'], false],
+    'Sourcing\'s own' => ['Sourcing', ['status' => 'Pending'], false],
+    'Data Entry\'s' => ['Data Entry', ['status' => 'Pending'], false],
+    'the Head of Business Development\'s review' => ['Head of Business Development', ['status' => 'Pending'], false],
+]);
+
+it('groups by WC number — the same however it was typed — each group with its total', function () {
+    listFilterRfq('First at WC100', 3, ['rfq_number' => 'RFQ5001', 'wc_number' => 'wc100']);
+    listFilterRfq('Second at WC100', 1, ['rfq_number' => 'RFQ5002', 'wc_number' => ' WC100']);
+    listFilterRfq('Only at WC200', 2, ['rfq_number' => 'RFQ5003', 'wc_number' => 'WC200']);
+
+    groupedList(['group' => 'wc'])
+        ->assertSee('<option value="wc" selected>Group by: WC number</option>', false)
+        ->assertSeeInOrder([
+            'rfq-list-group', 'WC100', '2 RFQs', 'RFQ5002', 'RFQ5001',
+            'rfq-list-group', 'WC200', '1 RFQ', 'RFQ5003',
+        ], false);
+});
+
+it('counts a whole group, though the page shows only some of it', function () {
+    listFilterRfq('A lone one', 0, ['wc_number' => 'WC100']);
+    foreach (range(1, 12) as $number) {
+        listFilterRfq("Busy site {$number}", 0, ['wc_number' => 'WC300']);
+    }
+
+    $response = groupedList(['group' => 'wc']);
+
+    expect($response->viewData('groupTotals')->all())->toBe(['WC100' => 1, 'WC300' => 12]);
+    $response->assertSeeInOrder(['WC100', '1 RFQ', 'WC300', '12 RFQs'], false);
+
+    // The second page carries on with WC300, its heading again.
+    groupedList(['group' => 'wc', 'page' => 2])->assertSeeInOrder(['rfq-list-group', 'WC300', '12 RFQs'], false);
+});
+
+it('groups by priority, Urgent first', function () {
+    listFilterRfq('Low job', 0, ['priority_level' => 'Low']);
+    listFilterRfq('Urgent job', 0, ['priority_level' => 'Urgent']);
+    listFilterRfq('High job', 0, ['priority_level' => 'High']);
+
+    groupedList(['group' => 'priority'])->assertSeeInOrder([
+        'rfq-list-group', 'Urgent', '1 RFQ', 'Urgent job',
+        'rfq-list-group', 'High', '1 RFQ', 'High job',
+        'rfq-list-group', 'Low', '1 RFQ', 'Low job',
+    ], false);
+});
+
+it('groups by status as the work goes — pending, on hold, closed, cancelled', function () {
+    listFilterRfq('Cancelled job', 0, ['status' => Rfq::CANCELLED]);
+    listFilterRfq('Closed job', 0, ['status' => 'Completed', 'stage' => 'closed']);
+    listFilterRfq('Held job', 0, ['status' => Rfq::ON_HOLD]);
+    listFilterRfq('Open job', 0);
+
+    groupedList(['group' => 'status'])->assertSeeInOrder([
+        'rfq-list-group', 'Pending', 'Open job',
+        'rfq-list-group', 'On Hold', 'Held job',
+        'rfq-list-group', 'Closed', 'Closed job',
+        'rfq-list-group', 'Cancelled', 'Cancelled job',
+    ], false);
+});
+
+it('groups what the filters leave, and leaves an unknown grouping — or a role\'s queue — ungrouped', function () {
+    listFilterRfq('Lobby lights', 0, ['wc_number' => 'WC100', 'priority_level' => 'Urgent']);
+    listFilterRfq('Lobby doors', 0, ['wc_number' => 'WC100', 'priority_level' => 'Low']);
+    listFilterRfq('Roof repair', 0, ['wc_number' => 'WC200', 'priority_level' => 'Urgent']);
+
+    $response = groupedList(['group' => 'wc', 'priority' => ['Urgent']]);
+    expect($response->viewData('groupTotals')->all())->toBe(['WC100' => 1, 'WC200' => 1]);
+
+    groupedList(['group' => 'colour'])->assertDontSee('rfq-list-group', false);
+    groupedList(['status' => 'Pending', 'group' => 'wc'], 'Senior Operations')->assertDontSee('rfq-list-group', false);
 });

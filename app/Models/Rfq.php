@@ -634,6 +634,20 @@ class Rfq extends Model
     }
 
     /**
+     * What this RFQ is grouped under on a list grouped by $group
+     * (RfqController::LIST_GROUPS) — the PHP twin of
+     * RfqController::listGroupKey(), so a row finds its group's total.
+     */
+    public function listGroupKey(string $group): string
+    {
+        return match ($group) {
+            'wc' => strtoupper(trim((string) $this->wc_number)),
+            'priority' => (string) $this->priority_level,
+            default => (string) $this->status,
+        };
+    }
+
+    /**
      * This RFQ's status as it should display — "Completed" reads as
      * "Closed" now that Business Development's final close is the true end
      * of the lifecycle. The underlying status value, Rfq::STATUSES, and
@@ -663,7 +677,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_started_at', 'data_entry_started_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1537,11 +1551,13 @@ class Rfq extends Model
      * completing an already-completed part is a no-op. Once every part has
      * been through here, that's recorded on the RFQ too, but it doesn't
      * move on until every part has also been finalized. A $comment, if
-     * given, is posted to the RFQ's thread as $completedBy's.
+     * given, is posted to the RFQ's thread as $completedBy's. $entries —
+     * how many entries they made on it — is kept with the part, and named
+     * on that comment.
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function completeDataEntryPart(int $part, User $completedBy, ?string $comment = null): void
+    public function completeDataEntryPart(int $part, User $completedBy, ?string $comment = null, ?int $entries = null): void
     {
         $assignee = $this->assigneeForPart($part);
 
@@ -1554,6 +1570,7 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
             'data_entry_completed_at' => now(),
             'data_entry_completed_by' => $completedBy->id,
+            'data_entry_entries' => $entries,
             'data_entry_returned_at' => null,
             'data_entry_return_reason' => null,
         ]);
@@ -1562,7 +1579,7 @@ class Rfq extends Model
         // Marked as Data Entry's completion, naming whose part and — on a
         // split — which, since a thread covers the whole RFQ.
         if (filled($comment)) {
-            $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name]);
+            $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name] + ($entries !== null ? ['entries' => $entries] : []));
         }
 
         if ($this->allDataEntryPartsCompleted()) {

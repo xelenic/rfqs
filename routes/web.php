@@ -95,6 +95,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/start-data-entry', [RfqController::class, 'startDataEntry'])->name('rfqs.start-data-entry');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
+    // Before the resource, so "suggest" isn't taken for an RFQ.
+    Route::get('rfqs/suggest', [RfqController::class, 'suggest'])->name('rfqs.suggest');
     Route::resource('rfqs', RfqController::class)->except(['create', 'edit', 'destroy']);
     Route::post('rfqs/{rfq}/comments', [RfqCommentController::class, 'store'])->name('rfqs.comments.store');
     Route::get('notifications/{notification}', [NotificationController::class, 'open'])->name('notifications.open');

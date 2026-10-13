@@ -36,7 +36,8 @@ function readyForDataEntry(array $holders, array $attributes = []): Rfq
 
 function dataEntryCompletes($user, Rfq $rfq, array $payload)
 {
-    return test()->actingAs($user)->patch(route('admin.rfqs.complete-data-entry', $rfq), $payload);
+    // How many entries they made — the form always asks.
+    return test()->actingAs($user)->patch(route('admin.rfqs.complete-data-entry', $rfq), $payload + ['entries' => 5]);
 }
 
 it('asks Data Entry for a comment before a part can be completed', function (array $payload) {
@@ -70,7 +71,7 @@ it('completes the part and posts the comment as Data Entry\'s', function () {
         // Their words as written, marked as Data Entry's completion of the Sourcing member's part.
         ->and($comment->body)->toBe('All prices entered and checked.')
         ->and($comment->action)->toBe('data_entry_completed')
-        ->and($comment->meta)->toBe(['who' => $rfq->assigneeForPart(1)->name]);
+        ->and($comment->meta)->toBe(['who' => $rfq->assigneeForPart(1)->name, 'entries' => 5]);
 });
 
 it('names the part on a split, and sends each part to finalize rather than on to review', function () {
@@ -129,7 +130,7 @@ it('goes back to the page it was done from', function () {
 
     test()->actingAs(userWithRole('Data Entry'))
         ->from(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Done'])
+        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Done'])
         ->assertRedirect(route('admin.rfqs.index', ['status' => 'Pending']));
 });
 

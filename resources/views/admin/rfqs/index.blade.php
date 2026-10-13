@@ -18,7 +18,7 @@
         $statusFilter === 'Completed' => 'Closed RFQs',
         $statusFilter === \App\Models\Rfq::ON_HOLD => 'On Hold RFQs',
         $statusFilter === \App\Models\Rfq::CANCELLED => 'Cancelled RFQs',
-        default => 'RFQs',
+        default => 'All RFQs',
     };
 
     // The one shared reject modal (_reject_modal) works for whichever of the
@@ -252,6 +252,7 @@
                                         <th>Data Entry</th>
                                     @endif
                                     <th>Sent to Finalize</th>
+                                    <th class="text-end">Entries</th>
                                     <th>Where it is now</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
@@ -270,6 +271,7 @@
                                                 <td>{{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) ?? '—' }}</td>
                                             @endif
                                             <td class="text-muted-soft text-nowrap">{{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</td>
+                                            <td class="text-end fw-semibold" style="font-variant-numeric: tabular-nums;">{{ $assignee->pivot->data_entry_entries !== null ? number_format($assignee->pivot->data_entry_entries) : '—' }}</td>
                                             <td><span class="badge {{ $nowClass }}">{{ $nowLabel }}</span></td>
                                             <td class="text-end">
                                                 <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
@@ -280,7 +282,7 @@
                                     @endforeach
                                 @empty
                                     <tr>
-                                        <td colspan="{{ $dataEntryCompletedBy === null ? 9 : 8 }}" class="text-center text-muted-soft py-4">
+                                        <td colspan="{{ $dataEntryCompletedBy === null ? 10 : 9 }}" class="text-center text-muted-soft py-4">
                                             {{ $search !== '' ? 'Nothing you\'ve completed matches that search.' : 'Nothing\'s been sent to finalize yet.' }}
                                         </td>
                                     </tr>
@@ -409,8 +411,13 @@
                                     <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
                                     <td class="text-muted-soft">
                                         {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}
-                                        @if ($dataEntryNames->has($assignee->pivot->data_entry_completed_by))
-                                            <div class="text-muted-soft small">by {{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) }}</div>
+                                        @if ($dataEntryNames->has($assignee->pivot->data_entry_completed_by) || $assignee->pivot->data_entry_entries !== null)
+                                            <div class="text-muted-soft small">
+                                                {{ collect([
+                                                    $dataEntryNames->has($assignee->pivot->data_entry_completed_by) ? 'by '.$dataEntryNames->get($assignee->pivot->data_entry_completed_by) : null,
+                                                    $assignee->pivot->data_entry_entries !== null ? trans_choice('1 entry|:count entries', $assignee->pivot->data_entry_entries, ['count' => number_format($assignee->pivot->data_entry_entries)]) : null,
+                                                ])->filter()->join(' · ') }}
+                                            </div>
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -1422,7 +1429,33 @@
                         </tr>
                     </thead>
                     <tbody>
+                        @php
+                            $listColumns = ($statusFilter ? 6 : 7) + ($statusFilter === 'Completed' ? 1 : 0);
+                            $lastGroupKey = null;
+                        @endphp
                         @forelse ($rfqs as $rfq)
+                            {{-- Grouped (?group=): a heading where each group starts, with how many it has in all. --}}
+                            @if ($groupBy && $rfq->listGroupKey($groupBy) !== $lastGroupKey)
+                                @php
+                                    $lastGroupKey = $rfq->listGroupKey($groupBy);
+                                    $groupTotal = (int) ($groupTotals[$lastGroupKey] ?? 0);
+                                @endphp
+                                <tr class="rfq-list-group">
+                                    <td colspan="{{ $listColumns }}">
+                                        @switch($groupBy)
+                                            @case('priority')
+                                                <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span>
+                                                @break
+                                            @case('status')
+                                                <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
+                                                @break
+                                            @default
+                                                <span class="rfq-list-group-name"><i class="bi bi-hash" aria-hidden="true"></i>{{ $lastGroupKey !== '' ? $lastGroupKey : 'No WC number' }}</span>
+                                        @endswitch
+                                        <span class="rfq-list-group-count">{{ $groupTotal }} {{ $groupTotal === 1 ? 'RFQ' : 'RFQs' }}</span>
+                                    </td>
+                                </tr>
+                            @endif
                             @if ($statusFilter === 'Completed' && $rfq->isSplit() && $rfq->assignees->isNotEmpty())
                                 {{-- A split shows on the Closed list part by part — each as
                                      Business Development closes it (see Rfq::closePart()). --}}
@@ -1432,7 +1465,7 @@
                             @endif
                         @empty
                             <tr>
-                                <td colspan="{{ ($statusFilter ? 6 : 7) + ($statusFilter === 'Completed' ? 1 : 0) }}" class="text-center text-muted-soft py-4">
+                                <td colspan="{{ $listColumns }}" class="text-center text-muted-soft py-4">
                                     No {{ $statusFilter ? strtolower($statusFilter).' ' : '' }}RFQs found.
                                 </td>
                             </tr>

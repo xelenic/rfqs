@@ -15,6 +15,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -48,6 +49,26 @@ class RfqController extends Controller implements HasMiddleware
     public const LIST_RANGES = ['today' => 'Today', '3d' => '3 days', '30d' => 'Month'];
 
     /**
+     * What a plain RFQ list — every one but a role's own queue, which has a
+     * layout of its own — can be grouped by (?group=, the filter bar), and
+     * what the bar calls each. See listGroupKey().
+     *
+     * @var array<string, string>
+     */
+    public const LIST_GROUPS = ['wc' => 'WC number', 'priority' => 'Priority', 'status' => 'Status'];
+
+    /**
+     * How many RFQs the dashboard's WC number search suggests at most.
+     */
+    public const SUGGEST_LIMIT = 8;
+
+    /**
+     * The most entries Data Entry can say they made on one part
+     * (completeDataEntry()).
+     */
+    public const MAX_DATA_ENTRIES = 100000;
+
+    /**
      * How those two tabs can be sorted.
      *
      * @var array<string, string>
@@ -61,10 +82,53 @@ class RfqController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('permission:rfqs.view', only: ['index', 'show']),
+            new Middleware('permission:rfqs.view', only: ['index', 'show', 'suggest']),
             new Middleware('permission:rfqs.create', only: ['store']),
             new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'startDataEntry', 'close', 'closePart', 'changeStatus']),
         ];
+    }
+
+    /**
+     * Suggestions for the WC number search on the dashboards
+     * (dashboard/_search.blade.php, public/js/wc-search.js): the RFQs whose
+     * WC number has what's typed in it — spaces and case aside — those
+     * starting with it first, then the newest; up to SUGGEST_LIMIT of them,
+     * each with what to show and where it opens; how many match in all; and
+     * the RFQ list searched for it, to see them all.
+     */
+    public function suggest(Request $request): JsonResponse
+    {
+        $term = strtoupper(trim($request->string('q')->toString()));
+
+        if ($term === '') {
+            return response()->json(['term' => '', 'total' => 0, 'results' => [], 'all' => route('admin.rfqs.index')]);
+        }
+
+        // "!" escapes LIKE's own wildcards in what was typed — the same on SQLite and MySQL.
+        $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
+        $wc = 'upper(trim(rfqs.wc_number))';
+        $matching = Rfq::query()->whereRaw("{$wc} like ? escape '!'", ['%'.$escaped.'%']);
+
+        return response()->json([
+            'term' => $term,
+            'total' => (clone $matching)->count(),
+            'results' => $matching
+                ->orderByRaw("case when {$wc} like ? escape '!' then 0 else 1 end", [$escaped.'%'])
+                ->latest()
+                ->limit(self::SUGGEST_LIMIT)
+                ->get()
+                ->map(fn (Rfq $rfq) => [
+                    'wc' => $rfq->wc_number,
+                    'rfq' => $rfq->rfq_number,
+                    'subject' => $rfq->subject,
+                    'priority' => $rfq->priority_level,
+                    'priorityClass' => $rfq->priorityBadgeClass(),
+                    'status' => $rfq->statusLabel(),
+                    'statusClass' => $rfq->statusBadgeClass(),
+                    'url' => route('admin.rfqs.show', $rfq),
+                ]),
+            'all' => route('admin.rfqs.index', ['search' => $term]),
+        ]);
     }
 
     public function index(Request $request): View
@@ -193,6 +257,15 @@ class RfqController extends Controller implements HasMiddleware
         $listRange = $scopedToUnassigned ? null : $this->createdRange($request, array_intersect_key(self::OPERATIONS_RANGES, self::LIST_RANGES));
         $listPriority = $scopedToUnassigned ? null : $this->prioritiesFromQuery($request);
 
+        // A plain list — not one of the role queues below, each laid out its
+        // own way — can be grouped (?group=): ordered by the group, the RFQs
+        // of each together, with a heading for each group (listGroupKey()).
+        $canGroup = ! (($sourcingOverview && ($scopedToMe || $scopedToReturns)) || $scopedToDataEntry || $scopedToReturns
+            || $scopedToSeniorOpsReview || $scopedToHeadOfBdReview || $scopedToHeadOfBdReturns || $scopedToGmAssistant
+            || $scopedToGmAssistantReturns || $scopedToGmReview || $scopedToSeniorOpsReturns || $scopedToBdReturns
+            || $scopedToBdClosing || $scopedToMe || $scopedToUnassigned);
+        $groupBy = $canGroup && array_key_exists((string) $request->query('group'), self::LIST_GROUPS) ? (string) $request->query('group') : null;
+
         $applySearch = function ($query) use ($search, $listRange, $listPriority) {
             $query->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -227,7 +300,7 @@ class RfqController extends Controller implements HasMiddleware
             ? $this->operationsFilters($request, $jobCategories->pluck('name')->all(), $sourcingUsers->pluck('id')->all())
             : null;
 
-        $rfqs = Rfq::query()
+        $rfqsQuery = Rfq::query()
             ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy', 'bdClosedBy'])
             // The quick-detail modal (Data Entry's "By Sourcing" list and
             // Sourcing's own "My Pending RFQs") shows a comment thread
@@ -277,10 +350,19 @@ class RfqController extends Controller implements HasMiddleware
                     ->where('rfqs.status', 'Completed')
                     ->whereHas('assignees', fn ($parts) => $parts->whereKey($user->id)))
                 ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
+            ->when($groupBy, fn ($query, string $group) => $query->orderByRaw($this->listGroupOrder($group)))
             ->latest()
-            ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
-            ->paginate(10)
-            ->withQueryString();
+            ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters));
+
+        // How many RFQs each group has across the whole list, not just this page.
+        $groupTotals = $groupBy
+            ? (clone $rfqsQuery)->reorder()->toBase()
+                ->selectRaw($this->listGroupKey($groupBy).' as group_key, count(*) as total')
+                ->groupBy('group_key')
+                ->pluck('total', 'group_key')
+            : collect();
+
+        $rfqs = $rfqsQuery->paginate(10)->withQueryString();
 
         // Data Entry's "By Sourcing" tab shows each Sourcing assignee's
         // completed part as soon as *they* finish it — each by each —
@@ -408,6 +490,9 @@ class RfqController extends Controller implements HasMiddleware
             'search' => $search,
             'listRange' => $listRange,
             'listPriority' => $listPriority,
+            'canGroup' => $canGroup,
+            'groupBy' => $groupBy,
+            'groupTotals' => $groupTotals,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
@@ -544,6 +629,34 @@ class RfqController extends Controller implements HasMiddleware
                 ->where('rfqs.created_at', '>=', $stored(CarbonImmutable::now($timezone)->startOfDay()->subDays($days - 1))))
             ->when($range['from'], fn ($query, string $from) => $query->where('rfqs.created_at', '>=', $stored($day($from))))
             ->when($range['to'], fn ($query, string $to) => $query->where('rfqs.created_at', '<=', $stored($day($to)->endOfDay())));
+    }
+
+    /**
+     * The SQL for what a list is grouped by (LIST_GROUPS): the WC number,
+     * the same however it was typed (spaces and case aside); the priority;
+     * or the status. Rfq::listGroupKey() is the PHP twin, for each row.
+     */
+    protected function listGroupKey(string $group): string
+    {
+        return match ($group) {
+            'wc' => 'upper(trim(rfqs.wc_number))',
+            'priority' => 'rfqs.priority_level',
+            default => 'rfqs.status',
+        };
+    }
+
+    /**
+     * How a grouped list is ordered, so each group's RFQs come together: WC
+     * numbers in order, priorities Urgent first, statuses as the work goes —
+     * pending, on hold, closed, cancelled. The newest first within each.
+     */
+    protected function listGroupOrder(string $group): string
+    {
+        return match ($group) {
+            'wc' => 'upper(trim(rfqs.wc_number))',
+            'priority' => "case rfqs.priority_level when 'Urgent' then 0 when 'High' then 1 when 'Medium' then 2 else 3 end",
+            default => "case rfqs.status when 'Pending' then 0 when '".Rfq::ON_HOLD."' then 1 when 'Completed' then 2 else 3 end",
+        };
     }
 
     /**
@@ -1296,9 +1409,10 @@ class RfqController extends Controller implements HasMiddleware
      * Data Entry's "Send to Finalize" — finishes processing one Sourcing part
      * (only that part, never the others on the same RFQ, even other parts
      * held by the same person) and sends it back to its Sourcing member to
-     * finalize, with a comment that's posted to the RFQ's thread. It's their
-     * Finalize (finalize()) that sends it on to Senior Operations' review.
-     * See Rfq::completeDataEntryPart().
+     * finalize, with a comment that's posted to the RFQ's thread and how
+     * many entries they made on it (0 to MAX_DATA_ENTRIES), kept with the
+     * part. It's their Finalize (finalize()) that sends it on to Senior
+     * Operations' review. See Rfq::completeDataEntryPart().
      */
     public function completeDataEntry(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1323,6 +1437,20 @@ class RfqController extends Controller implements HasMiddleware
             return back()->with('error', 'Start on this part first — Send to Finalize comes after.');
         }
 
+        // How many entries they made on it, kept with the part.
+        $entries = Validator::make($request->all(), [
+            'entries' => ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES],
+        ], [
+            'entries.required' => 'Add how many entries you made on this part.',
+            'entries.integer' => 'Give the number of entries as a whole number, like 12.',
+            'entries.min' => 'The number of entries can\'t be less than 0.',
+            'entries.max' => 'That\'s more entries than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
+        ]);
+
+        if ($entries->fails()) {
+            return back()->with('error', $entries->errors()->first());
+        }
+
         $comment = $this->requiredComment($request, 'comment', 'Add a comment to send this part to finalize.');
 
         if ($comment instanceof RedirectResponse) {
@@ -1335,7 +1463,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment, (int) $entries->validated()['entries']));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part to finalize.");
     }

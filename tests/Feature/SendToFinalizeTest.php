@@ -32,7 +32,7 @@ function withDataEntry(array $holders): Rfq
 function sendToFinalize(Rfq $rfq, int $part): void
 {
     test()->actingAs(userWithRole('Data Entry'))
-        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => $part, 'comment' => 'Prices entered'])
+        ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => $part, 'comment' => 'Prices entered'])
         ->assertSessionHasNoErrors();
 }
 

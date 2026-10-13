@@ -80,9 +80,9 @@ class RfqComment extends Model
 
     /**
      * What the action was about, for the small chip after it — whose part,
-     * which one, or where it was sent back to ("Sam Rivera's part ·
-     * RFQ1001-P2 of P3", "Returned to Sourcing") — or null when there's
-     * nothing to add.
+     * which one, where it was sent back to, or how many entries Data Entry
+     * made ("Sam Rivera's part · RFQ1001-P2 of P3 · 12 entries", "Returned
+     * to Sourcing") — or null when there's nothing to add.
      */
     public function actionContext(): ?string
     {
@@ -92,6 +92,7 @@ class RfqComment extends Model
             isset($meta['who']) ? "{$meta['who']}'s part" : null,
             $meta['label'] ?? null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
+            isset($meta['entries']) ? trans_choice('1 entry|:count entries', $meta['entries'], ['count' => $meta['entries']]) : null,
         ])->filter()->implode(' · ');
 
         return $context !== '' ? $context : null;

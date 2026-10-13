@@ -72,7 +72,7 @@ it('counts Data Entry\'s time from their Start, not from when Sourcing handed it
         ->and($rfq->assigneeForPart(1)->pivot->data_entry_started_at->eq(now()))->toBeTrue();
 
     test()->travelTo(startClock('2026-10-05 11:00'));
-    test()->actingAs($morgan)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Prices entered'])
+    test()->actingAs($morgan)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Prices entered'])
         ->assertSessionHasNoErrors();
 
     // 10:00–11:00, not 09:00–11:00 — and Morgan's.
@@ -135,7 +135,7 @@ it('won\'t send a part to finalize before Data Entry has started on it', functio
     test()->travelTo(startClock('2026-10-05 10:00'));
     $dataEntry = userWithRole('Data Entry');
 
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Done'])
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Done'])
         ->assertSessionHas('error', 'Start on this part first — Send to Finalize comes after.');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_completed_at)->toBeNull();
@@ -204,7 +204,7 @@ it('lets Data Entry start one part at a time — no other till that one\'s sent 
 
     // Sent to finalize, it's free to start the next.
     test()->travelTo(startClock('2026-10-05 10:30'));
-    test()->actingAs($morgan)->patch(route('admin.rfqs.complete-data-entry', $first), ['part' => 1, 'comment' => 'Prices entered'])
+    test()->actingAs($morgan)->patch(route('admin.rfqs.complete-data-entry', $first), ['entries' => 5, 'part' => 1, 'comment' => 'Prices entered'])
         ->assertSessionHasNoErrors();
 
     test()->actingAs($morgan)->patch(route('admin.rfqs.start-data-entry', $second), ['part' => 1])

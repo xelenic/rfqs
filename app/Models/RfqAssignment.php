@@ -49,6 +49,7 @@ class RfqAssignment extends Pivot
             'completed_at' => 'datetime',
             'returned_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
+            'data_entry_entries' => 'integer',
             'data_entry_started_at' => 'datetime',
             'finalized_at' => 'datetime',
             'data_entry_returned_at' => 'datetime',

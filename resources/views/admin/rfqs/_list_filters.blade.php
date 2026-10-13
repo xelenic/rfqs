@@ -2,16 +2,18 @@
     The bar above every RFQ list: search (WC number, RFQ number, subject),
     when the RFQs were created — all time, today, the last 3 days, the last
     month (30 days), or dates of your own (RfqController::createdRange()) —
-    and their priority, one or several. A preset applies as it's picked,
-    Custom once its dates are, a priority after a moment (so a few clicks go
-    as one), the search on Enter (admin.js, .js-period-filter). It carries
+    and their priority, one or several — and, on a plain list, what to group
+    it by (WC number, priority, status: RfqController::LIST_GROUPS). A preset
+    applies as it's picked, Custom once its dates are, a priority after a
+    moment (so a few clicks go as one), a grouping at once, the search on
+    Enter (admin.js, .js-period-filter). It carries
     where you are — the list, a role's second view, Admin's role page, Data
     Entry's tab, Senior Operations' filters — so filtering keeps you there.
     On Senior Operations' Unassigned page, whose own filters have the dates
     and priority, it's the search alone.
 
     Expects: $statusFilter, $lensRole, $opsFilters, $listRange, $listPriority,
-    $search, $scopedToDataEntry, $dataEntryTab.
+    $search, $scopedToDataEntry, $dataEntryTab, $canGroup, $groupBy.
 --}}
 @php
     $filterToday = now(\App\Models\Setting::timezone())->toDateString();
@@ -75,6 +77,18 @@
                 </label>
             @endforeach
         </div>
+    @endif
+
+    @if ($canGroup)
+        <label class="list-filter-group" title="Group the list">
+            <i class="bi bi-collection" aria-hidden="true"></i>
+            <select name="group" class="form-select form-select-sm" aria-label="Group by">
+                <option value="">No grouping</option>
+                @foreach (\App\Http\Controllers\Admin\RfqController::LIST_GROUPS as $value => $label)
+                    <option value="{{ $value }}" @selected($groupBy === $value)>Group by: {{ $label }}</option>
+                @endforeach
+            </select>
+        </label>
     @endif
 
     @if ($isFiltered)

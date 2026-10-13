@@ -364,3 +364,30 @@ it('gives every role\'s group in the Admin sidebar its Closed RFQs, opening only
         ->and(Str::betweenFirst($closed, 'id="sidebar-group-sourcing">', '</div>'))
         ->toMatch('/href="'.preg_quote(e(indexUrl(['status' => 'Completed', 'role' => 'sourcing'])), '/').'"\s+class="nav-link active"/');
 });
+
+it('gives Admin an All RFQs link, to every RFQ whatever its status', function () {
+    $admin = userWithRole('Admin');
+    Rfq::factory()->create(['rfq_number' => 'RFQ17001']);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17002', 'status' => 'Completed', 'stage' => 'closed']);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17003', 'status' => Rfq::ON_HOLD]);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17004', 'status' => Rfq::CANCELLED]);
+
+    $link = 'href="'.route('admin.rfqs.index').'" class="nav-link';
+
+    // Open on the list itself, and on nothing else.
+    test()->actingAs($admin)->get(route('admin.rfqs.index'))->assertOk()
+        ->assertSee($link.' active"', false)
+        ->assertSee('<title>All RFQs', false)
+        ->assertSeeInOrder(['<th>Priority</th>', '<th>Status</th>'], false)
+        ->assertSee('RFQ17001')
+        ->assertSee('RFQ17002')
+        ->assertSee('RFQ17003')
+        ->assertSee('RFQ17004');
+
+    test()->actingAs($admin)->get(indexUrl(['status' => 'Pending', 'role' => 'sourcing']))->assertOk()
+        ->assertSee($link.' "', false);
+
+    // It's Admin's alone.
+    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+        ->assertDontSee('All RFQs');
+});

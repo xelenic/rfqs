@@ -1,5 +1,6 @@
 {{--
-    The greeting and "New RFQ" button at the top of every dashboard.
+    The greeting at the top of every dashboard, with the WC number search
+    (_search) and the "New RFQ" button beside it.
     Optional: $subtitle.
 --}}
 <div class="dashboard-header mb-4">
@@ -9,9 +10,14 @@
         <p class="dashboard-subtitle mb-0">{{ $subtitle ?? "Here's what's happening across ".\App\Models\Setting::companyName().' today.' }}</p>
     </div>
 
-    @can('rfqs.create')
-        <a href="{{ route('admin.rfqs.index') }}" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i> New RFQ
-        </a>
-    @endcan
+    <div class="dashboard-header-actions">
+        @can('rfqs.view')
+            @include('admin.dashboard._search')
+        @endcan
+        @can('rfqs.create')
+            <a href="{{ route('admin.rfqs.index') }}" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> New RFQ
+            </a>
+        @endcan
+    </div>
 </div>

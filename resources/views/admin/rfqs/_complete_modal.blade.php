@@ -5,7 +5,8 @@
     the action by JS when it opens (see admin.js, .js-complete and
     _complete_button.blade.php). It asks for a comment for whoever's next in
     line, posted to the RFQ's thread along with the action — there's no
-    separate comment box in the quick-detail modal. Admin also gets a "Done by"
+    separate comment box in the quick-detail modal — and, for Data Entry's
+    Send to Finalize, how many entries they made. Admin also gets a "Done by"
     here — Data Entry's members for Data Entry's actions, the part's assigned
     member for a Sourcing Mark Complete. See RfqController::completeSourcing(),
     completeDataEntry() and returnSourcing().
@@ -36,6 +37,21 @@
                         <div class="wizard-lead-title" id="complete-lead-title"></div>
                         <div class="wizard-lead-text" id="complete-hint"></div>
                     </div>
+                </div>
+
+                {{-- Data Entry's Send to Finalize asks how many entries they made too
+                     (RfqController::completeDataEntry()); hidden, and not sent, for the rest. --}}
+                <div class="mb-3 d-none" id="complete-entries">
+                    <label class="form-label" for="complete-entries-input">Number of entries</label>
+                    <div class="input-group complete-entries-group">
+                        <span class="input-group-text"><i class="bi bi-list-ol" aria-hidden="true"></i></span>
+                        <input type="number" name="entries" id="complete-entries-input" class="form-control" min="0"
+                               max="{{ \App\Http\Controllers\Admin\RfqController::MAX_DATA_ENTRIES }}" step="1" inputmode="numeric" disabled
+                               aria-describedby="complete-entries-hint">
+                        <span class="input-group-text">entries</span>
+                    </div>
+                    <div class="form-text" id="complete-entries-hint">How many entries you made on this part.</div>
+                    <div class="text-danger small mt-1 d-none" id="complete-entries-error" role="alert"></div>
                 </div>
 
                 <label class="form-label" for="complete-comment" id="complete-label">Comment</label>

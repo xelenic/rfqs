@@ -298,7 +298,7 @@ it('has Data Entry process and return parts one at a time, even ones held by the
     startDataEntryOn($rfq, 1, $dataEntry);
 
     // Data Entry finishes part 1 only — the RFQ doesn't move on yet.
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 1, 'comment' => 'Entered'])->assertSessionHas('status');
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Entered'])->assertSessionHas('status');
     expect($rfq->refresh()->stage)->toBeNull()
         ->and($rfq->assigneeForPart(1)->pivot->data_entry_completed_at)->not->toBeNull()
         ->and($rfq->assigneeForPart(2)->pivot->data_entry_completed_at)->toBeNull();
@@ -332,11 +332,11 @@ it('moves to Senior Operations\' review only once every part is through Data Ent
     }
 
     foreach ([1, 2] as $part) {
-        test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => $part, 'comment' => 'Entered']);
+        test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => $part, 'comment' => 'Entered']);
         expect($rfq->refresh()->stage)->toBeNull();
     }
 
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['part' => 3, 'comment' => 'Entered']);
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 3, 'comment' => 'Entered']);
     expect($rfq->refresh()->stage)->toBeNull();
 
     // Each part's own Sourcing member finalizes it — Riley holds two.

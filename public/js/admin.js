@@ -820,12 +820,34 @@ function rfqmsBoot() {
         var error = document.getElementById('complete-error');
         var cancel = document.getElementById('complete-cancel');
         var submit = document.getElementById('complete-submit');
+        // Data Entry's Send to Finalize also asks how many entries they made.
+        var entriesBox = document.getElementById('complete-entries');
+        var entries = document.getElementById('complete-entries-input');
+        var entriesHint = document.getElementById('complete-entries-hint');
+        var entriesError = document.getElementById('complete-entries-error');
         var kind = KINDS.complete;
 
-        function showError(message) {
-            error.textContent = message;
-            error.classList.toggle('d-none', !message);
-            comment.classList.toggle('is-invalid', !!message);
+        function asksEntries() {
+            return entries && !entries.disabled;
+        }
+
+        // A whole number, 0 or more, and at most the input's max.
+        function entriesGiven() {
+            var value = entries.value.trim();
+            return /^\d+$/.test(value) && Number(value) <= Number(entries.max);
+        }
+
+        // Said under whichever field it's about: the number of entries, or the comment.
+        function showError(message, field) {
+            var aboutEntries = !!message && field === 'entries';
+            error.textContent = aboutEntries ? '' : message;
+            error.classList.toggle('d-none', !message || aboutEntries);
+            comment.classList.toggle('is-invalid', !!message && !aboutEntries);
+            if (entries) {
+                entriesError.textContent = aboutEntries ? message : '';
+                entriesError.classList.toggle('d-none', !aboutEntries);
+                entries.classList.toggle('is-invalid', aboutEntries);
+            }
         }
 
         function resetSubmit() {
@@ -880,6 +902,15 @@ function rfqmsBoot() {
             document.getElementById('complete-label').textContent = kind.label;
             document.getElementById('complete-audience').textContent = button.dataset.audience;
 
+            if (entriesBox) {
+                var wantsEntries = button.dataset.kind === 'data_entry';
+                entriesBox.classList.toggle('d-none', !wantsEntries);
+                entries.disabled = !wantsEntries;
+                entries.value = '';
+                entriesHint.textContent = 'How many entries you made on this part.'
+                    + (button.dataset.items ? ' The RFQ has ' + button.dataset.items + (button.dataset.items === '1' ? ' item.' : ' items.') : '');
+            }
+
             comment.name = kind.field;
             comment.maxLength = kind.max;
             comment.placeholder = button.dataset.placeholder || '';
@@ -902,8 +933,14 @@ function rfqmsBoot() {
         });
 
         modalEl.addEventListener('shown.bs.modal', function () {
-            comment.focus();
+            (asksEntries() ? entries : comment).focus();
         });
+
+        if (entries) {
+            entries.addEventListener('input', function () {
+                if (entriesGiven()) showError('');
+            });
+        }
 
         comment.addEventListener('input', function () {
             count.textContent = comment.value.length + ' / ' + comment.maxLength;
@@ -911,6 +948,13 @@ function rfqmsBoot() {
         });
 
         form.addEventListener('submit', function (event) {
+            if (asksEntries() && !entriesGiven()) {
+                event.preventDefault();
+                showError('Add how many entries you made on this part — a whole number, 0 or more.', 'entries');
+                entries.focus();
+                return;
+            }
+
             if (!comment.value.trim()) {
                 event.preventDefault();
                 showError(kind.missing);
@@ -1346,6 +1390,9 @@ function rfqmsBoot() {
                 clearTimeout(timer);
                 timer = setTimeout(applyPeriod, 500);
             }
+
+            // A choice from a menu — the list's grouping — goes straight there.
+            if (target.tagName === 'SELECT') applyPeriod();
         });
 
         form.addEventListener('submit', function (event) {

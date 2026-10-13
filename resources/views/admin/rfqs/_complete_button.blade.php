@@ -106,6 +106,7 @@
         data-part="{{ $part }}"
         data-rfq-number="{{ $rfq->partNumberLabel($part) }}"
         data-subject="{{ $rfq->subject }}"
+        data-items="{{ $kind === 'data_entry' ? $rfq->number_of_items : '' }}"
         data-who="{{ $who ?? $forAssignee?->name ?? '' }}"
         data-audience="{{ $audience }}"
         data-heading="{{ $heading }}"

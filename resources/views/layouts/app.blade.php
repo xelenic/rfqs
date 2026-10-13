@@ -37,6 +37,13 @@
                 <a href="{{ route('admin.dashboard') }}" class="nav-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
                     <i class="bi bi-grid-1x2"></i> Dashboard
                 </a>
+                {{-- Admin's list of every RFQ, whatever its status or where it is
+                     — the RFQ list with no status or role asked for. --}}
+                @if (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view'))
+                    <a href="{{ route('admin.rfqs.index') }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && ! request()->filled('status') && ! request()->filled('role') ? 'active' : '' }}">
+                        <i class="bi bi-collection"></i> All RFQs
+                    </a>
+                @endif
                 @php $unreadMessages = auth()->user()->receivedMessages()->unread()->count(); @endphp
                 <a href="{{ route('admin.messages.index') }}" class="nav-link {{ request()->routeIs('admin.messages.*') ? 'active' : '' }}">
                     <i class="bi bi-chat-dots"></i>

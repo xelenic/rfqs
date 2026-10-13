@@ -439,7 +439,9 @@ h6, .h6 { font-size: 0.85rem; }
   font-size: 0.95rem;
   font-weight: 700;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar .breadcrumb {
@@ -449,7 +451,8 @@ h6, .h6 { font-size: 0.85rem; }
 
 /* The title side gives way to the account menu on a narrow screen — where
    the breadcrumb, which only repeats the title's way there, is left out. */
-.topbar > :first-child {
+.topbar > :first-child,
+.topbar > :first-child > div {
   min-width: 0;
 }
 
@@ -603,6 +606,166 @@ h6, .h6 { font-size: 0.85rem; }
 .dashboard-subtitle {
   color: var(--rfq-text-muted);
   font-size: 0.85rem;
+}
+
+.dashboard-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* The dashboards' WC number search, with its suggestions beneath. */
+.dash-search {
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+}
+
+.dash-search .form-control {
+  padding-left: 2.1rem;
+  padding-right: 2rem;
+  border-radius: 999px;
+}
+
+.dash-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.85rem;
+  transform: translateY(-50%);
+  color: var(--rfq-text-muted);
+  pointer-events: none;
+}
+
+.dash-search-key {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 4px;
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.68rem;
+  pointer-events: none;
+}
+
+.dash-search:focus-within .dash-search-key,
+.dash-search.is-loading .dash-search-key {
+  display: none;
+}
+
+.dash-search-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: min(520px, 92vw);
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16);
+  animation: dash-search-drop 0.15s ease-out;
+}
+
+@keyframes dash-search-drop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.dash-search-head,
+.dash-search-empty {
+  padding: 0.45rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+}
+
+.dash-search-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+
+.dash-search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  color: inherit;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.dash-search-item:hover,
+.dash-search-item.is-active {
+  color: inherit;
+  background: var(--rfq-primary-soft);
+}
+
+.dash-search-wc {
+  flex-shrink: 0;
+  min-width: 5.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-search-wc mark {
+  padding: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--rfq-primary) 22%, transparent);
+  color: inherit;
+}
+
+.dash-search-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-search-rfq {
+  font-weight: 600;
+}
+
+.dash-search-subject {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-search-all {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  border-top: 1px solid var(--rfq-border);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (max-width: 575.98px) {
+  .dashboard-header-actions,
+  .dash-search {
+    width: 100%;
+  }
+
+  .dash-search-menu {
+    left: 0;
+    width: auto;
+  }
+
+  .dash-search-key {
+    display: none;
+  }
 }
 
 /* ---------- Dashboard notifications panel ---------- */
@@ -838,14 +1001,16 @@ h6, .h6 { font-size: 0.85rem; }
   }
 }
 
-/* The bar above the RFQ lists: search, then when they were created. */
+/* The bar above the RFQ lists: search, when they were created, priority
+   and grouping — wrapping beside the Add RFQ button rather than pushing it
+   onto a line of its own. */
 .list-filter {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0%;
+  min-width: min(100%, 320px);
 }
 
 .list-filter-search {
@@ -853,6 +1018,39 @@ h6, .h6 { font-size: 0.85rem; }
   gap: 0.5rem;
   flex: 0 1 300px;
   min-width: min(100%, 220px);
+}
+
+.list-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--rfq-text-muted);
+}
+
+.list-filter-group .form-select {
+  width: auto;
+}
+
+/* A grouped list's heading where each group starts. */
+.rfq-list-group td {
+  padding: 0.55rem 0.75rem;
+  border-top: 2px solid var(--rfq-border);
+  background: var(--rfq-bg);
+}
+
+.rfq-list-group-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-weight: 700;
+}
+
+.rfq-list-group-count {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
 }
 
 .list-filter-clear {
