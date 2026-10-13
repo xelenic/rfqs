@@ -19,40 +19,74 @@ beforeEach(function () {
     Storage::fake(RfqCommentAttachment::DISK);
 });
 
-it('keeps the photos and files posted with a comment, and shows them under it', function () {
+it('keeps the photos posted with a comment, and shows them under it', function () {
     $ops = userWithRole('Senior Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
-        'body' => 'Site photos and the client\'s spec',
+        'body' => 'Site photos',
         'attachments' => [
             UploadedFile::fake()->image('roof.jpg', 640, 480),
-            UploadedFile::fake()->create('spec.pdf', 120, 'application/pdf'),
+            UploadedFile::fake()->image('plant-room.png', 640, 480),
         ],
     ])->assertSessionHasNoErrors()->assertSessionHas('status', 'Comment posted.');
 
     $comment = $rfq->comments()->sole();
-    [$photo, $pdf] = $comment->attachments->all();
+    [$photo, $second] = $comment->attachments->all();
 
     expect($comment->attachments)->toHaveCount(2)
         ->and($photo)->toMatchArray(['original_name' => 'roof.jpg', 'mime_type' => 'image/jpeg', 'rfq_id' => $rfq->id])
-        ->and($photo->isImage())->toBeTrue()
-        ->and($pdf->isImage())->toBeFalse();
-    Storage::disk(RfqCommentAttachment::DISK)->assertExists([$photo->path, $pdf->path]);
+        ->and($second)->toMatchArray(['original_name' => 'plant-room.png', 'mime_type' => 'image/png'])
+        ->and($photo->isImage())->toBeTrue();
+    Storage::disk(RfqCommentAttachment::DISK)->assertExists([$photo->path, $second->path]);
 
     test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('<img src="'.$photo->url().'" alt="roof.jpg"', false)
-        ->assertSee('href="'.e($pdf->url(download: true)).'"', false)
+        ->assertSee('<img src="'.$second->url().'" alt="plant-room.png"', false)
         ->assertSee('enctype="multipart/form-data"', false)
         ->assertSee('name="attachments[]"', false);
 
-    // A photo is shown in place; anything else is downloaded.
+    // A photo is shown in place.
     test()->actingAs($ops)->get($photo->url())->assertOk()
         ->assertHeader('Content-Type', 'image/jpeg')
         ->assertHeader('X-Content-Type-Options', 'nosniff');
-    expect(test()->actingAs($ops)->get($pdf->url())->assertOk()->headers->get('Content-Disposition'))
-        ->toStartWith('attachment;');
 });
+
+it('offers photos alone to pick, everywhere a comment can carry them', function () {
+    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', Rfq::factory()->create()))->assertOk()
+        ->assertSee('accept="image/jpeg,image/png,image/gif,image/webp"', false)
+        ->assertSee('— JPG, PNG, GIF or WebP.', false)
+        ->assertDontSee('.pdf,', false)
+        ->assertDontSee('Photos or files');
+});
+
+it('still downloads a document attached before photos alone were allowed', function () {
+    $ops = userWithRole('Senior Operations');
+    $document = RfqCommentAttachment::factory()->create(['original_name' => 'spec.pdf', 'mime_type' => 'application/pdf', 'path' => 'rfq-attachments/spec.pdf']);
+    Storage::disk(RfqCommentAttachment::DISK)->put($document->path, 'pdf bytes');
+
+    expect($document->isImage())->toBeFalse()
+        ->and(test()->actingAs($ops)->get($document->url())->assertOk()->headers->get('Content-Disposition'))->toStartWith('attachment;');
+});
+
+it('turns away anything but a photo — a PDF, Word, Excel, CSV or text file — posting nothing', function (string $name, string $mime) {
+    $ops = userWithRole('Senior Operations');
+    $rfq = Rfq::factory()->create();
+
+    test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
+        'body' => 'The client\'s spec',
+        'attachments' => [UploadedFile::fake()->image('roof.jpg'), UploadedFile::fake()->create($name, 40, $mime)],
+    ])->assertSessionHas('error', 'Only photos can be attached — JPG, PNG, GIF or WebP.');
+
+    expect(RfqComment::query()->count())->toBe(0)
+        ->and(RfqCommentAttachment::query()->count())->toBe(0);
+})->with([
+    'PDF' => ['spec.pdf', 'application/pdf'],
+    'Word' => ['letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    'Excel' => ['prices.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    'CSV' => ['lines.csv', 'text/csv'],
+    'text' => ['notes.txt', 'text/plain'],
+]);
 
 it('keeps files sent with a reason on the comment that reason is posted as', function () {
     $dataEntry = userWithRole('Data Entry');
@@ -76,11 +110,11 @@ it('puts a reject\'s files on its own reason, not on the parts it sends back fir
 
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), [
         'target_stage' => 'sourcing',
-        'reason' => 'Prices are out of date — see the marked-up sheet',
-        'attachments' => [UploadedFile::fake()->create('marked-up.xlsx', 40)],
+        'reason' => 'Prices are out of date — see the marked-up photo',
+        'attachments' => [UploadedFile::fake()->image('marked-up.png')],
     ])->assertSessionHasNoErrors();
 
-    expect($rfq->comments()->where('action', 'rejected')->sole()->attachments->pluck('original_name')->all())->toBe(['marked-up.xlsx'])
+    expect($rfq->comments()->where('action', 'rejected')->sole()->attachments->pluck('original_name')->all())->toBe(['marked-up.png'])
         ->and(RfqCommentAttachment::query()->count())->toBe(1);
 });
 
@@ -98,24 +132,24 @@ it('shows the files a sent-back RFQ came with on the Returns page', function () 
         ->assertSee('alt="site-map.jpg"', false);
 });
 
-it('turns away a file that isn\'t a photo or a document, or too many at once — posting nothing', function () {
+it('turns away an SVG, too many photos, or too big a one — posting nothing', function () {
     $ops = userWithRole('Senior Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
         'body' => 'Script',
         'attachments' => [UploadedFile::fake()->create('logo.svg', 4, 'image/svg+xml')],
-    ])->assertSessionHas('error', 'Attach photos (JPG, PNG, GIF, WebP), PDFs, or Word, Excel, CSV or text files.');
+    ])->assertSessionHas('error', 'Only photos can be attached — JPG, PNG, GIF or WebP.');
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
         'body' => 'Six of them',
         'attachments' => array_map(fn (int $n) => UploadedFile::fake()->image("p{$n}.jpg"), range(1, 6)),
-    ])->assertSessionHas('error', 'Attach up to 5 files at a time.');
+    ])->assertSessionHas('error', 'Attach up to 5 photos at a time.');
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
         'body' => 'Too big',
-        'attachments' => [UploadedFile::fake()->create('scan.pdf', 11 * 1024, 'application/pdf')],
-    ])->assertSessionHas('error', 'Keep each attachment under 10 MB.');
+        'attachments' => [UploadedFile::fake()->image('huge.jpg')->size(11 * 1024)],
+    ])->assertSessionHas('error', 'Keep each photo under 10 MB.');
 
     // Nor does the action go ahead without them.
     test()->actingAs($ops)->patch(route('admin.rfqs.request-details', $rfq), [

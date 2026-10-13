@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Validator;
 abstract class Controller
 {
     /**
-     * The photos and files sent with a comment or a reason (attachments[]),
+     * The photos sent with a comment or a reason (attachments[]),
      * held to RfqCommentAttachment::rules() — or, if one won't do, back to
      * where it came from saying why, the way a missing reason is.
      *

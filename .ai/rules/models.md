@@ -28,3 +28,6 @@ Rfq::rejectToStage()/rejectPartToStage() call recordReturn() first, saving each 
 
 ## Working time is per person: pass the worker's id
 Setting::workingPeriodsBetween(), workingSecondsBetween(), workingSecondsWithHalfDaysOff(), isWorkingTime(), offHoursWindows() and offHoursReason() take an optional $userId. With it, that person's ExtraWorkingHour ranges are merged into the company hours. Pass the worker wherever someone's time is measured: RfqStep::workerId(), the Data Entry starter, the countdown's data-worker. ExtraWorkingHour rows are never deleted: removing one sets ended_at, and each range counts only from starts_on, because time is recomputed on every view and past figures must not change.
+
+## Comment attachments are photos only
+Since 2026-10-13 the business allows only images on comments and action reasons: RfqCommentAttachment::EXTENSIONS is jpg/jpeg/png/gif/webp (no SVG, it can carry script), and the shared picker (_attachments_input) accepts the same. Every upload path goes through Controller::attachmentsFrom() and those rules, so don't add a separate upload path that skips them. Documents attached before then are kept and still served as downloads (isImage() false).

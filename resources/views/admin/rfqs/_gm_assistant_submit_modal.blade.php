@@ -2,7 +2,7 @@
     GM Assistant's Submit prompt — one shared modal, pointed at a part (or a
     whole RFQ) by the Submit button that opens it (_gm_assistant_submit,
     admin.js .js-gm-assistant-submit). A comment for the General Manager,
-    and photos or files, are optional: whatever's given is posted to the
+    and photos, are optional: whatever's given is posted to the
     RFQ's thread as GM Assistant's as it goes on. See
     RfqController::submitGmAssistantDetails().
 --}}

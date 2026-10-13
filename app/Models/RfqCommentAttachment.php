@@ -9,10 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * A photo or file attached to a comment on an RFQ's thread (RfqComment) — a
- * comment of anyone's own, or the reason an action gave. Kept on the private
- * disk, and only ever served through RfqCommentController::attachment(), to
- * those who can see RFQs: an image shown in place, anything else downloaded.
+ * A photo attached to a comment on an RFQ's thread (RfqComment) — a comment
+ * of anyone's own, or the reason an action gave. Kept on the private disk,
+ * and only ever served through RfqCommentController::attachment(), to those
+ * who can see RFQs: shown in place. Only photos can be attached since
+ * 2026-10-13; a document attached before then is still there, downloaded.
  */
 class RfqCommentAttachment extends Model
 {
@@ -32,12 +33,11 @@ class RfqCommentAttachment extends Model
     public const MAX_KILOBYTES = 10240;
 
     /**
-     * What can be attached: photos (no SVG — it can carry script), and the
-     * documents that go with an RFQ.
+     * What can be attached: photos alone (no SVG — it can carry script).
      *
      * @var array<int, string>
      */
-    public const EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt'];
+    public const EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     protected $fillable = [
         'rfq_id',
@@ -83,11 +83,11 @@ class RfqCommentAttachment extends Model
     public static function messages(): array
     {
         return [
-            'attachments.max' => 'Attach up to '.self::MAX_FILES.' files at a time.',
+            'attachments.max' => 'Attach up to '.self::MAX_FILES.' photos at a time.',
             'attachments.*.file' => 'One of those attachments didn\'t upload — try it again.',
             'attachments.*.uploaded' => 'One of those attachments didn\'t upload — try it again.',
-            'attachments.*.mimes' => 'Attach photos (JPG, PNG, GIF, WebP), PDFs, or Word, Excel, CSV or text files.',
-            'attachments.*.max' => 'Keep each attachment under '.(self::MAX_KILOBYTES / 1024).' MB.',
+            'attachments.*.mimes' => 'Only photos can be attached — JPG, PNG, GIF or WebP.',
+            'attachments.*.max' => 'Keep each photo under '.(self::MAX_KILOBYTES / 1024).' MB.',
         ];
     }
 

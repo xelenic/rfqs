@@ -1828,7 +1828,7 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * GM Assistant's Submit: forwards it on to the General Manager, with a
-     * comment and photos or files if they gave any — posted to the RFQ's
+     * comment and photos if they gave any — posted to the RFQ's
      * thread as theirs. With a part, just that one part goes on — see
      * Rfq::recordGmAssistantPart() — otherwise the whole RFQ, which has to be
      * at their step — see Rfq::recordGmAssistantDetails().
@@ -1865,7 +1865,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        // Photos or files with no words still go on the thread, with the Submit.
+        // Photos with no words still go on the thread, with the Submit.
         $comment = trim((string) $request->input('comment'));
         $comment = $comment === '' && $files === [] ? null : $comment;
         $submittedBy = $this->doneBy($request, 'GM Assistant');
