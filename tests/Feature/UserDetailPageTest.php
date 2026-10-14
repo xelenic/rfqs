@@ -242,9 +242,9 @@ it('keeps an Admin\'s Edit and password link to Admins, as the list does', funct
 it('splits the page into tabs — the ones that fit the person', function () {
     $tabsOf = fn (User $user) => preg_match_all('/data-user-tab="([a-z-]+)"/', userPage($user)->getContent(), $matches) ? $matches[1] : [];
 
-    expect($tabsOf(userWithRole('Sourcing')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'extra-hours'])
-        ->and($tabsOf(userWithRole('Business Development')))->toBe(['overview', 'activity'])
-        ->and($tabsOf(userWithRole('GM Assistant')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'extra-hours']);
+    expect($tabsOf(userWithRole('Sourcing')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'working-hours', 'extra-hours'])
+        ->and($tabsOf(userWithRole('Business Development')))->toBe(['overview', 'activity', 'working-hours'])
+        ->and($tabsOf(userWithRole('GM Assistant')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'working-hours', 'extra-hours']);
 });
 
 it('opens on Overview — its figures and details — or the tab in the address', function () {

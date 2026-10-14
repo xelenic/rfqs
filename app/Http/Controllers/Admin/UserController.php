@@ -9,6 +9,7 @@ use App\Models\RfqComment;
 use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WorkingSchedule;
 use App\Notifications\AccountCreated;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -82,7 +83,31 @@ class UserController extends Controller implements HasMiddleware
             'partsInHand' => $this->partsInHand($user),
             'activity' => $this->activityOf($user),
             'attendance' => $isTracked ? $this->recentAttendanceOf($user) : null,
+            ...$this->hoursOf($user),
         ]);
+    }
+
+    /**
+     * The working week their time counts in today (Setting::weekOn()) and
+     * where it's from — their own, their role's or the company's; their own,
+     * if they have one (WorkingSchedule); and what they'd work without it:
+     * the first of their roles with its own hours, else the company's.
+     *
+     * @return array{workingWeek: array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>, weekSource: array{source: string, role: ?string}, ownHours: ?WorkingSchedule, fallbackHours: string}
+     */
+    private function hoursOf(User $user): array
+    {
+        $today = Setting::today();
+        $roleWithHours = WorkingSchedule::roleOrder()
+            ->whereIn('id', $user->roles->pluck('id'))
+            ->first(fn (Role $role) => WorkingSchedule::currentFor($role) !== null);
+
+        return [
+            'workingWeek' => Setting::weekOn($today, $user->id),
+            'weekSource' => Setting::weekSourceOn($today, $user->id),
+            'ownHours' => WorkingSchedule::currentFor($user),
+            'fallbackHours' => $roleWithHours !== null ? "{$roleWithHours->name}'s hours" : 'the company\'s working hours',
+        ];
     }
 
     /**
@@ -226,7 +251,7 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
-     * Their attendance on each working day of the last two weeks, latest
+     * Their attendance on each of their working days of the last two weeks, latest
      * first, as HR Manager approved it (Attendance::statusIn()) — from the
      * day attendance started; null while it isn't kept
      * (Setting::attendanceSince()).
@@ -242,12 +267,11 @@ class UserController extends Controller implements HasMiddleware
         }
 
         $book = Attendance::book([$user->id]);
-        $week = Setting::workingHours();
         $today = CarbonImmutable::now(Setting::timezone())->startOfDay();
 
         return collect(range(0, 13))
             ->map(fn (int $daysAgo) => $today->subDays($daysAgo))
-            ->filter(fn (CarbonImmutable $day) => $day->toDateString() >= $since && $week[strtolower($day->format('l'))]['working'])
+            ->filter(fn (CarbonImmutable $day) => $day->toDateString() >= $since && Setting::weekOn($day->toDateString(), $user->id)[strtolower($day->format('l'))]['working'])
             ->map(fn (CarbonImmutable $day) => ['date' => $day, 'status' => Attendance::statusIn($book, $user->id, $day->toDateString())])
             ->values()
             ->all();

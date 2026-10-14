@@ -1,15 +1,19 @@
 {{--
     One person's page, from the Users list (UserController::show()): who they
     are, with the list's own actions — message them, a set-password link,
-    Edit; and their extra hours, on that tab — each coming back here; then a tab each for
-    their RFQ work in numbers and details (Overview), the parts in their
-    hands now, what they've done lately, and, for the people whose time is
-    tracked, the last two weeks' attendance and their extra hours. An RFQ links to its page only for those who can open
-    RFQs (HR Manager can't).
+    Edit; their working hours and extra hours, on those tabs — each coming
+    back here; then a tab each for their RFQ work in numbers and details
+    (Overview), the parts in their hands now, what they've done lately, the
+    week their time counts in, and, for the people whose time is tracked, the
+    last two weeks' attendance and their extra hours. An RFQ links to its
+    page only for those who can open RFQs (HR Manager can't).
 
     Expects: $user (with roles, and extraWorkingHours — the current ones),
     $isTracked, $canManage, $roles, $work, $partsInHand, $activity,
-    $attendance (null while attendance isn't kept, or not tracked).
+    $attendance (null while attendance isn't kept, or not tracked),
+    $workingWeek and $weekSource (the week their time counts in today, and
+    where it's from), $ownHours (their own WorkingSchedule, or null),
+    $fallbackHours (what they'd work without it, in words).
 --}}
 @extends('layouts.app')
 
@@ -25,6 +29,11 @@
         $timezone = \App\Models\Setting::timezone();
         $isYou = $user->id === auth()->id();
         $canOpenRfqs = auth()->user()->can('rfqs.view');
+        $hoursSourceLabel = match ($weekSource['source']) {
+            'person' => 'Their own hours',
+            'role' => $weekSource['role']."'s hours",
+            default => 'The working hours',
+        };
         $attendanceLooks = [
             \App\Models\Attendance::PRESENT => ['Present', 'badge-soft-success'],
             \App\Models\Attendance::ABSENT => ['On leave', 'badge-soft-danger'],
@@ -101,9 +110,13 @@
         $tabs['activity'] = ['label' => 'Recent activity', 'icon' => 'bi-clock-history', 'count' => null];
         if ($isTracked) {
             $tabs['attendance'] = ['label' => 'Attendance', 'icon' => 'bi-calendar-check', 'count' => null];
+        }
+        $tabs['working-hours'] = ['label' => 'Working hours', 'icon' => 'bi-clock', 'count' => null];
+        if ($isTracked) {
             $tabs['extra-hours'] = ['label' => 'Extra hours', 'icon' => 'bi-moon-stars', 'count' => $user->extraWorkingHours->count()];
         }
         $activeTab = match (true) {
+            $errors->user_hours->any() => 'working-hours',
             $errors->extra_hours->any() && isset($tabs['extra-hours']) => 'extra-hours',
             array_key_exists((string) request('tab'), $tabs) => (string) request('tab'),
             default => 'overview',
@@ -169,7 +182,7 @@
                             <dt>In their hands</dt>
                             <dd>{{ $partsInHand->count() }} {{ \Illuminate\Support\Str::plural('part', $partsInHand->count()) }}</dd>
                             <dt>Time counted</dt>
-                            <dd>The working hours{{ $user->extraWorkingHours->isNotEmpty() ? ', and their extra hours' : '' }}</dd>
+                            <dd>{{ $hoursSourceLabel }}{{ $user->extraWorkingHours->isNotEmpty() ? ', and their extra hours' : '' }}</dd>
                         @endif
                     </dl>
                 </div>
@@ -251,6 +264,85 @@
             </div>
         </div>
 
+        {{-- The week their time counts in today — their own, their role's or
+             the company's — which an Admin or HR Manager can give them their
+             own of. --}}
+        <div class="tab-pane fade {{ $activeTab === 'working-hours' ? 'show active' : '' }}" id="user-pane-working-hours" role="tabpanel" aria-labelledby="user-tab-working-hours" tabindex="0">
+            <div class="card mb-4">
+                <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span class="d-flex align-items-center gap-2">
+                        Their working week
+                        <span @class(['badge', 'badge-soft-primary' => $weekSource['source'] !== 'company', 'badge-soft-secondary' => $weekSource['source'] === 'company'])>{{ $hoursSourceLabel }}</span>
+                    </span>
+                    @if (auth()->user()->canManageWorkingHours())
+                        <span class="d-flex gap-2">
+                            @if ($ownHours)
+                                <form method="POST" action="{{ route('admin.settings.user-hours.destroy', $user) }}"
+                                      data-confirm="Take {{ $user->name }}'s own hours away? From today their time counts in {{ $fallbackHours }} — days before keep the hours they had.">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Use {{ $fallbackHours }}
+                                    </button>
+                                </form>
+                            @endif
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#userHoursModal">
+                                <i class="bi bi-pencil"></i> {{ $ownHours ? 'Change' : 'Set their own hours' }}
+                            </button>
+                        </span>
+                    @endif
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0 user-week">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Working hours</th>
+                                <th>Lunch</th>
+                                <th class="text-end">Hours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($workingWeek as $day => $hours)
+                                <tr @class(['text-muted-soft' => ! $hours['working']])>
+                                    <td class="fw-semibold">{{ ucfirst($day) }}</td>
+                                    @if ($hours['working'])
+                                        <td style="font-variant-numeric: tabular-nums;">{{ $hours['start'] }} – {{ $hours['end'] }}</td>
+                                        <td style="font-variant-numeric: tabular-nums;">{{ $hours['lunch_start'] && $hours['lunch_end'] ? $hours['lunch_start'].' – '.$hours['lunch_end'] : 'None' }}</td>
+                                        <td class="text-end text-nowrap">{{ \App\Models\Setting::hoursLabel(\App\Models\Setting::workingMinutes($hours)) }}</td>
+                                    @else
+                                        <td colspan="2">Day off</td>
+                                        <td class="text-end">—</td>
+                                    @endif
+                                </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" class="text-end text-muted-soft">Working week</td>
+                                <td class="text-end fw-semibold text-nowrap">{{ \App\Models\Setting::hoursLabel(collect($workingWeek)->sum(fn (array $day) => \App\Models\Setting::workingMinutes($day))) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div class="card-body border-top">
+                    <p class="text-muted-soft small mb-0">
+                        @if ($ownHours)
+                            Their own hours, from {{ $ownHours->starts_on->format('M d, Y') }} — in place of {{ $fallbackHours }}.
+                        @elseif ($weekSource['source'] === 'role')
+                            Set for everyone in {{ $weekSource['role'] }} on Settings → Role Hours.
+                        @else
+                            The company's working hours, from Settings → Working Hours.
+                        @endif
+                        @if ($user->extraWorkingHours->isNotEmpty())
+                            Their extra hours count on top.
+                        @endif
+                        Their time on RFQs counts only in these hours.
+                    </p>
+                </div>
+            </div>
+        </div>
+
         @if ($isTracked)
             {{-- Their attendance over the last two weeks. --}}
             <div class="tab-pane fade {{ $activeTab === 'attendance' ? 'show active' : '' }}" id="user-pane-attendance" role="tabpanel" aria-labelledby="user-tab-attendance" tabindex="0">
@@ -280,7 +372,7 @@
                 </div>
             </div>
 
-            {{-- The extra hours their time counts in, besides the working hours. --}}
+            {{-- The extra hours their time counts in, besides their working week. --}}
             <div class="tab-pane fade {{ $activeTab === 'extra-hours' ? 'show active' : '' }}" id="user-pane-extra-hours" role="tabpanel" aria-labelledby="user-tab-extra-hours" tabindex="0">
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center justify-content-between">
@@ -314,10 +406,25 @@
         @include('admin.users._extra_hours_modal', ['user' => $user])
     @endif
 
+    @if (auth()->user()->canManageWorkingHours())
+        @include('admin.settings._week_modal', [
+            'modalId' => 'userHoursModal',
+            'title' => $user->name.' — their own working hours',
+            'subtitle' => 'Their time counts in these hours, in place of '.$fallbackHours.'.',
+            'action' => route('admin.settings.user-hours.update', $user),
+            'week' => $workingWeek,
+            'bag' => 'user_hours',
+            'refill' => $errors->user_hours->any(),
+            'idPrefix' => 'user-hours',
+            'hidden' => [],
+        ])
+    @endif
+
     {{-- An edit, or extra hours, that didn't go in: its window open again, as it was sent. --}}
     @php
         $reopenModal = match (true) {
             $errors->edit->any() => 'editUserModal',
+            $errors->user_hours->any() => 'userHoursModal',
             $errors->extra_hours->any() && old('return_to') === 'users' => 'extraHoursModal-'.$user->id,
             default => null,
         };

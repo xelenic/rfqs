@@ -31,3 +31,10 @@ Setting::workingPeriodsBetween(), workingSecondsBetween(), workingSecondsWithHal
 
 ## Comment attachments are photos only
 Since 2026-10-13 the business allows only images on comments and action reasons: RfqCommentAttachment::EXTENSIONS is jpg/jpeg/png/gif/webp (no SVG, it can carry script), and the shared picker (_attachments_input) accepts the same. Every upload path goes through Controller::attachmentsFrom() and those rules, so don't add a separate upload path that skips them. Documents attached before then are kept and still served as downloads (isImage() false).
+
+## A person's week: their own, else their role's, else the company's
+Since 2026-10-15, a role or a person can have their own working week (WorkingSchedule, set on Settings → Role Hours and on a person's page). Setting::weekOn($day, $userId) resolves it in this order: the person's own week, then the first of their roles with one (WorkingSchedule::roleOrder(), which is workflow order), then the company's. ExtraWorkingHour still adds on top. Never read Setting::workingHours() for one person's time; use weekOn() or the $userId-taking methods.
+
+Versions are kept, never deleted. putFor() starts one from today, or changes in place a version that already started today. endFor() sets ended_on to today. Each version counts from starts_on, so past days keep the hours they had. Compare starts_on with whereDate(), because SQLite stores it with a time.
+
+The cache is cleared on any write to working_schedules, roles or model_has_roles (WorkingSchedule::watch()). A new path that assigns roles needs no extra step.

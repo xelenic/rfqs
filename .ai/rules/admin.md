@@ -1,6 +1,7 @@
 ---
 paths:
   - app/Http/Controllers/Admin/UserController.php
+  - app/Http/Controllers/Admin/SettingsController.php
 ---
 
 # Admin
@@ -10,3 +11,6 @@ HR Manager holds users.view and users.create (migration give_hr_manager_user_per
 
 ## Only Admin and HR Manager change people's details
 User::USER_DETAILS_ROLES (Admin, HR Manager) are the only roles that change a name or email: their own on Settings → Profile (SettingsController::updateProfile() aborts 403 for anyone else, and the tab shows read-only fields), and others' on the Users page (HR Manager holds users.edit, migration give_hr_manager_users_edit_permission). UserController::abortUnlessCanManage() keeps an Admin's account to Admins, because a non-Admin changing an Admin's email and sending a password link would take it over. Only an Admin sets a password on edit. Everyone still changes their own password.
+
+## Role and personal hours: Admin and HR Manager; company hours: Admin only
+Since 2026-10-15, a role's own working hours (Settings → Role Hours) and a person's own hours (their Users page) can be set by anyone in User::WORKING_HOURS_ROLES (Admin, HR Manager), checked with canManageWorkingHours(). This is also true for an Admin's own hours. Everything else stays Admin-only: the company Working Hours, Half Day, Extra Hours and the other Settings tabs. HR Manager sees Role Hours as the only tab in their own section of the Settings sidebar.

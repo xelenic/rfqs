@@ -1,14 +1,15 @@
 {{--
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
-    settings, the Working Hours, the Half Day, the Sourcing and Data Entry
-    Targets, the Idle Alert, and people's Extra Hours. Each tab is its own
-    form with its own error bag. The tab that opens is the one a form was
-    just saved from (session settings_tab) or failed on, else ?tab=, else
+    settings, the Working Hours, each role's own (Role Hours — HR Manager's
+    too), the Half Day, the Sourcing and Data Entry Targets, the Idle Alert,
+    and people's Extra Hours. Each tab is its own form with its own error bag. The tab that
+    opens is the one a form was just saved from (session settings_tab) or
+    failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
     so a reload stays put.
 
-    Expects: $user, $closesRfqs, $isAdmin, $companyName, $liveInterval,
+    Expects: $user, $closesRfqs, $isAdmin, $managesWorkingHours, $companyName, $liveInterval,
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
@@ -16,7 +17,8 @@
     (ExtraWorkingHour, with user.roles), $extraHoursPeople
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
-    (Setting::halfDayOff()).
+    (Setting::halfDayOff()), $roleHours (each role with its current
+    WorkingSchedule, or null), $peopleHours (each person with their own).
 --}}
 @extends('layouts.app')
 
@@ -29,33 +31,37 @@
             'password' => ['label' => 'Password', 'icon' => 'bi-key', 'bag' => 'password'],
             'preferences' => ['label' => 'Preferences', 'icon' => 'bi-sliders', 'bag' => null],
         ];
-        $adminTabs = $isAdmin ? [
+        $roleHoursTab = ['label' => 'Role Hours', 'icon' => 'bi-person-badge', 'bag' => 'role_hours'];
+        // The Admin's own tabs — or, for HR Manager, Role Hours alone — under their heading.
+        $managedTabs = $isAdmin ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
             'wc-validation' => ['label' => 'WC Validation', 'icon' => 'bi-patch-check', 'bag' => null],
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
+            'role-hours' => $roleHoursTab,
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => 'data_entry_targets'],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
-        ] : [];
-        $allTabs = $accountTabs + $adminTabs;
+        ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
+        $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Manager';
+        $allTabs = $accountTabs + $managedTabs;
         $hasErrors = fn (array $tab) => $tab['bag'] !== null && $errors->getBag($tab['bag'])->any();
 
         $activeTab = collect($allTabs)->search($hasErrors) ?: session('settings_tab') ?: request('tab');
         $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
     @endphp
 
-    {{-- Tabs down the left — the Admin's own under their heading — and the
+    {{-- Tabs down the left — the Admin's own (HR Manager's) under their heading — and the
          open one's form beside them. On a narrow screen they're a row across
          the top, which scrolls. --}}
     <div class="settings-layout">
         <div class="settings-nav">
             <ul class="nav settings-tabs" role="tablist" aria-label="Settings" aria-orientation="vertical">
                 @foreach ($allTabs as $slug => $tab)
-                    @if ($slug === array_key_first($adminTabs))
+                    @if ($slug === array_key_first($managedTabs))
                         <li class="settings-tabs-divider" role="presentation">
-                            <span class="badge badge-soft-primary">Admin</span>
+                            <span class="badge badge-soft-primary">{{ $managedTabsHeading }}</span>
                         </li>
                     @endif
                     <li class="nav-item" role="presentation">
@@ -312,13 +318,10 @@
             </div>
 
             <div class="tab-pane fade {{ $activeTab === 'working-hours' ? 'show active' : '' }}" id="settings-pane-working-hours" role="tabpanel" aria-labelledby="settings-tab-working-hours" tabindex="0">
-                {{-- The working week: one row per day, Sunday first — a switch for
-                     whether it's worked, its working hours and its lunch, and the hours
-                     that leaves. A day switched off keeps its times, greyed out (see
-                     admin.js), for when it's switched back on. --}}
+                {{-- The company's working week (_week_table) — everyone's, but for a
+                     role or a person with their own (Role Hours, a person's page). --}}
                 @php
                     $hasWorkingHoursErrors = $errors->working_hours->any();
-                    $weekMinutes = collect($workingHours)->sum(fn (array $day) => \App\Models\Setting::workingMinutes($day));
                 @endphp
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center gap-2">
@@ -329,82 +332,14 @@
                         @csrf
                         @method('PATCH')
 
-                        <div class="table-responsive">
-                            <table class="table align-middle mb-0 working-hours-table" id="working-hours-table">
-                                <thead>
-                                    <tr>
-                                        <th>Day</th>
-                                        <th>Working</th>
-                                        <th>Working hours</th>
-                                        <th>Lunch <span class="text-muted-soft fw-normal text-lowercase">(optional)</span></th>
-                                        <th class="text-end">Hours</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($workingHours as $day => $hours)
-                                        @php
-                                            $field = fn (string $name) => "days.{$day}.{$name}";
-                                            $isWorking = $hasWorkingHoursErrors ? old($field('working')) === '1' : $hours['working'];
-                                            $time = fn (string $name) => $hasWorkingHoursErrors && $isWorking ? old($field($name)) : $hours[$name];
-                                            $dayErrors = collect(['start', 'end', 'lunch_start', 'lunch_end'])->flatMap(fn (string $name) => $errors->working_hours->get($field($name)));
-                                        @endphp
-                                        <tr data-working-day="{{ $day }}" @class(['is-off' => ! $isWorking])>
-                                            <td class="fw-semibold">{{ ucfirst($day) }}</td>
-                                            <td>
-                                                <div class="form-check form-switch mb-0">
-                                                    <input type="hidden" name="days[{{ $day }}][working]" value="0">
-                                                    <input class="form-check-input js-working-day" type="checkbox" role="switch"
-                                                           name="days[{{ $day }}][working]" value="1" id="working-{{ $day }}"
-                                                           aria-label="{{ ucfirst($day) }} is a working day" @checked($isWorking)>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="working-hours-range">
-                                                    @foreach (['start' => 'starts', 'end' => 'finishes'] as $name => $label)
-                                                        <input type="time" name="days[{{ $day }}][{{ $name }}]" data-time="{{ $name }}"
-                                                               class="form-control form-control-sm @if ($errors->working_hours->has($field($name))) is-invalid @endif"
-                                                               value="{{ $time($name) }}" aria-label="{{ ucfirst($day) }} {{ $label }}" @disabled(! $isWorking)>
-                                                        @if ($name === 'start')
-                                                            <span class="text-muted-soft">to</span>
-                                                        @endif
-                                                    @endforeach
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div class="working-hours-range">
-                                                    @foreach (['lunch_start' => 'lunch starts', 'lunch_end' => 'lunch ends'] as $name => $label)
-                                                        <input type="time" name="days[{{ $day }}][{{ $name }}]" data-time="{{ $name }}"
-                                                               class="form-control form-control-sm @if ($errors->working_hours->has($field($name))) is-invalid @endif"
-                                                               value="{{ $time($name) }}" aria-label="{{ ucfirst($day) }} {{ $label }}" @disabled(! $isWorking)>
-                                                        @if ($name === 'lunch_start')
-                                                            <span class="text-muted-soft">to</span>
-                                                        @endif
-                                                    @endforeach
-                                                </div>
-                                            </td>
-                                            <td class="text-end text-nowrap js-day-hours">
-                                                {{ $isWorking ? \App\Models\Setting::hoursLabel(\App\Models\Setting::workingMinutes($hours)) : 'Day off' }}
-                                            </td>
-                                        </tr>
-                                        @if ($dayErrors->isNotEmpty())
-                                            <tr class="working-hours-errors">
-                                                <td colspan="5" class="text-danger small pt-0">
-                                                    @foreach ($dayErrors as $message)
-                                                        <div>{{ $message }}</div>
-                                                    @endforeach
-                                                </td>
-                                            </tr>
-                                        @endif
-                                    @endforeach
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td colspan="4" class="text-end text-muted-soft">Working week</td>
-                                        <td class="text-end fw-semibold text-nowrap" id="working-hours-week">{{ \App\Models\Setting::hoursLabel($weekMinutes) }}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
+                        @include('admin.settings._week_table', [
+                            'week' => $workingHours,
+                            'bag' => 'working_hours',
+                            'refill' => $hasWorkingHoursErrors,
+                            'idPrefix' => 'working',
+                            'tableId' => 'working-hours-table',
+                            'totalId' => 'working-hours-week',
+                        ])
 
                         <div class="card-body border-top">
                             <div class="mb-3 working-hours-timezone">
@@ -437,6 +372,119 @@
                 </div>
             </div>
 
+        @endif
+
+        @if ($managesWorkingHours)
+            <div class="tab-pane fade {{ $activeTab === 'role-hours' ? 'show active' : '' }}" id="settings-pane-role-hours" role="tabpanel" aria-labelledby="settings-tab-role-hours" tabindex="0">
+                {{-- Each role's working week — its own, or the company's — and
+                     the people with their own, which come first. Each is set in
+                     a window (_week_modal, below the tabs). See WorkingSchedule. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Role Hours
+                        <span class="badge badge-soft-primary">Admin</span>
+                        <span class="badge badge-soft-primary">HR Manager</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted-soft small mb-0">
+                            A role can work its own hours instead of the company's working hours — say 07:00 to 16:00 for Data Entry. Its people's time counts in them: on the Time Spent sheet, in their countdowns, and for Data Entry's Start. Someone with hours of their own — set on their page under Users — keeps those, and extra hours still count on top. A change counts from today; days before keep the hours they had.
+                        </p>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Role</th>
+                                    <th>Hours</th>
+                                    <th class="text-end">A week</th>
+                                    <th class="text-end"><span class="visually-hidden">Change</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($roleHours as $row)
+                                    @php
+                                        $role = $row['role'];
+                                        $current = $row['current'];
+                                        $roleWeek = $current ? \App\Models\Setting::weekFrom($current->week) : $workingHours;
+                                    @endphp
+                                    <tr data-role-hours="{{ $role->id }}">
+                                        <td class="fw-semibold">{{ $role->name }}</td>
+                                        <td>
+                                            @if ($current)
+                                                <span class="badge badge-soft-primary">Own hours</span>
+                                                <span style="font-variant-numeric: tabular-nums;">{{ \App\Models\Setting::weekLabel($roleWeek) }}</span>
+                                                <div class="text-muted-soft small">From {{ $current->starts_on->format('M d, Y') }}</div>
+                                            @else
+                                                <span class="text-muted-soft">Company hours</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-end text-nowrap">{{ \App\Models\Setting::hoursLabel(collect($roleWeek)->sum(fn (array $day) => \App\Models\Setting::workingMinutes($day))) }}</td>
+                                        <td class="text-end text-nowrap">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#roleHoursModal-{{ $role->id }}">
+                                                <i class="bi bi-pencil"></i> {{ $current ? 'Change' : 'Set hours' }}
+                                            </button>
+                                            @if ($current)
+                                                <form method="POST" action="{{ route('admin.settings.role-hours.destroy', $role) }}" class="d-inline"
+                                                      data-confirm="Put {{ $role->name }} back on the company's working hours? It counts from today — days before keep the hours they had.">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Back to the company's hours">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                    </button>
+                                                </form>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">People with their own hours</div>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Person</th>
+                                    <th>Role</th>
+                                    <th>Hours</th>
+                                    <th class="text-end">A week</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($peopleHours as $row)
+                                    @php $personWeek = \App\Models\Setting::weekFrom($row['current']->week); @endphp
+                                    <tr>
+                                        <td class="fw-semibold">
+                                            <a href="{{ route('admin.users.show', ['user' => $row['user'], 'tab' => 'working-hours']) }}">{{ $row['user']->name }}</a>
+                                        </td>
+                                        <td>
+                                            @foreach ($row['user']->roles as $personRole)
+                                                <span class="badge badge-soft-secondary">{{ $personRole->name }}</span>
+                                            @endforeach
+                                        </td>
+                                        <td>
+                                            <span style="font-variant-numeric: tabular-nums;">{{ \App\Models\Setting::weekLabel($personWeek) }}</span>
+                                            <div class="text-muted-soft small">From {{ $row['current']->starts_on->format('M d, Y') }}</div>
+                                        </td>
+                                        <td class="text-end text-nowrap">{{ \App\Models\Setting::hoursLabel(collect($personWeek)->sum(fn (array $day) => \App\Models\Setting::workingMinutes($day))) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted-soft py-4">Nobody — everyone works their role's hours or the company's. Set someone's own on their page under Users.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        @endif
+
+        @if ($isAdmin)
             <div class="tab-pane fade {{ $activeTab === 'half-day' ? 'show active' : '' }}" id="settings-pane-half-day" role="tabpanel" aria-labelledby="settings-tab-half-day" tabindex="0">
                 {{-- The time a half day off takes — the morning off and the
                      afternoon off. On the attendance sheet, someone on a half day
@@ -694,4 +742,36 @@
         @endif
     </div>
     </div>{{-- .settings-layout --}}
+
+    @if ($managesWorkingHours)
+        {{-- Each role's hours window, outside the tabs; the one whose save
+             didn't go in opens again, as it was sent. --}}
+        @php $failedRoleId = $errors->role_hours->any() ? (string) old('role_id') : null; @endphp
+        @foreach ($roleHours as $row)
+            @include('admin.settings._week_modal', [
+                'modalId' => 'roleHoursModal-'.$row['role']->id,
+                'title' => $row['role']->name.' — working hours',
+                'subtitle' => 'Its people\'s time counts in these hours, unless they have their own.',
+                'action' => route('admin.settings.role-hours.update', $row['role']),
+                'week' => $row['current'] ? \App\Models\Setting::weekFrom($row['current']->week) : $workingHours,
+                'bag' => 'role_hours',
+                'refill' => $failedRoleId === (string) $row['role']->id,
+                'idPrefix' => 'role-'.$row['role']->id,
+                'hidden' => ['role_id' => $row['role']->id],
+            ])
+        @endforeach
+
+        @if ($failedRoleId)
+            @push('scripts')
+                <script>
+                    document.addEventListener('DOMContentLoaded', function () {
+                        var modalEl = document.getElementById(@json('roleHoursModal-'.$failedRoleId));
+                        if (modalEl) {
+                            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                        }
+                    });
+                </script>
+            @endpush
+        @endif
+    @endif
 @endsection

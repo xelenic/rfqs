@@ -94,16 +94,7 @@ class ExtraWorkingHour extends Model
      */
     public function daysLabel(): string
     {
-        $order = array_values(array_intersect(Setting::WEEKDAYS, $this->days ?? []));
-        $short = fn (string $day) => ucfirst(substr($day, 0, 3));
-
-        return match (true) {
-            count($order) === 7 => 'Every day',
-            $order === ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] => 'Mon–Fri',
-            $order === ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] => 'Mon–Sat',
-            $order === ['sunday', 'saturday'] => 'Weekends',
-            default => implode(', ', array_map($short, $order)),
-        };
+        return Setting::daysLabel($this->days ?? []);
     }
 
     /**

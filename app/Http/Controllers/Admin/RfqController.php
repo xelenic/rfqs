@@ -12,6 +12,7 @@ use App\Models\RfqReturn;
 use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WorkingSchedule;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -523,9 +524,13 @@ class RfqController extends Controller implements HasMiddleware
                 ? [
                     'now' => now()->getTimestamp(),
                     'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14)),
-                    // Whoever works their own extra hours: theirs (ExtraWorkingHour).
-                    'people' => collect(ExtraWorkingHour::byUser())
-                        ->map(fn ($ranges, int $userId) => Setting::workingPeriodsBetween(now(), now()->addDays(14), $userId)),
+                    // Whoever works hours of their own — extra hours
+                    // (ExtraWorkingHour), or their own or their role's week
+                    // (WorkingSchedule): theirs.
+                    'people' => collect(array_keys(ExtraWorkingHour::byUser()))
+                        ->merge(WorkingSchedule::peopleWithOwnHours())
+                        ->unique()
+                        ->mapWithKeys(fn (int $userId) => [$userId => Setting::workingPeriodsBetween(now(), now()->addDays(14), $userId)]),
                 ]
                 : null,
             'lensRole' => $lensRole,

@@ -28,7 +28,7 @@ final class LiveVersion
      *
      * @var list<string>
      */
-    public const WATCHED_TABLES = ['rfqs', 'rfq_user', 'rfq_comments', 'rfq_comment_attachments', 'rfq_steps', 'attendance_sheets', 'attendances', 'private_messages', 'job_categories', 'notifications', 'rfq_returns', 'extra_working_hours'];
+    public const WATCHED_TABLES = ['rfqs', 'rfq_user', 'rfq_comments', 'rfq_comment_attachments', 'rfq_steps', 'attendance_sheets', 'attendances', 'private_messages', 'job_categories', 'notifications', 'rfq_returns', 'extra_working_hours', 'working_schedules'];
 
     /**
      * Every other table — framework plumbing, access control and settings. A new table
@@ -87,7 +87,17 @@ final class LiveVersion
      */
     public static function writesWatchedTable(string $sql): bool
     {
+        return in_array(self::tableWrittenBy($sql), self::WATCHED_TABLES, true);
+    }
+
+    /**
+     * The table a statement inserts into, updates or deletes from — null for
+     * anything else.
+     */
+    public static function tableWrittenBy(string $sql): ?string
+    {
         return preg_match('/^\s*(?:insert(?:\s+or\s+\w+)?\s+into|update(?:\s+or\s+\w+)?|delete\s+from)\s+[`"\[]?(\w+)/i', $sql, $matches) === 1
-            && in_array($matches[1], self::WATCHED_TABLES, true);
+            ? $matches[1]
+            : null;
     }
 }

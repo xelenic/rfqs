@@ -88,6 +88,15 @@ class User extends Authenticatable
     public const USER_DETAILS_ROLES = ['Admin', 'HR Manager'];
 
     /**
+     * The roles that give a role, or one person, working hours of their own
+     * (WorkingSchedule) — on Settings → Role Hours and on a person's page.
+     * The company's working hours stay the Admin's.
+     *
+     * @var array<int, string>
+     */
+    public const WORKING_HOURS_ROLES = ['Admin', 'HR Manager'];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -117,6 +126,15 @@ class User extends Authenticatable
     public function canChangeUserDetails(): bool
     {
         return $this->hasAnyRole(self::USER_DETAILS_ROLES);
+    }
+
+    /**
+     * Whether this person sets a role's or someone's own working hours —
+     * see WORKING_HOURS_ROLES.
+     */
+    public function canManageWorkingHours(): bool
+    {
+        return $this->hasAnyRole(self::WORKING_HOURS_ROLES);
     }
 
     /**
@@ -200,6 +218,15 @@ class User extends Authenticatable
     public function extraWorkingHours(): HasMany
     {
         return $this->hasMany(ExtraWorkingHour::class)->orderBy('start');
+    }
+
+    /**
+     * Their own working weeks, every version (WorkingSchedule) — read the one
+     * counting through WorkingSchedule::currentFor().
+     */
+    public function workingSchedules(): HasMany
+    {
+        return $this->hasMany(WorkingSchedule::class);
     }
 
     /**

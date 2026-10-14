@@ -2159,29 +2159,33 @@ function rfqmsBoot() {
         settingsTabs.scrollLeft = openSettingsTab.offsetLeft - (settingsTabs.clientWidth - openSettingsTab.offsetWidth) / 2;
     }
 
-    // Settings → Working Hours: a day switched off greys out and locks its
-    // times (they're kept, and come back when it's switched on again), and
-    // each day's hours — and the week's — follow what's typed. Same sum as
-    // Setting::workingMinutes(): working time less whatever part lunch takes.
-    var workingHoursTable = document.getElementById('working-hours-table');
-    if (workingHoursTable) {
-        var toMinutes = function (value) {
-            var match = /^(\d{2}):(\d{2})$/.exec(value || '');
-            return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-        };
-        var hoursLabel = function (minutes) {
-            var hours = Math.floor(minutes / 60);
-            var rest = minutes % 60;
-            return hours === 0 ? rest + 'm' : hours + 'h' + (rest > 0 ? ' ' + rest + 'm' : '');
-        };
-        var timeOf = function (row, field) {
-            return toMinutes(row.querySelector('[data-time="' + field + '"]').value);
-        };
+    // A working week to fill in (settings/_week_table) — the company's on
+    // Settings → Working Hours, a role's, or one person's: a day switched off
+    // greys out and locks its times (they're kept, and come back when it's
+    // switched on again), and each day's hours — and the week's — follow
+    // what's typed. Same sum as Setting::workingMinutes(): working time less
+    // whatever part lunch takes.
+    var toMinutes = function (value) {
+        var match = /^(\d{2}):(\d{2})$/.exec(value || '');
+        return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    };
+    var hoursLabel = function (minutes) {
+        var hours = Math.floor(minutes / 60);
+        var rest = minutes % 60;
+        return hours === 0 ? rest + 'm' : hours + 'h' + (rest > 0 ? ' ' + rest + 'm' : '');
+    };
+    var timeOf = function (row, field) {
+        return toMinutes(row.querySelector('[data-time="' + field + '"]').value);
+    };
 
-        var refreshWorkingHours = function () {
+    document.querySelectorAll('.js-week-table').forEach(function (weekTable) {
+        if (weekTable.dataset.weekBound) return;
+        weekTable.dataset.weekBound = '1';
+
+        var refreshWeek = function () {
             var week = 0;
 
-            workingHoursTable.querySelectorAll('[data-working-day]').forEach(function (row) {
+            weekTable.querySelectorAll('[data-working-day]').forEach(function (row) {
                 var working = row.querySelector('.js-working-day').checked;
                 row.classList.toggle('is-off', !working);
                 row.querySelectorAll('input[type="time"]').forEach(function (input) {
@@ -2204,12 +2208,12 @@ function rfqmsBoot() {
                 row.querySelector('.js-day-hours').textContent = working ? hoursLabel(minutes) : 'Day off';
             });
 
-            document.getElementById('working-hours-week').textContent = hoursLabel(week);
+            weekTable.querySelector('.js-week-total').textContent = hoursLabel(week);
         };
 
-        workingHoursTable.addEventListener('input', refreshWorkingHours);
-        workingHoursTable.addEventListener('change', refreshWorkingHours);
-    }
+        weekTable.addEventListener('input', refreshWeek);
+        weekTable.addEventListener('change', refreshWeek);
+    });
 }
 
 document.addEventListener('DOMContentLoaded', rfqmsBoot);

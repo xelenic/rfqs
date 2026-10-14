@@ -4,11 +4,13 @@ namespace App\Models;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
 use Database\Factories\SettingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Spatie\Permission\Models\Role;
 
 /**
  * The application-wide settings an Admin can change on the Settings page: one
@@ -177,7 +179,18 @@ class Setting extends Model
      */
     public static function workingHours(): array
     {
-        $saved = json_decode((string) static::get('working_hours'), true);
+        return static::weekFrom(json_decode((string) static::get('working_hours'), true));
+    }
+
+    /**
+     * A working week as kept — the company's, a role's or someone's own
+     * (WorkingSchedule) — made whole: every day in WEEKDAYS order, anything
+     * missing at its default.
+     *
+     * @return array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>
+     */
+    public static function weekFrom(mixed $saved): array
+    {
         $saved = is_array($saved) ? $saved : [];
 
         return collect(self::WEEKDAYS)->mapWithKeys(fn (string $day) => [$day => array_merge(
@@ -185,6 +198,112 @@ class Setting extends Model
             ['working' => ! in_array($day, self::DEFAULT_DAYS_OFF, true)],
             array_intersect_key(is_array($saved[$day] ?? null) ? $saved[$day] : [], self::DEFAULT_WORKING_DAY),
         )])->all();
+    }
+
+    /**
+     * The working week that counts for $userId on $day: their own, else
+     * their role's (WorkingSchedule::countingOn()), else the company's — the
+     * company's without $userId. $day is a "Y-m-d" in the working hours' time
+     * zone, or a moment, taken in it.
+     *
+     * @return array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>
+     */
+    public static function weekOn(CarbonInterface|string $day, ?int $userId = null): array
+    {
+        return static::weeksOf($userId)($day instanceof CarbonInterface ? $day->copy()->setTimezone(static::timezone())->toDateString() : $day);
+    }
+
+    /**
+     * weekOn() for $userId, day after day: a function from a "Y-m-d" to the
+     * week that counts on it — the company's every day when nobody has their
+     * own hours, so most lookups cost nothing.
+     *
+     * @return Closure(string): array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>
+     */
+    private static function weeksOf(?int $userId): Closure
+    {
+        $company = static::workingHours();
+
+        if ($userId === null || ! WorkingSchedule::anyExist()) {
+            return fn (string $date) => $company;
+        }
+
+        return fn (string $date) => WorkingSchedule::countingOn($userId, $date)['week'] ?? $company;
+    }
+
+    /**
+     * Where $userId's hours on $day come from (see weekOn()): 'person' —
+     * their own — 'role', with the role's name, or 'company'.
+     *
+     * @return array{source: 'person'|'role'|'company', role: ?string}
+     */
+    public static function weekSourceOn(CarbonInterface|string $day, int $userId): array
+    {
+        $date = $day instanceof CarbonInterface ? $day->copy()->setTimezone(static::timezone())->toDateString() : $day;
+        $own = WorkingSchedule::countingOn($userId, $date);
+
+        return match ($own['source'] ?? 'company') {
+            'person' => ['source' => 'person', 'role' => null],
+            'role' => ['source' => 'role', 'role' => Role::query()->whereKey($own['role_id'])->value('name')],
+            default => ['source' => 'company', 'role' => null],
+        };
+    }
+
+    /**
+     * How a week reads, in short: its working days grouped by their hours,
+     * Monday first — "Mon–Fri 08:30–17:00", "Mon–Thu 08:30–17:00, Fri
+     * 08:30–13:00" — or "No working days".
+     *
+     * @param  array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $week
+     */
+    public static function weekLabel(array $week): string
+    {
+        $mondayFirst = [...array_slice(self::WEEKDAYS, 1), self::WEEKDAYS[0]];
+
+        $groups = collect($mondayFirst)
+            ->filter(fn (string $day) => $week[$day]['working'] ?? false)
+            ->groupBy(fn (string $day) => $week[$day]['start'].'–'.$week[$day]['end'])
+            ->map(fn ($days, string $hours) => static::daysLabel($days->all()).' '.$hours);
+
+        return $groups->isEmpty() ? 'No working days' : $groups->join(', ');
+    }
+
+    /**
+     * How a set of weekdays reads, in WEEKDAYS order: "Every day", "Weekends",
+     * three or more days in a row as one stretch — "Mon–Fri", "Mon–Thu" —
+     * and the rest one by one: "Mon, Wed, Sat".
+     *
+     * @param  array<int, string>  $days
+     */
+    public static function daysLabel(array $days): string
+    {
+        $order = array_values(array_intersect(self::WEEKDAYS, $days));
+        $short = fn (string $day) => ucfirst(substr($day, 0, 3));
+
+        if (count($order) === 7) {
+            return 'Every day';
+        }
+
+        if ($order === ['sunday', 'saturday']) {
+            return 'Weekends';
+        }
+
+        $runs = [];
+
+        foreach ($order as $day) {
+            $last = count($runs) - 1;
+            $follows = $last >= 0 && array_search($day, self::WEEKDAYS, true) === array_search(end($runs[$last]), self::WEEKDAYS, true) + 1;
+
+            if ($follows) {
+                $runs[$last][] = $day;
+            } else {
+                $runs[] = [$day];
+            }
+        }
+
+        return collect($runs)
+            ->flatMap(fn (array $run) => count($run) >= 3 ? [$short($run[0]).'–'.$short(end($run))] : array_map($short, $run))
+            ->join(', ');
     }
 
     /**
@@ -235,8 +354,9 @@ class Setting extends Model
      * The working minutes between $from and $to: only the time inside some
      * day's working hours, less lunch, in the working hours' own time zone —
      * nights, lunches and days off don't count. Seconds are added up first,
-     * so many short stretches don't lose a minute each. With $userId, that
-     * person's own extra hours count too (ExtraWorkingHour).
+     * so many short stretches don't lose a minute each. With $userId, in the
+     * week that counts for them (weekOn()) — their own, or their role's — and
+     * their own extra hours count too (ExtraWorkingHour).
      */
     public static function workingMinutesBetween(CarbonInterface $from, CarbonInterface $to, ?int $userId = null): int
     {
@@ -260,9 +380,11 @@ class Setting extends Model
     /**
      * The working periods between $from and $to — each day's working hours
      * either side of lunch, in the working hours' own time zone, clipped to
-     * $from and $to — as Unix timestamps, earliest first. With $userId, that
-     * person's own extra hours too (ExtraWorkingHour), merged in where they
-     * meet or overlap. What the countdowns tick against in the browser.
+     * $from and $to — as Unix timestamps, earliest first. With $userId, each
+     * day in the week that counts for them that day (weekOn()) — their own,
+     * or their role's — and their own extra hours too (ExtraWorkingHour),
+     * merged in where they meet or overlap. What the countdowns tick against
+     * in the browser.
      *
      * @return array<int, array{0: int, 1: int}>
      */
@@ -276,11 +398,11 @@ class Setting extends Model
             return [];
         }
 
-        $week = static::workingHours();
+        $weekOn = static::weeksOf($userId);
         $periods = [];
 
         for ($day = $from->startOfDay(); $day < $to; $day = $day->addDay()) {
-            $hours = $week[strtolower($day->englishDayOfWeek)];
+            $hours = $weekOn($day->toDateString())[strtolower($day->englishDayOfWeek)];
 
             if (! $hours['working']) {
                 continue;
@@ -472,24 +594,24 @@ class Setting extends Model
      * before the day's hours start, lunch, after they end, a day off. As
      * [from, to, why] — Unix timestamps — in order. What Data Entry's Start
      * says when it's off, and when it's back (see offHoursReason()). With
-     * $userId, less that person's own extra hours: a window they cut short
-     * says when those start.
+     * $userId, in the week that counts for them (weekOn()), less their own
+     * extra hours: a window they cut short says when those start.
      *
      * @return array<int, array{0: int, 1: int, 2: string}>
      */
     public static function offHoursWindows(CarbonInterface $from, int $days = 7, ?int $userId = null): array
     {
-        $week = static::workingHours();
+        $weekOn = static::weeksOf($userId);
         $first = CarbonImmutable::instance($from)->setTimezone(static::timezone())->startOfDay();
         $windows = [];
 
         for ($ahead = 0; $ahead < $days; $ahead++) {
             $day = $first->addDays($ahead);
             $next = $day->addDay();
-            $hours = $week[strtolower($day->englishDayOfWeek)];
+            $hours = $weekOn($day->toDateString())[strtolower($day->englishDayOfWeek)];
 
             if (! $hours['working']) {
-                $windows[] = [$day->getTimestamp(), $next->getTimestamp(), "{$day->englishDayOfWeek} is a day off. ".static::backOn($day, $week)];
+                $windows[] = [$day->getTimestamp(), $next->getTimestamp(), "{$day->englishDayOfWeek} is a day off. ".static::backOn($day, $weekOn)];
 
                 continue;
             }
@@ -504,7 +626,7 @@ class Setting extends Model
                 ];
             }
 
-            $windows[] = [$day->setTimeFromTimeString($hours['end'])->getTimestamp(), $next->getTimestamp(), "Working hours are over for today — they ended at {$hours['end']}. ".static::backOn($day, $week)];
+            $windows[] = [$day->setTimeFromTimeString($hours['end'])->getTimestamp(), $next->getTimestamp(), "Working hours are over for today — they ended at {$hours['end']}. ".static::backOn($day, $weekOn)];
         }
 
         $extras = static::extraPeriodsBetween($first, $first->addDays($days), $userId);
@@ -567,15 +689,16 @@ class Setting extends Model
     }
 
     /**
-     * When working time is next back after $day: the next working day's start.
+     * When working time is next back after $day: the next working day's start,
+     * in the week that counts that day ($weekOn, see weeksOf()).
      *
-     * @param  array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $week
+     * @param  Closure(string): array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $weekOn
      */
-    private static function backOn(CarbonImmutable $day, array $week): string
+    private static function backOn(CarbonImmutable $day, Closure $weekOn): string
     {
         for ($ahead = 1; $ahead <= 7; $ahead++) {
             $next = $day->addDays($ahead);
-            $hours = $week[strtolower($next->englishDayOfWeek)];
+            $hours = $weekOn($next->toDateString())[strtolower($next->englishDayOfWeek)];
 
             if ($hours['working']) {
                 return 'Start is back '.($ahead === 1 ? 'tomorrow' : 'on '.$next->englishDayOfWeek)." at {$hours['start']}.";

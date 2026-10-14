@@ -51,6 +51,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');
     Route::delete('settings/extra-hours/{extraHours}', [SettingsController::class, 'destroyExtraHours'])->name('settings.extra-hours.destroy');
     Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
+    Route::put('settings/role-hours/{role}', [SettingsController::class, 'updateRoleHours'])->name('settings.role-hours.update');
+    Route::delete('settings/role-hours/{role}', [SettingsController::class, 'destroyRoleHours'])->name('settings.role-hours.destroy');
+    Route::put('settings/user-hours/{user}', [SettingsController::class, 'updateUserHours'])->name('settings.user-hours.update');
+    Route::delete('settings/user-hours/{user}', [SettingsController::class, 'destroyUserHours'])->name('settings.user-hours.destroy');
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
 

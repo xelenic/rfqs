@@ -7,12 +7,14 @@ use App\Models\AttendanceSheet;
 use App\Models\ExtraWorkingHour;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WorkingSchedule;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Illuminate\View\View;
+use Spatie\Permission\Models\Role;
 
 /**
  * The Settings page. Everyone signed in has their own part of it — profile,
@@ -53,6 +55,16 @@ class SettingsController extends Controller
             'dataEntryIdleMinutesRange' => Setting::DATA_ENTRY_IDLE_MINUTES_RANGE,
             'attendanceSince' => Setting::attendanceSince(),
             'halfDayOff' => Setting::halfDayOff(),
+            'managesWorkingHours' => $user->canManageWorkingHours(),
+            'roleHours' => $user->canManageWorkingHours()
+                ? WorkingSchedule::roleOrder()->map(fn (Role $role) => ['role' => $role, 'current' => WorkingSchedule::currentFor($role)])
+                : collect(),
+            'peopleHours' => $user->canManageWorkingHours()
+                ? User::query()->whereHas('workingSchedules')->with('roles')->orderBy('name')->get()
+                    ->map(fn (User $person) => ['user' => $person, 'current' => WorkingSchedule::currentFor($person)])
+                    ->filter(fn (array $row) => $row['current'] !== null)
+                    ->values()
+                : collect(),
         ]);
     }
 
@@ -149,12 +161,93 @@ class SettingsController extends Controller
     {
         abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the working hours.');
 
-        $rules = [
+        $validated = $this->validatedWeek($request, 'working_hours', [
             'timezone' => ['required', 'timezone:all'],
             'attendance_since' => ['nullable', 'date_format:Y-m-d'],
-        ];
-        $attributes = ['timezone' => 'the time zone', 'attendance_since' => 'the day attendance starts'];
+        ], ['timezone' => 'the time zone', 'attendance_since' => 'the day attendance starts']);
 
+        Setting::putWorkingHours($this->weekWith(Setting::workingHours(), $validated['days']));
+        Setting::put('timezone', $validated['timezone']);
+        Setting::put('attendance_since', $validated['attendance_since'] ?? null);
+
+        return $this->backToTab('working-hours', 'Working hours saved.');
+    }
+
+    /**
+     * A role's own working week, in place of the company's — the same days,
+     * hours and lunches, checked the same way — from today on: its people's
+     * time counts in it unless they have their own. Days before keep the
+     * hours they had. Admin or HR Manager (User::WORKING_HOURS_ROLES). See
+     * WorkingSchedule.
+     */
+    public function updateRoleHours(Request $request, Role $role): RedirectResponse
+    {
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change a role\'s working hours.');
+
+        $validated = $this->validatedWeek($request, 'role_hours');
+        $base = WorkingSchedule::currentFor($role)?->week ?? Setting::workingHours();
+
+        WorkingSchedule::putFor($role, $this->weekWith(Setting::weekFrom($base), $validated['days']), $request->user());
+
+        return $this->backToTab('role-hours', "{$role->name} works its own hours from today — days before keep the hours they had.");
+    }
+
+    /**
+     * Puts a role back on the company's working hours from today. Days before
+     * keep the hours they had.
+     */
+    public function destroyRoleHours(Request $request, Role $role): RedirectResponse
+    {
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change a role\'s working hours.');
+        abort_unless(WorkingSchedule::endFor($role), 404);
+
+        return $this->backToTab('role-hours', "{$role->name} works the company's working hours again from today.");
+    }
+
+    /**
+     * One person's own working week, in place of their role's or the
+     * company's, from today on. Days before keep the hours they had. Set from
+     * their page, and back to it, by an Admin or HR Manager
+     * (User::WORKING_HOURS_ROLES). See WorkingSchedule.
+     */
+    public function updateUserHours(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change someone\'s working hours.');
+
+        $validated = $this->validatedWeek($request, 'user_hours');
+        $base = Setting::weekOn(Setting::today(), $user->id);
+
+        WorkingSchedule::putFor($user, $this->weekWith($base, $validated['days']), $request->user());
+
+        return redirect()->route('admin.users.show', ['user' => $user, 'tab' => 'working-hours'])
+            ->with('status', "{$user->name} works their own hours from today — days before keep the hours they had.");
+    }
+
+    /**
+     * Puts someone back on their role's hours, or the company's, from today.
+     * Days before keep the hours they had.
+     */
+    public function destroyUserHours(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change someone\'s working hours.');
+        abort_unless(WorkingSchedule::endFor($user), 404);
+
+        return redirect()->route('admin.users.show', ['user' => $user, 'tab' => 'working-hours'])
+            ->with('status', "{$user->name}'s own hours are taken away from today — their time counts in their role's or the company's hours again.");
+    }
+
+    /**
+     * A working week sent from one of its forms (admin.settings._week_table):
+     * for each day, whether it's worked, its working hours and its lunch —
+     * both ends of lunch or neither, inside the working hours. A day switched
+     * off isn't checked. Validated into error bag $bag, with $rules on top.
+     *
+     * @param  array<string, mixed>  $rules
+     * @param  array<string, string>  $attributes
+     * @return array<string, mixed>
+     */
+    private function validatedWeek(Request $request, string $bag, array $rules = [], array $attributes = []): array
+    {
         foreach (Setting::WEEKDAYS as $day) {
             $dayName = ucfirst($day);
             $onlyIfWorked = "exclude_unless:days.{$day}.working,1";
@@ -171,18 +264,27 @@ class SettingsController extends Controller
             $attributes["days.{$day}.lunch_end"] = "{$dayName}'s lunch end";
         }
 
-        $validator = Validator::make($request->all(), $rules, [
+        return Validator::make($request->all(), $rules, [
             'required' => 'Give :attribute.',
             'date_format' => ':attribute has to be a time, like 08:30.',
             'timezone' => 'Choose a time zone from the list.',
-        ], $attributes)->after(fn (ValidatorInstance $validator) => $this->checkWorkingDays($validator));
+        ], $attributes)->after(fn (ValidatorInstance $validator) => $this->checkWorkingDays($validator))
+            ->validateWithBag($bag);
+    }
 
-        $validated = $validator->validateWithBag('working_hours');
-
-        $week = Setting::workingHours();
-
+    /**
+     * $week with the days sent (validatedWeek()) put in: whether each is
+     * worked, and the times of a day that is. A day switched off keeps the
+     * times it had, so switching it back on brings them back.
+     *
+     * @param  array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $week
+     * @param  array<string, array<string, mixed>>  $days
+     * @return array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>
+     */
+    private function weekWith(array $week, array $days): array
+    {
         foreach (Setting::WEEKDAYS as $day) {
-            $given = $validated['days'][$day];
+            $given = $days[$day];
             $week[$day]['working'] = (bool) $given['working'];
 
             if ($week[$day]['working']) {
@@ -193,11 +295,7 @@ class SettingsController extends Controller
             }
         }
 
-        Setting::putWorkingHours($week);
-        Setting::put('timezone', $validated['timezone']);
-        Setting::put('attendance_since', $validated['attendance_since'] ?? null);
-
-        return $this->backToTab('working-hours', 'Working hours saved.');
+        return $week;
     }
 
     /**
