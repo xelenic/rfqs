@@ -35,7 +35,7 @@
                         <td>{{ $stepBlurred ? 'Restricted' : $part['number'] }}</td>
                         <td>
                             @if ($stepDoneAt)
-                                <span class="badge bg-success-subtle text-success-emphasis">{{ $maskIfBlurred($stepAssignee->pivot->{$byRelation}?->name, $restrictSourcingView) }} · {{ $stepDoneAt->format('M d, Y g:i A') }}</span>
+                                <span class="badge bg-success-subtle text-success-emphasis">{{ $maskIfBlurred($stepAssignee->pivot->{$byRelation}?->name, $restrictSourcingView) }} · {{ $stepDoneAt->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                             @elseif ($stepReached)
                                 <span class="badge bg-primary-subtle text-primary-emphasis">{{ $awaiting }}</span>
                             @else

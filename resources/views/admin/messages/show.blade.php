@@ -29,7 +29,7 @@
                 <div class="message-bubble-row {{ $mine ? 'is-mine' : '' }}">
                     <div class="message-bubble">
                         <p class="mb-1" style="white-space: pre-line;">{{ $message->body }}</p>
-                        <div class="message-time">{{ $message->created_at->format('M d, g:i A') }}</div>
+                        <div class="message-time">{{ $message->created_at->toBusinessTimezone()->format('M d, g:i A') }}</div>
                     </div>
                 </div>
             @empty

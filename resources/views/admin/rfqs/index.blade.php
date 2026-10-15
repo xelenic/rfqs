@@ -176,7 +176,7 @@
                                                         @else
                                                             <i class="bi bi-play-circle"></i>
                                                         @endif
-                                                        Started {{ $assignee->pivot->data_entry_started_at->format('M d, g:i A') }}{{ $assignee->pivot->dataEntryStartedBy ? ' by '.$assignee->pivot->dataEntryStartedBy->name : '' }}
+                                                        Started {{ $assignee->pivot->data_entry_started_at->toBusinessTimezone()->format('M d, g:i A') }}{{ $assignee->pivot->dataEntryStartedBy ? ' by '.$assignee->pivot->dataEntryStartedBy->name : '' }}
                                                     </div>
                                                 @endif
                                             </td>
@@ -189,8 +189,8 @@
                                                 @endif
                                             </td>
                                             <td>{{ $assignee->name }}</td>
-                                            <td class="text-muted-soft">{{ $assignee->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
-                                            <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
+                                            <td class="text-muted-soft">{{ $assignee->pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
+                                            <td class="text-muted-soft">{{ $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                             <td class="text-end text-nowrap">
                                                 {{-- Only this one part — see
                                                      RfqController::completeDataEntry() and returnSourcing(),
@@ -270,7 +270,7 @@
                                             @if ($dataEntryCompletedBy === null)
                                                 <td>{{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) ?? '—' }}</td>
                                             @endif
-                                            <td class="text-muted-soft text-nowrap">{{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}</td>
+                                            <td class="text-muted-soft text-nowrap">{{ $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                             <td class="text-end fw-semibold" style="font-variant-numeric: tabular-nums;">{{ $assignee->pivot->data_entry_entries !== null ? number_format($assignee->pivot->data_entry_entries) : '—' }}</td>
                                             <td><span class="badge {{ $nowClass }}">{{ $nowLabel }}</span></td>
                                             <td class="text-end">
@@ -342,7 +342,7 @@
                                         @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
-                                    <td class="text-muted-soft">{{ $myAssignment->pivot->returned_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                    <td class="text-muted-soft">{{ $myAssignment->pivot->returned_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
@@ -408,9 +408,9 @@
                                     <td>{{ $rfq->subject }}</td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td>{{ $assignee->name }}</td>
-                                    <td class="text-muted-soft">{{ $assignee->pivot->completed_at->format('M d, Y g:i A') }}</td>
+                                    <td class="text-muted-soft">{{ $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}
+                                        {{ $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                         @if ($dataEntryNames->has($assignee->pivot->data_entry_completed_by) || $assignee->pivot->data_entry_entries !== null)
                                             <div class="text-muted-soft small">
                                                 {{ collect([
@@ -458,7 +458,7 @@
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
-                                        {{ $rfq->data_entry_completed_at?->format('M d, Y g:i A') ?? '—' }}
+                                        {{ $rfq->data_entry_completed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @if ($rfq->dataEntryCompletedBy)
                                             <div class="text-muted-soft small">by {{ $rfq->dataEntryCompletedBy->name }}</div>
                                         @endif
@@ -546,9 +546,9 @@
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToHeadOfBdReturns)
-                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @else
-                                            {{ $assignee->pivot->senior_ops_reviewed_at->format('M d, Y g:i A') }}
+                                            {{ $assignee->pivot->senior_ops_reviewed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                             @if ($seniorOpsNames->has($assignee->pivot->senior_ops_reviewed_by))
                                                 <div class="text-muted-soft small">by {{ $seniorOpsNames->get($assignee->pivot->senior_ops_reviewed_by) }}</div>
                                             @endif
@@ -600,9 +600,9 @@
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToHeadOfBdReturns)
-                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @else
-                                            {{ $rfq->senior_ops_reviewed_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->senior_ops_reviewed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                             @if ($rfq->seniorOpsReviewedBy)
                                                 <div class="text-muted-soft small">by {{ $rfq->seniorOpsReviewedBy->name }}</div>
                                             @endif
@@ -689,9 +689,9 @@
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToGmAssistantReturns)
-                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @else
-                                            {{ $assignee->pivot->head_of_bd_approved_at->format('M d, Y g:i A') }}
+                                            {{ $assignee->pivot->head_of_bd_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                             @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
                                                 <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
                                             @endif
@@ -730,9 +730,9 @@
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToGmAssistantReturns)
-                                            {{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @else
-                                            {{ $rfq->head_of_bd_approved_at?->format('M d, Y g:i A') ?? '—' }}
+                                            {{ $rfq->head_of_bd_approved_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                             @if ($rfq->headOfBdApprovedBy)
                                                 <div class="text-muted-soft small">by {{ $rfq->headOfBdApprovedBy->name }}</div>
                                             @endif
@@ -801,7 +801,7 @@
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->gm_assistant_completed_at->format('M d, Y g:i A') }}
+                                        {{ $assignee->pivot->gm_assistant_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                         @if ($gmAssistantNames->has($assignee->pivot->gm_assistant_completed_by))
                                             <div class="text-muted-soft small">by {{ $gmAssistantNames->get($assignee->pivot->gm_assistant_completed_by) }}</div>
                                         @endif
@@ -843,7 +843,7 @@
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
-                                        {{ $rfq->gm_assistant_completed_at?->format('M d, Y g:i A') ?? '—' }}
+                                        {{ $rfq->gm_assistant_completed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @if ($rfq->gmAssistantCompletedBy)
                                             <div class="text-muted-soft small">by {{ $rfq->gmAssistantCompletedBy->name }}</div>
                                         @endif
@@ -935,7 +935,7 @@
                                 <td>
                                     <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
                                 </td>
-                                <td class="text-muted-soft">{{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                <td class="text-muted-soft">{{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                 <td class="text-end text-nowrap">
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                         <i class="bi bi-eye"></i>
@@ -1028,7 +1028,7 @@
                                     @endif
                                 </td>
                                 <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
-                                <td class="text-muted-soft">{{ $rfq->rejected_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                <td class="text-muted-soft">{{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                 <td class="text-end text-nowrap">
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                         <i class="bi bi-eye"></i>
@@ -1099,7 +1099,7 @@
                                     <td>{{ $rfq->subject }}</td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->gm_approved_at->format('M d, Y g:i A') }}
+                                        {{ $assignee->pivot->gm_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                         @if ($gmNames->has($assignee->pivot->gm_approved_by))
                                             <div class="text-muted-soft small">by {{ $gmNames->get($assignee->pivot->gm_approved_by) }}</div>
                                         @endif
@@ -1136,7 +1136,7 @@
                                     <td>{{ $rfq->subject }}</td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">
-                                        {{ $rfq->gm_approved_at?->format('M d, Y g:i A') ?? '—' }}
+                                        {{ $rfq->gm_approved_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @if ($rfq->gmApprovedBy)
                                             <div class="text-muted-soft small">by {{ $rfq->gmApprovedBy->name }}</div>
                                         @endif
@@ -1244,7 +1244,7 @@
                                             <span class="text-muted-soft">—</span>
                                         @endif
                                     </td>
-                                    <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->format('M d, Y g:i A') ?? '—' }}</td>
+                                    <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         @if (! $iHaveCompletedMyPart)
                                             @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())

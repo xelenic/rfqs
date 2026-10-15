@@ -277,7 +277,7 @@
             'step' => 'closed',
             'rfq_number' => $rfqNumber,
             'meta' => $closedAt
-                ? [$maskIfBlurred($closedBy?->name, $restrictSourcingView), $closedAt->format('M d, Y g:i A')]
+                ? [$maskIfBlurred($closedBy?->name, $restrictSourcingView), $closedAt->toBusinessTimezone()->format('M d, Y g:i A')]
                 : [$gmAt !== null ? 'Ready for Business Development' : 'Not yet reached'],
             'state' => $nodeState($closedAt !== null, $gmAt !== null && $closedAt === null),
             'children' => [],
@@ -288,7 +288,7 @@
             'step' => 'gm_review',
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
-                $gmAt !== null => ['Approved by '.$maskIfBlurred($gmBy?->name, $restrictSourcingView), $gmAt->format('M d, Y g:i A')],
+                $gmAt !== null => ['Approved by '.$maskIfBlurred($gmBy?->name, $restrictSourcingView), $gmAt->toBusinessTimezone()->format('M d, Y g:i A')],
                 $gmRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
                 default => [$assistantAt !== null ? 'Awaiting approval' : 'Not yet reached'],
             },
@@ -301,7 +301,7 @@
             'step' => 'gm_assistant',
             'rfq_number' => $rfqNumber,
             'meta' => $assistantAt
-                ? [$maskIfBlurred($assistantBy?->name, $restrictSourcingView), $assistantAt->format('M d, Y g:i A')]
+                ? [$maskIfBlurred($assistantBy?->name, $restrictSourcingView), $assistantAt->toBusinessTimezone()->format('M d, Y g:i A')]
                 : [$headAt !== null ? 'Awaiting GM Assistant' : 'Not yet reached'],
             'state' => $nodeState($assistantAt !== null, $headAt !== null && $assistantAt === null),
             'children' => [$gmReview],
@@ -312,7 +312,7 @@
             'step' => 'head_of_bd',
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
-                $headAt !== null => ['Approved by '.$maskIfBlurred($headBy?->name, $restrictSourcingView), $headAt->format('M d, Y g:i A')],
+                $headAt !== null => ['Approved by '.$maskIfBlurred($headBy?->name, $restrictSourcingView), $headAt->toBusinessTimezone()->format('M d, Y g:i A')],
                 $headRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
                 default => [$seniorOpsAt !== null ? 'Awaiting review' : 'Not yet reached'],
             },
@@ -325,7 +325,7 @@
             'step' => 'senior_ops',
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
-                $seniorOpsAt !== null => [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->format('M d, Y g:i A')],
+                $seniorOpsAt !== null => [$maskIfBlurred($seniorOpsBy?->name, $restrictSourcingView), $seniorOpsAt->toBusinessTimezone()->format('M d, Y g:i A')],
                 $seniorOpsRejected => ['Rejected by '.$maskIfBlurred($rfq->rejectedBy?->name, $restrictSourcingView), 'Returned to '.\App\Models\Rfq::stageLabel($rfq->reject_target_stage)],
                 default => [$finalized ? 'Awaiting review' : 'Not yet reached'],
             },
@@ -399,8 +399,8 @@
         $deNameLabel = $restrictSourcingView || $deWorker === null ? 'Data Entry' : $deWorker->name;
 
         $deMeta = match (true) {
-            $deIsDone => ['Sent to finalize', $assignee->pivot->data_entry_completed_at->format('M d, Y g:i A')],
-            $deIsRunning => ['Working on it', 'Started '.$assignee->pivot->data_entry_started_at->format('M d, Y g:i A')],
+            $deIsDone => ['Sent to finalize', $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A')],
+            $deIsRunning => ['Working on it', 'Started '.$assignee->pivot->data_entry_started_at->toBusinessTimezone()->format('M d, Y g:i A')],
             $deIsReturned => ['Returned — rework needed'],
             $deIsReturnedBySourcing => ['Returned by Sourcing'],
             $sourcingDone => ['Awaiting Start'],
@@ -416,7 +416,7 @@
             'step' => 'finalize',
             'rfq_number' => $rfqNumber,
             'meta' => match (true) {
-                $finalizedAt !== null => ['Finalized', $finalizedAt->format('M d, Y g:i A')],
+                $finalizedAt !== null => ['Finalized', $finalizedAt->toBusinessTimezone()->format('M d, Y g:i A')],
                 $deIsDone => ['Awaiting Finalize'],
                 default => ['Not yet reached'],
             },
@@ -440,8 +440,8 @@
             'step' => 'sourcing',
             'rfq_number' => $rfqNumber,
             'meta' => $sourcingDone
-                ? ['Completed', $assignee->pivot->completed_at->format('M d, Y g:i A')]
-                : ['Pending since', $assignee->pivot->created_at->format('M d, Y g:i A')],
+                ? ['Completed', $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A')]
+                : ['Pending since', $assignee->pivot->created_at->toBusinessTimezone()->format('M d, Y g:i A')],
             'state' => $nodeState($sourcingDone),
             'children' => [$dataEntryNode],
         ];
@@ -452,7 +452,7 @@
         'step' => 'operations',
         'rfq_number' => $rfq->rfq_number,
         'meta' => $rfq->operationsAssignee
-            ? [$maskIfBlurred($rfq->operationsAssignee->name, $restrictSourcingView), $rfq->operations_assigned_at->format('M d, Y g:i A')]
+            ? [$maskIfBlurred($rfq->operationsAssignee->name, $restrictSourcingView), $rfq->operations_assigned_at->toBusinessTimezone()->format('M d, Y g:i A')]
             : ['Not yet assigned'],
         'state' => $nodeState($stepDone['operations'], $currentStep === 'operations'),
         'children' => [[
@@ -469,7 +469,7 @@
         'name' => 'RFQ Created',
         'step' => 'created',
         'rfq_number' => $rfq->rfq_number,
-        'meta' => ['Created by '.$maskIfBlurred($rfq->creator?->name, $restrictSourcingView), $rfq->created_at->format('M d, Y g:i A')],
+        'meta' => ['Created by '.$maskIfBlurred($rfq->creator?->name, $restrictSourcingView), $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A')],
         'state' => 'done',
         'children' => [$operationsNode],
     ];
@@ -668,7 +668,7 @@
                 <div class="fw-bold">
                     {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'On hold' : 'Cancelled' }}
                     @if ($rfq->status_changed_at)
-                        since {{ $rfq->status_changed_at->format('M d, Y g:i A') }}
+                        since {{ $rfq->status_changed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                     @endif
                     @if ($rfq->statusChangedBy)
                         by {{ $rfq->statusChangedBy->name }}
@@ -700,7 +700,7 @@
                                 {{ $rfq->partNumberLabel($stoppedPivot->part_number) }}
                                 {{ $stoppedPivot->isOnHold() ? 'on hold' : 'cancelled' }}
                                 @if ($stoppedPivot->status_changed_at)
-                                    since {{ $stoppedPivot->status_changed_at->format('M d, Y g:i A') }}
+                                    since {{ $stoppedPivot->status_changed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                 @endif
                                 @if ($stoppedPivot->statusChangedBy)
                                     by {{ $stoppedPivot->statusChangedBy->name }}
@@ -811,7 +811,7 @@
                     <dl class="rfq-detail-grid mb-0">
                         <div>
                             <dt>Created</dt>
-                            <dd>{{ $rfq->created_at->format('M d, Y g:i A') }}</dd>
+                            <dd>{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                         </div>
                         <div>
                             <dt>Created by</dt>
@@ -831,7 +831,7 @@
                             </div>
                             <div>
                                 <dt>Assigned at</dt>
-                                <dd>{{ $rfq->operations_assigned_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->operations_assigned_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @else
@@ -873,9 +873,9 @@
                                                 <td>{{ $tabBlurred ? 'Restricted' : $part['number'] }}</td>
                                                 <td>
                                                     @if ($tabAssignee->pivot->completed_at !== null)
-                                                        <span class="badge bg-success-subtle text-success-emphasis">Completed {{ $tabAssignee->pivot->completed_at->format('M d, Y g:i A') }}</span>
+                                                        <span class="badge bg-success-subtle text-success-emphasis">Completed {{ $tabAssignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                                                     @else
-                                                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Pending since {{ $tabAssignee->pivot->created_at->format('M d, Y g:i A') }}</span>
+                                                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Pending since {{ $tabAssignee->pivot->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                                                     @endif
                                                 </td>
                                             @else
@@ -938,7 +938,7 @@
                                                 <td>{{ $tabBlurred ? 'Restricted' : $part['number'] }}</td>
                                                 <td>
                                                     @if ($tabDeIsDone)
-                                                        <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->format('M d, Y g:i A') }}@if ($tabAssignee->pivot->data_entry_entries !== null) · {{ trans_choice('1 entry|:count entries', $tabAssignee->pivot->data_entry_entries, ['count' => number_format($tabAssignee->pivot->data_entry_entries)]) }}@endif</span>
+                                                        <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}@if ($tabAssignee->pivot->data_entry_entries !== null) · {{ trans_choice('1 entry|:count entries', $tabAssignee->pivot->data_entry_entries, ['count' => number_format($tabAssignee->pivot->data_entry_entries)]) }}@endif</span>
                                                     @elseif ($tabDeIsReturned)
                                                         <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
                                                     @elseif ($tabAssignee->pivot->data_entry_returned_at !== null)
@@ -990,7 +990,7 @@
                             </div>
                             <div>
                                 <dt>Approved at</dt>
-                                <dd>{{ $rfq->senior_ops_reviewed_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->senior_ops_reviewed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @endif
@@ -1003,7 +1003,7 @@
                             </div>
                             <div>
                                 <dt>Rejected at</dt>
-                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->rejected_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                             @if ($latestRejection?->meta['label'] ?? null)
                                 <div>
@@ -1038,7 +1038,7 @@
                             </div>
                             <div>
                                 <dt>Approved at</dt>
-                                <dd>{{ $rfq->head_of_bd_approved_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->head_of_bd_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @endif
@@ -1051,7 +1051,7 @@
                             </div>
                             <div>
                                 <dt>Rejected at</dt>
-                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->rejected_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                             @if ($latestRejection?->meta['label'] ?? null)
                                 <div>
@@ -1086,7 +1086,7 @@
                             </div>
                             <div>
                                 <dt>Completed at</dt>
-                                <dd>{{ $rfq->gm_assistant_completed_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->gm_assistant_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @else
@@ -1116,7 +1116,7 @@
                             </div>
                             <div>
                                 <dt>Approved at</dt>
-                                <dd>{{ $rfq->gm_approved_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->gm_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @endif
@@ -1129,7 +1129,7 @@
                             </div>
                             <div>
                                 <dt>Rejected at</dt>
-                                <dd>{{ $rfq->rejected_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->rejected_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                             @if ($latestRejection?->meta['label'] ?? null)
                                 <div>
@@ -1164,7 +1164,7 @@
                             </div>
                             <div>
                                 <dt>Closed at</dt>
-                                <dd>{{ $rfq->bd_closed_at->format('M d, Y g:i A') }}</dd>
+                                <dd>{{ $rfq->bd_closed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
                         </dl>
                     @else
@@ -1234,11 +1234,11 @@
                         </div>
                         <div>
                             <dt>Created</dt>
-                            <dd>{{ $rfq->created_at->format('M d, Y \a\t g:i A') }}</dd>
+                            <dd>{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y \a\t g:i A') }}</dd>
                         </div>
                         <div>
                             <dt>Last updated</dt>
-                            <dd>{{ $rfq->updated_at->format('M d, Y \a\t g:i A') }}</dd>
+                            <dd>{{ $rfq->updated_at->toBusinessTimezone()->format('M d, Y \a\t g:i A') }}</dd>
                         </div>
                     </dl>
 
