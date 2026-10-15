@@ -1019,9 +1019,9 @@ class DashboardController extends Controller
      * What a Data Entry person's dashboard shows — their own work, not the
      * company's:
      *
-     *  - now: the parts waiting for Data Entry to start (anyone in Data Entry
-     *    can take one), Urgent first then longest-waiting; the one they're
-     *    on (RfqStep::runningDataEntryOf()) against its target
+     *  - now: the parts waiting for them to start — given to them by name,
+     *    or to anyone in Data Entry — Urgent first then longest-waiting; the
+     *    one they're on (RfqStep::runningDataEntryOf()) against its target
      *    (Rfq::dataEntryCountdown()); idle time against the alert
      *    (User::dataEntryIdleness()); and the hours they work today
      *    (Setting::weekOn() — their own, their role's or the company's);
@@ -1043,11 +1043,13 @@ class DashboardController extends Controller
         $priorities = array_reverse(Rfq::PRIORITIES);
         $book = Attendance::book([$user->id]);
 
-        // Waiting to be started, by anyone in Data Entry.
+        // Waiting to be started — theirs to start: given to them by name, or
+        // to anyone in Data Entry.
         $isWaiting = fn ($parts) => $parts->whereNull('rfq_user.status')
             ->whereNotNull('rfq_user.completed_at')
             ->whereNull('rfq_user.data_entry_completed_at')
-            ->whereNull('rfq_user.data_entry_started_at');
+            ->whereNull('rfq_user.data_entry_started_at')
+            ->tap(fn ($theirs) => RfqAssignment::whereForDataEntryUser($theirs, $user->id));
 
         $waiting = Rfq::query()
             ->where('rfqs.status', 'Pending')
@@ -1058,12 +1060,14 @@ class DashboardController extends Controller
                 ->filter(fn (User $holder) => $holder->pivot->status === null
                     && $holder->pivot->completed_at !== null
                     && $holder->pivot->data_entry_completed_at === null
-                    && $holder->pivot->data_entry_started_at === null)
+                    && $holder->pivot->data_entry_started_at === null
+                    && $rfq->partIsForDataEntryUser($holder->pivot->part_number, $user))
                 ->map(fn (User $holder) => [
                     'rfq' => $rfq,
                     'label' => $rfq->isSplit() ? $rfq->partNumberLabel($holder->pivot->part_number) : $rfq->rfq_number,
                     'since' => collect([$holder->pivot->completed_at, $holder->pivot->data_entry_returned_at, $holder->pivot->status_changed_at, $rfq->rejected_at])->filter()->max(),
                     'sentBack' => $holder->pivot->data_entry_returned_at !== null,
+                    'forMe' => (int) $holder->pivot->data_entry_assigned_to === $user->id,
                 ]))
             ->sortBy(fn (array $part) => [array_search($part['rfq']->priority_level, $priorities, true), $part['since']?->getTimestamp() ?? 0])
             ->values();
@@ -1227,6 +1231,18 @@ class DashboardController extends Controller
                 'icon' => 'bi-exclamation-triangle-fill',
                 'title' => trans_choice('1 urgent part is waiting|:count urgent parts are waiting', $urgent, ['count' => $urgent]),
                 'description' => 'Start these first.',
+                'url' => $queue,
+            ];
+        }
+
+        $forMe = $overview['waiting']->where('forMe', true)->count();
+
+        if ($forMe > 0) {
+            $notifications[] = [
+                'type' => 'primary',
+                'icon' => 'bi-person-check',
+                'title' => trans_choice('1 part was assigned to you|:count parts were assigned to you', $forMe, ['count' => $forMe]),
+                'description' => 'Given to you by name by Sourcing — yours to start.',
                 'url' => $queue,
             ];
         }

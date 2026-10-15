@@ -6226,3 +6226,9 @@ a.critical-row:hover {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* A part given to someone in Data Entry by name (rfqs/index, Data Entry's Ready list). */
+.rfq-list-subnote-assigned {
+  color: var(--rfq-primary-dark);
+  font-weight: 600;
+}

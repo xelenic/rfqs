@@ -186,6 +186,9 @@
                                     <tr>
                                         <td class="text-nowrap">
                                             <a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a>
+                                            @if ($part['forMe'])
+                                                <span class="badge badge-soft-primary ms-1">For you</span>
+                                            @endif
                                             @if ($part['sentBack'])
                                                 <span class="badge badge-soft-danger ms-1">Sent back</span>
                                             @endif

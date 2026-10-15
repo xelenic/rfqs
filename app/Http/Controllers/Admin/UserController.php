@@ -71,7 +71,7 @@ class UserController extends Controller implements HasMiddleware
      */
     public function show(Request $request, User $user): View
     {
-        $user->load(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current()]);
+        $user->load(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current(), 'defaultDataEntryUser', 'defaultForSourcing']);
         $isTracked = $user->hasAnyRole(array_keys(RfqStep::ROLE_STEPS));
 
         return view('admin.users.show', [
@@ -84,6 +84,11 @@ class UserController extends Controller implements HasMiddleware
             'activity' => $this->activityOf($user),
             'attendance' => $isTracked ? $this->recentAttendanceOf($user) : null,
             ...$this->hoursOf($user),
+            // Whom in Data Entry a Sourcing member's parts go to, to begin
+            // with — for an Admin to set.
+            'dataEntryPeople' => $user->hasRole('Sourcing') && $request->user()->hasRole('Admin')
+                ? User::query()->holdingRole('Data Entry')->orderBy('name')->get()
+                : collect(),
         ]);
     }
 
@@ -275,6 +280,30 @@ class UserController extends Controller implements HasMiddleware
             ->map(fn (CarbonImmutable $day) => ['date' => $day, 'status' => Attendance::statusIn($book, $user->id, $day->toDateString())])
             ->values()
             ->all();
+    }
+
+    /**
+     * A Sourcing member's usual person in Data Entry — whom their "Assign to
+     * Data Entry" picks to begin with — or nobody (anyone there). Admin only,
+     * from the member's page. See User::defaultDataEntryUser().
+     */
+    public function updateDefaultDataEntry(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can set someone\'s Data Entry person.');
+        abort_unless($user->hasRole('Sourcing'), 422, 'Only someone in Sourcing hands parts to Data Entry.');
+
+        $validated = $request->validateWithBag('default_data_entry', [
+            'data_entry_user_id' => ['nullable', 'integer', Rule::in(User::query()->holdingRole('Data Entry')->pluck('id'))],
+        ], [
+            'data_entry_user_id.in' => 'Pick someone in Data Entry from the list.',
+        ]);
+
+        $user->forceFill(['default_data_entry_user_id' => $validated['data_entry_user_id'] ?? null])->save();
+        $person = $user->defaultDataEntryUser()->first();
+
+        return redirect()->route('admin.users.show', $user)->with('status', $person
+            ? "{$user->name}'s parts go to {$person->name} in Data Entry to begin with."
+            : "{$user->name}'s parts go to anyone in Data Entry to begin with.");
     }
 
     /**

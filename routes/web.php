@@ -72,6 +72,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');
     Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
+    Route::patch('users/{user}/default-data-entry', [UserController::class, 'updateDefaultDataEntry'])->name('users.default-data-entry');
     // An Admin signing in as someone else, and back — see App\Impersonation.
     Route::post('users/{user}/impersonate', [ImpersonationController::class, 'store'])->name('users.impersonate');
     Route::post('impersonation/leave', [ImpersonationController::class, 'destroy'])->name('impersonation.leave');

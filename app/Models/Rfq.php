@@ -705,7 +705,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1402,16 +1402,18 @@ class Rfq extends Model
     }
 
     /**
-     * Marks one Sourcing part done. Idempotent — completing an already-
-     * completed part is a no-op. Once every part is assigned and completed,
-     * the RFQ itself is marked handed off to Data Entry, recording this
-     * part's assignee as the closing completion. A $comment, if given, is
-     * posted to the RFQ's thread as the assignee's.
+     * Marks one Sourcing part done — assigned to Data Entry: to $dataEntry,
+     * if they named someone there, else to anyone in Data Entry, whoever
+     * starts it first (rfq_user.data_entry_assigned_to). Idempotent —
+     * completing an already-completed part is a no-op. Once every part is
+     * assigned and completed, the RFQ itself is marked handed off to Data
+     * Entry, recording this part's assignee as the closing completion. A
+     * $comment, if given, is posted to the RFQ's thread as the assignee's.
      *
      * Caller is responsible for verifying the user completing it is the
-     * part's assignee.
+     * part's assignee, and that $dataEntry holds Data Entry.
      */
-    public function completeSourcingPart(int $part, ?string $comment = null): void
+    public function completeSourcingPart(int $part, ?string $comment = null, ?User $dataEntry = null): void
     {
         $assignee = $this->assigneeForPart($part);
 
@@ -1424,15 +1426,16 @@ class Rfq extends Model
             'returned_at' => null,
             'return_reason' => null,
             'returned_by' => null,
+            'data_entry_assigned_to' => $dataEntry?->id,
         ]);
         $this->load('assignees');
 
         // The completion comment goes into the RFQ's thread as the
         // assignee's own, so Data Entry reads it with everything else —
-        // marked as a completion, and naming the part on a split, since a
-        // thread covers the whole RFQ.
+        // marked as a completion, naming the part on a split, since a thread
+        // covers the whole RFQ, and whom in Data Entry it went to.
         if (filled($comment)) {
-            $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part));
+            $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part) + ($dataEntry ? ['assigned_to' => $dataEntry->name] : []));
         }
 
         if ($this->allSourcingPartsCompleted() && ! $this->isWithDataEntry()) {
@@ -1539,6 +1542,18 @@ class Rfq extends Model
      * on an RFQ in progress, and not started yet. (Whether it's working
      * hours is the controller's call — see RfqController::startDataEntry().)
      */
+    /**
+     * Whether $user, in Data Entry, can take $part: it was assigned to them,
+     * or to anyone in Data Entry (rfq_user.data_entry_assigned_to null).
+     * Admin can take any.
+     */
+    public function partIsForDataEntryUser(int $part, User $user): bool
+    {
+        $assignedTo = $this->activePart($part)?->data_entry_assigned_to;
+
+        return $user->hasRole('Admin') || $assignedTo === null || (int) $assignedTo === $user->id;
+    }
+
     public function partAwaitsDataEntryStart(int $part): bool
     {
         $assignment = $this->activePart($part);
@@ -2591,14 +2606,18 @@ class Rfq extends Model
      * When each part waiting for Data Entry to start came in — handed over by
      * Sourcing, sent back from Finalize, set going again, or rejected back —
      * on a Pending RFQ: what Data Entry's idle alert counts from
-     * (User::dataEntryIdleness()).
+     * (User::dataEntryIdleness()). With $forUser, only the parts that are
+     * theirs to start: assigned to them, or to anyone in Data Entry.
      *
      * @return Collection<int, CarbonImmutable>
      */
-    public static function dataEntryWaitingSince(): Collection
+    public static function dataEntryWaitingSince(?int $forUser = null): Collection
     {
         return DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->when($forUser !== null, fn ($theirs) => $theirs->where(fn ($forThem) => $forThem
+                ->whereNull('rfq_user.data_entry_assigned_to')
+                ->orWhere('rfq_user.data_entry_assigned_to', $forUser)))
             ->where('rfqs.status', 'Pending')
             ->whereNull('rfq_user.status')
             ->whereNotNull('rfq_user.completed_at')

@@ -50,6 +50,7 @@ class RfqAssignment extends Pivot
             'returned_at' => 'datetime',
             'data_entry_completed_at' => 'datetime',
             'data_entry_entries' => 'integer',
+            'data_entry_assigned_to' => 'integer',
             'data_entry_started_at' => 'datetime',
             'finalized_at' => 'datetime',
             'data_entry_returned_at' => 'datetime',
@@ -450,6 +451,29 @@ class RfqAssignment extends Pivot
     public function dataEntryStartedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'data_entry_started_by');
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts $userId in Data
+     * Entry can take: given to them by name, or to anyone in Data Entry
+     * (data_entry_assigned_to null). Every part when null.
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereForDataEntryUser($query, ?int $userId): void
+    {
+        $query->when($userId !== null, fn ($theirs) => $theirs->where(fn ($forThem) => $forThem
+            ->whereNull('rfq_user.data_entry_assigned_to')
+            ->orWhere('rfq_user.data_entry_assigned_to', $userId)));
+    }
+
+    /**
+     * Whom in Data Entry its Sourcing member gave it to — null for anyone
+     * there. See Rfq::completeSourcingPart().
+     */
+    public function dataEntryAssignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'data_entry_assigned_to');
     }
 
     /**

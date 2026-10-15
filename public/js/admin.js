@@ -902,6 +902,18 @@ function rfqmsBoot() {
             document.getElementById('complete-label').textContent = kind.label;
             document.getElementById('complete-audience').textContent = button.dataset.audience;
 
+            // Assign to Data Entry: whom there it's for — who it was given
+            // to before, if it's been with them.
+            var dataEntryBox = document.getElementById('complete-data-entry');
+            if (dataEntryBox) {
+                var picksDataEntry = (button.dataset.kind || 'sourcing') === 'sourcing';
+                var dataEntrySelect = document.getElementById('complete-data-entry-select');
+                dataEntryBox.classList.toggle('d-none', !picksDataEntry);
+                dataEntrySelect.disabled = !picksDataEntry;
+                dataEntrySelect.value = picksDataEntry ? (button.dataset.deAssignee || '') : '';
+                if (dataEntrySelect.selectedIndex === -1) dataEntrySelect.value = '';
+            }
+
             if (entriesBox) {
                 var wantsEntries = button.dataset.kind === 'data_entry';
                 entriesBox.classList.toggle('d-none', !wantsEntries);

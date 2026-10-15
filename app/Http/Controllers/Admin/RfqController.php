@@ -13,6 +13,7 @@ use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
+use App\Notifications\DataEntryAssigned;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -378,6 +379,9 @@ class RfqController extends Controller implements HasMiddleware
         // rather than waiting for every assignee on a split RFQ to be
         // done, like the Detailed view (above) does. An RFQ can show up
         // here before it's fully handed off and appears there.
+        // Whose Ready list it is: theirs, or — Admin's view — everyone's.
+        $dataEntryFor = $user->hasRole('Admin') ? null : $user->id;
+
         $bySourcingRfqs = $scopedToDataEntry
             ? Rfq::query()
                 ->with(['assignees', 'comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments'])
@@ -389,7 +393,10 @@ class RfqController extends Controller implements HasMiddleware
                 // assignee's split, it drops out of this queue on its own,
                 // without touching any other assignee's split on the same
                 // RFQ. See Rfq::completeDataEntryPartFor().
-                ->whereHas('assignees', fn ($q) => $q->whereNull('rfq_user.status')->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at'))
+                // And only theirs: given to them by name, or to anyone in Data
+                // Entry — Admin's view of the page, everyone's.
+                ->whereHas('assignees', fn ($q) => $q->whereNull('rfq_user.status')->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at')
+                    ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $dataEntryFor)))
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(10, ['*'], 'sourcing_page')
@@ -421,6 +428,7 @@ class RfqController extends Controller implements HasMiddleware
             'ready' => DB::table('rfq_user')
                 ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->where('rfqs.status', 'Pending')->tap($applySearch))
                 ->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')
+                ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $dataEntryFor))
                 ->count(),
             'completed' => DB::table('rfq_user')
                 ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applySearch))
@@ -1319,15 +1327,33 @@ class RfqController extends Controller implements HasMiddleware
             return $comment;
         }
 
+        // Whom in Data Entry it's for — someone there by name, or anyone
+        // (left empty): whoever starts it first.
+        $dataEntry = null;
+
+        if ($request->filled('data_entry_user_id')) {
+            $dataEntry = User::query()->holdingRole('Data Entry')->find($request->integer('data_entry_user_id'));
+
+            if ($dataEntry === null) {
+                return back()->with('error', 'Pick someone in Data Entry from the list, or leave it with anyone there.');
+            }
+        }
+
         $files = $this->attachmentsFrom($request);
 
         if ($files instanceof RedirectResponse) {
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment, $dataEntry));
 
-        $status = $rfq->isWithDataEntry()
+        // They're told, in their bell.
+        $dataEntry?->notify(new DataEntryAssigned($rfq->refresh(), (int) $validated['part'], $assignee));
+
+        $status = $dataEntry !== null
+            ? "Assigned to {$dataEntry->name} in Data Entry."
+            : null;
+        $status ??= $rfq->isWithDataEntry()
             ? 'Assigned to Data Entry — every part is with them now.'
             : ($rfq->isSplit()
                 ? 'Part assigned to Data Entry — the rest of the parts are still with Sourcing.'
@@ -1402,6 +1428,13 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->partAwaitsDataEntryStart($part), 422, 'This part isn\'t waiting to be started.');
 
         $starter = $this->doneBy($request, 'Data Entry');
+
+        // Given to someone in Data Entry by name: theirs to start.
+        if (! $rfq->partIsForDataEntryUser($part, $starter)) {
+            $for = $rfq->assigneeForPart($part)?->pivot->dataEntryAssignee;
+
+            return back()->with('error', 'This part is assigned to '.($for?->name ?? 'someone else').' in Data Entry — it\'s theirs to start.');
+        }
 
         if ($running = RfqStep::runningDataEntryOf($starter)) {
             return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' already on '

@@ -32,6 +32,7 @@
             ->whereNull('status')
             ->whereNotNull('completed_at')
             ->whereNull('data_entry_completed_at')
+            ->tap(fn ($parts) => \App\Models\RfqAssignment::whereForDataEntryUser($parts, auth()->id()))
             ->count(),
         auth()->user()->hasRole('Head of Business Development') => \App\Models\Rfq::headOfBdReviewCount(),
         auth()->user()->hasRole('GM Assistant') => \App\Models\Rfq::gmAssistantReviewCount(),

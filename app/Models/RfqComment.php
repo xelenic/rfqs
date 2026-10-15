@@ -91,6 +91,7 @@ class RfqComment extends Model
         $context = collect([
             isset($meta['who']) ? "{$meta['who']}'s part" : null,
             $meta['label'] ?? null,
+            isset($meta['assigned_to']) ? "to {$meta['assigned_to']}" : null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
             isset($meta['entries']) ? trans_choice('1 entry|:count entries', $meta['entries'], ['count' => $meta['entries']]) : null,
         ])->filter()->implode(' · ');

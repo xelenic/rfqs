@@ -16,7 +16,8 @@ use Illuminate\Http\Request;
 class NotificationController extends Controller
 {
     /**
-     * Opens an alert: read now, and on to what it's about — the idle Data
+     * Opens an alert: read now, and on to what it's about — where it says
+     * (a part given to them in Data Entry: their list), or the idle Data
      * Entry person's conversation in Messages, to nudge them.
      */
     public function open(Request $request, string $notification): RedirectResponse
@@ -25,6 +26,12 @@ class NotificationController extends Controller
 
         if ($alert->read_at === null) {
             $alert->markAsRead();
+        }
+
+        // Where it says to go (DataEntryAssigned), or the conversation with
+        // whoever it's about (DataEntryIdle).
+        if (isset($alert->data['url'])) {
+            return redirect()->to($alert->data['url']);
         }
 
         $about = $alert->data['data_entry_user_id'] ?? null;

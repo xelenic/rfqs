@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -300,6 +301,24 @@ class User extends Authenticatable
     }
 
     /**
+     * A Sourcing member's usual person in Data Entry, set by an Admin on their
+     * page — whom their "Assign to Data Entry" picks to begin with. They can
+     * still pick someone else, or anyone there.
+     */
+    public function defaultDataEntryUser(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'default_data_entry_user_id');
+    }
+
+    /**
+     * The Sourcing members whose usual person in Data Entry this is.
+     */
+    public function defaultForSourcing(): HasMany
+    {
+        return $this->hasMany(self::class, 'default_data_entry_user_id');
+    }
+
+    /**
      * Their own working weeks, every version (WorkingSchedule) — read the one
      * counting through WorkingSchedule::currentFor().
      */
@@ -325,9 +344,10 @@ class User extends Authenticatable
                 'at' => $alert->created_at,
                 'unread' => $alert->read_at === null,
                 'url' => route('admin.notifications.open', $alert->id),
-                'icon' => 'bi-hourglass-bottom',
+                // An idle alert (DataEntryIdle) says nothing of these; others say their own.
+                'icon' => $alert->data['icon'] ?? 'bi-hourglass-bottom',
                 'text' => $alert->data['message'] ?? 'Alert',
-                'note' => 'message them',
+                'note' => $alert->data['note'] ?? 'message them',
             ]);
 
         $unreadBySender = $this->receivedMessages()->unread()->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id');
@@ -386,7 +406,8 @@ class User extends Authenticatable
      * Where this Data Entry person stands against the idle alert
      * (Setting::dataEntryIdleAlert()) at $now: idle since the latest of the
      * start of today, when they last had a part running, and when the oldest
-     * part waiting for Data Entry came in (Rfq::dataEntryWaitingSince()) —
+     * part waiting for them came in — given to them, or to anyone in Data
+     * Entry (Rfq::dataEntryWaitingSince()) —
      * that many of their working seconds (own extra hours included), less
      * the half of a half day they're off —
      * and when Senior Operations was told about it, if they have been
@@ -400,7 +421,8 @@ class User extends Authenticatable
     public function dataEntryIdleness(?CarbonInterface $now = null): ?array
     {
         $alert = Setting::dataEntryIdleAlert();
-        $waiting = Rfq::dataEntryWaitingSince();
+        // Only what's theirs to start: given to them, or to anyone in Data Entry.
+        $waiting = Rfq::dataEntryWaitingSince($this->id);
 
         if (! $alert['enabled'] || $waiting->isEmpty() || RfqStep::runningDataEntryOf($this) !== null) {
             return null;

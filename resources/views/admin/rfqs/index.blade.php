@@ -138,7 +138,8 @@
                             </thead>
                             <tbody>
                                 @forelse ($bySourcingRfqs as $rfq)
-                                    @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
+                                    {{-- Only the parts theirs to take: given to them by name, or to anyone in Data Entry (Admin: all). --}}
+                                    @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at')->filter(fn ($assignee) => $rfq->partIsForDataEntryUser($assignee->pivot->part_number, auth()->user())) as $assignee)
                                         {{-- Clicking the row opens a quick-detail modal scoped to
                                              this one assignee (subject, description, their own
                                              comments only — other split sourcers' comments stay
@@ -164,6 +165,13 @@
                                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                                         <i class="bi bi-arrow-counterclockwise"></i>
                                                         Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
+                                                    </div>
+                                                @endif
+                                                {{-- Given to someone in Data Entry by name. --}}
+                                                @if ($assignee->pivot->data_entry_assigned_to)
+                                                    <div class="rfq-list-subnote rfq-list-subnote-assigned">
+                                                        <i class="bi bi-person-check"></i>
+                                                        {{ (int) $assignee->pivot->data_entry_assigned_to === auth()->id() ? 'Assigned to you' : 'Assigned to '.($assignee->pivot->dataEntryAssignee?->name ?? 'someone in Data Entry') }}
                                                     </div>
                                                 @endif
                                                 @if ($assignee->pivot->hasDataEntryStarted())

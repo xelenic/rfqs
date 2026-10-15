@@ -28,13 +28,18 @@
 --}}
 @php
     $kind = $kind ?? 'sourcing';
-    $isSplit = $rfq->isSplit();
     $name = $who ?? 'them';
 
     // The Sourcing member's own actions. Admin has no part of their own:
     // doing one is done as its assignee.
     $isSourcingAction = in_array($kind, ['sourcing', 'return_data_entry', 'sourcing_to_ops'], true);
     $forAssignee = $isSourcingAction && auth()->user()->hasRole('Admin') ? $rfq->assigneeForPart((int) $part) : null;
+
+    // Assign to Data Entry picks, to begin with, whoever in Data Entry had
+    // the part last — else the Sourcing member's usual person there
+    // (User::defaultDataEntryUser()), else anyone.
+    $partHolder = $kind === 'sourcing' ? $rfq->assigneeForPart((int) $part) : null;
+    $deAssignee = $partHolder?->pivot->data_entry_assigned_to ?? $partHolder?->default_data_entry_user_id;
 
     [$route, $audience, $heading, $hint, $placeholder, $defaultLabel, $defaultClass, $icon] = match ($kind) {
         'return' => [
@@ -85,10 +90,8 @@
             'Data Entry',
             'Leave a comment for Data Entry',
             $forAssignee
-                ? 'Posted to the RFQ\'s comments under '.$forAssignee->name.'\'s name. '.($isSplit ? 'The RFQ only hands off to Data Entry once every part has been completed.' : 'The RFQ hands off to Data Entry.')
-                : ($isSplit
-                    ? 'Posted to the RFQ\'s comments. The RFQ only hands off to Data Entry once every part has been completed.'
-                    : 'Posted to the RFQ\'s comments as you hand it off to Data Entry.'),
+                ? 'Posted to the RFQ\'s comments under '.$forAssignee->name.'\'s name. Pick someone in Data Entry for it, or leave it with anyone there.'
+                : 'Posted to the RFQ\'s comments as you hand it off. Pick someone in Data Entry for it, or leave it with anyone there.',
             $forAssignee ? 'What was done, and is there anything Data Entry should know?' : 'What did you do, and is there anything Data Entry should know?',
             'Assign to Data Entry',
             'btn btn-sm btn-success',
@@ -107,6 +110,7 @@
         data-rfq-number="{{ $rfq->partNumberLabel($part) }}"
         data-subject="{{ $rfq->subject }}"
         data-items="{{ $kind === 'data_entry' ? $rfq->number_of_items : '' }}"
+        data-de-assignee="{{ $kind === 'sourcing' ? $deAssignee : '' }}"
         data-who="{{ $who ?? $forAssignee?->name ?? '' }}"
         data-audience="{{ $audience }}"
         data-heading="{{ $heading }}"

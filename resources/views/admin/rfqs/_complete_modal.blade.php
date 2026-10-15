@@ -6,7 +6,8 @@
     _complete_button.blade.php). It asks for a comment for whoever's next in
     line, posted to the RFQ's thread along with the action — there's no
     separate comment box in the quick-detail modal — and, for Data Entry's
-    Send to Finalize, how many entries they made. Admin also gets a "Done by"
+    Send to Finalize, how many entries they made; for Assign to Data Entry, whom
+    there it's for. Admin also gets a "Done by"
     here — Data Entry's members for Data Entry's actions, the part's assigned
     member for a Sourcing Mark Complete. See RfqController::completeSourcing(),
     completeDataEntry() and returnSourcing().
@@ -53,6 +54,44 @@
                     <div class="form-text" id="complete-entries-hint">How many entries you made on this part.</div>
                     <div class="text-danger small mt-1 d-none" id="complete-entries-error" role="alert"></div>
                 </div>
+
+                {{-- Assign to Data Entry: whom there it's for — someone by name, who
+                     alone sees and starts it and is told; or anyone there. Each
+                     with what's already theirs. Shown, and sent, for that action
+                     alone (admin.js). See RfqController::completeSourcing(). --}}
+                @if (auth()->user()->hasAnyRole(['Sourcing', 'Admin']))
+                    @php
+                        $dataEntryPeople = \App\Models\User::query()->holdingRole('Data Entry')->orderBy('name')->get();
+                        $waitingFor = \Illuminate\Support\Facades\DB::table('rfq_user')
+                            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+                            ->where('rfqs.status', 'Pending')
+                            ->whereNull('rfq_user.status')
+                            ->whereNotNull('rfq_user.completed_at')
+                            ->whereNull('rfq_user.data_entry_completed_at')
+                            ->whereNull('rfq_user.data_entry_started_at')
+                            ->whereNotNull('rfq_user.data_entry_assigned_to')
+                            ->groupBy('rfq_user.data_entry_assigned_to')
+                            ->selectRaw('rfq_user.data_entry_assigned_to as person, count(*) as total')
+                            ->pluck('total', 'person');
+                        $runningFor = \App\Models\RfqStep::query()->where('step', 'data_entry')->whereNull('ended_at')->pluck('worked_by')->countBy();
+                    @endphp
+                    <div class="mb-3 d-none" id="complete-data-entry">
+                        <label class="form-label" for="complete-data-entry-select">Data Entry person</label>
+                        <select name="data_entry_user_id" id="complete-data-entry-select" class="form-select" disabled>
+                            <option value="">Anyone in Data Entry — whoever starts it first</option>
+                            @foreach ($dataEntryPeople as $person)
+                                @php
+                                    $load = collect([
+                                        ($waitingFor[$person->id] ?? 0) > 0 ? $waitingFor[$person->id].' waiting' : null,
+                                        ($runningFor[$person->id] ?? 0) > 0 ? 'on a part now' : null,
+                                    ])->filter()->join(' · ');
+                                @endphp
+                                <option value="{{ $person->id }}">{{ $person->name }}{{ $load !== '' ? ' — '.$load : ' — free' }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">Someone by name sees it on their list, gets an alert, and is the one to start it.</div>
+                    </div>
+                @endif
 
                 <label class="form-label" for="complete-comment" id="complete-label">Comment</label>
                 <textarea name="comment" id="complete-comment" rows="4" maxlength="2000" class="form-control"></textarea>

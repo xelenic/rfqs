@@ -14,7 +14,9 @@
     $attendance (null while attendance isn't kept, or not tracked),
     $workingWeek and $weekSource (the week their time counts in today, and
     where it's from), $ownHours (their own WorkingSchedule, or null),
-    $fallbackHours (what they'd work without it, in words).
+    $fallbackHours (what they'd work without it, in words), $dataEntryPeople
+    (for an Admin on a Sourcing member's page: who in Data Entry they can be
+    given — empty otherwise).
 --}}
 @extends('layouts.app')
 
@@ -202,6 +204,10 @@
                                 <span class="text-muted-soft">None yet</span>
                             @endif
                         </dd>
+                        @if ($user->defaultForSourcing->isNotEmpty())
+                            <dt>Usual Data Entry person for</dt>
+                            <dd>{{ $user->defaultForSourcing->pluck('name')->join(', ') }}</dd>
+                        @endif
                         @if ($isTracked)
                             <dt>In their hands</dt>
                             <dd>{{ $partsInHand->count() }} {{ \Illuminate\Support\Str::plural('part', $partsInHand->count()) }}</dd>
@@ -211,6 +217,42 @@
                     </dl>
                 </div>
             </div>
+
+            {{-- A Sourcing member's usual person in Data Entry: whom their
+                 "Assign to Data Entry" picks to begin with (they can pick
+                 someone else). An Admin sets it. --}}
+            @if ($user->hasRole('Sourcing'))
+                <div class="card mb-4" id="user-default-data-entry">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <i class="bi bi-person-check"></i> Data Entry person
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted-soft">
+                            When {{ $user->name }} assigns a part to Data Entry, this person is picked to begin with — they can still pick someone else, or leave it with anyone there.
+                        </p>
+                        @if (auth()->user()->hasRole('Admin'))
+                            <form method="POST" action="{{ route('admin.users.default-data-entry', $user) }}" class="d-flex flex-wrap align-items-start gap-2">
+                                @csrf
+                                @method('PATCH')
+                                <div style="min-width: 280px;">
+                                    <select name="data_entry_user_id" class="form-select @error('data_entry_user_id', 'default_data_entry') is-invalid @enderror" aria-label="Data Entry person">
+                                        <option value="">Anyone in Data Entry</option>
+                                        @foreach ($dataEntryPeople as $person)
+                                            <option value="{{ $person->id }}" @selected((int) $user->default_data_entry_user_id === $person->id)>{{ $person->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('data_entry_user_id', 'default_data_entry')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save</button>
+                            </form>
+                        @else
+                            <p class="mb-0 fw-semibold">{{ $user->defaultDataEntryUser?->name ?? 'Anyone in Data Entry' }}</p>
+                        @endif
+                    </div>
+                </div>
+            @endif
         </div>
 
         {{-- The parts in their hands now. --}}
