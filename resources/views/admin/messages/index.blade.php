@@ -16,7 +16,7 @@
                 $roleNames = $other->roles->pluck('name')->implode(', ');
             @endphp
             <a href="{{ route('admin.messages.show', $other) }}" class="conversation-row {{ $unreadCount > 0 ? 'is-unread' : '' }}">
-                <span class="assignee-avatar conversation-avatar">{{ strtoupper(substr($other->name, 0, 1)) }}</span>
+                <x-avatar :user="$other" class="assignee-avatar conversation-avatar" />
                 <span class="conversation-body">
                     <span class="conversation-top">
                         <span class="conversation-name">{{ $other->name }}</span>

@@ -164,7 +164,7 @@
                     @include('layouts._notification_bell')
                     <div class="dropdown">
                         <button class="user-menu-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="user-avatar">{{ strtoupper(substr(auth()->user()->name ?? '?', 0, 1)) }}</span>
+                            <x-avatar :user="auth()->user()" class="user-avatar" />
                             <span class="d-none d-sm-inline">{{ auth()->user()->name ?? 'Account' }}</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">

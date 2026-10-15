@@ -33,7 +33,7 @@
 
                 @if ($assignee)
                     <span class="rfq-part-who">
-                        <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
+                        <x-avatar :user="$assignee" class="assignee-avatar" />
                         <span>
                             <span class="rfq-part-user">{{ $assignee->name }}</span>
                             <span class="assignee-email text-muted-soft d-block">{{ $assignee->email }}</span>

@@ -1276,7 +1276,7 @@
                             @php $assignee = $part['assignee']; @endphp
                             @if ($assignee)
                                 <div class="d-flex align-items-center gap-2 mb-2 {{ ($restrictSourcingView && $assignee->id !== auth()->id()) ? 'rfq-blurred' : '' }}">
-                                    <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
+                                    <x-avatar :user="$assignee" class="assignee-avatar" />
                                     <div class="flex-grow-1">
                                         <div class="fw-semibold small">{{ $assignee->name }}</div>
                                         <div class="text-muted-soft assignee-email">{{ $assignee->email }}</div>

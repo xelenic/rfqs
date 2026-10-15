@@ -70,7 +70,7 @@
         @if ($entry['type'] === 'comment')
             @php $comment = $entry['comment']; @endphp
             <div class="rfq-comment">
-                <span class="assignee-avatar">{{ strtoupper(substr($comment->author->name ?? '?', 0, 1)) }}</span>
+                <x-avatar :user="$comment->author" class="assignee-avatar" />
                 <div class="rfq-comment-body">
                     <div class="rfq-comment-meta">
                         @include('admin.rfqs._comment_author', ['author' => $comment->author])

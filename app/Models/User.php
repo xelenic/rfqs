@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -44,6 +45,61 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     public const THEMES = ['light' => 'Light', 'dark' => 'Dark'];
+
+    /**
+     * Where profile photos are kept — the private disk, served only through
+     * UserPhotoController::show() — and what one can be: a photo (no SVG, it
+     * can carry script) of up to AVATAR_MAX_KILOBYTES. The browser squares
+     * and shrinks it before it's sent (admin.js), so most are small.
+     */
+    public const AVATAR_DISK = 'local';
+
+    /**
+     * @var array<int, string>
+     */
+    public const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+    public const AVATAR_MAX_KILOBYTES = 5120;
+
+    protected static function booted(): void
+    {
+        // Their photo goes with them.
+        static::deleted(function (self $user) {
+            if ($user->avatar_path !== null) {
+                Storage::disk(self::AVATAR_DISK)->delete($user->avatar_path);
+            }
+        });
+    }
+
+    /**
+     * Where their profile photo is shown from — a new address each time it
+     * changes, so a browser never keeps showing the old one. Null without one.
+     */
+    public function avatarUrl(): ?string
+    {
+        return $this->avatar_path === null
+            ? null
+            : route('admin.users.photo', ['user' => $this->id, 'v' => substr(sha1($this->avatar_path), 0, 10)]);
+    }
+
+    /**
+     * The letter that stands in for them without a photo.
+     */
+    public function initial(): string
+    {
+        return strtoupper(substr($this->name ?? '?', 0, 1));
+    }
+
+    /**
+     * Whether this person can change $person's photo: their own, always;
+     * someone else's only as one who changes people's details
+     * (USER_DETAILS_ROLES, with users.edit) — and an Admin's only as an Admin.
+     */
+    public function canChangePhotoOf(self $person): bool
+    {
+        return $this->is($person)
+            || ($this->canChangeUserDetails() && $this->can('users.edit') && ($this->hasRole('Admin') || ! $person->hasRole('Admin')));
+    }
 
     /**
      * The panel's theme for this person — one of THEMES.

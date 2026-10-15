@@ -12,3 +12,4 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/admin/rfqs/** | .ai/rules/rfqs.md |
 | routes/console.php | .ai/rules/routes.md |
 | resources/views/admin/settings/** | .ai/rules/settings.md |
+| resources/views/** | .ai/rules/views.md |

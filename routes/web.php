@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\TimeSpentReportController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\UserPhotoController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SetPasswordController;
 use App\Http\Middleware\CaptureLiveVersion;
@@ -68,6 +69,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');
     Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
+    // Profile photos: seen by anyone signed in; changed by the person, or whoever keeps people's details.
+    Route::get('users/{user}/photo', [UserPhotoController::class, 'show'])->name('users.photo');
+    Route::post('users/{user}/photo', [UserPhotoController::class, 'update'])->name('users.photo.update');
+    Route::delete('users/{user}/photo', [UserPhotoController::class, 'destroy'])->name('users.photo.destroy');
     Route::patch('roles/{role}/toggle', [RoleController::class, 'toggleStatus'])->name('roles.toggle');
     Route::resource('roles', RoleController::class)->except('show');
     Route::resource('permissions', PermissionController::class)->except('show');

@@ -11,7 +11,7 @@
 
     <div class="card message-thread">
         <div class="card-header d-flex align-items-center gap-3">
-            <span class="assignee-avatar conversation-avatar">{{ strtoupper(substr($other->name, 0, 1)) }}</span>
+            <x-avatar :user="$other" class="assignee-avatar conversation-avatar" />
             <div>
                 <div class="fw-bold">{{ $other->name }}
                     @foreach ($other->roles as $role)

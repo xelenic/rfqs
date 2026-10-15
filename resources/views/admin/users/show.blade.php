@@ -1,8 +1,9 @@
 {{--
     One person's page, from the Users list (UserController::show()): who they
-    are, with the list's own actions — message them, a set-password link,
-    Edit; their working hours and extra hours, on those tabs — each coming
-    back here; then a tab each for their RFQ work in numbers and details
+    are and their photo, with the list's own actions — message them, a
+    set-password link, Edit, their photo changed or removed; their working
+    hours and extra hours, on those tabs — each coming back here; then a tab
+    each for their RFQ work in numbers and details
     (Overview), the parts in their hands now, what they've done lately, the
     week their time counts in, and, for the people whose time is tracked, the
     last two weeks' attendance and their extra hours. An RFQ links to its
@@ -45,7 +46,7 @@
 
     <div class="card mb-4">
         <div class="card-body user-profile">
-            <span class="settings-avatar user-profile-avatar">{{ strtoupper(substr($user->name, 0, 1)) }}</span>
+            @include('admin.users._photo', ['person' => $user, 'returnTo' => 'show', 'avatarClass' => 'settings-avatar user-profile-avatar'])
             <div class="user-profile-who">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <h2 class="user-profile-name">{{ $user->name }}</h2>
@@ -64,6 +65,9 @@
                         <span class="badge badge-soft-secondary">No role</span>
                     @endforelse
                 </div>
+                @error('photo', 'photo')
+                    <div class="text-danger small mt-2">{{ $message }}</div>
+                @enderror
             </div>
 
             <div class="user-profile-actions">
@@ -80,6 +84,16 @@
                         <input type="hidden" name="return_to" value="show">
                         <button type="submit" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-envelope"></i> Send password link
+                        </button>
+                    </form>
+                @endif
+                @if ($user->avatar_path && auth()->user()->canChangePhotoOf($user))
+                    <form action="{{ route('admin.users.photo.destroy', $user) }}" method="POST" class="d-inline"
+                          data-confirm="Remove {{ $user->name }}'s photo? Their initial shows instead.">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-person-x"></i> Remove photo
                         </button>
                     </form>
                 @endif

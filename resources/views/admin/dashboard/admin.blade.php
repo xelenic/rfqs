@@ -29,7 +29,6 @@
             'running' => ['In progress', 'badge-soft-info', 'tone-info'],
         ];
         $stateBadges = ['success' => 'badge-soft-success', 'warning' => 'badge-soft-warning', 'danger' => 'badge-soft-danger', 'secondary' => 'badge-soft-secondary', 'info' => 'badge-soft-info'];
-        $initial = fn (?string $name) => strtoupper(substr($name ?? '?', 0, 1));
         $openTotal = array_sum($overview['priorities']);
         $busiestStage = max(1, collect($overview['pipeline'])->max('count'));
     @endphp
@@ -125,7 +124,7 @@
                                         <td>
                                             @if ($task['worker'])
                                                 <a href="{{ route('admin.users.show', $task['worker']) }}" class="dash-person">
-                                                    <span class="dash-avatar">{{ $initial($task['worker']->name) }}</span>
+                                                    <x-avatar :user="$task['worker']" class="dash-avatar" />
                                                     <span class="text-truncate">{{ $task['worker']->name }}</span>
                                                 </a>
                                             @else
@@ -216,7 +215,7 @@
                                     <tr>
                                         <td>
                                             <a href="{{ route('admin.users.show', $row['user']) }}" class="dash-person">
-                                                <span class="dash-avatar">{{ $initial($row['user']->name) }}</span>
+                                                <x-avatar :user="$row['user']" class="dash-avatar" />
                                                 <span class="min-w-0">
                                                     <span class="d-block text-truncate fw-semibold">{{ $row['user']->name }}</span>
                                                     <span class="d-block small text-muted-soft">{{ $row['role'] }}</span>
@@ -285,7 +284,7 @@
                         @forelse ($floor['people'] as $person)
                             <li>
                                 <a href="{{ route('admin.users.show', $person['user']) }}" class="dash-person">
-                                    <span class="dash-avatar">{{ $initial($person['user']->name) }}</span>
+                                    <x-avatar :user="$person['user']" class="dash-avatar" />
                                     <span class="text-truncate">{{ $person['user']->name }}</span>
                                 </a>
                                 <span class="text-end">

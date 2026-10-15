@@ -85,8 +85,9 @@
             <div class="card mb-4">
                 <div class="card-header">Profile</div>
                 <div class="card-body">
+                    {{-- Their photo — anyone changes their own — beside who they are. --}}
                     <div class="settings-identity mb-4">
-                        <span class="settings-avatar">{{ strtoupper(substr($user->name, 0, 1)) }}</span>
+                        @include('admin.users._photo', ['person' => $user, 'returnTo' => 'settings', 'avatarClass' => 'settings-avatar settings-photo', 'inputId' => 'settings-photo-input'])
                         <div>
                             <div class="fw-semibold">{{ $user->name }}</div>
                             <div class="d-flex flex-wrap gap-1 mt-1">
@@ -96,6 +97,24 @@
                                     <span class="text-muted-soft small">No role yet</span>
                                 @endforelse
                             </div>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                <label for="settings-photo-input" class="btn btn-sm btn-outline-secondary mb-0">
+                                    <i class="bi bi-camera"></i> {{ $user->avatar_path ? 'Change photo' : 'Upload photo' }}
+                                </label>
+                                @if ($user->avatar_path)
+                                    <form method="POST" action="{{ route('admin.users.photo.destroy', $user) }}" data-confirm="Remove your photo? Your initial shows instead.">
+                                        @csrf
+                                        @method('DELETE')
+                                        <input type="hidden" name="return_to" value="settings">
+                                        <button type="submit" class="btn btn-sm btn-link text-danger p-0">Remove</button>
+                                    </form>
+                                @endif
+                            </div>
+                            @error('photo', 'photo')
+                                <div class="text-danger small mt-1">{{ $message }}</div>
+                            @else
+                                <div class="form-text mt-1">JPG, PNG, WebP or GIF, up to {{ \App\Models\User::AVATAR_MAX_KILOBYTES / 1024 }} MB — it's squared and shrunk for you.</div>
+                            @enderror
                         </div>
                     </div>
 

@@ -1022,7 +1022,17 @@ function rfqmsBoot() {
         function fill(trigger) {
             var data = trigger.dataset;
 
-            els.avatar.textContent = (data.name || '?').charAt(0).toUpperCase();
+            // Their photo, or their initial without one.
+            els.avatar.textContent = '';
+            els.avatar.classList.toggle('has-photo', !!data.photo);
+            if (data.photo) {
+                var photo = document.createElement('img');
+                photo.src = data.photo;
+                photo.alt = '';
+                els.avatar.appendChild(photo);
+            } else {
+                els.avatar.textContent = (data.name || '?').charAt(0).toUpperCase();
+            }
             els.name.textContent = data.name;
             els.roles.innerHTML = '';
             (data.roles ? data.roles.split('|') : []).forEach(function (role) {
@@ -2218,6 +2228,80 @@ function rfqmsBoot() {
 
 document.addEventListener('DOMContentLoaded', rfqmsBoot);
 window.rfqmsRebind = rfqmsBoot;
+
+// A profile photo picked (users/_photo.blade.php): squared from its middle
+// and shrunk to PHOTO_SIZE in the browser — which also turns it the right
+// way up and drops what the camera wrote into it, like where it was taken —
+// shown in the circle at once, and sent. If the browser can't do that, the
+// photo goes as it is and the server checks it all the same.
+(function () {
+    var PHOTO_SIZE = 512;
+
+    function squared(file) {
+        return new Promise(function (resolve) {
+            if (!window.URL || !window.DataTransfer || !/^image\//.test(file.type)) {
+                resolve(null);
+                return;
+            }
+
+            var source = URL.createObjectURL(file);
+            var image = new Image();
+            image.onload = function () {
+                var side = Math.min(image.naturalWidth, image.naturalHeight);
+                var size = Math.min(PHOTO_SIZE, side);
+                var canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+
+                var context = canvas.getContext('2d');
+                // A see-through photo goes on white, as JPEG has no see-through.
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, size, size);
+                context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+                URL.revokeObjectURL(source);
+
+                canvas.toBlob(function (blob) {
+                    resolve(blob ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : null);
+                }, 'image/jpeg', 0.88);
+            };
+            image.onerror = function () {
+                URL.revokeObjectURL(source);
+                resolve(null);
+            };
+            image.src = source;
+        });
+    }
+
+    document.addEventListener('change', function (event) {
+        var input = event.target;
+        if (!input.classList || !input.classList.contains('js-photo-input') || !input.files.length) return;
+
+        var form = input.closest('.js-photo-form');
+        var holder = input.closest('.photo-edit');
+
+        squared(input.files[0]).then(function (photo) {
+            if (photo) {
+                var files = new DataTransfer();
+                files.items.add(photo);
+                input.files = files.files;
+            }
+
+            // Shown straight away, while it's sent.
+            var avatar = holder && holder.querySelector('.has-photo, [class*="avatar"]');
+            if (avatar) {
+                avatar.classList.add('has-photo');
+                avatar.innerHTML = '';
+                var preview = document.createElement('img');
+                preview.src = URL.createObjectURL(input.files[0]);
+                preview.alt = '';
+                avatar.appendChild(preview);
+            }
+            if (holder) holder.classList.add('is-uploading');
+
+            form.submit();
+        });
+    });
+})();
 
 // RFQ show page — Progress chart, rendered with Apache ECharts (tree
 // series) rather than hand-rolled CSS, for real connector-line geometry

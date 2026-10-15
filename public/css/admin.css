@@ -5911,3 +5911,101 @@ a.critical-row:hover {
     animation: none;
   }
 }
+
+/* ---- Profile photos (components/avatar, users/_photo) ----------------------- */
+
+/* Any avatar circle with a photo in it: the photo fills it. */
+.has-photo {
+  padding: 0;
+  overflow: hidden;
+  background: var(--rfq-surface);
+}
+
+.has-photo > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.settings-photo {
+  width: 72px;
+  height: 72px;
+  font-size: 1.6rem;
+}
+
+.photo-edit {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.photo-edit-button {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid var(--rfq-surface);
+  background: var(--rfq-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.18);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.photo-edit-button:hover {
+  background: var(--rfq-primary-dark);
+  transform: scale(1.08);
+}
+
+.photo-edit-button:focus-within {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+/* The file box itself stays out of sight; the camera opens it. */
+.photo-edit-button input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* While a new photo is being sent. */
+.photo-edit.is-uploading > :first-child {
+  opacity: 0.55;
+}
+
+.photo-edit.is-uploading .photo-edit-button {
+  pointer-events: none;
+}
+
+.photo-edit.is-uploading .photo-edit-button .bi::before {
+  content: "\F130";
+  display: inline-block;
+  animation: photo-spin 0.9s linear infinite;
+}
+
+@keyframes photo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-edit-button,
+  .photo-edit.is-uploading .photo-edit-button .bi::before {
+    transition: none;
+    animation: none;
+  }
+}

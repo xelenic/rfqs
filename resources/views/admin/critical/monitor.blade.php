@@ -11,7 +11,6 @@
 @php
     $timezone = \App\Models\Setting::timezone();
     $duration = fn (int $seconds) => \App\Models\Setting::durationLabel($seconds);
-    $initial = fn (?string $name) => strtoupper(substr($name ?? '?', 0, 1));
     $returnsTotal = $returns->sum('count');
     $mostOverdue = $overdue->take(8);
     $tiles = [

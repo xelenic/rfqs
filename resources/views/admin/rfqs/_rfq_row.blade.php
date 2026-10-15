@@ -112,7 +112,7 @@
             <span class="assignee-cluster {{ $restrictAssignment ? 'rfq-blurred' : '' }}"
                   title="{{ $restrictAssignment ? 'Restricted for your role' : 'Assigned: '.$assigneeUsers->pluck('name')->implode(', ') }}">
                 @foreach ($assigneeUsers->take(3) as $assignee)
-                    <span class="assignee-avatar">{{ strtoupper(substr($assignee->name, 0, 1)) }}</span>
+                    <x-avatar :user="$assignee" class="assignee-avatar" />
                 @endforeach
                 @if ($assigneeUsers->count() > 3)
                     <span class="assignee-avatar assignee-avatar-more">+{{ $assigneeUsers->count() - 3 }}</span>
