@@ -1526,15 +1526,14 @@ function rfqmsBoot() {
         });
     });
 
-    // Data Entry's Start is on only in working hours — not at lunch, nor out
-    // of hours — and never while they've another part running
-    // (data-busy-hint): checked against the off-hours windows the page brought
-    // (#off-hours: [from, to, why], Unix seconds) every half minute, so it
-    // turns on and off as they come and go. Hovering (or focusing) it says
-    // why it's off and when it's back — from a wrapper, since a disabled
-    // button takes no hover. One delegated tooltip on the document, made
-    // once, covers every Start however often the page is swapped. The server
-    // checks again on Start.
+    // Data Entry's Start is on at any hour, but off while they've another
+    // part running (data-busy-hint). At lunch or out of hours — checked
+    // against the off-hours windows the page brought (#off-hours: [from, to,
+    // why], Unix seconds) every half minute — hovering (or focusing) it says
+    // their time won't count till working hours are back, and when. From a
+    // wrapper, since a disabled button takes no hover. One delegated tooltip
+    // on the document, made once, covers every Start however often the page
+    // is swapped. The server checks the running part again on Start.
     (function () {
         if (!window.__rfqmsStartHints && window.bootstrap) {
             window.__rfqmsStartHints = new bootstrap.Tooltip(document.body, {
@@ -1559,13 +1558,16 @@ function rfqmsBoot() {
             var off = windows.find(function (span) { return now >= span[0] && now < span[1]; });
 
             document.querySelectorAll('.js-start-hint').forEach(function (wrapper) {
-                // One running part elsewhere keeps it off whatever the hour.
+                // One running part elsewhere keeps it off whatever the hour;
+                // out of hours it's on, saying time won't count yet.
                 var busy = wrapper.dataset.busyHint;
-                var hint = busy || (off ? off[2] : wrapper.dataset.onHint);
-                var button = wrapper.querySelector('.js-working-hours-only');
+                var hint = busy || (off
+                    ? 'Start \u2014 outside working hours, your time on it counts once they\'re back. ' + off[2]
+                    : wrapper.dataset.onHint);
+                var button = wrapper.querySelector('.js-start-button');
 
-                if (button) button.disabled = !!(busy || off);
-                wrapper.classList.toggle('is-off', !!(busy || off));
+                if (button) button.disabled = !!busy;
+                wrapper.classList.toggle('is-off', !!busy);
 
                 if (wrapper.dataset.startHint === hint) return;
                 wrapper.dataset.startHint = hint;

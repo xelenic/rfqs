@@ -124,7 +124,8 @@ it('lets only Senior Operations and Admin stop or resume an RFQ', function () {
     foreach (['Business Development', 'Sourcing', 'Data Entry', 'General Manager'] as $role) {
         $user = userWithRole($role);
         changeRfqStatus($user, $rfq, ['status' => 'On Hold', 'reason' => 'x'])->assertForbidden();
-        test()->actingAs($user)->get(route('admin.rfqs.show', $rfq))->assertOk()->assertDontSee('Put on hold');
+        // Data Entry doesn't see an RFQ Sourcing hasn't given them at all.
+        test()->actingAs($user)->get(route('admin.rfqs.show', $rfq))->assertStatus($role === 'Data Entry' ? 403 : 200)->assertDontSee('Put on hold');
     }
 
     // Admin can, as one of Senior Operations.

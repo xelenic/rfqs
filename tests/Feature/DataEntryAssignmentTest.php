@@ -129,8 +129,8 @@ it('lets only whoever it was given to start it', function () {
     ['rfq' => $rfq, 'riley' => $riley, 'morgan' => $morgan, 'sam' => $sam] = withSourcingForDe();
     assignToDe($rfq, $riley, $morgan);
 
-    test()->actingAs($sam)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])
-        ->assertSessionHas('error', "This part is assigned to {$morgan->name} in Data Entry — it's theirs to start.");
+    // Not Sam's: the RFQ isn't one of theirs at all.
+    test()->actingAs($sam)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])->assertForbidden();
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_started_at)->toBeNull();
 
     test()->actingAs($morgan)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])

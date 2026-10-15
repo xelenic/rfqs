@@ -408,9 +408,8 @@ class Rfq extends Model
     public function canBeEditedBy(User $user): bool
     {
         return match (true) {
-            ! $this->isVisibleTo($user) => false,
             $user->hasRole('Admin') => true,
-            $user->hasAnyRole(['Senior Operations', 'Business Development']) => $this->status !== 'Completed',
+            $user->hasAnyRole(['Senior Operations', 'Business Development']) => $this->status !== 'Completed' && $this->isVisibleTo($user),
             default => false,
         };
     }
@@ -419,11 +418,54 @@ class Rfq extends Model
      * Whether $user may see this RFQ at all: anyone may, but for someone who
      * sees only the RFQs they created (User::seesOnlyOwnRfqs() — Business
      * Development), who may see their own — and any whose creator is no
-     * longer on record (see scopeOwnedBy()).
+     * longer on record (see scopeOwnedBy()) — and for someone who sees only
+     * what Sourcing gave them (User::seesOnlyAssignedRfqs() — Data Entry),
+     * who may see those (scopeVisibleTo()).
      */
     public function isVisibleTo(User $user): bool
     {
-        return ! $user->seesOnlyOwnRfqs() || $this->created_by === null || (int) $this->created_by === $user->id;
+        return match (true) {
+            $user->seesOnlyOwnRfqs() => $this->created_by === null || (int) $this->created_by === $user->id,
+            $user->seesOnlyAssignedRfqs() => static::query()->whereKey($this->getKey())->visibleTo($user)->exists(),
+            default => true,
+        };
+    }
+
+    /**
+     * The RFQs $user may see: every one, but for someone who sees only their
+     * own (User::seesOnlyOwnRfqs() — Business Development: scopeOwnedBy()),
+     * or only what Sourcing gave them (User::seesOnlyAssignedRfqs() — Data
+     * Entry): an RFQ with a part assigned to them by name, one left with
+     * anyone in Data Entry while it's with Data Entry (the shared queue — as
+     * on their Ready list), or one they've worked on — started, sent to
+     * finalize, or a round of theirs in its history (rfq_steps), however it's
+     * gone since.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeVisibleTo(Builder $query, User $user): void
+    {
+        if ($user->seesOnlyOwnRfqs()) {
+            $query->ownedBy($user->id);
+
+            return;
+        }
+
+        if (! $user->seesOnlyAssignedRfqs()) {
+            return;
+        }
+
+        $query->where(fn (Builder $theirs) => $theirs
+            ->whereHas('assignees', fn (Builder $parts) => $parts->where(fn (Builder $part) => $part
+                ->where('rfq_user.data_entry_assigned_to', $user->id)
+                ->orWhere('rfq_user.data_entry_started_by', $user->id)
+                ->orWhere('rfq_user.data_entry_completed_by', $user->id)
+                ->orWhere(fn (Builder $forAnyone) => $forAnyone
+                    ->whereNull('rfq_user.data_entry_assigned_to')
+                    ->whereNull('rfq_user.status')
+                    ->whereNotNull('rfq_user.completed_at')
+                    ->whereNull('rfq_user.data_entry_completed_at'))))
+            ->orWhereHas('steps', fn (Builder $rounds) => $rounds->where('step', 'data_entry')->where('worked_by', $user->id)));
     }
 
     /**

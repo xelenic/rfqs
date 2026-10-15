@@ -226,9 +226,12 @@ it('shows nobody but Admin the picker, or Mark Complete on parts that are not th
     $list = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     expect($list)->toContain('id="completeModal"')->not->toContain('complete-assignee');
 
-    foreach (['Business Development', 'Senior Operations', 'Data Entry'] as $role) {
+    foreach (['Business Development', 'Senior Operations'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.rfqs.show', $rfq))->assertOk()
             ->assertDontSee('Assign P1 to Data Entry')
             ->assertDontSee('Assign P2 to Data Entry');
     }
+
+    // Data Entry doesn't see an RFQ Sourcing hasn't given them at all.
+    test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.show', $rfq))->assertForbidden();
 });

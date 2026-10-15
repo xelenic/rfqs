@@ -109,8 +109,8 @@ class RfqController extends Controller implements HasMiddleware
         // "!" escapes LIKE's own wildcards in what was typed — the same on SQLite and MySQL.
         $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
         $wc = 'upper(trim(rfqs.wc_number))';
-        // Only theirs, for whoever sees only the RFQs they created.
-        $matching = Rfq::query()->ownedBy($request->user()->ownRfqsOnlyId())->whereRaw("{$wc} like ? escape '!'", ['%'.$escaped.'%']);
+        // Only theirs, for whoever doesn't see every RFQ (Rfq::scopeVisibleTo()).
+        $matching = Rfq::query()->visibleTo($request->user())->whereRaw("{$wc} like ? escape '!'", ['%'.$escaped.'%']);
 
         return response()->json([
             'term' => $term,
@@ -281,17 +281,16 @@ class RfqController extends Controller implements HasMiddleware
                 ->when($listPriority, fn ($query, array $priorities) => $query->whereIn('rfqs.priority_level', $priorities));
         };
 
-        // Business Development sees only the RFQs they created — every list
-        // of theirs, Closed included (User::seesOnlyOwnRfqs()).
-        $ownRfqsOnly = $user->ownRfqsOnlyId();
-
-        $applyCommonFilters = function ($query) use ($status, $applySearch, $ownRfqsOnly) {
+        // Business Development sees only the RFQs they created, and Data Entry
+        // only what Sourcing gave them — every list of theirs, Closed
+        // included (Rfq::scopeVisibleTo()).
+        $applyCommonFilters = function ($query) use ($status, $applySearch, $user) {
             // The Closed list is the RFQs that have been closed and, beside
             // them, the closed parts of split RFQs still open — a part shows
             // there as soon as Business Development closes it.
             // On Hold and Cancelled list the RFQs with a part stopped on its own
             // too — see Rfq::scopeStoppedAs().
-            $query->ownedBy($ownRfqsOnly)
+            $query->visibleTo($user)
                 ->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
                 ->when(in_array($status, [Rfq::ON_HOLD, Rfq::CANCELLED], true), fn ($query) => $query->stoppedAs($status))
                 ->when($status === 'Pending', fn ($query) => $query->where('status', $status))
@@ -1404,13 +1403,13 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Data Entry's Start on a part with them: their time on it counts from
-     * now (Rfq::startDataEntryPart()). Only in working hours — not at lunch,
-     * nor out of hours (Setting::isWorkingTime()), saying why when it isn't
-     * (Setting::offHoursReason()) — and one part at a time: not while they've
-     * another running, till they send it to finalize
-     * (RfqStep::runningDataEntryOf()). Recorded as one of Data
-     * Entry — Admin can, naming who (doneBy()).
+     * Data Entry's Start on a part with them (Rfq::startDataEntryPart()) —
+     * at any hour, but their time on it only counts in working hours: started
+     * at lunch or out of hours (Setting::isWorkingTime()), it counts from when
+     * they're back, and says when (Setting::offHoursReason()). One part at a
+     * time: not while they've another running, till they send it to finalize
+     * (RfqStep::runningDataEntryOf()). Recorded as one of Data Entry — Admin
+     * can, naming who (doneBy()).
      */
     public function startDataEntry(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1441,14 +1440,14 @@ class RfqController extends Controller implements HasMiddleware
                 .$running->rfq->partNumberLabel($running->part_number).' — send it to finalize before starting another.');
         }
 
-        // Their working time — their own extra hours included.
-        if (! Setting::isWorkingTime(now(), $starter->id)) {
-            return back()->with('error', 'Start is off right now — '.(Setting::offHoursReason(now(), $starter->id) ?? 'it\'s outside working hours.'));
-        }
-
         $rfq->startDataEntryPart($part, $starter);
 
-        return back()->with('status', "Started {$rfq->partNumberLabel($part)} — your time on it is counting.");
+        // Out of their hours — their own extra hours count — it waits for them.
+        $offHours = Setting::offHoursReason(now(), $starter->id);
+
+        return back()->with('status', $offHours === null
+            ? "Started {$rfq->partNumberLabel($part)} — your time on it is counting."
+            : "Started {$rfq->partNumberLabel($part)} — outside working hours, so your time on it isn't counting yet. {$offHours}");
     }
 
     /**

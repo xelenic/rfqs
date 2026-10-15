@@ -10,8 +10,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Keeps an RFQ — its page, its photos, every action on it — from whoever
- * sees only the RFQs they created (User::seesOnlyOwnRfqs()) unless it's one
- * of theirs (Rfq::isVisibleTo()), saying so. Reads the route's bound {rfq},
+ * sees only the RFQs they created (User::seesOnlyOwnRfqs()) or only what
+ * Sourcing gave them (User::seesOnlyAssignedRfqs()) unless it's one of
+ * theirs (Rfq::isVisibleTo()), saying so. Reads the route's bound {rfq},
  * or the RFQ of its {attachment}.
  */
 class EnsureRfqIsVisible
@@ -20,12 +21,14 @@ class EnsureRfqIsVisible
     {
         $user = $request->user();
 
-        if ($user !== null && $user->seesOnlyOwnRfqs()) {
+        if ($user !== null && ! $user->seesEveryRfq()) {
             $rfq = $request->route('rfq');
             $attachment = $request->route('attachment');
             $rfq = $rfq instanceof Rfq ? $rfq : ($attachment instanceof RfqCommentAttachment ? $attachment->rfq : null);
 
-            abort_if($rfq !== null && ! $rfq->isVisibleTo($user), 403, 'This RFQ isn\'t one of yours — you can only open the RFQs you created.');
+            abort_if($rfq !== null && ! $rfq->isVisibleTo($user), 403, $user->seesOnlyOwnRfqs()
+                ? 'This RFQ isn\'t one of yours — you can only open the RFQs you created.'
+                : 'This RFQ isn\'t one of yours — you can only open the RFQs Sourcing assigned to you.');
         }
 
         return $next($request);

@@ -68,10 +68,14 @@ it('leaves everyone else\'s Closed RFQs, and Admin\'s view of Sourcing\'s, compa
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ17004']), [1 => $riley]);
     closePartThroughEveryStep($rfq, 1);
 
-    foreach (['Business Development', 'Senior Operations', 'Data Entry', 'General Manager'] as $role) {
+    foreach (['Business Development', 'Senior Operations', 'General Manager'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.rfqs.index', ['status' => 'Completed']))->assertOk()
             ->assertSee('RFQ17004');
     }
+
+    // Data Entry's are the RFQs they worked on — not this one.
+    test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Completed']))->assertOk()
+        ->assertDontSee('RFQ17004');
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Completed', 'role' => 'sourcing']))->assertOk()
         ->assertSee('RFQ17004');

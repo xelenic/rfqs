@@ -611,7 +611,8 @@ class Setting extends Model
      * day — in the working hours' time zone — window by window, each with why:
      * before the day's hours start, lunch, after they end, a day off. As
      * [from, to, why] — Unix timestamps — in order. What Data Entry's Start
-     * says when it's off, and when it's back (see offHoursReason()). With
+     * says out of hours — it still starts, but their time only counts from
+     * when working hours come back — and when that is (see offHoursReason()). With
      * $userId, in the week that counts for them (weekOn()), less their own
      * extra hours: a window they cut short says when those start.
      *
@@ -640,7 +641,7 @@ class Setting extends Model
                 $windows[] = [
                     $day->setTimeFromTimeString($hours['lunch_start'])->getTimestamp(),
                     $day->setTimeFromTimeString($hours['lunch_end'])->getTimestamp(),
-                    "It's lunch time ({$hours['lunch_start']}–{$hours['lunch_end']}). Start is back at {$hours['lunch_end']}.",
+                    "It's lunch time ({$hours['lunch_start']}–{$hours['lunch_end']}). Time counts again at {$hours['lunch_end']}.",
                 ];
             }
 
@@ -707,7 +708,8 @@ class Setting extends Model
     }
 
     /**
-     * When working time is next back after $day: the next working day's start,
+     * When working time — and so a started part's time — next counts after
+     * $day: the next working day's start,
      * in the week that counts that day ($weekOn, see weeksOf()).
      *
      * @param  Closure(string): array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $weekOn
@@ -719,11 +721,11 @@ class Setting extends Model
             $hours = $weekOn($next->toDateString())[strtolower($next->englishDayOfWeek)];
 
             if ($hours['working']) {
-                return 'Start is back '.($ahead === 1 ? 'tomorrow' : 'on '.$next->englishDayOfWeek)." at {$hours['start']}.";
+                return 'Time counts again '.($ahead === 1 ? 'tomorrow' : 'on '.$next->englishDayOfWeek)." at {$hours['start']}.";
             }
         }
 
-        return 'Start is back once there are working days in Settings.';
+        return 'Time counts again once there are working days in Settings.';
     }
 
     /**

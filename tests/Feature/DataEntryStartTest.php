@@ -48,7 +48,7 @@ it('gives Data Entry a Start on a part, not Send to Finalize, until they\'ve sta
 
     expect($row)->toContain('action="'.route('admin.rfqs.start-data-entry', $rfq).'"')
         ->toContain('data-start-hint="Start — your time on it counts from now."')
-        ->toMatch('/class="btn btn-sm btn-primary js-working-hours-only"\s*>/')
+        ->toMatch('/class="btn btn-sm btn-primary js-start-button"\s*>/')
         ->not->toContain('data-kind="data_entry"')
         // Return to Sourcing doesn't wait for it.
         ->toContain('data-kind="return"')
@@ -83,7 +83,7 @@ it('counts Data Entry\'s time from their Start, not from when Sourcing handed it
     test()->actingAs($morgan)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk();
 });
 
-it('keeps Start off at lunch, after hours and on a day off — saying why, on the page and on the server', function (string $at, string $why) {
+it('lets Data Entry start at lunch, after hours and on a day off — counting none of that time, and saying so', function (string $at, string $why) {
     $rfq = handedToDataEntry();
     test()->travelTo(startClock($at));
     $dataEntry = userWithRole('Data Entry');
@@ -92,21 +92,42 @@ it('keeps Start off at lunch, after hours and on a day off — saying why, on th
         test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent(),
         '<td class="text-nowrap">RFQ20001</td>', '</tr>'
     );
-    expect($row)->toMatch('/js-working-hours-only" disabled/')
-        ->toContain('start-hint js-start-hint is-off')
-        ->toContain('data-start-hint="'.e($why).'"');
+    expect($row)->toMatch('/js-start-button"\s*>/')
+        ->not->toContain('start-hint js-start-hint is-off')
+        ->toContain('data-start-hint="'.e("Start — outside working hours, your time on it counts once they're back. {$why}").'"');
 
     test()->actingAs($dataEntry)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])
-        ->assertSessionHas('error', "Start is off right now — {$why}");
+        ->assertSessionHas('status', "Started RFQ20001 — outside working hours, so your time on it isn't counting yet. {$why}");
 
-    expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_started_at)->toBeNull();
+    // Started, but not a second of it counted: the countdown's whole, and
+    // the time spent nothing.
+    $countdown = $rfq->refresh()->dataEntryCountdown(1);
+    expect($rfq->assigneeForPart(1)->pivot->data_entry_started_at)->not->toBeNull()
+        ->and($countdown['remaining'])->toBe($countdown['target'])
+        ->and(RfqStep::query()->where('step', 'data_entry')->sole()->workingSeconds())->toBe(0);
 })->with([
     'before hours' => ['2026-10-06 07:45', "Working hours haven't started yet — they start at 08:30."],
-    'lunch' => ['2026-10-05 13:00', "It's lunch time (12:30–13:30). Start is back at 13:30."],
-    'evening' => ['2026-10-05 18:30', 'Working hours are over for today — they ended at 17:00. Start is back tomorrow at 08:30.'],
-    'Friday evening' => ['2026-10-09 17:30', 'Working hours are over for today — they ended at 17:00. Start is back on Monday at 08:30.'],
-    'Saturday' => ['2026-10-10 10:00', 'Saturday is a day off. Start is back on Monday at 08:30.'],
+    'lunch' => ['2026-10-05 13:00', "It's lunch time (12:30–13:30). Time counts again at 13:30."],
+    'evening' => ['2026-10-05 18:30', 'Working hours are over for today — they ended at 17:00. Time counts again tomorrow at 08:30.'],
+    'Friday evening' => ['2026-10-09 17:30', 'Working hours are over for today — they ended at 17:00. Time counts again on Monday at 08:30.'],
+    'Saturday' => ['2026-10-10 10:00', 'Saturday is a day off. Time counts again on Monday at 08:30.'],
 ]);
+
+it('counts a part started in the evening only from the next morning\'s working hours', function () {
+    $rfq = handedToDataEntry();
+    $dataEntry = userWithRole('Data Entry');
+
+    test()->travelTo(startClock('2026-10-05 18:30'));
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1]);
+
+    // Tuesday 09:30: the hour since 08:30 counts, the night before doesn't.
+    test()->travelTo(startClock('2026-10-06 09:30'));
+    $step = RfqStep::query()->where('step', 'data_entry')->sole();
+
+    expect($step->workingSeconds())->toBe(3600)
+        ->and($step->elapsedSeconds())->toBe(15 * 3600)
+        ->and($rfq->refresh()->dataEntryCountdown(1)['remaining'])->toBe($rfq->dataEntryTargetSeconds(1) - 3600);
+});
 
 it('sends the off-hours windows ahead, each with why, for the page to follow without a reload', function () {
     Setting::putWorkingHours(array_merge(Setting::workingHours(), [
@@ -122,9 +143,9 @@ it('sends the off-hours windows ahead, each with why, for the page to follow wit
 
     // Sunday's off all day; Monday — no lunch now — only before and after.
     expect($windows)->toBe([
-        ['Sun 00:00', 'Mon 00:00', 'Sunday is a day off. Start is back tomorrow at 09:00.'],
+        ['Sun 00:00', 'Mon 00:00', 'Sunday is a day off. Time counts again tomorrow at 09:00.'],
         ['Mon 00:00', 'Mon 09:00', "Working hours haven't started yet — they start at 09:00."],
-        ['Mon 16:00', 'Tue 00:00', 'Working hours are over for today — they ended at 16:00. Start is back tomorrow at 08:30.'],
+        ['Mon 16:00', 'Tue 00:00', 'Working hours are over for today — they ended at 16:00. Time counts again tomorrow at 08:30.'],
     ])
         ->and(Setting::offHoursReason(startClock('2026-10-05 12:45')))->toBeNull()
         ->and(Setting::offHoursReason(startClock('2026-10-05 16:00')))->toStartWith('Working hours are over for today');
@@ -158,9 +179,9 @@ it('starts a part only once, only while it\'s with Data Entry, and only for Data
 
     test()->actingAs($morgan)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])->assertStatus(422);
 
-    // Not one still with Sourcing.
+    // Not one still with Sourcing — not given to Data Entry, so not theirs to see.
     $withSourcing = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
-    test()->actingAs($morgan)->patch(route('admin.rfqs.start-data-entry', $withSourcing), ['part' => 1])->assertStatus(422);
+    test()->actingAs($morgan)->patch(route('admin.rfqs.start-data-entry', $withSourcing), ['part' => 1])->assertForbidden();
 });
 
 // ---- One part at a time ---------------------------------------------------------
@@ -193,7 +214,7 @@ it('lets Data Entry start one part at a time — no other till that one\'s sent 
         test()->actingAs($morgan)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent(),
         '<td class="text-nowrap">RFQ20002</td>', '</tr>'
     );
-    expect($row)->toMatch('/js-working-hours-only" disabled/')
+    expect($row)->toMatch('/js-start-button" disabled/')
         ->toContain('start-hint js-start-hint is-off')
         ->toContain('data-busy-hint="'.$busy.'"')
         ->toContain('data-start-hint="'.$busy.'"');

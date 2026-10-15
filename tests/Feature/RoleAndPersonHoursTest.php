@@ -103,7 +103,7 @@ it('counts a role\'s people in its own hours, and everyone else in the company\'
         ->and(Setting::isWorkingTime(hoursClock('2026-10-05 07:30'), $morgan->id))->toBeTrue()
         ->and(Setting::isWorkingTime(hoursClock('2026-10-05 07:30'), $riley->id))->toBeFalse()
         ->and(Setting::offHoursReason(hoursClock('2026-10-05 16:30'), $morgan->id))
-        ->toBe('Working hours are over for today — they ended at 16:00. Start is back tomorrow at 07:00.');
+        ->toBe('Working hours are over for today — they ended at 16:00. Time counts again tomorrow at 07:00.');
 });
 
 it('works a role\'s own days off and working days too', function () {
@@ -112,7 +112,7 @@ it('works a role\'s own days off and working days too', function () {
 
     expect(Setting::isWorkingTime(hoursClock('2026-10-10 10:00'), $morgan->id))->toBeTrue()
         ->and(Setting::isWorkingTime(hoursClock('2026-10-10 10:00')))->toBeFalse()
-        ->and(Setting::offHoursReason(hoursClock('2026-10-05 10:00'), $morgan->id))->toBe('Monday is a day off. Start is back tomorrow at 08:30.');
+        ->and(Setting::offHoursReason(hoursClock('2026-10-05 10:00'), $morgan->id))->toBe('Monday is a day off. Time counts again tomorrow at 08:30.');
 });
 
 it('puts someone\'s own hours before their role\'s, with their extra hours still on top', function () {

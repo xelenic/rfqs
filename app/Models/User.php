@@ -199,6 +199,28 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person sees only the RFQs Sourcing gave them (since
+     * 2026-10-15): someone whose one part in the workflow is Data Entry —
+     * every list, Closed included, the WC search, and each RFQ's own page and
+     * actions (Rfq::scopeVisibleTo(), Rfq::isVisibleTo(), EnsureRfqIsVisible).
+     * Holding any other workflow role, or Admin, they see what that role does.
+     */
+    public function seesOnlyAssignedRfqs(): bool
+    {
+        return $this->hasRole('Data Entry')
+            && ! $this->hasAnyRole(['Admin', ...array_diff(Rfq::WORKFLOW_ROLES, ['Data Entry'])]);
+    }
+
+    /**
+     * Whether this person sees every RFQ — not just their own
+     * (seesOnlyOwnRfqs()) or what was given them (seesOnlyAssignedRfqs()).
+     */
+    public function seesEveryRfq(): bool
+    {
+        return ! $this->seesOnlyOwnRfqs() && ! $this->seesOnlyAssignedRfqs();
+    }
+
+    /**
      * Whose RFQs this person sees, as the creator to narrow a query to
      * (Rfq::scopeCreatedBy()) — theirs, if they see only their own
      * (seesOnlyOwnRfqs()); null, everyone's.

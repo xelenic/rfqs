@@ -101,7 +101,7 @@ it('times someone\'s stretches by their own hours — and work in them isn\'t ou
         ->and($other->isOutOfHoursWork())->toBeTrue();
 });
 
-it('lets Data Entry start in their own extra hours — and says when those start', function () {
+it('counts Data Entry\'s time in their own extra hours — and says when those start', function () {
     $nadeesha = userWithRole('Data Entry');
     $chamath = userWithRole('Data Entry');
     worksExtra($nadeesha);
@@ -116,10 +116,13 @@ it('lets Data Entry start in their own extra hours — and says when those start
         ->and(Setting::offHoursReason(now()))->toStartWith('Working hours are over for today');
 
     test()->travelTo(extraClock('2026-10-05 19:30'));
-    $row = Str::betweenFirst(test()->actingAs($nadeesha)->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent(), '<td class="text-nowrap">RFQ70001</td>', '</tr>');
-    expect($row)->not->toMatch('/js-working-hours-only" disabled/');
+    $rowFor = fn ($viewer) => Str::betweenFirst(test()->actingAs($viewer)->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent(), '<td class="text-nowrap">RFQ70001</td>', '</tr>');
 
-    test()->actingAs($chamath)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])->assertSessionHas('error');
+    // Chamath could start it too, but his time wouldn't count — not his hours.
+    expect($rowFor($chamath))->toContain('your time on it counts once they&#039;re back.')
+        ->and($rowFor($nadeesha))->not->toMatch('/js-start-button" disabled/')
+        ->not->toContain('your time on it counts once they&#039;re back.');
+
     test()->actingAs($nadeesha)->patch(route('admin.rfqs.start-data-entry', $rfq), ['part' => 1])
         ->assertSessionHas('status', 'Started RFQ70001 — your time on it is counting.');
 });
