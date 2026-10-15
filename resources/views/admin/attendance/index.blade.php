@@ -125,7 +125,7 @@
                                     </td>
                                     <td class="text-muted-soft small text-nowrap">
                                         {{ $sheet->createdBy?->name ?? 'Unknown' }}
-                                        <div>{{ $sheet->created_at->format('M d, g:i A') }}</div>
+                                        <div>{{ $sheet->created_at->toBusinessTimezone()->format('M d, g:i A') }}</div>
                                         @if ($sheet->updatedBy && $sheet->updated_at->gt($sheet->created_at))
                                             <div>edited by {{ $sheet->updatedBy->name }}</div>
                                         @endif
@@ -134,7 +134,7 @@
                                         @if ($sheet->isApproved())
                                             <span class="badge badge-soft-success"><i class="bi bi-check2-circle"></i> Approved</span>
                                             <div class="text-muted-soft text-nowrap">
-                                                {{ $sheet->approvedBy ? 'by '.$sheet->approvedBy->name.' · ' : '' }}{{ $sheet->approved_at->format('M d, g:i A') }}
+                                                {{ $sheet->approvedBy ? 'by '.$sheet->approvedBy->name.' · ' : '' }}{{ $sheet->approved_at->toBusinessTimezone()->format('M d, g:i A') }}
                                             </div>
                                         @elseif ($sheet->isReturned())
                                             <span class="badge badge-soft-danger"><i class="bi bi-arrow-counterclockwise"></i> Returned</span>

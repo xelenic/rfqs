@@ -25,13 +25,13 @@
         <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
         <td>{{ $rfq->subject }}</td>
         <td class="text-muted-soft">
-            {{ $rfq->created_at->format('M d, Y') }}
+            {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
             @if ($rfq->creator)
                 <div class="small">by {{ $rfq->creator->name }}</div>
             @endif
         </td>
         <td class="text-muted-soft">
-            {{ $closedAt?->format('M d, Y g:i A') ?? '—' }}
+            {{ $closedAt?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
             @if ($closedByName)
                 <div class="small">by {{ $closedByName }}</div>
             @endif

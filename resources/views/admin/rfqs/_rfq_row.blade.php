@@ -69,7 +69,7 @@
                 <i class="bi {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'bi-pause-circle' : 'bi-x-circle' }}"></i>
                 {{ $rfq->status_reason }}
                 @if ($rfq->status_changed_at)
-                    · {{ $rfq->status_changed_at->format('M d') }}
+                    · {{ $rfq->status_changed_at->toBusinessTimezone()->format('M d') }}
                 @endif
             </div>
         @endif
@@ -89,14 +89,14 @@
         @endif
     </td>
     <td class="text-muted-soft">
-        {{ $rfq->created_at->format('M d, Y') }}
+        {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
         @if ($rfq->creator)
             <div class="small">by {{ $rfq->creator->name }}</div>
         @endif
     </td>
     @if ($showClosed ?? false)
         <td class="text-muted-soft">
-            {{ $rfq->bd_closed_at?->format('M d, Y g:i A') ?? '—' }}
+            {{ $rfq->bd_closed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
             @if ($rfq->bdClosedBy)
                 <div class="small">by {{ $rfq->bdClosedBy->name }}</div>
             @endif

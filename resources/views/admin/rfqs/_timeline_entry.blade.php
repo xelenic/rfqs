@@ -127,7 +127,7 @@
             <div class="rfq-timeline-meta">
                 <span class="fw-semibold {{ $isOtherSourcingPartner ? 'rfq-blurred' : '' }}">{{ $entry['related']->name }}</span>'s part
                 &middot; sent back by {{ $actorName }}
-                &middot; {{ $entry['at']->format('M d, Y g:i A') }}
+                &middot; {{ $entry['at']->toBusinessTimezone()->format('M d, Y g:i A') }}
             </div>
             @if ($entry['detail'])
                 <div class="rfq-timeline-detail text-danger">{{ $entry['detail'] }}</div>
@@ -137,7 +137,7 @@
             <div class="rfq-timeline-meta">
                 <span class="fw-semibold {{ $isOtherSourcingPartner ? 'rfq-blurred' : '' }}">{{ $entry['related']->name }}</span>'s part
                 &middot; sent to finalize by {{ $actorName }}
-                &middot; {{ $entry['at']->format('M d, Y g:i A') }}
+                &middot; {{ $entry['at']->toBusinessTimezone()->format('M d, Y g:i A') }}
             </div>
             @if ($entry['detail'])
                 <div class="rfq-timeline-detail text-muted-soft">{{ $entry['detail'] }}</div>
@@ -146,7 +146,7 @@
             <div class="rfq-timeline-title">{{ $title }}</div>
             <div class="rfq-timeline-meta {{ $shouldBlur ? 'rfq-blurred' : '' }}">
                 <span class="fw-semibold">{{ $actorName }}</span>
-                &middot; {{ $entry['at']->format('M d, Y g:i A') }}
+                &middot; {{ $entry['at']->toBusinessTimezone()->format('M d, Y g:i A') }}
             </div>
             @if ($entry['detail'])
                 <div class="rfq-timeline-detail {{ $detailClass }}">{{ $entry['detail'] }}</div>

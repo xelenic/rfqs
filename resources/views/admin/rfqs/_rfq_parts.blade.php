@@ -42,7 +42,7 @@
 
                     <span class="rfq-part-assigned">
                         <span class="rfq-part-caption">Assigned</span>
-                        {{ $pivot->created_at?->format('M d, Y g:i A') ?? '—' }}
+                        {{ $pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                     </span>
 
                     <span class="rfq-part-status">
@@ -50,22 +50,22 @@
                         @switch ($pivot->progressState())
                             @case ('finalized')
                                 <span class="rfq-part-detail">
-                                    Data Entry {{ $pivot->data_entry_completed_at?->format('M d, g:i A') }}
-                                    · Finalized {{ $pivot->finalized_at->format('M d, g:i A') }}
+                                    Data Entry {{ $pivot->data_entry_completed_at?->toBusinessTimezone()->format('M d, g:i A') }}
+                                    · Finalized {{ $pivot->finalized_at->toBusinessTimezone()->format('M d, g:i A') }}
                                 </span>
                                 @break
                             @case ('data_entry_done')
                                 <span class="rfq-part-detail">
-                                    Sourcing done {{ $pivot->completed_at?->format('M d, g:i A') }}
-                                    · Data Entry {{ $pivot->data_entry_completed_at->format('M d, g:i A') }}
+                                    Sourcing done {{ $pivot->completed_at?->toBusinessTimezone()->format('M d, g:i A') }}
+                                    · Data Entry {{ $pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, g:i A') }}
                                 </span>
                                 @break
                             @case ('with_data_entry')
-                                <span class="rfq-part-detail">Sourcing done {{ $pivot->completed_at->format('M d, g:i A') }}</span>
+                                <span class="rfq-part-detail">Sourcing done {{ $pivot->completed_at->toBusinessTimezone()->format('M d, g:i A') }}</span>
                                 @break
                             @case ('returned')
                                 <span class="rfq-part-detail rfq-part-detail-returned">
-                                    Returned {{ $pivot->returned_at->format('M d, g:i A') }}@if ($pivot->return_reason): {{ $pivot->return_reason }}@endif
+                                    Returned {{ $pivot->returned_at->toBusinessTimezone()->format('M d, g:i A') }}@if ($pivot->return_reason): {{ $pivot->return_reason }}@endif
                                 </span>
                                 @break
                         @endswitch

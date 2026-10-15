@@ -88,7 +88,7 @@
                                         <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                         <td class="text-muted-soft">
                                             {{ $assignment->created_at?->diffForHumans() ?? '—' }}
-                                            <div class="small">{{ $assignment->created_at?->format('M d, g:i A') }}</div>
+                                            <div class="small">{{ $assignment->created_at?->toBusinessTimezone()->format('M d, g:i A') }}</div>
                                         </td>
                                         <td><span class="badge {{ $assignment->progressBadgeClass() }}">{{ $assignment->progressLabel() }}</span></td>
                                         <td class="text-end text-nowrap">

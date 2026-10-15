@@ -56,7 +56,7 @@
                                     <span class="badge badge-soft-secondary">No role</span>
                                 @endforelse
                             </td>
-                            <td class="text-muted-soft">{{ $user->created_at->format('M d, Y') }}</td>
+                            <td class="text-muted-soft">{{ $user->created_at->toBusinessTimezone()->format('M d, Y') }}</td>
                             <td class="text-end">
                                 <a href="{{ route('admin.users.show', $user) }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                     <i class="bi bi-eye"></i>
