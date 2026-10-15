@@ -31,3 +31,6 @@ Since 2026-10-15, an Admin can set each Sourcing member's usual Data Entry perso
 
 ## Who sees which RFQs: Rfq::scopeVisibleTo($user) and isVisibleTo()
 Since 2026-10-15, two roles see only part of the RFQs. Business Development (User::seesOnlyOwnRfqs()) sees the ones they created. Data Entry (User::seesOnlyAssignedRfqs(), when it's their only workflow role) sees RFQs with a part assigned to them by name; a part left with "anyone in Data Entry" while it's still with Data Entry (shared queue); or one they've worked on (data_entry_started_by/completed_by, or a data_entry rfq_steps row worked_by them, which survives returns). New RFQ lists and searches must go through Rfq::scopeVisibleTo($user). EnsureRfqIsVisible guards every {rfq}/{attachment} route with a 403. Admin, and anyone holding another workflow role, see everything (User::seesEveryRfq()).
+
+## RFQ numbers start from Settings → RFQ Numbers (Setting::rfqNumberStart())
+Since 2026-10-16, an Admin sets the number new RFQs start from (stored as rfq_number_start, an integer; 1670 means RFQ1670). Rfq::nextRfqNumber() returns max(lastRfqSequence() + 1, Setting::rfqNumberStart()), so a number that has already been given out is never reused. Always generate numbers through nextRfqNumber(), and always format them through Rfq::formatRfqNumber(). There's still no unique index on rfqs.rfq_number.

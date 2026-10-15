@@ -50,6 +50,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
     Route::patch('settings/data-entry-targets', [SettingsController::class, 'updateDataEntryTargets'])->name('settings.data-entry-targets');
     Route::patch('settings/data-entry-per-item', [SettingsController::class, 'updateDataEntryPerItem'])->name('settings.data-entry-per-item');
+    Route::patch('settings/rfq-numbers', [SettingsController::class, 'updateRfqNumbers'])->name('settings.rfq-numbers');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
     Route::patch('settings/wc-validation', [SettingsController::class, 'updateWcValidation'])->name('settings.wc-validation');
     Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');

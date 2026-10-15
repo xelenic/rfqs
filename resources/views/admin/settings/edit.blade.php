@@ -1,8 +1,8 @@
 {{--
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
-    settings, the Working Hours, each role's own (Role Hours — HR Manager's
-    too), the Half Day, the Sourcing and Data Entry Targets, the Idle Alert,
+    settings, WC Validation, RFQ Numbers, the Working Hours, each role's own
+    (Role Hours — HR Manager's too), the Half Day, the Sourcing and Data Entry Targets, the Idle Alert,
     and people's Extra Hours. Each tab is its own form with its own error bag. The tab that
     opens is the one a form was just saved from (session settings_tab) or
     failed on, else ?tab=, else
@@ -14,7 +14,8 @@
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
     (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
-    (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $extraHours
+    (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
+    (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $extraHours
     (ExtraWorkingHour, with user.roles), $extraHoursPeople
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
@@ -37,6 +38,7 @@
         $managedTabs = $isAdmin ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
             'wc-validation' => ['label' => 'WC Validation', 'icon' => 'bi-patch-check', 'bag' => null],
+            'rfq-numbers' => ['label' => 'RFQ Numbers', 'icon' => 'bi-123', 'bag' => 'rfq_numbers'],
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
             'role-hours' => $roleHoursTab,
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
@@ -333,6 +335,54 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save WC validation</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'rfq-numbers' ? 'show active' : '' }}" id="settings-pane-rfq-numbers" role="tabpanel" aria-labelledby="settings-tab-rfq-numbers" tabindex="0">
+                {{-- Where new RFQ numbers start from — Setting::rfqNumberStart(),
+                     Rfq::nextRfqNumber(). --}}
+                @php
+                    $rfqNumbersFailed = $errors->getBag('rfq_numbers')->any();
+                    $startShown = \App\Models\Rfq::formatRfqNumber($rfqNumberStart);
+                @endphp
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        RFQ Numbers
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.rfq-numbers') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">The RFQ number a new RFQ is given — from here on they count up one at a time: start from RFQ1670, and the RFQs after it are RFQ1671, RFQ1672 and so on. A number that's already been given is never given again, so starting below one already used carries on after it. Existing RFQs keep their numbers.</p>
+
+                            <div class="mb-3" style="max-width: 260px;">
+                                <label for="rfq-number-start" class="form-label">Start RFQ numbers from</label>
+                                <input type="text" name="start" id="rfq-number-start" inputmode="numeric" autocomplete="off"
+                                       class="form-control @error('start', 'rfq_numbers') is-invalid @enderror"
+                                       value="{{ $rfqNumbersFailed ? old('start') : $startShown }}" placeholder="RFQ1670" required>
+                                @error('start', 'rfq_numbers')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <dl class="user-facts small mb-3">
+                                <dt>Next RFQ</dt>
+                                <dd class="fw-semibold" id="rfq-number-next">{{ $nextRfqNumber }}</dd>
+                                <dt>Highest given so far</dt>
+                                <dd>{{ $lastRfqSequence > 0 ? \App\Models\Rfq::formatRfqNumber($lastRfqSequence) : 'None yet' }}</dd>
+                            </dl>
+                            @if ($nextRfqNumber !== $startShown)
+                                <p class="small text-warning-emphasis">
+                                    <i class="bi bi-info-circle"></i>
+                                    {{ \App\Models\Rfq::formatRfqNumber($lastRfqSequence) }} is already taken, so new RFQs carry on from {{ $nextRfqNumber }}.
+                                </p>
+                            @endif
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save RFQ numbers</button>
                         </form>
                     </div>
                 </div>

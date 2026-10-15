@@ -104,6 +104,14 @@ class Setting extends Model
     public const DEFAULT_DATA_ENTRY_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
 
     /**
+     * The lowest and highest an Admin can have RFQ numbers start from (as
+     * the number after the prefix: 1670 for RFQ1670). See rfqNumberStart().
+     *
+     * @var array{0: int, 1: int}
+     */
+    public const RFQ_NUMBER_START_RANGE = [1, 99999999];
+
+    /**
      * Whether Data Entry's target is worked out per item — so many working
      * seconds an item, times the part's items (Rfq::dataEntryItemsFor()) —
      * rather than by priority (DEFAULT_DATA_ENTRY_TARGETS), until an Admin
@@ -800,6 +808,30 @@ class Setting extends Model
     public static function wcFormatRequired(): bool
     {
         return static::get('wc_format_required') === '1';
+    }
+
+    /**
+     * The number new RFQs start from, as set on Settings → RFQ Numbers — 1670
+     * for RFQ1670: the next RFQ is given it, and they count on from there
+     * (Rfq::nextRfqNumber()). Until it's set, one past Rfq::RFQ_NUMBER_START.
+     * Kept within RFQ_NUMBER_START_RANGE.
+     */
+    public static function rfqNumberStart(): int
+    {
+        $saved = static::get('rfq_number_start');
+        [$lowest, $highest] = self::RFQ_NUMBER_START_RANGE;
+
+        return is_numeric($saved)
+            ? max($lowest, min($highest, (int) $saved))
+            : Rfq::RFQ_NUMBER_START + 1;
+    }
+
+    /**
+     * Saves where new RFQ numbers start from — see rfqNumberStart().
+     */
+    public static function putRfqNumberStart(int $start): void
+    {
+        static::put('rfq_number_start', (string) $start);
     }
 
     /**

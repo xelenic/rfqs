@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceSheet;
 use App\Models\ExtraWorkingHour;
+use App\Models\Rfq;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -50,6 +52,9 @@ class SettingsController extends Controller
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
             'wcFormatRequired' => Setting::wcFormatRequired(),
+            'rfqNumberStart' => Setting::rfqNumberStart(),
+            'nextRfqNumber' => Rfq::nextRfqNumber(),
+            'lastRfqSequence' => Rfq::lastRfqSequence(),
             'extraHours' => $user->hasRole('Admin')
                 ? ExtraWorkingHour::query()->current()->with('user.roles')->get()->sortBy(fn (ExtraWorkingHour $range) => [$range->user?->name, $range->start])->values()
                 : collect(),
@@ -401,6 +406,43 @@ class SettingsController extends Controller
         Setting::put('wc_format_required', $request->boolean('enabled') ? '1' : null);
 
         return $this->backToTab('wc-validation', $request->boolean('enabled') ? 'WC validation turned on.' : 'WC validation turned off.');
+    }
+
+    /**
+     * Where new RFQ numbers start from — typed as RFQ1670 or just 1670; the
+     * next RFQ is given it and they count on from there, never reusing a
+     * number already given (Rfq::nextRfqNumber()). Admin only.
+     */
+    public function updateRfqNumbers(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change where RFQ numbers start.');
+
+        [$lowest, $highest] = Setting::RFQ_NUMBER_START_RANGE;
+        $prefix = Rfq::RFQ_NUMBER_PREFIX;
+
+        $validated = $request->validateWithBag('rfq_numbers', [
+            'start' => [
+                'required', 'string', 'regex:/^('.$prefix.')?\d+$/i',
+                function (string $attribute, string $value, Closure $fail) use ($lowest, $highest, $prefix) {
+                    $number = (int) preg_replace('/\D/', '', $value);
+
+                    if ($number < $lowest || $number > $highest) {
+                        $fail("Give a number from {$prefix}".str_pad((string) $lowest, Rfq::RFQ_NUMBER_DIGITS, '0', STR_PAD_LEFT)." to {$prefix}{$highest}.");
+                    }
+                },
+            ],
+        ], [
+            'start.required' => "Give the RFQ number to start from, like {$prefix}1670.",
+            'start.regex' => "Give it as {$prefix} and a number, like {$prefix}1670 — or just 1670.",
+        ]);
+
+        $start = (int) preg_replace('/\D/', '', $validated['start']);
+        Setting::putRfqNumberStart($start);
+        $next = Rfq::nextRfqNumber();
+
+        return $this->backToTab('rfq-numbers', $next === Rfq::formatRfqNumber($start)
+            ? "New RFQs start from {$next}."
+            : 'Saved — but '.Rfq::formatRfqNumber(Rfq::lastRfqSequence())." is already taken, so the next RFQ will be {$next}.");
     }
 
     /**

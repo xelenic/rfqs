@@ -56,8 +56,10 @@ class Rfq extends Model
     public const LIST_STATUSES = ['Pending', 'Completed', self::ON_HOLD, self::CANCELLED];
 
     /**
-     * Prefix, zero-padding width, and starting sequence for auto-generated
-     * RFQ numbers, e.g. "RFQ1001", "RFQ1002". See nextRfqNumber().
+     * Prefix, zero-padding width, and the sequence auto-generated RFQ
+     * numbers count on from until an Admin says where they start
+     * (Setting::rfqNumberStart()), e.g. "RFQ1001", "RFQ1002". See
+     * nextRfqNumber().
      */
     public const RFQ_NUMBER_PREFIX = 'RFQ';
 
@@ -3842,29 +3844,39 @@ class Rfq extends Model
     }
 
     /**
-     * The next auto-generated RFQ number, e.g. "RFQ1001", "RFQ1002" — one
-     * past the highest existing sequence among numbers already following
-     * this format, never lower than RFQ_NUMBER_START + 1. Older/manually-
-     * entered RFQ numbers (including the old "WP####" ones) don't match
-     * the pattern and are ignored rather than breaking the sequence.
+     * The next auto-generated RFQ number, e.g. "RFQ1670", "RFQ1671" — where
+     * Settings → RFQ Numbers says they start (Setting::rfqNumberStart()), or
+     * one past the highest existing one if that's further on: a number
+     * already given is never given again. Older/manually-entered RFQ
+     * numbers (including the old "WP####" ones) don't match the pattern
+     * and are ignored rather than breaking the sequence.
      */
     public static function nextRfqNumber(): string
     {
+        return static::formatRfqNumber(max(static::lastRfqSequence() + 1, Setting::rfqNumberStart()));
+    }
+
+    /**
+     * The highest number among the RFQ numbers following the format —
+     * 1669 for RFQ1669 — or 0 when there are none.
+     */
+    public static function lastRfqSequence(): int
+    {
         $prefix = self::RFQ_NUMBER_PREFIX;
 
-        $lastSequence = static::query()
+        return static::query()
             ->where('rfq_number', 'like', "{$prefix}%")
             ->pluck('rfq_number')
-            ->map(function (string $rfqNumber) use ($prefix) {
-                return preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', $rfqNumber, $matches)
-                    ? (int) $matches[1]
-                    : 0;
-            })
+            ->map(fn (string $rfqNumber) => preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', $rfqNumber, $matches) ? (int) $matches[1] : 0)
             ->max() ?? 0;
+    }
 
-        $nextSequence = max($lastSequence, self::RFQ_NUMBER_START) + 1;
-
-        return $prefix.str_pad((string) $nextSequence, self::RFQ_NUMBER_DIGITS, '0', STR_PAD_LEFT);
+    /**
+     * $sequence as an RFQ number: 1670 is "RFQ1670", 7 is "RFQ0007".
+     */
+    public static function formatRfqNumber(int $sequence): string
+    {
+        return self::RFQ_NUMBER_PREFIX.str_pad((string) $sequence, self::RFQ_NUMBER_DIGITS, '0', STR_PAD_LEFT);
     }
 
     /**
