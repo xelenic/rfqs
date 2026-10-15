@@ -241,7 +241,7 @@ it('lists an RFQ closed before parts were closed one by one as its parts, closed
     test()->actingAs($people['closer'])->get(closedUrl())->assertOk()
         ->assertSee(numberCell('RFQ1001-P1 of P2'), false)
         ->assertSee(numberCell('RFQ1001-P2 of P2'), false)
-        ->assertSee($closedAt->format('M d, Y g:i A'))
+        ->assertSee($closedAt->toBusinessTimezone()->format('M d, Y g:i A'))
         // An RFQ with no parts to speak of is just the RFQ.
         ->assertSee('Closed with no parts');
 });

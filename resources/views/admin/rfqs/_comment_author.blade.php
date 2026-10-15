@@ -14,6 +14,7 @@
           data-email="{{ $author->email }}"
           data-roles="{{ $roleNames->implode('|') }}"
           data-since="{{ $author->created_at?->toBusinessTimezone()->format('M Y') }}"
+          data-photo="{{ $author->avatarUrl() }}"
           data-self="{{ $author->is(auth()->user()) ? '1' : '0' }}"
           data-conversation="{{ route('admin.messages.show', $author) }}">{{ $author->name }}</span>
     @if ($roleNames->isNotEmpty())

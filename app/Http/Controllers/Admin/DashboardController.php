@@ -127,6 +127,20 @@ class DashboardController extends Controller
             ]);
         }
 
+        // Data Entry's is about their own work: the parts waiting to be
+        // started, the one they're on against its target, and what they've
+        // sent to finalize — entries, time and all — over the period.
+        if ($canViewRfqs && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')) {
+            $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
+            $overview = $this->dataEntryOverview($user, $period);
+
+            return view('admin.dashboard.data-entry', [
+                'period' => $period,
+                'overview' => $overview,
+                'notifications' => $this->dataEntryNotifications($overview),
+            ]);
+        }
+
         // Sourcing's is about their own parts: what's on their plate, what's
         // come back, what's with Data Entry, and what they were given last.
         if ($canViewRfqs && $user->hasRole('Sourcing') && ! $user->hasRole('Admin')) {
@@ -976,6 +990,236 @@ class DashboardController extends Controller
                 'title' => trans_choice('1 part is waiting on you|:count parts are waiting on you', $overview['pending'], ['count' => $overview['pending']]),
                 'description' => 'Mark each complete as you finish it.',
                 'url' => route('admin.rfqs.index', ['status' => 'Pending']),
+            ];
+        }
+
+        return $notifications;
+    }
+
+    /**
+     * What a Data Entry person's dashboard shows — their own work, not the
+     * company's:
+     *
+     *  - now: the parts waiting for Data Entry to start (anyone in Data Entry
+     *    can take one), Urgent first then longest-waiting; the one they're
+     *    on (RfqStep::runningDataEntryOf()) against its target
+     *    (Rfq::dataEntryCountdown()); idle time against the alert
+     *    (User::dataEntryIdleness()); and the hours they work today
+     *    (Setting::weekOn() — their own, their role's or the company's);
+     *  - over $period (summaryPeriod()): the parts they sent to finalize,
+     *    with the entries they made (rfq_user.data_entry_entries) and the
+     *    working time each took — its last Data Entry round, absences aside
+     *    (Rfq::roundsOf()), as on Admin's dashboard — against its priority's
+     *    target; span by span for the output chart (periodSpans()) and by
+     *    priority; and the parts they returned to Sourcing;
+     *  - and the last few they sent, whenever.
+     *
+     * @param  array{start: CarbonImmutable, end: CarbonImmutable, from: string, to: string, isToday: bool, dates: string}  $period
+     * @return array<string, mixed>
+     */
+    protected function dataEntryOverview(User $user, array $period): array
+    {
+        $now = CarbonImmutable::now();
+        $window = [$period['start'], $period['end']];
+        $priorities = array_reverse(Rfq::PRIORITIES);
+        $book = Attendance::book([$user->id]);
+
+        // Waiting to be started, by anyone in Data Entry.
+        $isWaiting = fn ($parts) => $parts->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.completed_at')
+            ->whereNull('rfq_user.data_entry_completed_at')
+            ->whereNull('rfq_user.data_entry_started_at');
+
+        $waiting = Rfq::query()
+            ->where('rfqs.status', 'Pending')
+            ->whereHas('assignees', $isWaiting)
+            ->with('assignees')
+            ->get()
+            ->flatMap(fn (Rfq $rfq) => $rfq->assignees
+                ->filter(fn (User $holder) => $holder->pivot->status === null
+                    && $holder->pivot->completed_at !== null
+                    && $holder->pivot->data_entry_completed_at === null
+                    && $holder->pivot->data_entry_started_at === null)
+                ->map(fn (User $holder) => [
+                    'rfq' => $rfq,
+                    'label' => $rfq->isSplit() ? $rfq->partNumberLabel($holder->pivot->part_number) : $rfq->rfq_number,
+                    'since' => collect([$holder->pivot->completed_at, $holder->pivot->data_entry_returned_at, $holder->pivot->status_changed_at, $rfq->rejected_at])->filter()->max(),
+                    'sentBack' => $holder->pivot->data_entry_returned_at !== null,
+                ]))
+            ->sortBy(fn (array $part) => [array_search($part['rfq']->priority_level, $priorities, true), $part['since']?->getTimestamp() ?? 0])
+            ->values();
+
+        // The one they're on.
+        $running = RfqStep::runningDataEntryOf($user);
+        $current = null;
+
+        if ($running !== null) {
+            $rfq = $running->rfq->load('steps');
+            $countdown = $rfq->dataEntryCountdown((int) $running->part_number, $now);
+            $seconds = $countdown !== null ? max(0, $countdown['target'] - $countdown['remaining']) : $running->workingSeconds($now);
+
+            $current = [
+                'rfq' => $rfq,
+                'label' => $rfq->isSplit() ? $rfq->partNumberLabel($running->part_number) : $rfq->rfq_number,
+                'started_at' => $running->started_at,
+                'seconds' => $seconds,
+                'target' => $countdown['target'] ?? null,
+                'remaining' => $countdown['remaining'] ?? null,
+                'state' => match (true) {
+                    $countdown === null => 'running',
+                    $countdown['remaining'] < 0 => 'overdue',
+                    $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
+                    default => 'on_track',
+                },
+            ];
+        }
+
+        // What they sent to finalize, with the time its last round took.
+        $sentBy = fn (?array $within) => Rfq::query()
+            ->whereHas('assignees', fn ($parts) => $parts->where('rfq_user.data_entry_completed_by', $user->id)
+                ->when($within, fn ($inPeriod) => $inPeriod->whereBetween('rfq_user.data_entry_completed_at', $within)))
+            ->with(['assignees', 'steps'])
+            ->get()
+            ->flatMap(fn (Rfq $rfq) => $rfq->assignees
+                ->filter(fn (User $holder) => (int) $holder->pivot->data_entry_completed_by === $user->id
+                    && $holder->pivot->data_entry_completed_at !== null
+                    && ($within === null || $holder->pivot->data_entry_completed_at->between(...$within)))
+                ->map(function (User $holder) use ($rfq, $book, $now) {
+                    $part = $holder->pivot;
+                    $round = Rfq::roundsOf($rfq->steps
+                        ->filter(fn (RfqStep $step) => $step->step === 'data_entry' && $step->part_number === $part->part_number && $step->ended_at !== null)
+                        ->sortBy('started_at')
+                        ->values())->last();
+                    $seconds = $round === null ? null : (int) $round->sum(fn (RfqStep $step) => $step->secondsExcludingAbsence($book, $now));
+                    $target = $rfq->dataEntryTargetSeconds();
+
+                    return [
+                        'rfq' => $rfq,
+                        'label' => $rfq->isSplit() ? $rfq->partNumberLabel($part->part_number) : $rfq->rfq_number,
+                        'priority' => $rfq->priority_level,
+                        'at' => $part->data_entry_completed_at,
+                        'entries' => $part->data_entry_entries,
+                        'seconds' => $seconds,
+                        'target' => $target,
+                        'onTime' => $seconds === null ? null : $seconds <= $target,
+                    ];
+                }))
+            ->sortByDesc(fn (array $sent) => $sent['at']->getTimestamp())
+            ->values();
+
+        $sent = $sentBy($window);
+        $timed = $sent->whereNotNull('onTime');
+        $returned = RfqComment::query()
+            ->where('user_id', $user->id)
+            ->where('action', 'returned_to_sourcing')
+            ->whereBetween('created_at', $window)
+            ->count();
+
+        ['spans' => $spans, 'keyOf' => $keyOf] = $this->periodSpans($period);
+        $bySpan = $sent->groupBy(fn (array $part) => $keyOf($part['at']));
+
+        // Out of their hours they're neither idle nor free — the idle alert
+        // doesn't run then either (AlertIdleDataEntry).
+        $alert = Setting::dataEntryIdleAlert();
+        $offHours = $current === null ? Setting::offHoursReason($now, $user->id) : null;
+        $idleness = $current === null && $offHours === null ? $user->dataEntryIdleness($now) : null;
+        $today = Setting::today();
+
+        return [
+            'waiting' => $waiting,
+            'waitingByPriority' => collect($priorities)->mapWithKeys(fn (string $priority) => [$priority => $waiting->filter(fn (array $part) => $part['rfq']->priority_level === $priority)->count()])->all(),
+            'current' => $current,
+            'idleness' => $idleness,
+            'alert' => $alert,
+            'offHours' => $offHours,
+            'hoursToday' => Setting::weekOn($today, $user->id)[strtolower(CarbonImmutable::parse($today)->englishDayOfWeek)],
+            'sent' => $sent->count(),
+            'entries' => (int) $sent->sum('entries'),
+            'withEntries' => $sent->whereNotNull('entries')->count(),
+            'average' => $timed->isEmpty() ? null : intdiv((int) $timed->sum('seconds'), $timed->count()),
+            'onTime' => $timed->isEmpty() ? null : (int) round($timed->where('onTime', true)->count() / $timed->count() * 100),
+            'onTimeCount' => $timed->where('onTime', true)->count(),
+            'timedCount' => $timed->count(),
+            'returned' => $returned,
+            'output' => [
+                'labels' => array_column($spans, 'label'),
+                'dates' => array_column($spans, 'title'),
+                'parts' => collect($spans)->map(fn (array $span) => $bySpan->get($span['key'], collect())->count())->all(),
+                'entries' => collect($spans)->map(fn (array $span) => (int) $bySpan->get($span['key'], collect())->sum('entries'))->all(),
+            ],
+            'byPriority' => collect($priorities)->map(function (string $priority) use ($sent) {
+                $mine = $sent->where('priority', $priority);
+                $timed = $mine->whereNotNull('onTime');
+
+                return [
+                    'priority' => $priority,
+                    'sent' => $mine->count(),
+                    'entries' => (int) $mine->sum('entries'),
+                    'average' => $timed->isEmpty() ? null : intdiv((int) $timed->sum('seconds'), $timed->count()),
+                    'target' => (Setting::dataEntryTargets()[$priority] ?? 0) * 60,
+                    'onTime' => $timed->where('onTime', true)->count(),
+                    'timed' => $timed->count(),
+                ];
+            })->all(),
+            'latest' => $sentBy(null)->take(6),
+        ];
+    }
+
+    /**
+     * A Data Entry person's alerts — about their own work and the queue they
+     * take from, not the company-wide ones.
+     *
+     * @param  array<string, mixed>  $overview  dataEntryOverview()
+     * @return array<int, array{type: string, icon: string, title: string, description: string, url: string}>
+     */
+    protected function dataEntryNotifications(array $overview): array
+    {
+        $queue = route('admin.rfqs.index', ['status' => 'Pending']);
+        $notifications = [];
+
+        if ($overview['current'] !== null && $overview['current']['state'] === 'overdue') {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-alarm',
+                'title' => $overview['current']['label'].' is past its target',
+                'description' => 'Send it to finalize as soon as it\'s done.',
+                'url' => $queue,
+            ];
+        }
+
+        if ($overview['idleness'] !== null && $overview['idleness']['idle_seconds'] > 0) {
+            $notifications[] = [
+                'type' => $overview['idleness']['alerted_at'] !== null ? 'danger' : 'warning',
+                'icon' => 'bi-hourglass-bottom',
+                'title' => 'Idle for '.Setting::durationLabel($overview['idleness']['idle_seconds']),
+                'description' => $overview['idleness']['alerted_at'] !== null
+                    ? 'Senior Operations has been told — start a part to clear it.'
+                    : 'Senior Operations is told after '.$overview['alert']['minutes'].' minutes — start a part.',
+                'url' => $queue,
+            ];
+        }
+
+        $urgent = $overview['waitingByPriority']['Urgent'] ?? 0;
+
+        if ($urgent > 0) {
+            $notifications[] = [
+                'type' => 'warning',
+                'icon' => 'bi-exclamation-triangle-fill',
+                'title' => trans_choice('1 urgent part is waiting|:count urgent parts are waiting', $urgent, ['count' => $urgent]),
+                'description' => 'Start these first.',
+                'url' => $queue,
+            ];
+        }
+
+        $sentBack = $overview['waiting']->where('sentBack', true)->count();
+
+        if ($sentBack > 0) {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-arrow-counterclockwise',
+                'title' => trans_choice('1 part was sent back to Data Entry|:count parts were sent back to Data Entry', $sentBack, ['count' => $sentBack]),
+                'description' => 'Sourcing returned it at Finalize — see why on the part.',
+                'url' => $queue,
             ];
         }
 

@@ -6009,3 +6009,55 @@ a.critical-row:hover {
     animation: none;
   }
 }
+
+/* ---- Data Entry's dashboard (dashboard/data-entry) --------------------------- */
+
+/* Right now: an icon in its tone, what's happening, and an action. */
+.de-now {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.de-now-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--tone-soft);
+  color: var(--tone);
+  font-size: 1.3rem;
+}
+
+.de-now-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.de-now .task-progress {
+  max-width: 420px;
+}
+
+/* The Parts / Entries switch over the output chart. */
+.chart-metric .range-filter-btn {
+  padding: 0.22rem 0.7rem;
+}
+
+@media (max-width: 575.98px) {
+  .de-now {
+    flex-wrap: wrap;
+  }
+
+  .de-now .btn {
+    margin-left: 0 !important;
+  }
+}
+
+/* The tones' soft fills are light-theme colors; in dark, a tint of the tone. */
+:root[data-theme="dark"] .de-now-icon {
+  background: color-mix(in srgb, var(--tone) 22%, transparent);
+  color: color-mix(in srgb, var(--tone) 55%, #ffffff);
+}

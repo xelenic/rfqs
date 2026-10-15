@@ -5,7 +5,13 @@
 //   "stacked" — tasks finished each day, stacked by the role that finished
 //               them (Sourcing, Data Entry, GM Assistant);
 //   "people"  — each person's workload: what's in hand now beside what they
-//               finished lately, as paired horizontal bars.
+//               finished lately, as paired horizontal bars;
+//   "metric"  — one measure span by span as columns, the card's switch
+//               (.js-chart-metric) picking which (Data Entry's parts sent or
+//               entries made — never both on one axis);
+//   "share"   — a percentage per row, 0–100, as horizontal bars with the
+//               figure behind it at the tip (Data Entry within target, by
+//               priority). One series each: Data Entry's own hue.
 // Colors are admin.css's tokens for the theme in use (validated as a set for
 // colorblind separation, light and dark). With no ECharts the table twin
 // shows instead; with nothing to plot, a line saying so. Redrawn after a live
@@ -22,6 +28,9 @@
         'gm-assistant': token('--rfq-role-gm-assistant', '#13a374'),
         'in-hand': token('--rfq-role-sourcing', '#3b53d1'),
         done: token('--rfq-role-gm-assistant', '#13a374'),
+        parts: token('--rfq-role-data-entry', '#e2620f'),
+        entries: token('--rfq-role-data-entry', '#e2620f'),
+        'on-time': token('--rfq-role-data-entry', '#e2620f'),
     };
     var INK = token('--rfq-text', '#1f2430');
     var MUTED = token('--rfq-text-muted', '#6b7280');
@@ -163,6 +172,96 @@
         return option;
     }
 
+    // One measure (series[index]) span by span, as columns — its name in
+    // the axis title rather than a legend, since there's only the one.
+    function metricOption(data, index, animate) {
+        var item = data.series[index] || data.series[0];
+
+        var option = common([item], animate);
+        option.legend = { show: false };
+        option.grid = { top: 28, left: 4, right: 12, bottom: 4, containLabel: true };
+        option.tooltip.formatter = function (points) {
+            var i = points[0].dataIndex;
+            var rows = data.series.map(function (series) {
+                return series.label + ': <b>' + series.values[i] + '</b>';
+            });
+            return '<b>' + (data.dates[i] || data.labels[i]) + '</b><br>' + rows.join('<br>');
+        };
+        option.xAxis = {
+            type: 'category',
+            data: data.labels,
+            axisLine: { lineStyle: { color: HAIRLINE } },
+            axisTick: { show: false },
+            axisLabel: { color: MUTED, fontSize: 11, margin: 10, hideOverlap: true },
+        };
+        option.yAxis = valueAxis(item.values);
+        option.yAxis.name = item.label;
+        option.yAxis.nameTextStyle = { color: MUTED, fontSize: 11, align: 'left' };
+        option.series = [{
+            name: item.label,
+            type: 'bar',
+            data: item.values,
+            barMaxWidth: 24,
+            itemStyle: { borderRadius: [4, 4, 0, 0] },
+        }];
+        return option;
+    }
+
+    // A percentage per row, 0–100: the bar, and at its tip what it's of
+    // (data.display); the tooltip adds data.details.
+    function shareOption(data, animate) {
+        var item = data.series[0];
+
+        var option = common([item], animate);
+        option.legend = { show: false };
+        option.grid = { top: 8, left: 4, right: 96, bottom: 4, containLabel: true };
+        option.tooltip.trigger = 'item';
+        option.tooltip.formatter = function (point) {
+            var i = point.dataIndex;
+            return '<b>' + data.labels[i] + '</b><br>' + item.label + ': <b>' + data.display[i] + '</b>' + (data.details && data.details[i] ? '<br>' + data.details[i] : '');
+        };
+        option.yAxis = {
+            type: 'category',
+            data: data.labels,
+            inverse: true,
+            axisLine: { lineStyle: { color: HAIRLINE } },
+            axisTick: { show: false },
+            axisLabel: { color: INK, fontSize: 12 },
+        };
+        option.xAxis = {
+            type: 'value',
+            min: 0,
+            max: 100,
+            interval: 25,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { color: MUTED, fontSize: 11, formatter: '{value}%' },
+            splitLine: { lineStyle: { color: HAIRLINE } },
+        };
+        option.series = [{
+            name: item.label,
+            type: 'bar',
+            data: item.values,
+            barMaxWidth: 14,
+            itemStyle: { borderRadius: [0, 4, 4, 0] },
+            label: { show: true, position: 'right', color: MUTED, fontSize: 11, formatter: function (point) { return data.display[point.dataIndex] || ''; } },
+        }];
+        return option;
+    }
+
+    function optionFor(data, animate, container) {
+        switch (data.type) {
+            case 'people':
+                return peopleOption(data, animate);
+            case 'metric':
+                return metricOption(data, Number(container.dataset.metric || 0), animate);
+            case 'share':
+                return shareOption(data, animate);
+            default:
+                return stackedOption(data, animate);
+        }
+    }
+
     function render(container) {
         if (typeof echarts !== 'undefined' && echarts.getInstanceByDom(container)) return; // already drawn
         if (container.dataset.drawn) return; // already said there's nothing
@@ -174,7 +273,9 @@
             return;
         }
 
-        var total = data.series.reduce(function (sum, item) {
+        // A chart of shares has nothing to show when nothing was counted, even
+        // if every share is 0%.
+        var total = data.total !== undefined ? data.total : data.series.reduce(function (sum, item) {
             return sum + item.values.reduce(function (a, b) { return a + b; }, 0);
         }, 0);
         if (!data.labels.length || total === 0) {
@@ -192,7 +293,7 @@
         var animate = !(main && main.classList.contains('is-live'));
 
         var chart = echarts.init(container, null, { renderer: 'svg' });
-        chart.setOption(data.type === 'people' ? peopleOption(data, animate) : stackedOption(data, animate));
+        chart.setOption(optionFor(data, animate, container));
 
         // Follows the card as the window changes, and as the table twin is
         // swapped out (the container has no size while it's hidden).
@@ -211,6 +312,19 @@
 
         document.querySelectorAll('.dash-chart[data-dash-chart]').forEach(render);
     }
+
+    // A "metric" chart's switch: the measure picked, redrawn in place.
+    document.addEventListener('change', function (event) {
+        var input = event.target;
+        if (!input.classList || !input.classList.contains('js-chart-metric')) return;
+
+        var container = document.getElementById(input.dataset.chart);
+        if (!container) return;
+        container.dataset.metric = input.value;
+
+        var chart = typeof echarts !== 'undefined' ? echarts.getInstanceByDom(container) : null;
+        if (chart) chart.setOption(metricOption(JSON.parse(container.dataset.dashChart), Number(input.value), true), true);
+    });
 
     document.addEventListener('DOMContentLoaded', init);
     document.addEventListener('rfqms:live-updated', init);
