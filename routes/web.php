@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\LogController;
 use App\Http\Controllers\Admin\MessageController;
@@ -69,6 +70,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');
     Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
+    // An Admin signing in as someone else, and back — see App\Impersonation.
+    Route::post('users/{user}/impersonate', [ImpersonationController::class, 'store'])->name('users.impersonate');
+    Route::post('impersonation/leave', [ImpersonationController::class, 'destroy'])->name('impersonation.leave');
+
     // Profile photos: seen by anyone signed in; changed by the person, or whoever keeps people's details.
     Route::get('users/{user}/photo', [UserPhotoController::class, 'show'])->name('users.photo');
     Route::post('users/{user}/photo', [UserPhotoController::class, 'update'])->name('users.photo.update');

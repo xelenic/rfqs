@@ -2754,6 +2754,73 @@ class Rfq extends Model
     }
 
     /**
+     * How timeSpent() came to each role's figure, stretch by stretch — for
+     * the Time Spent report's breakdown. Each stretch of the role's steps, in
+     * order: which step and part, whose time it is (RfqStep::workerId()) and
+     * whose working week it ran on (Setting::weekSourceOn()), when it ran —
+     * up to $now while it's open — its clock time, its working time, and how
+     * that splits by attendance (RfqStep::secondsByAttendance()): counted
+     * (present), on leave, awaiting the day's sheet, or credited to nobody;
+     * whether it was a rework or carried on after a stop; and how much fell
+     * out of hours (RfqStep::outOfHoursSeconds()). $names: user id => name,
+     * looked up if not given. Expects steps to be loaded, or loads them.
+     *
+     * @param  array<int, array<string, string>>|null  $book
+     * @param  Collection<int, string>|null  $names
+     * @return array<string, array<int, array{step: string, part: ?string, worker: ?string, hours: string, from: CarbonInterface, to: ?CarbonInterface, elapsed: int, working: int, counted: int, absent: int, awaiting: int, unattributed: int, outOfHours: int, rework: bool, resumed: bool}>>
+     */
+    public function timeBreakdown(?CarbonInterface $now = null, ?array $book = null, ?Collection $names = null): array
+    {
+        $now ??= now();
+        $book ??= Attendance::book($this->steps->pluck('worked_by'));
+        $names ??= User::query()->whereIn('id', $this->steps->map(fn (RfqStep $step) => $step->workerId())->filter()->unique())->pluck('name', 'id');
+        $seen = [];
+
+        return collect(RfqStep::ROLE_STEPS)->map(fn (array $roleSteps) => $this->steps
+            ->filter(fn (RfqStep $step) => in_array($step->step, $roleSteps, true))
+            ->sortBy(fn (RfqStep $step) => [$step->started_at->getTimestamp(), $step->id])
+            ->values()
+            ->map(function (RfqStep $step) use ($now, $book, $names, $roleSteps, &$seen) {
+                $split = $step->secondsByAttendance($book, $now);
+                $workerId = $step->workerId();
+                $source = $workerId !== null ? Setting::weekSourceOn($step->started_at, $workerId) : ['source' => 'company', 'role' => null];
+
+                // A round is a part reaching the role's own work; any after
+                // its first is rework. Carrying on after a stop isn't one.
+                $isRound = $step->step === $roleSteps[0] && ! $step->resumed;
+                $roundKey = $roleSteps[0].'|'.$step->part_number;
+                $rework = $isRound && isset($seen[$roundKey]);
+                if ($isRound) {
+                    $seen[$roundKey] = true;
+                }
+
+                return [
+                    'step' => RfqStep::LABELS[$step->step] ?? $step->step,
+                    'part' => $this->isSplit() && $step->part_number !== null ? $this->partNumberLabel($step->part_number) : null,
+                    'worker' => $workerId !== null ? $names->get($workerId) : null,
+                    'hours' => match ($source['source']) {
+                        'person' => 'their own hours',
+                        'role' => $source['role'].'\'s hours',
+                        default => 'the company\'s working hours',
+                    }.($workerId !== null && ExtraWorkingHour::forUser($workerId) !== [] ? ' + their extra hours' : ''),
+                    'from' => $step->started_at,
+                    'to' => $step->ended_at,
+                    'elapsed' => $step->elapsedSeconds($now),
+                    'working' => array_sum($split),
+                    'counted' => $split['present'],
+                    'absent' => $split['absent'],
+                    'awaiting' => $split['unmarked'],
+                    'unattributed' => $split['unattributed'],
+                    'outOfHours' => $step->outOfHoursSeconds(),
+                    'rework' => $rework,
+                    'resumed' => $step->resumed,
+                ];
+            })
+            ->all())
+            ->all();
+    }
+
+    /**
      * Posts a comment that goes with an action — its text as written, marked
      * with what was done and the context that went with it (see
      * RfqComment::ACTIONS), so the thread can show that beside the author's

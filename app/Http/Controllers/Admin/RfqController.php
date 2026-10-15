@@ -309,9 +309,11 @@ class RfqController extends Controller implements HasMiddleware
             // those two views.
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments']))
             ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with(['rejectedBy', 'latestRejection.attachments']))
-            // A Sourcing member's own Pending list counts each part down —
-            // only the stretches still open matter (Rfq::sourcingCountdown()).
-            ->when($scopedToMe && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
+            // A Sourcing member's own Pending list counts each part down, and
+            // so does their Returns list — a part sent back is timed again
+            // from its return. Only the stretches still open matter
+            // (Rfq::sourcingCountdown()).
+            ->when(($scopedToMe || $scopedToReturns) && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // Not the parts Data Entry has sent back: those are on the
@@ -511,16 +513,16 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToSeniorOpsReturns' => $scopedToSeniorOpsReturns,
             'scopedToHeadOfBdReturns' => $scopedToHeadOfBdReturns,
             'scopedToGmAssistantReturns' => $scopedToGmAssistantReturns,
-            // What the countdowns there — Sourcing's own Pending list, Data
-            // Entry's — tick against in the browser: the server's clock, and
-            // the working periods of the next two weeks.
+            // What the countdowns there — Sourcing's own Pending and Returns
+            // lists, Data Entry's — tick against in the browser: the server's
+            // clock, and the working periods of the next two weeks.
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($user),
             // Their own Ready for Data Entry page counts down to Senior
             // Operations being told they haven't started.
             'myDataEntryIdle' => $scopedToDataEntry && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')
                 ? $user->dataEntryIdleness()
                 : null,
-            'countdownSchedule' => ($scopedToMe && ! $sourcingOverview) || $scopedToDataEntry
+            'countdownSchedule' => (($scopedToMe || $scopedToReturns) && ! $sourcingOverview) || $scopedToDataEntry
                 ? [
                     'now' => now()->getTimestamp(),
                     'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14)),

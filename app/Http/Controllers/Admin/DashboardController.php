@@ -141,6 +141,21 @@ class DashboardController extends Controller
             ]);
         }
 
+        // The General Manager's is their approvals — what's waiting on them,
+        // what they've approved and sent back — and how the business stands:
+        // the open RFQs, where they are, and what's been created and closed.
+        if ($canViewRfqs && $user->hasRole('General Manager') && ! $user->hasRole('Admin')) {
+            $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
+            $overview = $this->generalManagerOverview($user, $period);
+
+            return view('admin.dashboard.general-manager', [
+                'period' => $period,
+                'overview' => $overview,
+                'rfqActivity' => $this->rfqActivityIn($period),
+                'notifications' => $this->generalManagerNotifications($overview),
+            ]);
+        }
+
         // Sourcing's is about their own parts: what's on their plate, what's
         // come back, what's with Data Entry, and what they were given last.
         if ($canViewRfqs && $user->hasRole('Sourcing') && ! $user->hasRole('Admin')) {
@@ -1219,6 +1234,187 @@ class DashboardController extends Controller
                 'icon' => 'bi-arrow-counterclockwise',
                 'title' => trans_choice('1 part was sent back to Data Entry|:count parts were sent back to Data Entry', $sentBack, ['count' => $sentBack]),
                 'description' => 'Sourcing returned it at Finalize — see why on the part.',
+                'url' => $queue,
+            ];
+        }
+
+        return $notifications;
+    }
+
+    /**
+     * What the General Manager's dashboard shows:
+     *
+     *  - now: every part waiting on their approval (Rfq::partAwaitsGmApproval()
+     *    — GM Assistant has submitted it), Urgent first then longest-waiting;
+     *    and the business as it stands — the open RFQs by priority, and how
+     *    many wait at each stage (pipeline(), the sidebar's counts);
+     *  - over $period (summaryPeriod()): the parts they approved and the
+     *    RFQs that left them fully approved, how long an approval took them
+     *    — working time from GM Assistant's submit, in their hours
+     *    (Setting::workingSecondsBetween()) — the send-backs they made (the
+     *    reject's own comment, as Business Development's dashboard counts
+     *    them) and to where, both span by span for the decisions chart; and
+     *    the RFQs Business Development closed;
+     *  - and their latest decisions, whenever.
+     *
+     * @param  array{start: CarbonImmutable, end: CarbonImmutable, from: string, to: string, isToday: bool, dates: string}  $period
+     * @return array<string, mixed>
+     */
+    protected function generalManagerOverview(User $user, array $period): array
+    {
+        $window = [$period['start'], $period['end']];
+        $priorities = array_reverse(Rfq::PRIORITIES);
+
+        $waiting = Rfq::query()
+            ->where('rfqs.status', 'Pending')
+            ->awaitingGmApproval()
+            ->with('assignees')
+            ->get()
+            ->flatMap(fn (Rfq $rfq) => $rfq->assignees
+                ->filter(fn (User $holder) => $rfq->partAwaitsGmApproval($holder->pivot->part_number))
+                ->map(fn (User $holder) => [
+                    'rfq' => $rfq,
+                    'label' => $rfq->isSplit() ? $rfq->partNumberLabel($holder->pivot->part_number) : $rfq->rfq_number,
+                    'since' => $holder->pivot->gm_assistant_completed_at,
+                ]))
+            ->sortBy(fn (array $part) => [array_search($part['rfq']->priority_level, $priorities, true), $part['since']?->getTimestamp() ?? 0])
+            ->values();
+
+        $approved = DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfq_user.gm_approved_by', $user->id)
+            ->whereBetween('rfq_user.gm_approved_at', $window)
+            ->get(['rfq_user.gm_approved_at', 'rfq_user.gm_assistant_completed_at'])
+            ->map(fn (object $part) => [
+                'at' => CarbonImmutable::parse($part->gm_approved_at),
+                'seconds' => $part->gm_assistant_completed_at === null ? null
+                    : Setting::workingSecondsBetween(CarbonImmutable::parse($part->gm_assistant_completed_at), CarbonImmutable::parse($part->gm_approved_at), $user->id),
+            ]);
+        $timed = $approved->whereNotNull('seconds');
+
+        $returns = RfqComment::query()
+            ->where('user_id', $user->id)
+            ->where('action', 'rejected')
+            ->whereBetween('created_at', $window)
+            ->get(['created_at', 'meta']);
+
+        ['spans' => $spans, 'keyOf' => $keyOf] = $this->periodSpans($period);
+        $approvedBySpan = $approved->countBy(fn (array $part) => $keyOf($part['at']));
+        $returnedBySpan = $returns->countBy(fn (RfqComment $comment) => $keyOf($comment->created_at));
+
+        $open = Rfq::query()->where('status', 'Pending');
+        $byPriority = (clone $open)->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
+
+        return [
+            'waiting' => $waiting,
+            'waitingUrgent' => $waiting->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
+            'approved' => $approved->count(),
+            'approvedRfqs' => Rfq::query()->where('gm_approved_by', $user->id)->whereBetween('gm_approved_at', $window)->count(),
+            'average' => $timed->isEmpty() ? null : intdiv((int) $timed->sum('seconds'), $timed->count()),
+            'returned' => $returns->count(),
+            'returnedTo' => $returns->countBy(fn (RfqComment $comment) => $comment->meta['stage'] ?? 'an earlier step')->sortDesc()->all(),
+            'open' => (clone $open)->count(),
+            'openUrgent' => (int) ($byPriority['Urgent'] ?? 0),
+            'closed' => Rfq::query()->whereBetween('bd_closed_at', $window)->count(),
+            'priorities' => collect($priorities)->mapWithKeys(fn (string $priority) => [$priority => (int) ($byPriority[$priority] ?? 0)])->all(),
+            'pipeline' => $this->pipeline(Rfq::queueCounts()),
+            'decisions' => [
+                'labels' => array_column($spans, 'label'),
+                'dates' => array_column($spans, 'title'),
+                'series' => [
+                    ['key' => 'approved', 'label' => 'Approved', 'values' => collect($spans)->map(fn (array $span) => (int) ($approvedBySpan[$span['key']] ?? 0))->all()],
+                    ['key' => 'returned', 'label' => 'Sent back', 'values' => collect($spans)->map(fn (array $span) => (int) ($returnedBySpan[$span['key']] ?? 0))->all()],
+                ],
+            ],
+            'latest' => $this->generalManagerDecisions($user),
+        ];
+    }
+
+    /**
+     * The General Manager's latest decisions, whenever: each part they
+     * approved, and each send-back they made with where to and why — latest
+     * first.
+     *
+     * @return Collection<int, array{rfq: Rfq, label: string, at: CarbonInterface, approved: bool, detail: ?string}>
+     */
+    protected function generalManagerDecisions(User $user, int $limit = 8): Collection
+    {
+        $approvals = DB::table('rfq_user')
+            ->where('gm_approved_by', $user->id)
+            ->whereNotNull('gm_approved_at')
+            ->orderByDesc('gm_approved_at')
+            ->limit($limit)
+            ->get(['rfq_id', 'part_number', 'gm_approved_at']);
+        $rfqs = Rfq::query()->whereIn('id', $approvals->pluck('rfq_id'))->get()->keyBy('id');
+
+        $approved = $approvals
+            ->filter(fn (object $part) => $rfqs->has($part->rfq_id))
+            ->map(fn (object $part) => [
+                'rfq' => $rfqs[$part->rfq_id],
+                'label' => $rfqs[$part->rfq_id]->isSplit() ? $rfqs[$part->rfq_id]->partNumberLabel((int) $part->part_number) : $rfqs[$part->rfq_id]->rfq_number,
+                'at' => Carbon::parse($part->gm_approved_at),
+                'approved' => true,
+                'detail' => null,
+            ]);
+
+        $returned = RfqComment::query()
+            ->where('user_id', $user->id)
+            ->where('action', 'rejected')
+            ->with('rfq')
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->filter(fn (RfqComment $comment) => $comment->rfq !== null)
+            ->map(fn (RfqComment $comment) => [
+                'rfq' => $comment->rfq,
+                'label' => isset($comment->meta['label']) ? (string) $comment->meta['label'] : $comment->rfq->rfq_number,
+                'at' => $comment->created_at,
+                'approved' => false,
+                'detail' => 'to '.($comment->meta['stage'] ?? 'an earlier step').(filled($comment->body) ? ' — '.Str::limit($comment->body, 80) : ''),
+            ]);
+
+        return $approved->concat($returned)->sortByDesc(fn (array $decision) => $decision['at']->getTimestamp())->take($limit)->values();
+    }
+
+    /**
+     * The General Manager's alerts — about what waits on them.
+     *
+     * @param  array<string, mixed>  $overview  generalManagerOverview()
+     * @return array<int, array{type: string, icon: string, title: string, description: string, url: string}>
+     */
+    protected function generalManagerNotifications(array $overview): array
+    {
+        $queue = route('admin.rfqs.index', ['status' => 'Pending']);
+        $notifications = [];
+
+        if ($overview['waitingUrgent'] > 0) {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-exclamation-triangle-fill',
+                'title' => trans_choice('1 urgent part waits on your approval|:count urgent parts wait on your approval', $overview['waitingUrgent'], ['count' => $overview['waitingUrgent']]),
+                'description' => 'Marked Urgent — approve or send back first.',
+                'url' => $queue,
+            ];
+        }
+
+        $longWaiting = $overview['waiting']->filter(fn (array $part) => $part['since'] !== null && $part['since']->lt(now()->subDay()))->count();
+
+        if ($longWaiting > 0) {
+            $notifications[] = [
+                'type' => 'warning',
+                'icon' => 'bi-hourglass-split',
+                'title' => trans_choice('1 part has waited over a day|:count parts have waited over a day', $longWaiting, ['count' => $longWaiting]),
+                'description' => 'Since GM Assistant submitted them.',
+                'url' => $queue,
+            ];
+        }
+
+        if ($overview['waiting']->isNotEmpty()) {
+            $notifications[] = [
+                'type' => 'primary',
+                'icon' => 'bi-patch-check',
+                'title' => trans_choice('1 part waits on your approval|:count parts wait on your approval', $overview['waiting']->count(), ['count' => $overview['waiting']->count()]),
+                'description' => 'Approve it, or send it back with why.',
                 'url' => $queue,
             ];
         }

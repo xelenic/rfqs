@@ -135,6 +135,25 @@
         </aside>
 
         <div class="main-col">
+            {{-- An Admin in someone else's account (App\Impersonation): whose it
+                 is, and the way back. --}}
+            @if ($impersonator = \App\Impersonation::impersonator())
+                <div class="impersonation-bar" role="status">
+                    <span class="impersonation-bar-text">
+                        <i class="bi bi-incognito" aria-hidden="true"></i>
+                        You're signed in as <strong>{{ auth()->user()->name }}</strong>
+                        <span class="impersonation-bar-roles">{{ auth()->user()->roles->pluck('name')->join(', ') ?: 'No role' }}</span>
+                        — whatever you do here is done as them.
+                    </span>
+                    <form method="POST" action="{{ route('admin.impersonation.leave') }}">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-dark">
+                            <i class="bi bi-box-arrow-left"></i> Back to your account ({{ $impersonator->name }})
+                        </button>
+                    </form>
+                </div>
+            @endif
+
             <header class="topbar">
                 <div class="d-flex align-items-center gap-2">
                     <button class="btn btn-sm btn-outline-secondary d-lg-none" id="sidebarToggle" type="button" aria-label="Toggle navigation">
@@ -175,6 +194,16 @@
                                     <i class="bi bi-gear me-1"></i> Settings
                                 </a>
                             </li>
+                            @if (\App\Impersonation::isActive())
+                                <li>
+                                    <form method="POST" action="{{ route('admin.impersonation.leave') }}">
+                                        @csrf
+                                        <button type="submit" class="dropdown-item">
+                                            <i class="bi bi-box-arrow-left me-1"></i> Back to your account
+                                        </button>
+                                    </form>
+                                </li>
+                            @endif
                             <li>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf

@@ -3,7 +3,8 @@
 // also binds their "View as table" toggles). Each reads its JSON from
 // [data-dash-chart]:
 //   "stacked" — tasks finished each day, stacked by the role that finished
-//               them (Sourcing, Data Entry, GM Assistant);
+//               them (Sourcing, Data Entry, GM Assistant) — or the General
+//               Manager's decisions, approved and sent back;
 //   "people"  — each person's workload: what's in hand now beside what they
 //               finished lately, as paired horizontal bars;
 //   "metric"  — one measure span by span as columns, the card's switch
@@ -31,6 +32,8 @@
         parts: token('--rfq-role-data-entry', '#e2620f'),
         entries: token('--rfq-role-data-entry', '#e2620f'),
         'on-time': token('--rfq-role-data-entry', '#e2620f'),
+        approved: token('--rfq-decision-approved', '#4f6df5'),
+        returned: token('--rfq-decision-returned', '#d97706'),
     };
     var INK = token('--rfq-text', '#1f2430');
     var MUTED = token('--rfq-text-muted', '#6b7280');

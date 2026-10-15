@@ -66,6 +66,18 @@ class RfqStep extends Model
     }
 
     /**
+     * What each tracked step is called, as a piece of someone's work.
+     *
+     * @var array<string, string>
+     */
+    public const LABELS = [
+        'sourcing' => 'Sourcing',
+        'finalize' => 'Finalize',
+        'data_entry' => 'Data entry',
+        'gm_assistant' => 'GM Assistant submit',
+    ];
+
+    /**
      * The role whose time this is — see ROLE_STEPS.
      */
     public function role(): ?string

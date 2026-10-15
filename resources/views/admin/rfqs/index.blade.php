@@ -311,7 +311,8 @@
                  Rfq::returnSourcingPart(). They're worked from here: click a row
                  for the part and its comments, or Mark Complete when it's done
                  again — which lands back on this list. They aren't on My
-                 Pending RFQs while they're here. --}}
+                 Pending RFQs while they're here. Each counts down again from
+                 its return, as a new round against the priority's target. --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -320,6 +321,7 @@
                             <th>RFQ Number</th>
                             <th>Subject</th>
                             <th>Priority</th>
+                            <th title="Working time left to mark it complete again — see Settings → Sourcing Targets">Time left</th>
                             <th>Returned At</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -342,6 +344,14 @@
                                         @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td class="text-nowrap">
+                                        @php $countdown = $rfq->sourcingCountdown($myAssignment->pivot->part_number); @endphp
+                                        @if ($countdown)
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => 'Working time left to mark it complete again', 'workerId' => auth()->id()])
+                                        @else
+                                            <span class="text-muted-soft">—</span>
+                                        @endif
+                                    </td>
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->returned_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
@@ -360,7 +370,7 @@
                             @endforeach
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                <td colspan="7" class="text-center text-muted-soft py-4">
                                     Nothing's been returned to you — you're all caught up.
                                 </td>
                             </tr>
@@ -368,6 +378,11 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- What the countdowns above tick against — see admin.js. --}}
+            @if ($countdownSchedule)
+                <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
+            @endif
 
             @foreach ($rfqs as $rfq)
                 @foreach ($rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)

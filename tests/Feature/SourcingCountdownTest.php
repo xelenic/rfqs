@@ -159,6 +159,38 @@ it('shows no countdown once the part\'s with Data Entry, or waiting on Finalize'
         ->and(countdownBadge($html, 'RFQ8002'))->toBeNull();
 });
 
+it('counts a part sent back to Sourcing down again on their Returns list, from its return', function () {
+    $riley = userWithRole('Sourcing');
+    $dataEntry = userWithRole('Data Entry');
+
+    test()->travelTo(inColombo('2026-10-05 09:00'));
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8101', 'priority_level' => 'Urgent']), [1 => $riley]);
+
+    test()->travelTo(inColombo('2026-10-05 10:00'));
+    $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1, $dataEntry);
+
+    test()->travelTo(inColombo('2026-10-05 10:30'));
+    $rfq->refresh()->returnSourcingPart(1, 'Prices missing', $dataEntry);
+
+    // An hour on: a new round of the Urgent target (4h), an hour of it gone.
+    test()->travelTo(inColombo('2026-10-05 11:30'));
+    $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+        ->assertSee('Time left')
+        ->assertSee('id="countdown-schedule"', false)
+        ->getContent();
+
+    expect(countdownBadge($html, 'RFQ8101'))
+        ->toContain('badge-soft-success')
+        ->toContain('data-remaining="10800" data-target="14400"')
+        ->toContain('3h left')
+        ->toContain('data-worker="'.$riley->id.'"');
+
+    // The time counts on the RFQ too: 09–10 and 10:30–11:30, two rounds.
+    expect($rfq->refresh()->timeSpent(inColombo('2026-10-05 11:30'))['roles']['Sourcing'])
+        ->toMatchArray(['minutes' => 120, 'rounds' => 2, 'ongoing' => true]);
+});
+
 it('gives the browser the working periods ahead to tick against', function () {
     $riley = userWithRole('Sourcing');
     test()->travelTo(inColombo('2026-10-05 10:00'));

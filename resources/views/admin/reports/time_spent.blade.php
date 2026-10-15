@@ -10,7 +10,10 @@
     isOutOfHoursWork()) is highlighted, with how much of it fell outside them.
     A role still on an RFQ counts up to now.
 
+    Hovering a role's time shows how it came about (_time_breakdown).
+
     Expects: $rfqs (paginated), $times (Rfq::timeSpent() per RFQ id),
+    $breakdowns (Rfq::timeBreakdown() per RFQ id),
     $deadlines (Rfq::sourcingDeadline() per RFQ id), $averages (per role, in
     seconds: average, elapsed, rfqs, seconds), $outOfHours (seconds,
     stretches, rfqs), $tabs (key => label, count), $tab, $roles, $search.
@@ -143,7 +146,11 @@
                                     @if ($roleTime['rounds'] === 0)
                                         <span class="text-muted-soft">—</span>
                                     @else
-                                        {{ \App\Models\Setting::durationLabel($roleTime['seconds']) }}
+                                        {{-- Hovered (or focused): how this came about. --}}
+                                        @php $breakdownId = 'time-breakdown-'.$rfq->id.'-'.\Illuminate\Support\Str::slug($role); @endphp
+                                        <span class="time-breakdown-trigger" tabindex="0" role="button" data-time-breakdown="{{ $breakdownId }}"
+                                              aria-label="How {{ $role }}'s time on {{ $rfq->rfq_number }} is worked out">{{ \App\Models\Setting::durationLabel($roleTime['seconds']) }}</span>
+                                        @include('admin.reports._time_breakdown', ['id' => $breakdownId, 'rfq' => $rfq, 'role' => $role, 'roleTime' => $roleTime, 'stretches' => $breakdowns[$rfq->id][$role]])
                                         @if ($roleTime['ongoing'])
                                             <i class="bi bi-hourglass-split text-warning" title="Still with {{ $role }} — counted up to now"></i>
                                         @endif

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Rfq;
 use App\Models\RfqStep;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -16,8 +17,9 @@ use Illuminate\View\View;
  * GM Assistant have spent on each RFQ (Rfq::timeSpent()), and on average
  * across them, so a slow stage stands out; how each stands against Sourcing's
  * deadline (Rfq::sourcingDeadline()); and work done out of hours
- * (RfqStep::isOutOfHoursWork()) flagged. One tab per lens — TABS — and a
- * search across them. Only RFQs some tracked role has started on are listed.
+ * (RfqStep::isOutOfHoursWork()) flagged — each role's figure with how it
+ * came about on hover (Rfq::timeBreakdown()). One tab per lens — TABS — and
+ * a search across them. Only RFQs some tracked role has started on are listed.
  */
 class TimeSpentReportController extends Controller
 {
@@ -77,9 +79,16 @@ class TimeSpentReportController extends Controller
             'query' => $request->query(),
         ]);
 
+        // How each figure on the page came about, stretch by stretch — the
+        // breakdown shown on hovering it — with everyone's name looked up once.
+        $names = User::query()
+            ->whereIn('id', $pageRows->flatMap(fn (array $row) => $row['rfq']->steps->map(fn (RfqStep $step) => $step->workerId()))->filter()->unique())
+            ->pluck('name', 'id');
+
         return view('admin.reports.time_spent', [
             'rfqs' => $rfqs,
             'times' => $pageRows->mapWithKeys(fn (array $row) => [$row['rfq']->id => $row['time']]),
+            'breakdowns' => $pageRows->mapWithKeys(fn (array $row) => [$row['rfq']->id => $row['rfq']->timeBreakdown($now, null, $names)]),
             'deadlines' => $pageRows->mapWithKeys(fn (array $row) => [$row['rfq']->id => $row['deadline']]),
             'averages' => $this->averages($listed->pluck('time')),
             'outOfHours' => [

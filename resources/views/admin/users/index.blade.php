@@ -89,6 +89,16 @@
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                 @endif
+                                {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
+                                @if (\App\Impersonation::canStart(auth()->user(), $user))
+                                    <form action="{{ route('admin.users.impersonate', $user) }}" method="POST" class="d-inline"
+                                          data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Log in as {{ $user->name }}">
+                                            <i class="bi bi-incognito"></i>
+                                        </button>
+                                    </form>
+                                @endif
                                 @can('users.delete')
                                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST" class="d-inline" data-confirm="Delete this user?">
                                         @csrf

@@ -2731,3 +2731,72 @@ window.renderRfqProgressChart = function () {
         }
     });
 };
+
+// The Time Spent report: hovering (or focusing) a role's time shows how it
+// came about — reports/_time_breakdown.blade.php, kept in a <template> — as
+// a popover that stays while the pointer is on it, so a long one can be
+// read; Escape closes it. A live update swaps the table, so any open one is
+// cleared and the new figures bound again.
+(function () {
+    var HIDE_DELAY = 200;
+    var open = [];
+
+    function attach(trigger) {
+        if (trigger.dataset.breakdownBound || !window.bootstrap || !bootstrap.Popover) return;
+        var template = document.getElementById(trigger.dataset.timeBreakdown);
+        if (!template) return;
+        trigger.dataset.breakdownBound = '1';
+
+        var popover = new bootstrap.Popover(trigger, {
+            trigger: 'manual',
+            html: true,
+            placement: 'auto',
+            container: 'body',
+            customClass: 'time-breakdown-popover',
+            content: function () { return template.innerHTML; },
+        });
+        var hideTimer = null;
+
+        function hideSoon() {
+            window.clearTimeout(hideTimer);
+            hideTimer = window.setTimeout(function () { popover.hide(); }, HIDE_DELAY);
+        }
+
+        function show() {
+            window.clearTimeout(hideTimer);
+            open.forEach(function (other) { if (other !== popover) other.hide(); });
+            popover.show();
+            if (open.indexOf(popover) === -1) open.push(popover);
+
+            var tip = popover.tip;
+            if (tip && !tip.dataset.breakdownBound) {
+                tip.dataset.breakdownBound = '1';
+                tip.addEventListener('mouseenter', function () { window.clearTimeout(hideTimer); });
+                tip.addEventListener('mouseleave', hideSoon);
+            }
+        }
+
+        trigger.addEventListener('mouseenter', show);
+        trigger.addEventListener('mouseleave', hideSoon);
+        trigger.addEventListener('focus', show);
+        trigger.addEventListener('blur', hideSoon);
+        trigger.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') popover.hide();
+        });
+    }
+
+    function init() {
+        open = open.filter(function (popover) {
+            if (popover._element && popover._element.isConnected) return true;
+            popover.dispose();
+            return false;
+        });
+        document.querySelectorAll('.time-breakdown-popover').forEach(function (tip) {
+            if (!open.some(function (popover) { return popover.tip === tip; })) tip.remove();
+        });
+        document.querySelectorAll('[data-time-breakdown]').forEach(attach);
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('rfqms:live-updated', init);
+})();

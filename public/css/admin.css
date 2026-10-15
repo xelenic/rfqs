@@ -34,6 +34,9 @@
   --rfq-role-sourcing: #3b53d1;
   --rfq-role-data-entry: #e2620f;
   --rfq-role-gm-assistant: #13a374;
+  /* The General Manager's decisions chart — validated as a pair (CVD-safe). */
+  --rfq-decision-approved: #4f6df5;
+  --rfq-decision-returned: #d97706;
 }
 
 * {
@@ -5442,6 +5445,8 @@ a.pipeline-label:hover {
   --rfq-role-sourcing: #5b78f6;
   --rfq-role-data-entry: #eb6517;
   --rfq-role-gm-assistant: #1baf7a;
+  --rfq-decision-approved: #5b78f6;
+  --rfq-decision-returned: #c97f1c;
 
   --bs-body-bg: var(--rfq-surface);
   --bs-body-bg-rgb: 23, 28, 39;
@@ -6060,4 +6065,155 @@ a.critical-row:hover {
 :root[data-theme="dark"] .de-now-icon {
   background: color-mix(in srgb, var(--tone) 22%, transparent);
   color: color-mix(in srgb, var(--tone) 55%, #ffffff);
+}
+
+/* ---- Time Spent: how a figure came about (reports/_time_breakdown) ---------- */
+
+/* The figure itself: underlined, to say there's more on hover. */
+.time-breakdown-trigger {
+  cursor: help;
+  font-weight: 600;
+  text-decoration: underline dotted var(--rfq-text-muted);
+  text-underline-offset: 3px;
+  border-radius: 4px;
+}
+
+.time-breakdown-trigger:focus-visible {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.time-breakdown-popover {
+  --bs-popover-max-width: 400px;
+  --bs-popover-border-color: var(--rfq-border);
+  --bs-popover-bg: var(--rfq-surface);
+  --bs-popover-body-color: var(--rfq-text);
+  --bs-popover-body-padding-x: 0;
+  --bs-popover-body-padding-y: 0;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+  font-size: 0.78rem;
+}
+
+.tb-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem 0.55rem;
+  border-bottom: 1px solid var(--rfq-border);
+  font-size: 0.85rem;
+}
+
+.tb-head-figure {
+  font-weight: 700;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-formula {
+  padding: 0.55rem 0.9rem;
+  background: var(--rfq-bg);
+  border-bottom: 1px solid var(--rfq-border);
+  color: var(--rfq-text-muted);
+  line-height: 1.45;
+}
+
+.tb-term {
+  font-weight: 700;
+  color: var(--rfq-text);
+}
+
+.tb-stretches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tb-stretches li {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--rfq-border);
+}
+
+.tb-stretch-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-meta {
+  color: var(--rfq-text-muted);
+}
+
+.tb-calc {
+  margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-tag {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.tb-tag-live {
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+}
+
+.tb-ooh {
+  margin-top: 0.15rem;
+  color: #b45309;
+  font-weight: 600;
+}
+
+.tb-total {
+  padding: 0.6rem 0.9rem 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme="dark"] .tb-tag-live,
+:root[data-theme="dark"] .tb-ooh {
+  color: #f0a64a;
+}
+
+/* ---- An Admin in someone else's account (App\Impersonation) ----------------- */
+
+.impersonation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1.5rem;
+  background: #fbbf24;
+  color: #1f2430;
+  font-size: 0.85rem;
+}
+
+.impersonation-bar-text .bi {
+  margin-right: 0.25rem;
+}
+
+.impersonation-bar-roles {
+  display: inline-block;
+  margin: 0 0.15rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: rgba(31, 36, 48, 0.12);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 575.98px) {
+  .impersonation-bar {
+    padding: 0.5rem 1rem;
+  }
 }

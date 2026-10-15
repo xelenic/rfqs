@@ -87,6 +87,16 @@
                         </button>
                     </form>
                 @endif
+                {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
+                @if (\App\Impersonation::canStart(auth()->user(), $user))
+                    <form action="{{ route('admin.users.impersonate', $user) }}" method="POST" class="d-inline"
+                          data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-incognito"></i> Log in as
+                        </button>
+                    </form>
+                @endif
                 @if ($user->avatar_path && auth()->user()->canChangePhotoOf($user))
                     <form action="{{ route('admin.users.photo.destroy', $user) }}" method="POST" class="d-inline"
                           data-confirm="Remove {{ $user->name }}'s photo? Their initial shows instead.">

@@ -76,7 +76,7 @@ it('gives Business Development a dashboard of its own', function () {
 });
 
 it('keeps the general dashboard for everyone else, and Admin\'s own for Admin', function () {
-    foreach (['Senior Operations', 'General Manager', 'Head of Business Development'] as $role) {
+    foreach (['Senior Operations', 'GM Assistant', 'Head of Business Development'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()
