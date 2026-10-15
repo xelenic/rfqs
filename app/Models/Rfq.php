@@ -408,10 +408,38 @@ class Rfq extends Model
     public function canBeEditedBy(User $user): bool
     {
         return match (true) {
+            ! $this->isVisibleTo($user) => false,
             $user->hasRole('Admin') => true,
             $user->hasAnyRole(['Senior Operations', 'Business Development']) => $this->status !== 'Completed',
             default => false,
         };
+    }
+
+    /**
+     * Whether $user may see this RFQ at all: anyone may, but for someone who
+     * sees only the RFQs they created (User::seesOnlyOwnRfqs() — Business
+     * Development), who may see their own — and any whose creator is no
+     * longer on record (see scopeOwnedBy()).
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        return ! $user->seesOnlyOwnRfqs() || $this->created_by === null || (int) $this->created_by === $user->id;
+    }
+
+    /**
+     * The RFQs for someone who sees only their own (User::ownRfqsOnlyId()):
+     * the ones $userId created, and any whose creator is no longer on record
+     * — their account deleted takes it off them (created_by nullOnDelete), and
+     * those stay with everyone in Business Development rather than nobody.
+     * Every RFQ when null, so a query is left as it is for everyone else.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeOwnedBy(Builder $query, ?int $userId): void
+    {
+        $query->when($userId !== null, fn (Builder $mine) => $mine->where(fn (Builder $theirs) => $theirs
+            ->where('rfqs.created_by', $userId)
+            ->orWhereNull('rfqs.created_by')));
     }
 
     /**
@@ -3567,12 +3595,14 @@ class Rfq extends Model
      * on their Ready to Close page: each part the General Manager has approved
      * and they haven't yet closed, plus any RFQ at its closing stage with no
      * such part of its own, listed whole (see scopeAwaitingBdClosing()). What
-     * the badge on their sidebar's Ready to Close link counts.
+     * the badge on their sidebar's Ready to Close link counts — of the RFQs
+     * $createdBy sees, for someone who sees only their own (scopeOwnedBy()).
      */
-    public static function bdClosingCount(): int
+    public static function bdClosingCount(?int $createdBy = null): int
     {
         $parts = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->when($createdBy !== null, fn ($mine) => $mine->where(fn ($theirs) => $theirs->where('rfqs.created_by', $createdBy)->orWhereNull('rfqs.created_by')))
             ->where('rfqs.status', 'Pending')
             ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing']))
@@ -3580,7 +3610,7 @@ class Rfq extends Model
             ->whereNull('rfq_user.bd_closed_at')
             ->count();
 
-        $wholeRfqs = static::where('status', 'Pending')
+        $wholeRfqs = static::query()->ownedBy($createdBy)->where('status', 'Pending')
             ->where('stage', 'bd_closing')
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingBdClosing($assignees))
             ->count();
@@ -3596,11 +3626,12 @@ class Rfq extends Model
      * fixed by them or carried past Senior Operations' review again. What the badge on
      * their sidebar's Returns link counts. Unlike the other queue counts
      * above, this isn't a per-part state — reject_target_stage lives on
-     * the RFQ itself — so it's just a flat count.
+     * the RFQ itself — so it's just a flat count. Of the RFQs $createdBy
+     * sees, for someone who sees only their own (scopeOwnedBy()).
      */
-    public static function bdReturnsCount(): int
+    public static function bdReturnsCount(?int $createdBy = null): int
     {
-        return static::where('status', 'Pending')->where('reject_target_stage', 'business_development')->count();
+        return static::query()->ownedBy($createdBy)->where('status', 'Pending')->where('reject_target_stage', 'business_development')->count();
     }
 
     /**

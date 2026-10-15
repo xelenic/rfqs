@@ -150,7 +150,7 @@
 @if (auth()->user()->hasRole('Business Development'))
     {{-- RFQs sent all the way back to them by a reviewer — one per row on
          the Returns page — as a red count, like the queues above. --}}
-    @php $bdReturnsCount = \App\Models\Rfq::bdReturnsCount(); @endphp
+    @php $bdReturnsCount = \App\Models\Rfq::bdReturnsCount(auth()->user()->ownRfqsOnlyId()); @endphp
     <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
         <i class="bi bi-arrow-counterclockwise"></i>
         <span class="nav-link-label">Returns</span>
@@ -162,7 +162,7 @@
 @if (auth()->user()->hasRole('Business Development'))
     {{-- What the General Manager has approved and is waiting to be closed — one
          per row on the Ready to Close page — as a red count, like the queues above. --}}
-    @php $closingCount = \App\Models\Rfq::bdClosingCount(); @endphp
+    @php $closingCount = \App\Models\Rfq::bdClosingCount(auth()->user()->ownRfqsOnlyId()); @endphp
     <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'closing']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'closing' ? 'active' : '' }}">
         <i class="bi bi-flag"></i>
         <span class="nav-link-label">Ready to Close</span>

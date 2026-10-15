@@ -108,7 +108,8 @@ class RfqController extends Controller implements HasMiddleware
         // "!" escapes LIKE's own wildcards in what was typed — the same on SQLite and MySQL.
         $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
         $wc = 'upper(trim(rfqs.wc_number))';
-        $matching = Rfq::query()->whereRaw("{$wc} like ? escape '!'", ['%'.$escaped.'%']);
+        // Only theirs, for whoever sees only the RFQs they created.
+        $matching = Rfq::query()->ownedBy($request->user()->ownRfqsOnlyId())->whereRaw("{$wc} like ? escape '!'", ['%'.$escaped.'%']);
 
         return response()->json([
             'term' => $term,
@@ -279,13 +280,18 @@ class RfqController extends Controller implements HasMiddleware
                 ->when($listPriority, fn ($query, array $priorities) => $query->whereIn('rfqs.priority_level', $priorities));
         };
 
-        $applyCommonFilters = function ($query) use ($status, $applySearch) {
+        // Business Development sees only the RFQs they created — every list
+        // of theirs, Closed included (User::seesOnlyOwnRfqs()).
+        $ownRfqsOnly = $user->ownRfqsOnlyId();
+
+        $applyCommonFilters = function ($query) use ($status, $applySearch, $ownRfqsOnly) {
             // The Closed list is the RFQs that have been closed and, beside
             // them, the closed parts of split RFQs still open — a part shows
             // there as soon as Business Development closes it.
             // On Hold and Cancelled list the RFQs with a part stopped on its own
             // too — see Rfq::scopeStoppedAs().
-            $query->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
+            $query->ownedBy($ownRfqsOnly)
+                ->when($status === 'Completed', fn ($query) => $query->closedOrWithClosedParts())
                 ->when(in_array($status, [Rfq::ON_HOLD, Rfq::CANCELLED], true), fn ($query) => $query->stoppedAs($status))
                 ->when($status === 'Pending', fn ($query) => $query->where('status', $status))
                 ->tap($applySearch);

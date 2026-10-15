@@ -2,6 +2,7 @@
 
 use App\Models\Rfq;
 use App\Models\Setting;
+use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -25,9 +26,9 @@ beforeEach(function () {
  *
  * @param  array<string, mixed>  $query
  */
-function businessDevelopmentDashboard(array $query = []): TestResponse
+function businessDevelopmentDashboard(array $query = [], ?User $viewer = null): TestResponse
 {
-    return test()->actingAs(userWithRole('Business Development'))->get(route('admin.dashboard', $query))->assertOk();
+    return test()->actingAs($viewer ?? userWithRole('Business Development'))->get(route('admin.dashboard', $query))->assertOk();
 }
 
 /**
@@ -159,13 +160,16 @@ it('lists what happened today, latest first, with who did it', function () {
         'gm_approved_at' => now()->subMinutes(30), 'gm_approved_by' => $gm->id,
     ]);
     Rfq::factory()->create(['rfq_number' => 'RFQ1003', 'created_at' => now()->subDays(3), 'senior_ops_reviewed_at' => now()->subDay()]);
+    // Another Business Development member's: not theirs to see.
+    Rfq::factory()->create(['rfq_number' => 'RFQ1004', 'created_by' => userWithRole('Business Development')->id, 'created_at' => now()->subHour()]);
 
-    businessDevelopmentDashboard()
+    businessDevelopmentDashboard(viewer: $creator)
         ->assertSee('approved by the General Manager — ready to close')
         ->assertSee($gm->name)
         ->assertSee($creator->name)
         // Yesterday's review isn't today's activity.
         ->assertDontSee('passed Senior Operations review')
+        ->assertDontSee('RFQ1004')
         ->assertViewHas('overview', function (array $overview) {
             expect($overview['feed']->pluck('rfq.rfq_number')->all())->toBe(['RFQ1002', 'RFQ1001']);
 

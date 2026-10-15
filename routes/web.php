@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\UserPhotoController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SetPasswordController;
 use App\Http\Middleware\CaptureLiveVersion;
+use App\Http\Middleware\EnsureRfqIsVisible;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/admin');
@@ -35,7 +36,7 @@ Route::post('logout', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::class])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::class, EnsureRfqIsVisible::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('live', LivePulseController::class)->name('live');
     Route::get('critical-monitor', [DashboardController::class, 'critical'])->name('critical-monitor');

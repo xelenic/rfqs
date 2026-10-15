@@ -117,12 +117,14 @@ class DashboardController extends Controller
         // which sees every role's side, keeps the general one.
         if ($canViewRfqs && $user->hasRole('Business Development') && ! $user->hasRole('Admin')) {
             $period = $this->summaryPeriod($request);
+            // Only the RFQs they created, if that's all they see (User::seesOnlyOwnRfqs()).
+            $createdBy = $user->ownRfqsOnlyId();
 
             return view('admin.dashboard.business-development', [
                 'period' => $period,
-                'overview' => $this->businessDevelopmentOverview($period),
-                'rfqActivity' => $this->rfqActivity($request->integer('range', 7)),
-                'recentRfqs' => Rfq::query()->with('assignees')->latest()->limit(6)->get(),
+                'overview' => $this->businessDevelopmentOverview($period, $createdBy),
+                'rfqActivity' => $this->rfqActivity($request->integer('range', 7), $createdBy),
+                'recentRfqs' => Rfq::query()->ownedBy($createdBy)->with('assignees')->latest()->limit(6)->get(),
                 'notifications' => $this->notifications($request),
             ]);
         }
@@ -775,9 +777,10 @@ class DashboardController extends Controller
      *     readyToCloseRfqs: Collection<int, Rfq>
      * }
      */
-    protected function businessDevelopmentOverview(array $period): array
+    protected function businessDevelopmentOverview(array $period, ?int $createdBy = null): array
     {
-        $pending = fn () => Rfq::query()->where('status', 'Pending');
+        $mine = fn () => Rfq::query()->ownedBy($createdBy);
+        $pending = fn () => $mine()->where('status', 'Pending');
         $beforeDataEntry = fn () => $pending()->whereNull('stage');
 
         $inStage = $pending()->whereNotNull('stage')
@@ -797,8 +800,9 @@ class DashboardController extends Controller
         ];
 
         $window = [$period['start'], $period['end']];
-        $within = fn (string $column) => Rfq::query()->whereBetween($column, $window)->count();
-        $returns = fn () => RfqComment::query()->where('action', 'rejected')->whereBetween('created_at', $window);
+        $within = fn (string $column) => $mine()->whereBetween($column, $window)->count();
+        $returns = fn () => RfqComment::query()->where('action', 'rejected')->whereBetween('created_at', $window)
+            ->when($createdBy !== null, fn ($theirs) => $theirs->whereHas('rfq', fn ($rfq) => $rfq->ownedBy($createdBy)));
 
         // Each dated milestone: who did it, how it looks, and what to say.
         $milestones = [
@@ -811,7 +815,7 @@ class DashboardController extends Controller
         ];
 
         $feed = collect($milestones)
-            ->flatMap(fn (array $milestone, string $column) => Rfq::query()
+            ->flatMap(fn (array $milestone, string $column) => $mine()
                 ->with($milestone['actor'])
                 ->whereBetween($column, $window)
                 ->latest($column)
@@ -847,9 +851,9 @@ class DashboardController extends Controller
             'pending' => $pending()->count(),
             'urgent' => $pending()->where('priority_level', 'Urgent')->count(),
             'inReview' => collect(Rfq::REVIEW_STAGES)->sum(fn (string $stage) => $inStage[$stage] ?? 0),
-            'readyToClose' => Rfq::bdClosingCount(),
-            'closed' => Rfq::query()->where('status', 'Completed')->count(),
-            'closedToday' => Rfq::query()->where('bd_closed_at', '>=', CarbonImmutable::now(Setting::timezone())->startOfDay()->setTimezone(config('app.timezone')))->count(),
+            'readyToClose' => Rfq::bdClosingCount($createdBy),
+            'closed' => $mine()->where('status', 'Completed')->count(),
+            'closedToday' => $mine()->where('bd_closed_at', '>=', CarbonImmutable::now(Setting::timezone())->startOfDay()->setTimezone(config('app.timezone')))->count(),
             'stages' => $stages,
             'summary' => [
                 'created' => $within('created_at'),
@@ -860,7 +864,7 @@ class DashboardController extends Controller
             ],
             'feed' => $feed,
             // Longest-waiting first — they're the ones to close next.
-            'readyToCloseRfqs' => $this->readyToClose(),
+            'readyToCloseRfqs' => $this->readyToClose($createdBy),
         ];
     }
 
@@ -869,13 +873,13 @@ class DashboardController extends Controller
      * General Manager has approved (the same rows as their Ready to Close page)
      * and any RFQ at its closing stage with no part of its own — longest-waiting
      * first. Each carries the number to show, and the part to close (none, for
-     * a whole RFQ).
+     * a whole RFQ). Of the RFQs $createdBy created, if given.
      *
      * @return Collection<int, array{rfq: Rfq, part: ?int, rfq_number: string, subject: string, approved_at: ?Carbon, approved_by: ?string}>
      */
-    protected function readyToClose(): Collection
+    protected function readyToClose(?int $createdBy = null): Collection
     {
-        $rfqs = Rfq::query()->with(['assignees', 'gmApprovedBy'])->awaitingBdClosing()->get();
+        $rfqs = Rfq::query()->ownedBy($createdBy)->with(['assignees', 'gmApprovedBy'])->awaitingBdClosing()->get();
 
         $names = User::whereIn('id', $rfqs->flatMap(fn (Rfq $rfq) => $rfq->assignees->pluck('pivot.gm_approved_by'))->filter()->unique())->pluck('name', 'id');
 
@@ -1431,11 +1435,13 @@ class DashboardController extends Controller
     protected function notifications(Request $request): array
     {
         $user = $request->user();
+        // Only about the RFQs they created, for whoever sees only their own.
+        $createdBy = $user->ownRfqsOnlyId();
         $notifications = [];
 
         // Closing is Business Development's own step — lead with it.
         if ($user->hasRole('Business Development')) {
-            $readyToClose = Rfq::bdClosingCount();
+            $readyToClose = Rfq::bdClosingCount($createdBy);
             if ($readyToClose > 0) {
                 $notifications[] = [
                     'type' => 'success',
@@ -1448,7 +1454,7 @@ class DashboardController extends Controller
         }
 
         if ($user->can('rfqs.view')) {
-            $urgentPending = Rfq::where('status', 'Pending')->where('priority_level', 'Urgent')->count();
+            $urgentPending = Rfq::query()->ownedBy($createdBy)->where('status', 'Pending')->where('priority_level', 'Urgent')->count();
             if ($urgentPending > 0) {
                 $notifications[] = [
                     'type' => 'danger',
@@ -1459,7 +1465,7 @@ class DashboardController extends Controller
                 ];
             }
 
-            $awaitingOperations = Rfq::where('status', 'Pending')->whereNull('operations_assigned_by')->count();
+            $awaitingOperations = Rfq::query()->ownedBy($createdBy)->where('status', 'Pending')->whereNull('operations_assigned_by')->count();
             if ($awaitingOperations > 0) {
                 $notifications[] = [
                     'type' => 'warning',
@@ -1470,7 +1476,7 @@ class DashboardController extends Controller
                 ];
             }
 
-            $awaitingSourcing = Rfq::where('status', 'Pending')->needingSourcing()->count();
+            $awaitingSourcing = Rfq::query()->ownedBy($createdBy)->where('status', 'Pending')->needingSourcing()->count();
             if ($awaitingSourcing > 0) {
                 $notifications[] = [
                     'type' => 'warning',
@@ -1498,14 +1504,15 @@ class DashboardController extends Controller
 
     /**
      * Bucket RFQs created in the selected range by status, zero-filled so the
-     * chart never skips a period with no activity.
+     * chart never skips a period with no activity. Only those $createdBy
+     * created, if given.
      *
      * @return array{
      *     range: int, labels: array<int, string>, pending: array<int, int>,
      *     completed: array<int, int>, pendingTotal: int, completedTotal: int
      * }
      */
-    protected function rfqActivity(int $range): array
+    protected function rfqActivity(int $range, ?int $createdBy = null): array
     {
         $range = in_array($range, self::RANGES, true) ? $range : 7;
         $hourly = $range === 1;
@@ -1523,6 +1530,7 @@ class DashboardController extends Controller
         $completed = $pending;
 
         Rfq::query()
+            ->ownedBy($createdBy)
             ->where('created_at', '>=', $start)
             ->get(['status', 'created_at'])
             ->each(function (Rfq $rfq) use (&$pending, &$completed, $bucketKey) {

@@ -131,6 +131,14 @@ class RfqCommentAttachment extends Model
     }
 
     /**
+     * The RFQ whose thread it's on.
+     */
+    public function rfq(): BelongsTo
+    {
+        return $this->belongsTo(Rfq::class);
+    }
+
+    /**
      * The comment it's attached to.
      */
     public function comment(): BelongsTo

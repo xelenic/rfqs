@@ -185,6 +185,29 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person sees only the RFQs they created (since 2026-10-15):
+     * someone whose one part in the workflow is Business Development — their
+     * lists, Closed included, their dashboard, the WC search, and each RFQ's
+     * own page and actions (Rfq::isVisibleTo(), EnsureRfqIsVisible). Holding
+     * any other workflow role, or Admin, they see what that role does.
+     */
+    public function seesOnlyOwnRfqs(): bool
+    {
+        return $this->hasRole('Business Development')
+            && ! $this->hasAnyRole(['Admin', ...array_diff(Rfq::WORKFLOW_ROLES, ['Business Development'])]);
+    }
+
+    /**
+     * Whose RFQs this person sees, as the creator to narrow a query to
+     * (Rfq::scopeCreatedBy()) — theirs, if they see only their own
+     * (seesOnlyOwnRfqs()); null, everyone's.
+     */
+    public function ownRfqsOnlyId(): ?int
+    {
+        return $this->seesOnlyOwnRfqs() ? $this->id : null;
+    }
+
+    /**
      * Whether this person sets a role's or someone's own working hours —
      * see WORKING_HOURS_ROLES.
      */
