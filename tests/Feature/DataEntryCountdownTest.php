@@ -94,8 +94,11 @@ it('shows no countdown, and nothing running, until Data Entry starts', function 
 
     [$classes, $row] = dataEntryListRow();
 
+    // Its whole target, still to run from Start: High's hour.
     expect($classes)->not->toContain('rfq-running')
-        ->and($row)->toContain('Not started')
+        ->and($row)->toContain('<i class="bi bi-stopwatch"></i> 1h')
+        ->toContain("High's target")
+        ->toContain('· from Start')
         ->not->toContain('data-countdown')
         ->not->toContain('running-pill');
 });

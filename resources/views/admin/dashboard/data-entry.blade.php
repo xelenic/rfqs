@@ -348,7 +348,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="small text-muted-soft mt-2 mb-0">Working time from your Start to Send to Finalize, days you were off aside, against Settings' Data Entry target for its priority.</p>
+                    <p class="small text-muted-soft mt-2 mb-0">Working time from your Start to Send to Finalize, days you were off aside, against its Data Entry target — per item times its items, or its priority's.</p>
                 </div>
             </div>
         </div>

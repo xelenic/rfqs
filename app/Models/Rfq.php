@@ -2609,10 +2609,10 @@ class Rfq extends Model
     }
 
     /**
-     * Where $part's countdown stands with Data Entry: the working time its
-     * priority allows them (Setting::dataEntryTargets()) less what this
-     * round has taken since their Start, less any day whoever started it was
-     * absent (Attendance) — negative once it's overdue.
+     * Where $part's countdown stands with Data Entry: the working time it
+     * allows them (dataEntryTargetSeconds() — per item, or by priority) less
+     * what this round has taken since their Start, less any day whoever
+     * started it was absent (Attendance) — negative once it's overdue.
      * Null if Data Entry isn't on it right now — not started yet, or sent on.
      * Each round starts its own countdown. Expects steps to be loaded, or
      * loads them.
@@ -2621,7 +2621,7 @@ class Rfq extends Model
      */
     public function dataEntryCountdown(int $part, ?CarbonInterface $now = null): ?array
     {
-        return $this->countdownAt('data_entry', $part, $this->dataEntryTargetSeconds(), $now);
+        return $this->countdownAt('data_entry', $part, $this->dataEntryTargetSeconds($part), $now);
     }
 
     /**
@@ -2659,12 +2659,51 @@ class Rfq extends Model
     }
 
     /**
-     * The working time Data Entry has for a round on this RFQ, from their
-     * Start, by its priority — see Setting::dataEntryTargets(). In seconds.
+     * The working time Data Entry has for a round on $part, from their Start:
+     * per item times its items while Data Entry's target is per item
+     * (dataEntryTargetBreakdown()), else by its priority — see
+     * Setting::dataEntryTargets(). In seconds.
      */
-    public function dataEntryTargetSeconds(): int
+    public function dataEntryTargetSeconds(?int $part = null): int
     {
-        return (Setting::dataEntryTargets()[$this->priority_level] ?? Setting::DEFAULT_DATA_ENTRY_TARGETS['Medium']) * 60;
+        return $this->dataEntryTargetBreakdown($part)['seconds']
+            ?? (Setting::dataEntryTargets()[$this->priority_level] ?? Setting::DEFAULT_DATA_ENTRY_TARGETS['Medium']) * 60;
+    }
+
+    /**
+     * How Data Entry's target for $part comes about while it's worked out per
+     * item (Setting::dataEntryPerItem()): its items (dataEntryItemsFor()),
+     * the working seconds an item takes, and the two multiplied. Null by
+     * priority — per item being off, or the RFQ having no item count.
+     *
+     * @return array{items: int, perItem: int, seconds: int}|null
+     */
+    public function dataEntryTargetBreakdown(?int $part = null): ?array
+    {
+        $perItem = Setting::dataEntryPerItem();
+        $items = $this->dataEntryItemsFor($part);
+
+        if (! $perItem['enabled'] || $items === null) {
+            return null;
+        }
+
+        return ['items' => $items, 'perItem' => $perItem['seconds'], 'seconds' => $items * $perItem['seconds']];
+    }
+
+    /**
+     * The items Data Entry has on $part: the RFQ's number of items — shared
+     * evenly across a split's parts, rounded up. Null when the RFQ has no
+     * item count (one created before it was asked).
+     */
+    public function dataEntryItemsFor(?int $part = null): ?int
+    {
+        if (! $this->number_of_items) {
+            return null;
+        }
+
+        return $part !== null && $this->isSplit()
+            ? (int) ceil($this->number_of_items / $this->splitTotal())
+            : (int) $this->number_of_items;
     }
 
     /**

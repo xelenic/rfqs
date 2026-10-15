@@ -104,6 +104,24 @@ class Setting extends Model
     public const DEFAULT_DATA_ENTRY_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
 
     /**
+     * Whether Data Entry's target is worked out per item — so many working
+     * seconds an item, times the part's items (Rfq::dataEntryItemsFor()) —
+     * rather than by priority (DEFAULT_DATA_ENTRY_TARGETS), until an Admin
+     * changes it. See dataEntryPerItem().
+     *
+     * @var array{enabled: bool, seconds: int}
+     */
+    public const DEFAULT_DATA_ENTRY_PER_ITEM = ['enabled' => false, 'seconds' => 120];
+
+    /**
+     * The fewest and most working seconds an item can be given (30 seconds to
+     * four hours).
+     *
+     * @var array{0: int, 1: int}
+     */
+    public const DATA_ENTRY_PER_ITEM_RANGE = [30, 14400];
+
+    /**
      * The fewest and most working minutes Data Entry can be idle before the
      * alert goes out.
      *
@@ -790,6 +808,40 @@ class Setting extends Model
     public static function putDataEntryIdleAlert(array $alert): void
     {
         static::put('data_entry_idle_alert', json_encode($alert));
+    }
+
+    /**
+     * Data Entry's target per item — whether it's on, and the working seconds
+     * an item takes — as saved on the Settings page, or
+     * DEFAULT_DATA_ENTRY_PER_ITEM, kept within DATA_ENTRY_PER_ITEM_RANGE.
+     * While it's on, a part's target is that times its items
+     * (Rfq::dataEntryTargetSeconds()); a part with no item count keeps its
+     * priority's.
+     *
+     * @return array{enabled: bool, seconds: int}
+     */
+    public static function dataEntryPerItem(): array
+    {
+        $saved = json_decode((string) static::get('data_entry_per_item'), true);
+        $saved = is_array($saved) ? $saved : [];
+        [$fewest, $most] = self::DATA_ENTRY_PER_ITEM_RANGE;
+
+        return [
+            'enabled' => is_bool($saved['enabled'] ?? null) ? $saved['enabled'] : self::DEFAULT_DATA_ENTRY_PER_ITEM['enabled'],
+            'seconds' => is_numeric($saved['seconds'] ?? null)
+                ? max($fewest, min($most, (int) $saved['seconds']))
+                : self::DEFAULT_DATA_ENTRY_PER_ITEM['seconds'],
+        ];
+    }
+
+    /**
+     * Saves Data Entry's target per item — see dataEntryPerItem().
+     *
+     * @param  array{enabled: bool, seconds: int}  $perItem
+     */
+    public static function putDataEntryPerItem(array $perItem): void
+    {
+        static::put('data_entry_per_item', json_encode($perItem));
     }
 
     /**

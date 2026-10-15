@@ -13,7 +13,8 @@
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
-    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $extraHours
+    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
+    (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $extraHours
     (ExtraWorkingHour, with user.roles), $extraHoursPeople
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
@@ -40,13 +41,14 @@
             'role-hours' => $roleHoursTab,
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
-            'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => 'data_entry_targets'],
+            'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
         ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
         $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Manager';
         $allTabs = $accountTabs + $managedTabs;
-        $hasErrors = fn (array $tab) => $tab['bag'] !== null && $errors->getBag($tab['bag'])->any();
+        // A tab's form — or forms — and whether one of them failed.
+        $hasErrors = fn (array $tab) => collect((array) $tab['bag'])->contains(fn (string $bag) => $errors->getBag($bag)->any());
 
         $activeTab = collect($allTabs)->search($hasErrors) ?: session('settings_tab') ?: request('tab');
         $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
@@ -602,7 +604,7 @@
                             @csrf
                             @method('PATCH')
 
-                            <p class="text-muted-soft small">Working hours Data Entry has to send a part to finalize, from when they press Start. Their list counts each started part down, only during working hours.</p>
+                            <p class="text-muted-soft small">Working hours Data Entry has to send a part to finalize, from when they press Start, by its RFQ's priority — unless it's set per item, below. Their list counts each started part down, only during working hours.</p>
 
                             {{-- Both target tabs send targets[]: only the one that failed gets what was typed back. --}}
                             <div class="row g-3 mb-3">
@@ -623,6 +625,54 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Data Entry targets</button>
+                        </form>
+                    </div>
+                </div>
+
+                {{-- Or per item: so many minutes an item, times a part's items —
+                     Setting::dataEntryPerItem(), Rfq::dataEntryTargetSeconds(). --}}
+                @php
+                    $perItemFailed = $errors->getBag('data_entry_per_item')->any();
+                    $perItemOn = $perItemFailed ? old('enabled') === '1' : $dataEntryPerItem['enabled'];
+                    $perItemMinutes = $perItemFailed ? old('minutes') : $dataEntryPerItem['seconds'] / 60;
+                @endphp
+                <div class="card mb-4" id="data-entry-per-item">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Per item
+                        <span class="badge badge-soft-primary">Admin</span>
+                        @if ($dataEntryPerItem['enabled'])
+                            <span class="badge badge-soft-success">On</span>
+                        @endif
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.data-entry-per-item') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">
+                                Work Data Entry's target out from the RFQ's number of items instead: the minutes an item takes, times its items — 40 items at 3 minutes is 2 hours. A part of a split RFQ gets its share of the items, rounded up. An RFQ with no number of items keeps its priority's target above.
+                            </p>
+
+                            <div class="form-check form-switch mb-3">
+                                <input type="hidden" name="enabled" value="0">
+                                <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="de-per-item-enabled" value="1" @checked($perItemOn)>
+                                <label class="form-check-label" for="de-per-item-enabled">Set Data Entry's target per item</label>
+                            </div>
+
+                            <div class="mb-3" style="max-width: 260px;">
+                                <label for="de-per-item-minutes" class="form-label">Time per item</label>
+                                <div class="input-group">
+                                    <input type="number" name="minutes" id="de-per-item-minutes"
+                                           class="form-control @error('minutes', 'data_entry_per_item') is-invalid @enderror"
+                                           value="{{ $perItemMinutes }}" min="{{ $dataEntryPerItemRange[0] / 60 }}" max="{{ $dataEntryPerItemRange[1] / 60 }}" step="0.5" required>
+                                    <span class="input-group-text">minutes</span>
+                                    @error('minutes', 'data_entry_per_item')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save per item</button>
                         </form>
                     </div>
                 </div>

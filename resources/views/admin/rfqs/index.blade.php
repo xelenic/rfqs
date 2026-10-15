@@ -182,11 +182,10 @@
                                             </td>
                                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                             <td class="text-nowrap">
-                                                @if ($deCountdown)
-                                                    @include('admin.rfqs._countdown_badge', ['countdown' => $deCountdown, 'title' => 'Working time left to send it to finalize', 'workerId' => $assignee->pivot->data_entry_started_by])
-                                                @else
-                                                    <span class="text-muted-soft small" title="Counts down from Start">Not started</span>
-                                                @endif
+                                                {{-- Its target — per item times its items, or its
+                                                     priority's (Rfq::dataEntryTargetSeconds()) — counting
+                                                     down once started, and how it's made up under it. --}}
+                                                @include('admin.rfqs._data_entry_target', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'countdown' => $deCountdown, 'workerId' => $assignee->pivot->data_entry_started_by])
                                             </td>
                                             <td>{{ $assignee->name }}</td>
                                             <td class="text-muted-soft">{{ $assignee->pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>

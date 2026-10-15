@@ -508,7 +508,7 @@ class DashboardController extends Controller
                     ->first(fn (Collection $round) => $round->contains('id', $stretch->id)) ?? collect([$stretch]);
                 $target = match ($stretch->step) {
                     'sourcing' => $stretch->rfq->sourcingTargetSeconds(),
-                    'data_entry' => $stretch->rfq->dataEntryTargetSeconds(),
+                    'data_entry' => $stretch->rfq->dataEntryTargetSeconds($stretch->part_number),
                     default => null,
                 };
                 $seconds = (int) $round->sum(fn (RfqStep $part) => $part->secondsExcludingAbsence($book, $now));
@@ -1110,7 +1110,7 @@ class DashboardController extends Controller
                         ->sortBy('started_at')
                         ->values())->last();
                     $seconds = $round === null ? null : (int) $round->sum(fn (RfqStep $step) => $step->secondsExcludingAbsence($book, $now));
-                    $target = $rfq->dataEntryTargetSeconds();
+                    $target = $rfq->dataEntryTargetSeconds($part->part_number);
 
                     return [
                         'rfq' => $rfq,
@@ -1175,7 +1175,8 @@ class DashboardController extends Controller
                     'sent' => $mine->count(),
                     'entries' => (int) $mine->sum('entries'),
                     'average' => $timed->isEmpty() ? null : intdiv((int) $timed->sum('seconds'), $timed->count()),
-                    'target' => (Setting::dataEntryTargets()[$priority] ?? 0) * 60,
+                    // By priority, the priority's; per item, what the parts sent had on average.
+                    'target' => $mine->isNotEmpty() ? (int) round($mine->avg('target')) : (Setting::dataEntryPerItem()['enabled'] ? null : (Setting::dataEntryTargets()[$priority] ?? 0) * 60),
                     'onTime' => $timed->where('onTime', true)->count(),
                     'timed' => $timed->count(),
                 ];

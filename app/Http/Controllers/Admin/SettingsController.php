@@ -46,6 +46,8 @@ class SettingsController extends Controller
             'timezone' => Setting::timezone(),
             'sourcingTargets' => Setting::sourcingTargets(),
             'dataEntryTargets' => Setting::dataEntryTargets(),
+            'dataEntryPerItem' => Setting::dataEntryPerItem(),
+            'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
             'wcFormatRequired' => Setting::wcFormatRequired(),
             'extraHours' => $user->hasRole('Admin')
@@ -326,6 +328,38 @@ class SettingsController extends Controller
         Setting::put('data_entry_targets', json_encode($this->validatedTargets($request, 'data_entry_targets', Setting::DEFAULT_DATA_ENTRY_TARGETS)));
 
         return $this->backToTab('data-entry-targets', 'Data Entry targets saved.');
+    }
+
+    /**
+     * Whether Data Entry's target is worked out per item — the working time
+     * an item takes, given in minutes (to the half minute), kept in seconds —
+     * times a part's items, rather than by priority. See
+     * Setting::dataEntryPerItem() and Rfq::dataEntryTargetSeconds().
+     */
+    public function updateDataEntryPerItem(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Data Entry targets.');
+
+        [$fewest, $most] = array_map(fn (int $seconds) => $seconds / 60, Setting::DATA_ENTRY_PER_ITEM_RANGE);
+
+        $validated = $request->validateWithBag('data_entry_per_item', [
+            'enabled' => ['boolean'],
+            'minutes' => ['required', 'numeric', "between:{$fewest},{$most}", 'multiple_of:0.5'],
+        ], [
+            'minutes.required' => 'Give the minutes an item takes.',
+            'minutes.numeric' => 'Give the minutes an item takes, like 2 or 1.5.',
+            'minutes.between' => "Keep it between {$fewest} and {$most} minutes an item.",
+            'minutes.multiple_of' => 'Give it to the half minute, like 2.5.',
+        ]);
+
+        Setting::putDataEntryPerItem([
+            'enabled' => $request->boolean('enabled'),
+            'seconds' => (int) round($validated['minutes'] * 60),
+        ]);
+
+        return $this->backToTab('data-entry-targets', $request->boolean('enabled')
+            ? 'Data Entry\'s target is now worked out per item.'
+            : 'Data Entry\'s target is back to its priority\'s.');
     }
 
     /**

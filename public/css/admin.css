@@ -6217,3 +6217,12 @@ a.critical-row:hover {
     padding: 0.5rem 1rem;
   }
 }
+
+/* Data Entry's list: a part's target, and how it's made up (rfqs/_data_entry_target). */
+.de-target-formula {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
