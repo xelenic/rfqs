@@ -2,7 +2,7 @@
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
     settings, WC Validation, RFQ Numbers, the Working Hours, each role's own
-    (Role Hours — HR Manager's too), the Half Day, the Sourcing and Data Entry Targets, the Idle Alert,
+    (Role Hours — HR Manager's too), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
     and people's Extra Hours. Each tab is its own form with its own error bag. The tab that
     opens is the one a form was just saved from (session settings_tab) or
     failed on, else ?tab=, else
@@ -45,7 +45,7 @@
             'role-hours' => $roleHoursTab,
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
-            'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
+            'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
@@ -645,45 +645,12 @@
             </div>
 
             <div class="tab-pane fade {{ $activeTab === 'data-entry-targets' ? 'show active' : '' }}" id="settings-pane-data-entry-targets" role="tabpanel" aria-labelledby="settings-tab-data-entry-targets" tabindex="0">
-                {{-- How long Data Entry has to send a part to finalize from their
-                     Start, by its RFQ's priority — what the countdown on their
-                     list runs from. --}}
-                <div class="card mb-4">
-                    <div class="card-header d-flex align-items-center gap-2">
-                        Data Entry Targets
-                        <span class="badge badge-soft-primary">Admin</span>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ route('admin.settings.data-entry-targets') }}" novalidate>
-                            @csrf
-                            @method('PATCH')
-
-                            <p class="text-muted-soft small">Working hours Data Entry has to send a part to finalize, from when they press Start, by its RFQ's priority — unless it's set per item, below. Their list counts each started part down, only during working hours.</p>
-
-                            {{-- Both target tabs send targets[]: only the one that failed gets what was typed back. --}}
-                            <div class="row g-3 mb-3">
-                                @foreach (array_reverse($dataEntryTargets, true) as $priority => $minutes)
-                                    <div class="col-sm-6">
-                                        <label for="de-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
-                                        <div class="input-group">
-                                            <input type="number" name="targets[{{ $priority }}]" id="de-target-{{ \Illuminate\Support\Str::slug($priority) }}"
-                                                   class="form-control @error('targets.'.$priority, 'data_entry_targets') is-invalid @enderror"
-                                                   value="{{ $errors->getBag('data_entry_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
-                                            <span class="input-group-text">hours</span>
-                                            @error('targets.'.$priority, 'data_entry_targets')
-                                                <div class="invalid-feedback">{{ $message }}</div>
-                                            @enderror
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Data Entry targets</button>
-                        </form>
-                    </div>
-                </div>
-
-                {{-- Or per item: so many minutes an item, times a part's items —
+                {{-- Data Entry's time is the line items to add times the time an
+                     item takes (Rfq::dataEntryTargetBreakdown()). The per-priority
+                     targets aren't shown any more — they stay as saved (or their
+                     defaults) for a part with no line items and per item off;
+                     SettingsController::updateDataEntryTargets() still takes them. --}}
+                {{-- Per item: so many minutes an item, times a part's line items —
                      Setting::dataEntryPerItem(), Rfq::dataEntryTargetSeconds(). --}}
                 @php
                     $perItemFailed = $errors->getBag('data_entry_per_item')->any();
@@ -692,7 +659,7 @@
                 @endphp
                 <div class="card mb-4" id="data-entry-per-item">
                     <div class="card-header d-flex align-items-center gap-2">
-                        Per item
+                        Time per item
                         <span class="badge badge-soft-primary">Admin</span>
                         @if ($dataEntryPerItem['enabled'])
                             <span class="badge badge-soft-success">On</span>
@@ -705,7 +672,7 @@
 
                             <p class="text-muted-soft small">
                                 A part Sourcing assigns to Data Entry with its <strong>line items to be added</strong> always gets those times this time per item — 40 line items at 3 minutes is 2 hours.
-                                Switched on, a part without line items works it out from the RFQ's number of items the same way (a split RFQ's part gets its share, rounded up); switched off, it keeps its priority's target above.
+                                Switched on, a part without line items works it out from the RFQ's number of items the same way (a split RFQ's part gets its share, rounded up); switched off, it keeps its priority's target.
                             </p>
 
                             <div class="form-check form-switch mb-3">

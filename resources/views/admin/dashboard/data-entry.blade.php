@@ -351,7 +351,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="small text-muted-soft mt-2 mb-0">Working time from your Start to Send to Finalize, days you were off aside, against its Data Entry target — per item times its items, or its priority's.</p>
+                    <p class="small text-muted-soft mt-2 mb-0">Working time from your Start to Send to Finalize, days you were off aside, against its Data Entry time — the line items to add times the time per item.</p>
                 </div>
             </div>
         </div>

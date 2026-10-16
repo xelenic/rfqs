@@ -60,10 +60,12 @@ it('starts with a Data Entry target per priority, in working minutes', function 
     expect(Setting::dataEntryTargets())->toBe(['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30]);
 });
 
-it('lets an Admin set Data Entry\'s targets in hours, to the quarter hour — apart from Sourcing\'s', function () {
+it('keeps Data Entry\'s per-priority targets off the page — their tab is Data Entry Time, its time per item — but takes them still', function () {
     test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit'))->assertOk()
-        ->assertSee('Data Entry Targets')
-        ->assertSee('id="de-target-urgent"', false);
+        ->assertSee('Data Entry Time')
+        ->assertSee('Time per item')
+        ->assertDontSee('id="de-target-urgent"', false)
+        ->assertDontSee('Save Data Entry targets');
 
     test()->actingAs(userWithRole('Admin'))
         ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Low' => 5, 'Medium' => 3, 'High' => 1.5, 'Urgent' => 0.75]])

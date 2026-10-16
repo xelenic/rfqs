@@ -4,7 +4,7 @@
     stopped while they've paused it; till then, the whole target, still to
     run. How the target is made up — the line items to add (or the RFQ's
     items) times the time an item takes (Rfq::dataEntryTargetBreakdown()), or
-    its priority's (Settings → Data Entry Targets) — is on hover.
+    its priority's — is on hover. See Settings → Data Entry Time.
 
     Expects: $rfq, $part, $countdown (Rfq::dataEntryCountdown(), or null),
     $workerId (whoever started it, or null). Optional: $pausedCountdown
