@@ -1655,10 +1655,10 @@ class RfqController extends Controller implements HasMiddleware
         $entries = Validator::make($request->all(), [
             'entries' => ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES],
         ], [
-            'entries.required' => 'Add how many entries you made on this part.',
-            'entries.integer' => 'Give the number of entries as a whole number, like 12.',
-            'entries.min' => 'The number of entries can\'t be less than 0.',
-            'entries.max' => 'That\'s more entries than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
+            'entries.required' => 'Add how many line items you added to this part.',
+            'entries.integer' => 'Give the line items added as a whole number, like 12.',
+            'entries.min' => 'The line items added can\'t be less than 0.',
+            'entries.max' => 'That\'s more line items than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
         ]);
 
         if ($entries->fails()) {

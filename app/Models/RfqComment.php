@@ -81,8 +81,8 @@ class RfqComment extends Model
 
     /**
      * What the action was about, for the small chip after it — whose part,
-     * which one, where it was sent back to, or how many entries Data Entry
-     * made ("Sam Rivera's part · RFQ1001-P2 of P3 · 12 entries", "Returned
+     * which one, where it was sent back to, or how many line items Data Entry
+     * added ("Sam Rivera's part · RFQ1001-P2 of P3 · 12 line items added", "Returned
      * to Sourcing") — or null when there's nothing to add.
      */
     public function actionContext(): ?string
@@ -95,7 +95,7 @@ class RfqComment extends Model
             isset($meta['assigned_to']) ? "to {$meta['assigned_to']}" : null,
             isset($meta['line_items']) ? trans_choice('1 line item to add|:count line items to add', $meta['line_items'], ['count' => $meta['line_items']]) : null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
-            isset($meta['entries']) ? trans_choice('1 entry|:count entries', $meta['entries'], ['count' => $meta['entries']]) : null,
+            isset($meta['entries']) ? trans_choice('1 line item added|:count line items added', $meta['entries'], ['count' => $meta['entries']]) : null,
             isset($meta['reference']) ? "Ref {$meta['reference']}" : null,
         ])->filter()->implode(' · ');
 

@@ -41,7 +41,7 @@
         $kpis = [
             ['label' => 'Waiting to start', 'value' => $waitingTotal, 'caption' => $urgentWaiting > 0 ? $urgentWaiting.' urgent' : 'For anyone in Data Entry', 'icon' => 'bi-inbox', 'tone' => 'warning', 'alert' => $urgentWaiting > 0, 'url' => $queueUrl],
             ['label' => $sentLabel, 'value' => $overview['sent'], 'caption' => $period['isToday'] ? 'Parts finished today' : 'Parts in the period', 'icon' => 'bi-send-check', 'tone' => 'success', 'alert' => false, 'url' => '#data-entry-output'],
-            ['label' => 'Entries made', 'value' => number_format($overview['entries']), 'caption' => $overview['withEntries'] > 0 ? 'About '.number_format($overview['entries'] / $overview['withEntries'], 1).' a part' : 'Given as you send each part', 'icon' => 'bi-keyboard', 'tone' => 'violet', 'alert' => false, 'url' => '#data-entry-output'],
+            ['label' => 'Line items added', 'value' => number_format($overview['entries']), 'caption' => $overview['withEntries'] > 0 ? 'About '.number_format($overview['entries'] / $overview['withEntries'], 1).' a part' : 'Given as you send each part', 'icon' => 'bi-keyboard', 'tone' => 'violet', 'alert' => false, 'url' => '#data-entry-output'],
             ['label' => 'Within target', 'value' => $overview['onTime'] !== null ? $overview['onTime'].'%' : '—', 'caption' => $overview['timedCount'] > 0 ? $overview['onTimeCount'].' of '.$overview['timedCount'].' parts' : 'Nothing timed yet', 'icon' => 'bi-bullseye', 'tone' => $onTimeTone($overview['onTime']), 'alert' => $overview['onTime'] !== null && $overview['onTime'] < 50, 'url' => '#data-entry-targets'],
             ['label' => 'Avg. time a part', 'value' => $duration($overview['average']), 'caption' => 'Working time, from your Start', 'icon' => 'bi-stopwatch', 'tone' => 'teal', 'alert' => false, 'url' => '#data-entry-targets'],
             ['label' => 'Returned to Sourcing', 'value' => $overview['returned'], 'caption' => 'Sent back for rework', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'alert' => false, 'url' => '#data-entry-latest'],
@@ -258,7 +258,7 @@
                             </label>
                             <label class="range-filter-btn">
                                 <input type="radio" name="output-metric" value="1" class="js-chart-metric" data-chart="outputChart">
-                                <span>Entries</span>
+                                <span>Line items</span>
                             </label>
                         </span>
                         <button type="button" class="btn btn-sm btn-outline-secondary js-toggle-table" data-target="outputTable" data-chart-target="outputChart">
@@ -275,7 +275,7 @@
                              'dates' => $overview['output']['dates'],
                              'series' => [
                                  ['key' => 'parts', 'label' => 'Parts sent to finalize', 'values' => $overview['output']['parts']],
-                                 ['key' => 'entries', 'label' => 'Entries made', 'values' => $overview['output']['entries']],
+                                 ['key' => 'entries', 'label' => 'Line items added', 'values' => $overview['output']['entries']],
                              ],
                          ]) }}"></div>
                     <div id="outputTable" class="table-responsive d-none">
@@ -284,7 +284,7 @@
                                 <tr>
                                     <th>When</th>
                                     <th class="text-end">Parts sent to finalize</th>
-                                    <th class="text-end">Entries made</th>
+                                    <th class="text-end">Line items added</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -372,7 +372,7 @@
                                     <th>Part</th>
                                     <th>Subject</th>
                                     <th>Priority</th>
-                                    <th class="text-end">Entries</th>
+                                    <th class="text-end">Line items added</th>
                                     <th class="text-end">Time taken</th>
                                     <th>Target</th>
                                     <th class="text-end">Sent</th>

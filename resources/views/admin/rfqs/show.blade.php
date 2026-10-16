@@ -965,7 +965,7 @@
                                                 <td>{{ $tabBlurred ? 'Restricted' : $part['number'] }}</td>
                                                 <td>
                                                     @if ($tabDeIsDone)
-                                                        <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}@if ($tabAssignee->pivot->data_entry_entries !== null) · {{ trans_choice('1 entry|:count entries', $tabAssignee->pivot->data_entry_entries, ['count' => number_format($tabAssignee->pivot->data_entry_entries)]) }}@endif</span>
+                                                        <span class="badge bg-success-subtle text-success-emphasis">{{ $tabDeActorName }} · {{ $tabAssignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}@if ($tabAssignee->pivot->data_entry_entries !== null) · {{ trans_choice('1 line item added|:count line items added', $tabAssignee->pivot->data_entry_entries, ['count' => number_format($tabAssignee->pivot->data_entry_entries)]) }}@endif</span>
                                                     @elseif ($tabDeIsReturned)
                                                         <span class="badge bg-danger-subtle text-danger-emphasis">Returned — rework needed</span>
                                                     @elseif ($tabAssignee->pivot->data_entry_returned_at !== null)

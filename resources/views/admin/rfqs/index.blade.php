@@ -276,7 +276,7 @@
                                         <th>Data Entry</th>
                                     @endif
                                     <th>Sent to Finalize</th>
-                                    <th class="text-end">Entries</th>
+                                    <th class="text-end">Line items added</th>
                                     <th>Where it is now</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
@@ -454,7 +454,7 @@
                                             <div class="text-muted-soft small">
                                                 {{ collect([
                                                     $dataEntryNames->has($assignee->pivot->data_entry_completed_by) ? 'by '.$dataEntryNames->get($assignee->pivot->data_entry_completed_by) : null,
-                                                    $assignee->pivot->data_entry_entries !== null ? trans_choice('1 entry|:count entries', $assignee->pivot->data_entry_entries, ['count' => number_format($assignee->pivot->data_entry_entries)]) : null,
+                                                    $assignee->pivot->data_entry_entries !== null ? trans_choice('1 line item added|:count line items added', $assignee->pivot->data_entry_entries, ['count' => number_format($assignee->pivot->data_entry_entries)]) : null,
                                                 ])->filter()->join(' · ') }}
                                             </div>
                                         @endif

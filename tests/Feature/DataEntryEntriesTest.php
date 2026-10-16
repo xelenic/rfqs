@@ -48,7 +48,7 @@ it('asks how many entries in Send to Finalize\'s prompt, telling them how many i
     test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('id="complete-entries"', false)
         ->assertSee('name="entries" id="complete-entries-input"', false)
-        ->assertSee('Number of entries')
+        ->assertSee('Line items added')
         ->assertSee('data-kind="data_entry"', false)
         ->assertSee('data-items="20"', false);
 });
@@ -64,7 +64,7 @@ it('keeps the number of entries with the part, and names it on the comment', fun
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_entries)->toBe(12)
         ->and($comment->meta['entries'])->toBe(12)
-        ->and($comment->actionContext())->toEndWith('12 entries');
+        ->and($comment->actionContext())->toEndWith('12 line items added');
 });
 
 it('takes 0 entries too, keeping and naming it', function () {
@@ -78,10 +78,10 @@ it('takes 0 entries too, keeping and naming it', function () {
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_entries)->toBe(0)
         ->and($comment->meta['entries'])->toBe(0)
-        ->and($comment->actionContext())->toEndWith('0 entries');
+        ->and($comment->actionContext())->toEndWith('0 line items added');
 
     test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'completed']))->assertOk()
-        ->assertSeeInOrder(['<th class="text-end">Entries</th>', 'RFQ7001', '>0</td>'], false);
+        ->assertSeeInOrder(['<th class="text-end">Line items added</th>', 'RFQ7001', '>0</td>'], false);
 });
 
 it('turns down a missing or wrong number of entries, sending nothing on', function (mixed $entries, string $message) {
@@ -93,11 +93,11 @@ it('turns down a missing or wrong number of entries, sending nothing on', functi
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_completed_at)->toBeNull()
         ->and(RfqComment::where('action', 'data_entry_completed')->count())->toBe(0);
 })->with([
-    'missing' => [null, 'Add how many entries you made on this part.'],
-    'fewer than none' => [-3, 'The number of entries can\'t be less than 0.'],
-    'a word' => ['twelve', 'Give the number of entries as a whole number, like 12.'],
-    'part of one' => ['2.5', 'Give the number of entries as a whole number, like 12.'],
-    'too many' => [100001, 'That\'s more entries than one part can have — at most 100,000.'],
+    'missing' => [null, 'Add how many line items you added to this part.'],
+    'fewer than none' => [-3, 'The line items added can\'t be less than 0.'],
+    'a word' => ['twelve', 'Give the line items added as a whole number, like 12.'],
+    'part of one' => ['2.5', 'Give the line items added as a whole number, like 12.'],
+    'too many' => [100001, 'That\'s more line items than one part can have — at most 100,000.'],
 ]);
 
 it('shows the number on Data Entry\'s Completed tab, Senior Operations\' review and the RFQ\'s page', function () {
@@ -105,15 +105,15 @@ it('shows the number on Data Entry\'s Completed tab, Senior Operations\' review 
     sendToFinalizeWith($dataEntry, $rfq, ['entries' => 1234, 'comment' => 'Prices entered']);
 
     test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'completed']))->assertOk()
-        ->assertSeeInOrder(['<th class="text-end">Entries</th>', 'RFQ7001', '1,234'], false);
+        ->assertSeeInOrder(['<th class="text-end">Line items added</th>', 'RFQ7001', '1,234'], false);
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertSee('· 1,234 entries', false);
+        ->assertSee('· 1,234 line items added', false);
 
     $rfq->refresh()->finalizePart(1);
 
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
-        ->assertSee('by '.e($dataEntry->name).' · 1,234 entries', false);
+        ->assertSee('by '.e($dataEntry->name).' · 1,234 line items added', false);
 });
 
 it('takes the new number when a part sent back to Data Entry is sent to finalize again', function () {
