@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AttendanceController;
+use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\LivePulseController;
@@ -69,6 +70,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::put('attendance/{sheet}', [AttendanceController::class, 'update'])->name('attendance.update');
     Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
+
+    // Backups (App\BackupManager) — Admin only, see BackupController.
+    Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
+    Route::post('backups', [BackupController::class, 'store'])->middleware('throttle:6,1')->name('backups.store');
+    Route::post('backups/upload', [BackupController::class, 'upload'])->name('backups.upload');
+    Route::patch('backups/schedule', [BackupController::class, 'updateSchedule'])->name('backups.schedule');
+    Route::get('backups/{backup}/download', [BackupController::class, 'download'])->where('backup', '[A-Za-z0-9_-]+\.zip')->name('backups.download');
+    Route::post('backups/{backup}/restore', [BackupController::class, 'restore'])->where('backup', '[A-Za-z0-9_-]+\.zip')->middleware('throttle:5,1')->name('backups.restore');
+    Route::delete('backups/{backup}', [BackupController::class, 'destroy'])->where('backup', '[A-Za-z0-9_-]+\.zip')->name('backups.destroy');
 
     Route::get('logs', [LogController::class, 'index'])->name('logs.index');
     Route::get('logs/download', [LogController::class, 'download'])->name('logs.download');

@@ -26,7 +26,7 @@ final class RfqDataEraser
      */
     public static function tables(): array
     {
-        $linked = collect(Schema::getTableListing(schemaQualified: false))
+        $linked = collect(BackupManager::databaseTables())
             ->reject(fn (string $table): bool => $table === 'rfqs')
             ->filter(fn (string $table): bool => Schema::hasColumn($table, 'rfq_id'))
             ->sort()

@@ -121,6 +121,10 @@
                     <a href="{{ route('admin.logs.index') }}" class="nav-link {{ request()->routeIs('admin.logs.*') ? 'active' : '' }}">
                         <i class="bi bi-journal-text"></i> Logs
                     </a>
+                    {{-- Backups and restoring them — Admin\BackupController. --}}
+                    <a href="{{ route('admin.backups.index') }}" class="nav-link {{ request()->routeIs('admin.backups.*') ? 'active' : '' }}">
+                        <i class="bi bi-cloud-arrow-up"></i> Backups
+                    </a>
                 @endif
 
                 <div class="sidebar-section-title">Account</div>
@@ -220,10 +224,10 @@
             @php
                 // The page body is what live updates swap (see public/js/live.js),
                 // except on the pages for users, roles, permissions, settings,
-                // attendance and the logs, which aren't live — a refresh mid-way would wipe
+                // attendance, the logs and backups, which aren't live — a refresh mid-way would wipe
                 // what's being filled in. Its hash lets a refresh tell whether anything
                 // in it actually changed.
-                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*', 'admin.attendance.*', 'admin.logs.*');
+                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*', 'admin.attendance.*', 'admin.logs.*', 'admin.backups.*');
                 $pageContent = $__env->yieldContent('content');
             @endphp
             <main class="page-body" id="live-main" data-live="{{ $liveBody ? 'on' : 'off' }}" data-live-hash="{{ md5($pageContent) }}">

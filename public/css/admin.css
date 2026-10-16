@@ -6532,3 +6532,20 @@ a.critical-row:hover {
   display: inline-block;
   margin: 0 1rem 0.25rem 0;
 }
+
+/* Admin → Backups (admin/backups/index). */
+.backup-schedule-row {
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+}
+
+.backup-holds li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.backup-table td {
+  vertical-align: middle;
+}

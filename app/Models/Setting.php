@@ -104,6 +104,19 @@ class Setting extends Model
     public const DEFAULT_DATA_ENTRY_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
 
     /**
+     * The automatic backups (Admin → Backups, backup:scheduled) until an Admin
+     * changes them: one a day at 02:00 and one a week on Sunday at 03:00, in
+     * the working hours' time zone, uploaded files included.
+     *
+     * @var array{daily: array{enabled: bool, time: string}, weekly: array{enabled: bool, day: string, time: string}, include_files: bool}
+     */
+    public const DEFAULT_BACKUP_SCHEDULE = [
+        'daily' => ['enabled' => true, 'time' => '02:00'],
+        'weekly' => ['enabled' => true, 'day' => 'sunday', 'time' => '03:00'],
+        'include_files' => true,
+    ];
+
+    /**
      * The lowest and highest an Admin can have RFQ numbers start from (as
      * the number after the prefix: 1670 for RFQ1670). See rfqNumberStart().
      *
@@ -824,6 +837,45 @@ class Setting extends Model
         return is_numeric($saved)
             ? max($lowest, min($highest, (int) $saved))
             : Rfq::RFQ_NUMBER_START + 1;
+    }
+
+    /**
+     * When the automatic backups run, and whether they take the uploaded
+     * files too — what was saved on the Backups page, or
+     * DEFAULT_BACKUP_SCHEDULE for anything not saved (or not sensible).
+     *
+     * @return array{daily: array{enabled: bool, time: string}, weekly: array{enabled: bool, day: string, time: string}, include_files: bool}
+     */
+    public static function backupSchedule(): array
+    {
+        $saved = json_decode((string) static::get('backup_schedule'), true);
+        $saved = is_array($saved) ? $saved : [];
+        $defaults = self::DEFAULT_BACKUP_SCHEDULE;
+        $time = fn (mixed $value, string $fallback) => is_string($value) && preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $value) === 1 ? $value : $fallback;
+        $flag = fn (mixed $value, bool $fallback) => is_bool($value) ? $value : $fallback;
+
+        return [
+            'daily' => [
+                'enabled' => $flag($saved['daily']['enabled'] ?? null, $defaults['daily']['enabled']),
+                'time' => $time($saved['daily']['time'] ?? null, $defaults['daily']['time']),
+            ],
+            'weekly' => [
+                'enabled' => $flag($saved['weekly']['enabled'] ?? null, $defaults['weekly']['enabled']),
+                'day' => in_array($saved['weekly']['day'] ?? null, self::WEEKDAYS, true) ? $saved['weekly']['day'] : $defaults['weekly']['day'],
+                'time' => $time($saved['weekly']['time'] ?? null, $defaults['weekly']['time']),
+            ],
+            'include_files' => $flag($saved['include_files'] ?? null, $defaults['include_files']),
+        ];
+    }
+
+    /**
+     * Saves the automatic backups' schedule — see backupSchedule().
+     *
+     * @param  array{daily: array{enabled: bool, time: string}, weekly: array{enabled: bool, day: string, time: string}, include_files: bool}  $schedule
+     */
+    public static function putBackupSchedule(array $schedule): void
+    {
+        static::put('backup_schedule', json_encode($schedule));
     }
 
     /**
