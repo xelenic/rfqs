@@ -55,7 +55,9 @@ it('opens each person\'s page from the Users list', function () {
 
     test()->actingAs(detailAdmin())->get(route('admin.users.index'))->assertOk()
         ->assertSee('href="'.route('admin.users.show', $riley).'" class="user-name-link"', false)
-        ->assertSee('title="View details"', false);
+        // And from their Options menu.
+        ->assertSee('<a class="dropdown-item" href="'.route('admin.users.show', $riley).'">', false)
+        ->assertSee('View details');
 
     userPage($riley)
         ->assertSee('<h2 class="user-profile-name">'.e($riley->name).'</h2>', false)

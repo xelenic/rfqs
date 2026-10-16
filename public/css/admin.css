@@ -6578,3 +6578,26 @@ a.critical-row:hover {
 tr.is-deactivated > td:not(:last-child) {
   opacity: 0.6;
 }
+
+/* A person's Options menu (Users list, their page): icons in a column. */
+.user-options .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.875rem;
+}
+
+.user-options .dropdown-item .bi {
+  width: 1rem;
+  text-align: center;
+  color: var(--rfq-text-muted);
+}
+
+.user-options .dropdown-item.text-danger .bi,
+.user-options .dropdown-item.text-success .bi {
+  color: inherit;
+}
+
+.user-options form {
+  margin: 0;
+}

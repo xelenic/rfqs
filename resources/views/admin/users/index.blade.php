@@ -69,60 +69,84 @@
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->toBusinessTimezone()->format('M d, Y') }}</td>
                             <td class="text-end">
-                                <a href="{{ route('admin.users.show', $user) }}" class="btn btn-sm btn-outline-secondary" title="View details">
-                                    <i class="bi bi-eye"></i>
-                                </a>
-                                @if ($hasTrackedTime && auth()->user()->hasRole('Admin'))
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}" title="Extra hours">
-                                        <i class="bi bi-moon-stars"></i>
-                                    </button>
-                                @endif
-                                {{-- Only an Admin touches an Admin's account (UserController). --}}
+                                {{-- Everything to do with them, in one menu. Only an Admin touches
+                                     an Admin's account (UserController). Fixed, so the table's
+                                     scrolling doesn't cut it off. --}}
                                 @php $canManage = auth()->user()->hasRole('Admin') || ! $user->hasRole('Admin'); @endphp
-                                {{-- A fresh set-password email — for a link that expired or went astray. --}}
-                                @if ($canManage && auth()->user()->can('users.create') && ! $user->isDeactivated())
-                                    <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
-                                          data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Email a set-password link">
-                                            <i class="bi bi-envelope"></i>
-                                        </button>
-                                    </form>
-                                @endif
-                                @if ($canManage && auth()->user()->can('users.edit'))
-                                    <button type="button" class="btn btn-sm btn-outline-secondary js-edit-user"
-                                            data-bs-toggle="modal" data-bs-target="#editUserModal"
-                                            data-action="{{ route('admin.users.update', $user) }}"
-                                            data-id="{{ $user->id }}"
-                                            data-name="{{ $user->name }}"
-                                            data-email="{{ $user->email }}"
-                                            data-roles="{{ $user->roles->pluck('name')->join(',') }}">
-                                        <i class="bi bi-pencil"></i>
+                                <div class="dropdown user-options">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                                            data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Options for {{ $user->name }}">
+                                        <i class="bi bi-three-dots"></i> Options
                                     </button>
-                                @endif
-                                {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
-                                @if (\App\Impersonation::canStart(auth()->user(), $user))
-                                    <form action="{{ route('admin.users.impersonate', $user) }}" method="POST" class="d-inline"
-                                          data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Log in as {{ $user->name }}">
-                                            <i class="bi bi-incognito"></i>
-                                        </button>
-                                    </form>
-                                @endif
-                                {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
-                                @if (auth()->user()->hasRole('Admin') && ! auth()->user()->is($user))
-                                    @include('admin.users._deactivate_button', ['user' => $user, 'compact' => true])
-                                @endif
-                                @can('users.delete')
-                                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST" class="d-inline" data-confirm="Delete this user?">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                @endcan
+                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                        <li><h6 class="dropdown-header">{{ $user->name }}</h6></li>
+                                        <li>
+                                            <a class="dropdown-item" href="{{ route('admin.users.show', $user) }}">
+                                                <i class="bi bi-eye"></i> View details
+                                            </a>
+                                        </li>
+                                        @if ($canManage && auth()->user()->can('users.edit'))
+                                            <li>
+                                                <button type="button" class="dropdown-item js-edit-user"
+                                                        data-bs-toggle="modal" data-bs-target="#editUserModal"
+                                                        data-action="{{ route('admin.users.update', $user) }}"
+                                                        data-id="{{ $user->id }}"
+                                                        data-name="{{ $user->name }}"
+                                                        data-email="{{ $user->email }}"
+                                                        data-roles="{{ $user->roles->pluck('name')->join(',') }}">
+                                                    <i class="bi bi-pencil"></i> Edit
+                                                </button>
+                                            </li>
+                                        @endif
+                                        @if ($hasTrackedTime && auth()->user()->hasRole('Admin'))
+                                            <li>
+                                                <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}">
+                                                    <i class="bi bi-moon-stars"></i> Extra hours
+                                                </button>
+                                            </li>
+                                        @endif
+                                        {{-- A fresh set-password email — for a link that expired or went astray. --}}
+                                        @if ($canManage && auth()->user()->can('users.create') && ! $user->isDeactivated())
+                                            <li>
+                                                <form action="{{ route('admin.users.password-link', $user) }}" method="POST"
+                                                      data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
+                                                    @csrf
+                                                    <button type="submit" class="dropdown-item">
+                                                        <i class="bi bi-envelope"></i> Send password link
+                                                    </button>
+                                                </form>
+                                            </li>
+                                        @endif
+                                        {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
+                                        @if (\App\Impersonation::canStart(auth()->user(), $user))
+                                            <li>
+                                                <form action="{{ route('admin.users.impersonate', $user) }}" method="POST"
+                                                      data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
+                                                    @csrf
+                                                    <button type="submit" class="dropdown-item">
+                                                        <i class="bi bi-incognito"></i> Log in as {{ $user->name }}
+                                                    </button>
+                                                </form>
+                                            </li>
+                                        @endif
+                                        {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
+                                        @if (auth()->user()->hasRole('Admin') && ! auth()->user()->is($user))
+                                            <li>@include('admin.users._deactivate_button', ['user' => $user, 'asMenuItem' => true])</li>
+                                        @endif
+                                        @can('users.delete')
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                <form action="{{ route('admin.users.destroy', $user) }}" method="POST" data-confirm="Delete this user?">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="dropdown-item text-danger">
+                                                        <i class="bi bi-trash"></i> Delete
+                                                    </button>
+                                                </form>
+                                            </li>
+                                        @endcan
+                                    </ul>
+                                </div>
                             </td>
                         </tr>
                     @empty

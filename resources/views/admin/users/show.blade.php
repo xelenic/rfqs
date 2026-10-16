@@ -92,40 +92,57 @@
                         <i class="bi bi-chat-dots"></i> Message
                     </a>
                 @endunless
-                {{-- A fresh set-password email — for a link that expired or went astray. --}}
-                @if ($canManage && auth()->user()->can('users.create') && ! $user->isDeactivated())
-                    <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
-                          data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
-                        @csrf
-                        <input type="hidden" name="return_to" value="show">
-                        <button type="submit" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-envelope"></i> Send password link
+                {{-- The rest, in one menu. --}}
+                @php
+                    $canSendLink = $canManage && auth()->user()->can('users.create') && ! $user->isDeactivated();
+                    $canLogInAs = \App\Impersonation::canStart(auth()->user(), $user);
+                    $canDeactivate = auth()->user()->hasRole('Admin') && ! $isYou;
+                    $canRemovePhoto = $user->avatar_path && auth()->user()->canChangePhotoOf($user);
+                @endphp
+                @if ($canSendLink || $canLogInAs || $canDeactivate || $canRemovePhoto)
+                    <div class="dropdown user-options d-inline-block">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-three-dots"></i> More
                         </button>
-                    </form>
-                @endif
-                {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
-                @if (\App\Impersonation::canStart(auth()->user(), $user))
-                    <form action="{{ route('admin.users.impersonate', $user) }}" method="POST" class="d-inline"
-                          data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
-                        @csrf
-                        <button type="submit" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-incognito"></i> Log in as
-                        </button>
-                    </form>
-                @endif
-                {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
-                @if (auth()->user()->hasRole('Admin') && ! $isYou)
-                    @include('admin.users._deactivate_button', ['user' => $user])
-                @endif
-                @if ($user->avatar_path && auth()->user()->canChangePhotoOf($user))
-                    <form action="{{ route('admin.users.photo.destroy', $user) }}" method="POST" class="d-inline"
-                          data-confirm="Remove {{ $user->name }}'s photo? Their initial shows instead.">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-person-x"></i> Remove photo
-                        </button>
-                    </form>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                            {{-- A fresh set-password email — for a link that expired or went astray. --}}
+                            @if ($canSendLink)
+                                <li>
+                                    <form action="{{ route('admin.users.password-link', $user) }}" method="POST"
+                                          data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
+                                        @csrf
+                                        <input type="hidden" name="return_to" value="show">
+                                        <button type="submit" class="dropdown-item"><i class="bi bi-envelope"></i> Send password link</button>
+                                    </form>
+                                </li>
+                            @endif
+                            {{-- An Admin signing in as them (App\Impersonation) — not as another Admin. --}}
+                            @if ($canLogInAs)
+                                <li>
+                                    <form action="{{ route('admin.users.impersonate', $user) }}" method="POST"
+                                          data-confirm="Sign in as {{ $user->name }}? You'll see the panel as they do, and whatever you do is done as them. Use &quot;Back to your account&quot; at the top to return.">
+                                        @csrf
+                                        <button type="submit" class="dropdown-item"><i class="bi bi-incognito"></i> Log in as</button>
+                                    </form>
+                                </li>
+                            @endif
+                            {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
+                            @if ($canDeactivate)
+                                <li>@include('admin.users._deactivate_button', ['user' => $user, 'asMenuItem' => true])</li>
+                            @endif
+                            @if ($canRemovePhoto)
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form action="{{ route('admin.users.photo.destroy', $user) }}" method="POST"
+                                          data-confirm="Remove {{ $user->name }}'s photo? Their initial shows instead.">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="dropdown-item text-danger"><i class="bi bi-person-x"></i> Remove photo</button>
+                                    </form>
+                                </li>
+                            @endif
+                        </ul>
+                    </div>
                 @endif
                 @if ($canManage && auth()->user()->can('users.edit'))
                     <button type="button" class="btn btn-sm btn-outline-secondary js-edit-user"
