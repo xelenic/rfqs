@@ -1504,21 +1504,26 @@ function rfqmsBoot() {
         });
     });
 
-    // Data Entry's Ready and Completed tabs: the one open is kept in the
-    // address (?tab=completed), so a reload, a live update or coming back
-    // after an action opens it again.
+    // A list's tabs — Data Entry's Ready and Completed, Sourcing's Pending for
+    // Sourcing, With Data Entry and Finalized: the one open is kept in the address (?tab=, left
+    // off for the first, data-tab-default), so a reload, a live update or
+    // coming back after an action opens it again — and so is the search.
     document.querySelectorAll('[data-de-tab]').forEach(function (tab) {
         tab.addEventListener('shown.bs.tab', function () {
+            var isDefault = tab.hasAttribute('data-tab-default');
             var url = new URL(window.location.href);
-            if (tab.dataset.deTab === 'completed') {
-                url.searchParams.set('tab', 'completed');
-            } else {
+            if (isDefault) {
                 url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tab.dataset.deTab);
             }
             window.history.replaceState(null, '', url);
 
             var searchTab = document.getElementById('deTabInput');
-            if (searchTab) searchTab.disabled = tab.dataset.deTab !== 'completed';
+            if (searchTab) {
+                searchTab.value = tab.dataset.deTab;
+                searchTab.disabled = isDefault;
+            }
         });
     });
 

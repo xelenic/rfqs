@@ -38,9 +38,11 @@
     @if ($opsFilters)
         @include('admin.rfqs._ops_filters_carry')
     @endif
-    {{-- Data Entry's tab, kept up by admin.js as it changes. --}}
+    {{-- Data Entry's or Sourcing's tab, kept up by admin.js as it changes. --}}
     @if ($scopedToDataEntry)
         <input type="hidden" name="tab" id="deTabInput" value="completed" @disabled($dataEntryTab !== 'completed')>
+    @elseif ($sourcingCounts ?? null)
+        <input type="hidden" name="tab" id="deTabInput" value="{{ $sourcingTab === 'todo' ? 'with-data-entry' : $sourcingTab }}" @disabled($sourcingTab === 'todo')>
     @endif
 
     <div class="list-filter-search">

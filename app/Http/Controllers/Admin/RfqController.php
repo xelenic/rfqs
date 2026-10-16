@@ -159,11 +159,10 @@ class RfqController extends Controller implements HasMiddleware
         // company's backlog — scoped to RFQs they're actually assigned to.
         // Completed and the unfiltered list stay company-wide.
         //
-        // When Operations splits an RFQ across several Sourcing members,
-        // one of them marking it complete hands the whole RFQ to Data
-        // Entry — but it must stay visible to the others too (as their own
-        // split reference, see the "Handed off" note in the view), not
-        // vanish from their queue just because a teammate finished first.
+        // Only what's theirs to act on: a part still with them, and one Data
+        // Entry has sent back for them to finalize. Once they've assigned it
+        // to Data Entry it leaves the list till then — each part on its own,
+        // whatever a teammate's done with theirs.
         //
         // "Returns" (below) is a separate lens on the same Pending status, so
         // the two are mutually exclusive rather than double-counting: a part
@@ -322,16 +321,18 @@ class RfqController extends Controller implements HasMiddleware
             ->when(($scopedToMe || $scopedToReturns) && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
-                // Not the parts Data Entry has sent back: those are on the
-                // Returns list (below) until they're completed again.
-                // Admin's overview also lists the parts waiting on their
-                // member's Finalize, which are Sourcing's to act on too.
-                // A part stopped on its own is on nobody's list.
-                $query->whereHas('assignees', fn ($q) => $sourcingOverview
-                    ? $q->whereNull('rfq_user.status')->where(fn ($parts) => $parts
+                // A part still with its member, or waiting on their Finalize —
+                // not one assigned to Data Entry (until it's sent back to
+                // finalize), nor one Data Entry sent back: that's on the
+                // Returns list (below) until it's completed again. Each
+                // member's own; Admin's overview, everyone's. A part stopped
+                // on its own is on nobody's list.
+                $query->whereHas('assignees', fn ($q) => $q
+                    ->when(! $sourcingOverview, fn ($mine) => $mine->whereKey($user->id))
+                    ->whereNull('rfq_user.status')
+                    ->where(fn ($parts) => $parts
                         ->where(fn ($open) => $open->whereNull('rfq_user.completed_at')->whereNull('rfq_user.returned_at'))
-                        ->orWhere(fn ($finalizing) => RfqAssignment::whereAwaitingFinalize($finalizing)))
-                    : $q->whereKey($user->id)->whereNull('rfq_user.status')->tap(fn ($q) => RfqAssignment::whereNotReturned($q)));
+                        ->orWhere(fn ($finalizing) => RfqAssignment::whereAwaitingFinalize($finalizing))));
             })
             ->when($scopedToReturns, function ($query) use ($user, $sourcingOverview) {
                 $query->whereHas('assignees', function ($q) use ($user, $sourcingOverview) {
@@ -437,6 +438,66 @@ class RfqController extends Controller implements HasMiddleware
 
         $bySourcingRfqs?->appends(['tab' => 'ready']);
 
+        // A Sourcing member's My Pending RFQs has three tabs: Pending for
+        // Sourcing — what's theirs to complete or finalize ($rfqs, above);
+        // With Data Entry (?tab=with-data-entry) — their parts assigned to
+        // Data Entry and not yet sent back to finalize, to follow; and
+        // Finalized (?tab=finalized) — the parts they've finalized, on their
+        // way through the reviews, till the RFQ's closed. Each counts its
+        // parts, the search narrowing all three. Admin's overview of Sourcing
+        // has just the one.
+        $ownSourcingTabs = $scopedToMe && ! $sourcingOverview;
+        $sourcingTab = $ownSourcingTabs && in_array($request->query('tab'), ['with-data-entry', 'finalized'], true) ? $request->query('tab') : 'todo';
+        $isMineWithDataEntry = fn ($parts) => $parts->where('rfq_user.user_id', $user->id)
+            ->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.completed_at')
+            ->whereNull('rfq_user.data_entry_completed_at');
+
+        $withDataEntryRfqs = $ownSourcingTabs
+            ? Rfq::query()
+                ->with(['assignees', 'steps' => fn ($steps) => $steps->where('step', 'data_entry')])
+                ->whereHas('assignees', $isMineWithDataEntry)
+                ->tap($applyCommonFilters)
+                ->latest()
+                ->paginate(10, ['*'], 'with_data_entry_page')
+                ->withQueryString()
+                ->appends(['tab' => 'with-data-entry'])
+            : null;
+
+        $isMineFinalized = fn ($parts) => $parts->where('rfq_user.user_id', $user->id)
+            ->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.finalized_at');
+
+        $finalizedRfqs = $ownSourcingTabs
+            ? Rfq::query()
+                ->with('assignees')
+                ->whereHas('assignees', $isMineFinalized)
+                ->tap($applyCommonFilters)
+                ->orderByDesc(DB::table('rfq_user')->selectRaw('max(rfq_user.finalized_at)')->whereColumn('rfq_user.rfq_id', 'rfqs.id')->where('rfq_user.user_id', $user->id))
+                ->paginate(10, ['*'], 'finalized_page')
+                ->withQueryString()
+                ->appends(['tab' => 'finalized'])
+            : null;
+
+        $sourcingCounts = $ownSourcingTabs ? [
+            'todo' => DB::table('rfq_user')
+                ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applyCommonFilters))
+                ->where('user_id', $user->id)
+                ->whereNull('status')
+                ->where(fn ($parts) => $parts
+                    ->where(fn ($open) => $open->whereNull('completed_at')->whereNull('returned_at'))
+                    ->orWhere(fn ($finalizing) => $finalizing->whereNotNull('data_entry_completed_at')->whereNull('finalized_at')))
+                ->count(),
+            'with_data_entry' => DB::table('rfq_user')
+                ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applyCommonFilters))
+                ->tap($isMineWithDataEntry)
+                ->count(),
+            'finalized' => DB::table('rfq_user')
+                ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applyCommonFilters))
+                ->tap($isMineFinalized)
+                ->count(),
+        ] : null;
+
         // Operations' "Assigned" tab — a reference view alongside
         // "Unassigned" (above) of what's already been routed to Sourcing
         // but is still Pending overall.
@@ -500,6 +561,10 @@ class RfqController extends Controller implements HasMiddleware
             'dataEntryCompletedRfqs' => $dataEntryCompletedRfqs,
             'dataEntryCompletedBy' => $dataEntryCompletedBy,
             'dataEntryCounts' => $dataEntryCounts,
+            'sourcingTab' => $sourcingTab,
+            'withDataEntryRfqs' => $withDataEntryRfqs,
+            'finalizedRfqs' => $finalizedRfqs,
+            'sourcingCounts' => $sourcingCounts,
             'assignedRfqs' => $assignedRfqs,
             'seniorOpsReviewRfqs' => $seniorOpsReviewRfqs,
             'dataEntryNames' => $dataEntryNames,

@@ -4,6 +4,7 @@ use App\Models\Rfq;
 use App\Models\RfqAssignment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -51,15 +52,18 @@ function rileysWork(): array
     return ['riley' => $riley, 'sam' => $sam, 'dataEntry' => $dataEntry, 'split' => $split->refresh(), 'whole' => $whole->refresh()];
 }
 
-it('leaves the parts Data Entry sent back off My Pending RFQs, and keeps the rest', function () {
+it('leaves the parts Data Entry sent back off My Pending RFQs — and those assigned to Data Entry', function () {
     ['riley' => $riley] = rileysWork();
 
     $html = test()->actingAs($riley)->get(myPendingUrl())->assertOk()->getContent();
+    $todo = Str::betweenFirst($html, 'id="rfq-sourcing-todo"', 'id="rfq-sourcing-with-de"');
 
-    // The part still in progress and the one already handed on — not the returned one.
-    expect($html)->toContain('<td class="text-nowrap">RFQ1001-P1 of P3</td>')
-        ->toContain('<td class="text-nowrap">RFQ1001-P3 of P3</td>')
-        ->not->toContain('<td class="text-nowrap">RFQ1001-P2 of P3</td>')
+    // To do: only the part still in progress — the one assigned to Data
+    // Entry is on the next tab, and the returned one on Returns.
+    expect($todo)->toContain('<td class="text-nowrap">RFQ1001-P1 of P3</td>')
+        ->not->toContain('<td class="text-nowrap">RFQ1001-P3 of P3</td>')
+        ->and(Str::after($html, 'id="rfq-sourcing-with-de"'))->toContain('<td class="text-nowrap">RFQ1001-P3 of P3</td>')
+        ->and($html)->not->toContain('<td class="text-nowrap">RFQ1001-P2 of P3</td>')
         // An RFQ whose only part was sent back isn't here at all…
         ->not->toContain('Sent back whole')
         // …and nor is why they were sent back.
@@ -102,11 +106,12 @@ it('brings a reworked part back to Returns when it is completed from there, and 
 
     expect($split->refresh()->assigneeForPart(2)->pivot->completed_at)->not->toBeNull();
 
-    // No longer a return: off Returns, and — done and with Data Entry — back on My Pending RFQs.
+    // No longer a return: off Returns, and — assigned to Data Entry — on My
+    // Pending RFQs' With Data Entry tab.
     test()->actingAs($riley)->get(myReturnsUrl())->assertOk()
         ->assertDontSee('<td class="text-nowrap">RFQ1001-P2 of P3</td>', false);
-    test()->actingAs($riley)->get(myPendingUrl())->assertOk()
-        ->assertSee('<td class="text-nowrap">RFQ1001-P2 of P3</td>', false);
+    $html = test()->actingAs($riley)->get(myPendingUrl())->assertOk()->getContent();
+    expect(Str::after($html, 'id="rfq-sourcing-with-de"'))->toContain('<td class="text-nowrap">RFQ1001-P2 of P3</td>');
 });
 
 it('still goes back to My Pending RFQs when a part is completed from there', function () {

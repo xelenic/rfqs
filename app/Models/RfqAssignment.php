@@ -120,6 +120,26 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * Where a part its Sourcing member has finalized is now, on its way
+     * through the reviews: [label, tone] — Senior Operations' review, the
+     * Head of Business Development, GM Assistant, the General Manager, then
+     * ready to close, and closed.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function stageAfterFinalize(): array
+    {
+        return match (true) {
+            $this->bd_closed_at !== null => ['Closed', 'success'],
+            $this->gm_approved_at !== null => ['Ready to close', 'success'],
+            $this->gm_assistant_completed_at !== null => ['With the General Manager', 'primary'],
+            $this->head_of_bd_approved_at !== null => ['With GM Assistant', 'primary'],
+            $this->senior_ops_reviewed_at !== null => ['With Head of Business Development', 'primary'],
+            default => ['In Senior Operations review', 'info'],
+        };
+    }
+
+    /**
      * The human label for progressState().
      */
     public function progressLabel(): string

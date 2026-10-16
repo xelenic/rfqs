@@ -316,7 +316,9 @@ it('shows each commenter\'s role beside their name, with a card of their details
 
 it('shows it on Sourcing\'s modal as well, for a reply too, and knows which name is theirs', function () {
     [$riley, $dataEntry] = [userWithRole('Sourcing'), userWithRole('Data Entry')];
-    $rfq = rfqWithComments([$dataEntry], $riley);
+    // Still Riley's to complete, so it's on their My Pending RFQs.
+    $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
+    $rfq->comments()->create(['user_id' => $dataEntry->id, 'body' => "A word from {$dataEntry->name}"]);
     $rfq->comments()->create(['user_id' => $riley->id, 'body' => 'A reply from Riley', 'parent_id' => $rfq->comments()->first()->id]);
 
     $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();

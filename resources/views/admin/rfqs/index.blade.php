@@ -108,7 +108,7 @@
             @php $deOnCompleted = $dataEntryTab === 'completed'; @endphp
             <ul class="nav nav-pills rfq-view-toggle m-3 mb-0" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link {{ $deOnCompleted ? '' : 'active' }}" data-bs-toggle="pill" data-bs-target="#rfq-de-ready" data-de-tab="ready" type="button" role="tab" aria-selected="{{ $deOnCompleted ? 'false' : 'true' }}">
+                    <button class="nav-link {{ $deOnCompleted ? '' : 'active' }}" data-bs-toggle="pill" data-bs-target="#rfq-de-ready" data-de-tab="ready" data-tab-default type="button" role="tab" aria-selected="{{ $deOnCompleted ? 'false' : 'true' }}">
                         <i class="bi bi-inbox"></i> Ready <span class="rfq-tab-count">{{ $dataEntryCounts['ready'] }}</span>
                     </button>
                 </li>
@@ -1203,13 +1203,43 @@
                 </table>
             </div>
         @elseif ($scopedToMe)
-            {{-- Sourcing's personal reference — their own split RFQ number
-                 and when they were assigned, rather than the fuller
-                 workflow view everyone else gets. A split task stays
-                 listed here for every assignee even after a teammate marks
-                 it complete and hands the whole RFQ to Data Entry — it's
-                 shown as a "handed off" sub-note rather than disappearing,
-                 so nobody's own split assignment silently vanishes. --}}
+            {{-- Sourcing's own queue — their own split RFQ number and when they
+                 were assigned, rather than the fuller workflow view everyone
+                 else gets — in three tabs: Pending for Sourcing, what's theirs
+                 to complete or finalize; With Data Entry, their parts assigned
+                 to Data Entry and not yet sent back to finalize; and Finalized,
+                 the parts they've finalized, on their way through the reviews.
+                 Each counts its parts, and the tab is kept in the address (?tab=).
+                 See RfqController::index() ($sourcingTab). Admin's view of
+                 Sourcing's page (_sourcing_overview) has just the one. --}}
+            @php
+                $ownSourcingTabs = $sourcingCounts !== null;
+                $onWithDataEntry = $sourcingTab === 'with-data-entry';
+                $onFinalized = $sourcingTab === 'finalized';
+                $onPending = ! $onWithDataEntry && ! $onFinalized;
+            @endphp
+            @if ($ownSourcingTabs)
+                <ul class="nav nav-pills rfq-view-toggle m-3 mb-0" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {{ $onPending ? 'active' : '' }}" data-bs-toggle="pill" data-bs-target="#rfq-sourcing-todo" data-de-tab="todo" data-tab-default type="button" role="tab" aria-selected="{{ $onPending ? 'true' : 'false' }}">
+                            <i class="bi bi-list-check"></i> Pending for Sourcing <span class="rfq-tab-count">{{ $sourcingCounts['todo'] }}</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {{ $onWithDataEntry ? 'active' : '' }}" data-bs-toggle="pill" data-bs-target="#rfq-sourcing-with-de" data-de-tab="with-data-entry" type="button" role="tab" aria-selected="{{ $onWithDataEntry ? 'true' : 'false' }}">
+                            <i class="bi bi-keyboard"></i> With Data Entry <span class="rfq-tab-count">{{ $sourcingCounts['with_data_entry'] }}</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {{ $onFinalized ? 'active' : '' }}" data-bs-toggle="pill" data-bs-target="#rfq-sourcing-finalized" data-de-tab="finalized" type="button" role="tab" aria-selected="{{ $onFinalized ? 'true' : 'false' }}">
+                            <i class="bi bi-check2-all"></i> Finalized <span class="rfq-tab-count">{{ $sourcingCounts['finalized'] }}</span>
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                <div class="tab-pane fade {{ $onPending ? 'show active' : '' }}" id="rfq-sourcing-todo" role="tabpanel">
+            @endif
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -1236,8 +1266,10 @@
                                     $iHaveCompletedMyPart = $myAssignment->pivot->completed_at !== null;
                                 @endphp
                                 {{-- Sent back by Data Entry: that's on the Returns list, not here.
-                                     Stopped on its own: on nobody's list. --}}
+                                     Assigned to Data Entry: off the list till it's sent back to
+                                     finalize. Stopped on its own: on nobody's list. --}}
                                 @continue(! $iHaveCompletedMyPart && $myAssignment->pivot->returned_at !== null)
+                                @continue($iHaveCompletedMyPart && ! $myAssignment->pivot->isAwaitingFinalize())
                                 @continue($myAssignment->pivot->isStopped())
                                 {{-- Clicking the row (but not the Mark Complete button) opens
                                      the same quick-detail modal Data Entry uses (description,
@@ -1253,14 +1285,6 @@
                                             <div class="rfq-list-subnote">
                                                 <i class="bi bi-send-check"></i>
                                                 Sent to finalize by Data Entry
-                                            </div>
-                                        @elseif ($rfq->isWithDataEntry())
-                                            <div class="rfq-list-subnote">
-                                                <i class="bi bi-check2-circle"></i>
-                                                Handed off to Data Entry
-                                                @if ($rfq->sourcingCompletedBy)
-                                                    &middot; completed by {{ $rfq->sourcing_completed_by === auth()->id() ? 'you' : $rfq->sourcingCompletedBy->name }}
-                                                @endif
                                             </div>
                                         @endif
                                     </td>
@@ -1300,13 +1324,140 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    No pending RFQs are assigned to you right now.
+                                    Nothing pending for you right now — what you've assigned to Data Entry is on the next tab.
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
+
+            @if ($ownSourcingTabs)
+                    @if ($rfqs->hasPages())
+                        <div class="card-footer bg-white">
+                            {{ $rfqs->links() }}
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Their parts with Data Entry: whom they gave it to, and whether
+                     Data Entry has started on it (not who did — that's Data Entry's). --}}
+                <div class="tab-pane fade {{ $onWithDataEntry ? 'show active' : '' }}" id="rfq-sourcing-with-de" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>WC Number</th>
+                                    <th>RFQ Number</th>
+                                    <th>Subject</th>
+                                    <th>Priority</th>
+                                    <th>Data Entry</th>
+                                    <th>Assigned At</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($withDataEntryRfqs as $rfq)
+                                    @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)
+                                        @php $handedOver = $myAssignment->pivot; @endphp
+                                        @continue($handedOver->isStopped() || $handedOver->completed_at === null || $handedOver->data_entry_completed_at !== null)
+                                        <tr>
+                                            <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                            <td class="text-nowrap">{{ $rfq->partNumberLabel($handedOver->part_number) }}</td>
+                                            <td>{{ $rfq->subject }}</td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td>
+                                                @if ($handedOver->isDataEntryPaused())
+                                                    <span class="running-pill is-on-pause"><i class="bi bi-pause-fill"></i><span class="running-pill-label">Paused</span></span>
+                                                @elseif ($handedOver->hasDataEntryStarted())
+                                                    <span class="running-pill"><span class="running-dot"></span><span class="running-pill-label">In progress</span></span>
+                                                @else
+                                                    <span class="badge badge-soft-secondary">Not started yet</span>
+                                                @endif
+                                                <div class="rfq-list-subnote">
+                                                    <i class="bi bi-person"></i>
+                                                    {{ $handedOver->dataEntryAssignee?->name ? 'Assigned to '.$handedOver->dataEntryAssignee->name : 'Anyone in Data Entry' }}
+                                                </div>
+                                            </td>
+                                            <td class="text-muted-soft">{{ $handedOver->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
+                                            <td class="text-end">
+                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted-soft py-4">
+                                            Nothing with Data Entry — what you assign to them shows here till it's sent back to finalize.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    @if ($withDataEntryRfqs->hasPages())
+                        <div class="card-footer bg-white">
+                            {{ $withDataEntryRfqs->links() }}
+                        </div>
+                    @endif
+                </div>
+
+                {{-- The parts they've finalized: where each is now in the reviews
+                     (RfqAssignment::stageAfterFinalize()), till the RFQ's closed. --}}
+                <div class="tab-pane fade {{ $onFinalized ? 'show active' : '' }}" id="rfq-sourcing-finalized" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>WC Number</th>
+                                    <th>RFQ Number</th>
+                                    <th>Subject</th>
+                                    <th>Priority</th>
+                                    <th>Where it is now</th>
+                                    <th>Finalized At</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($finalizedRfqs as $rfq)
+                                    @foreach ($rfq->assignees->where('id', auth()->id()) as $myAssignment)
+                                        @php $finalized = $myAssignment->pivot; @endphp
+                                        @continue($finalized->isStopped() || $finalized->finalized_at === null)
+                                        @php [$stageLabel, $stageTone] = $finalized->stageAfterFinalize(); @endphp
+                                        <tr>
+                                            <td class="fw-semibold">{{ $rfq->wc_number }}</td>
+                                            <td class="text-nowrap">{{ $rfq->partNumberLabel($finalized->part_number) }}</td>
+                                            <td>{{ $rfq->subject }}</td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td><span class="badge badge-soft-{{ $stageTone }}">{{ $stageLabel }}</span></td>
+                                            <td class="text-muted-soft">{{ $finalized->finalized_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
+                                            <td class="text-end">
+                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted-soft py-4">
+                                            Nothing finalized yet — parts show here once you finalize them, till their RFQ's closed.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    @if ($finalizedRfqs->hasPages())
+                        <div class="card-footer bg-white">
+                            {{ $finalizedRfqs->links() }}
+                        </div>
+                    @endif
+                </div>
+                </div>
+            @endif
 
             {{-- What the countdowns above tick against — see admin.js. --}}
             @if ($countdownSchedule)
@@ -1515,11 +1666,11 @@
             </div>
         @endif
 
-        {{-- Data Entry's and Operations' two tabs each render their own
+        {{-- Data Entry's, Sourcing's and Operations' two tabs each render their own
              paginator scoped inside their own tab-pane (above) — a shared
              one down here would show $rfqs's page links even while a
              different paginator's tab is the active one. --}}
-        @if (! $scopedToDataEntry && ! $scopedToUnassigned && ! $scopedToSeniorOpsReview && $rfqs->hasPages())
+        @if (! $scopedToDataEntry && ! $scopedToUnassigned && ! $scopedToSeniorOpsReview && ! ($scopedToMe && $sourcingCounts !== null) && $rfqs->hasPages())
             <div class="card-footer bg-white">
                 {{ $rfqs->links() }}
             </div>
