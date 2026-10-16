@@ -6232,3 +6232,23 @@ a.critical-row:hover {
   color: var(--rfq-primary-dark);
   font-weight: 600;
 }
+
+/* Settings → Danger Zone (clearing every RFQ): marked out in red. */
+.settings-tabs .nav-link.is-danger,
+.settings-tabs .nav-link.is-danger:hover {
+  color: var(--bs-danger);
+}
+
+.settings-tabs .nav-link.is-danger.active {
+  color: #fff;
+  background: var(--bs-danger);
+}
+
+.danger-zone-card {
+  border-color: rgba(var(--bs-danger-rgb), 0.45);
+}
+
+.danger-zone-counts li {
+  display: inline-block;
+  margin: 0 1rem 0.25rem 0;
+}

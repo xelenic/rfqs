@@ -15,7 +15,8 @@
     $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
     (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
-    (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $extraHours
+    (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
+    (App\RfqDataEraser::counts(), for an Admin), $extraHours
     (ExtraWorkingHour, with user.roles), $extraHoursPeople
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
@@ -46,6 +47,7 @@
             'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
+            'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
         ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
         $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Manager';
         $allTabs = $accountTabs + $managedTabs;
@@ -69,7 +71,7 @@
                         </li>
                     @endif
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link {{ $activeTab === $slug ? 'active' : '' }}" id="settings-tab-{{ $slug }}"
+                        <button type="button" @class(['nav-link', 'active' => $activeTab === $slug, 'is-danger' => $tab['danger'] ?? false]) id="settings-tab-{{ $slug }}"
                                 data-bs-toggle="tab" data-bs-target="#settings-pane-{{ $slug }}" data-settings-tab="{{ $slug }}"
                                 role="tab" aria-controls="settings-pane-{{ $slug }}" aria-selected="{{ $activeTab === $slug ? 'true' : 'false' }}">
                             <i class="bi {{ $tab['icon'] }}"></i>
@@ -855,6 +857,79 @@
                                 @endforelse
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'danger-zone' ? 'show active' : '' }}" id="settings-pane-danger-zone" role="tabpanel" aria-labelledby="settings-tab-danger-zone" tabindex="0">
+                {{-- Clearing every RFQ for good — SettingsController::clearRfqData(),
+                     App\RfqDataEraser. Typed phrase and password, then the
+                     app's own confirm. --}}
+                @php
+                    $phrase = \App\Http\Controllers\Admin\SettingsController::CLEAR_RFQ_DATA_PHRASE;
+                    $dangerFailed = $errors->getBag('danger_zone')->any();
+                    $whatGoes = [
+                        'rfqs' => ['RFQ', 'RFQs'],
+                        'rfq_user' => ['Sourcing part', 'Sourcing parts'],
+                        'rfq_comments' => ['comment', 'comments'],
+                        'rfq_comment_attachments' => ['photo or file', 'photos and files'],
+                        'rfq_returns' => ['return', 'returns'],
+                        'rfq_steps' => ['timed step', 'timed steps'],
+                    ];
+                    $rfqCount = $rfqDataCounts['rfqs'] ?? 0;
+                @endphp
+                <div class="card mb-4 danger-zone-card">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <i class="bi bi-exclamation-octagon-fill text-danger"></i>
+                        Clear all RFQ data
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="small mb-2">
+                            Deletes <strong>every RFQ</strong> — open, closed, on hold or cancelled — with everything that goes with them, for good. It can't be undone; take a database backup first if you might need any of it.
+                        </p>
+                        <p class="small text-muted-soft">
+                            Users, roles, permissions, attendance, messages and every setting stay as they are. Afterwards the next RFQ is {{ \App\Models\Rfq::formatRfqNumber($rfqNumberStart) }} — where the RFQ Numbers tab starts them.
+                        </p>
+
+                        <ul class="danger-zone-counts list-unstyled small mb-3">
+                            @foreach ($whatGoes as $table => [$one, $many])
+                                @isset($rfqDataCounts[$table])
+                                    <li><strong>{{ number_format($rfqDataCounts[$table]) }}</strong> {{ $rfqDataCounts[$table] === 1 ? $one : $many }}</li>
+                                @endisset
+                            @endforeach
+                        </ul>
+
+                        @if (array_sum($rfqDataCounts) === 0)
+                            <p class="small text-muted-soft mb-0"><i class="bi bi-check2-circle"></i> There's no RFQ data to clear.</p>
+                        @else
+                            <form method="POST" action="{{ route('admin.settings.rfq-data.clear') }}" novalidate
+                                  data-confirm="Delete all {{ number_format($rfqCount) }} RFQs and everything with them, for good? This can't be undone.">
+                                @csrf
+                                @method('DELETE')
+
+                                <div class="mb-3" style="max-width: 360px;">
+                                    <label for="danger-confirmation" class="form-label">Type <code>{{ $phrase }}</code> to confirm</label>
+                                    <input type="text" name="confirmation" id="danger-confirmation" autocomplete="off" spellcheck="false"
+                                           class="form-control @error('confirmation', 'danger_zone') is-invalid @enderror"
+                                           value="{{ $dangerFailed ? old('confirmation') : '' }}" required>
+                                    @error('confirmation', 'danger_zone')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+
+                                <div class="mb-3" style="max-width: 360px;">
+                                    <label for="danger-password" class="form-label">Your password</label>
+                                    <input type="password" name="password" id="danger-password" autocomplete="current-password"
+                                           class="form-control @error('password', 'danger_zone') is-invalid @enderror" required>
+                                    @error('password', 'danger_zone')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+
+                                <button type="submit" class="btn btn-danger"><i class="bi bi-trash3"></i> Clear all RFQ data</button>
+                            </form>
+                        @endif
                     </div>
                 </div>
             </div>

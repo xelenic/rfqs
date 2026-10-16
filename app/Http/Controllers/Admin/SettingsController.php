@@ -9,9 +9,11 @@ use App\Models\Rfq;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
+use App\RfqDataEraser;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
@@ -27,6 +29,11 @@ use Spatie\Permission\Models\Role;
  */
 class SettingsController extends Controller
 {
+    /**
+     * What an Admin types to clear every RFQ (clearRfqData()).
+     */
+    public const CLEAR_RFQ_DATA_PHRASE = 'DELETE ALL RFQS';
+
     /**
      * The roles that close RFQs — the ones a celebration preference means
      * anything to.
@@ -55,6 +62,7 @@ class SettingsController extends Controller
             'rfqNumberStart' => Setting::rfqNumberStart(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
             'lastRfqSequence' => Rfq::lastRfqSequence(),
+            'rfqDataCounts' => $user->hasRole('Admin') ? RfqDataEraser::counts() : [],
             'extraHours' => $user->hasRole('Admin')
                 ? ExtraWorkingHour::query()->current()->with('user.roles')->get()->sortBy(fn (ExtraWorkingHour $range) => [$range->user?->name, $range->start])->values()
                 : collect(),
@@ -443,6 +451,41 @@ class SettingsController extends Controller
         return $this->backToTab('rfq-numbers', $next === Rfq::formatRfqNumber($start)
             ? "New RFQs start from {$next}."
             : 'Saved — but '.Rfq::formatRfqNumber(Rfq::lastRfqSequence())." is already taken, so the next RFQ will be {$next}.");
+    }
+
+    /**
+     * Settings → Danger Zone: deletes every RFQ and everything with it —
+     * parts, comments and their files, returns, steps (App\RfqDataEraser) —
+     * for good. Admin only, typing CLEAR_RFQ_DATA_PHRASE and their own
+     * password; logged with who and how much.
+     */
+    public function clearRfqData(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can clear the RFQ data.');
+
+        $request->validateWithBag('danger_zone', [
+            'confirmation' => ['required', 'string', Rule::in([self::CLEAR_RFQ_DATA_PHRASE])],
+            'password' => ['required', 'current_password'],
+        ], [
+            'confirmation.required' => 'Type '.self::CLEAR_RFQ_DATA_PHRASE.' to confirm.',
+            'confirmation.in' => 'Type '.self::CLEAR_RFQ_DATA_PHRASE.' exactly — in capitals — to confirm.',
+            'password.required' => 'Enter your password to confirm.',
+            'password.current_password' => 'That isn\'t your password.',
+        ]);
+
+        $counts = RfqDataEraser::clear();
+
+        Log::warning('An Admin cleared all RFQ data.', [
+            'admin_id' => $request->user()->id,
+            'admin' => $request->user()->email,
+            'rows' => $counts,
+            'ip' => $request->ip(),
+        ]);
+
+        $rfqs = $counts['rfqs'] ?? 0;
+
+        return $this->backToTab('danger-zone', trans_choice('Cleared 1 RFQ and everything with it.|Cleared :count RFQs and everything with them.', $rfqs, ['count' => number_format($rfqs)])
+            .' The next RFQ will be '.Rfq::nextRfqNumber().'.');
     }
 
     /**

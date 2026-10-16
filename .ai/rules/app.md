@@ -34,3 +34,6 @@ Since 2026-10-15, two roles see only part of the RFQs. Business Development (Use
 
 ## RFQ numbers start from Settings → RFQ Numbers (Setting::rfqNumberStart())
 Since 2026-10-16, an Admin sets the number new RFQs start from (stored as rfq_number_start, an integer; 1670 means RFQ1670). Rfq::nextRfqNumber() returns max(lastRfqSequence() + 1, Setting::rfqNumberStart()), so a number that has already been given out is never reused. Always generate numbers through nextRfqNumber(), and always format them through Rfq::formatRfqNumber(). There's still no unique index on rfqs.rfq_number.
+
+## Clearing RFQ data goes through App\RfqDataEraser
+Since 2026-10-16, `php artisan rfq:clear` and Settings → Danger Zone (SettingsController::clearRfqData()) both call RfqDataEraser::clear(). It truncates rfqs and every table with an rfq_id column, deletes the comment files and the DataEntryAssigned alerts, and bumps LiveVersion (on MySQL a truncate isn't a write LiveVersion watches). The Settings route is Admin only and requires typing CLEAR_RFQ_DATA_PHRASE plus the Admin's current password; it's throttled and logged as a warning. If a new table holds RFQ data without an rfq_id column, it must be added to the eraser.
