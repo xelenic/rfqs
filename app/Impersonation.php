@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
  * layout says whose account it is and offers the way back (stop()). Only an
  * Admin starts one (canStart()), never as another Admin or as themselves,
  * nor while already in someone else's account. Each start and stop is
- * logged, with who and whom.
+ * logged, with who and whom. Not into a deactivated account.
  */
 final class Impersonation
 {
@@ -30,7 +30,8 @@ final class Impersonation
         return $admin->hasRole('Admin')
             && ! self::isActive()
             && ! $admin->is($user)
-            && ! $user->hasRole('Admin');
+            && ! $user->hasRole('Admin')
+            && ! $user->isDeactivated();
     }
 
     /**

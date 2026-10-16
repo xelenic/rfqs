@@ -414,7 +414,7 @@
 
         $deMeta = match (true) {
             $deIsDone => ['Sent to finalize', $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A')],
-            $deIsPaused => ['Paused', 'Since '.$assignee->pivot->data_entry_paused_at->toBusinessTimezone()->format('M d, Y g:i A')],
+            $deIsPaused => ['Paused: '.$assignee->pivot->data_entry_pause_reason, 'Since '.$assignee->pivot->data_entry_paused_at->toBusinessTimezone()->format('M d, Y g:i A')],
             $deIsRunning => ['Working on it', 'Started '.$assignee->pivot->data_entry_started_at->toBusinessTimezone()->format('M d, Y g:i A')],
             $deIsReturned => ['Returned — rework needed'],
             $deIsReturnedBySourcing => ['Returned by Sourcing'],
@@ -1451,6 +1451,9 @@
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty() || $finalizableParts->isNotEmpty())
         @include('admin.rfqs._complete_modal')
+    @endif
+    @if (auth()->user()->hasAnyRole(['Data Entry', 'Admin']))
+        @include('admin.rfqs._pause_data_entry_modal')
     @endif
     @if ($rejectFromStage)
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])

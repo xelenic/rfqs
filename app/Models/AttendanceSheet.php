@@ -136,7 +136,7 @@ class AttendanceSheet extends Model
 
     /**
      * Everyone who belongs on a sheet — the people whose time is tracked
-     * (RfqStep::ROLE_STEPS) — by name.
+     * (RfqStep::ROLE_STEPS), less any deactivated — by name.
      *
      * @return Collection<int, User>
      */
@@ -145,6 +145,7 @@ class AttendanceSheet extends Model
         // By name, like User::scopeHoldingRole(): Spatie's role() throws for
         // a role that hasn't been made yet, and there's just nobody in it.
         return User::query()
+            ->active()
             ->whereHas('roles', fn ($roles) => $roles->whereIn('name', array_keys(RfqStep::ROLE_STEPS)))
             ->with('roles')
             ->orderBy('name')

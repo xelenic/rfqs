@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\UserPhotoController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SetPasswordController;
 use App\Http\Middleware\CaptureLiveVersion;
+use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\EnsureRfqIsVisible;
 use Illuminate\Support\Facades\Route;
 
@@ -37,7 +38,7 @@ Route::post('logout', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::class, EnsureRfqIsVisible::class])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActive::class, CaptureLiveVersion::class, EnsureRfqIsVisible::class])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('live', LivePulseController::class)->name('live');
     Route::get('critical-monitor', [DashboardController::class, 'critical'])->name('critical-monitor');
@@ -85,6 +86,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
     Route::patch('users/{user}/default-data-entry', [UserController::class, 'updateDefaultDataEntry'])->name('users.default-data-entry');
+    Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate'])->name('users.deactivate');
+    Route::patch('users/{user}/activate', [UserController::class, 'activate'])->name('users.activate');
     // An Admin signing in as someone else, and back — see App\Impersonation.
     Route::post('users/{user}/impersonate', [ImpersonationController::class, 'store'])->name('users.impersonate');
     Route::post('impersonation/leave', [ImpersonationController::class, 'destroy'])->name('impersonation.leave');

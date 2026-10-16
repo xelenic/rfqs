@@ -164,7 +164,37 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'preferences' => 'array',
+            'deactivated_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether an Admin has deactivated the account: it can't sign in (and is
+     * signed out of any session it had — EnsureAccountIsActive), and it's
+     * left out of every list people are picked from (scopeActive(),
+     * scopeHoldingRole()) — but its name stays on everything it did.
+     */
+    public function isDeactivated(): bool
+    {
+        return $this->deactivated_at !== null;
+    }
+
+    /**
+     * Who deactivated the account.
+     */
+    public function deactivatedBy(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'deactivated_by');
+    }
+
+    /**
+     * Narrows to the accounts that haven't been deactivated.
+     *
+     * @param  Builder<User>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $query->whereNull('users.deactivated_at');
     }
 
     /**
@@ -481,14 +511,15 @@ class User extends Authenticatable
     }
 
     /**
-     * Narrows to the people who hold a role. Unlike Spatie's role() it never
-     * throws for a role that doesn't exist — there's just nobody in it.
+     * Narrows to the people who hold a role — and can work: not deactivated
+     * (isDeactivated()). Unlike Spatie's role() it never throws for a role
+     * that doesn't exist — there's just nobody in it.
      *
      * @param  Builder<User>  $query
      */
     public function scopeHoldingRole(Builder $query, string $role): void
     {
-        $query->whereHas('roles', fn (Builder $roles) => $roles->where('name', $role));
+        $query->active()->whereHas('roles', fn (Builder $roles) => $roles->where('name', $role));
     }
 
     /**

@@ -41,10 +41,16 @@ function handedOver(string $number): Rfq
     return $rfq->refresh();
 }
 
+/**
+ * $user does $action on part 1 of $rfq — a pause saying why, and the
+ * document it's waiting on, unless $payload says otherwise.
+ */
 function dataEntryDoes(User $user, string $action, Rfq $rfq, array $payload = []): TestResponse
 {
+    $pauseDetails = $action === 'pause-data-entry' ? ['pause_reason' => 'Waiting for the supplier quote', 'pause_reference' => 'PO-4471'] : [];
+
     return test()->actingAs($user)->from(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->patch(route("admin.rfqs.{$action}", $rfq), ['part' => 1] + $payload);
+        ->patch(route("admin.rfqs.{$action}", $rfq), ['part' => 1] + $payload + $pauseDetails);
 }
 
 function readyRow(User $viewer, string $number): string
@@ -182,5 +188,64 @@ it('shows a paused part as paused on the RFQ\'s progress chart', function () {
     $dataEntry = collect(json_decode(json_encode($tree), true))->dot()->filter(fn ($value, $key) => str_ends_with($key, 'role') && $value === 'Data Entry')->keys()->first();
     $node = data_get($tree, Str::beforeLast($dataEntry, '.role'));
 
-    expect($node['meta'])->toBe(['Paused', 'Since Oct 05, 2026 9:40 AM']);
+    expect($node['meta'])->toBe(['Paused: Waiting for the supplier quote', 'Since Oct 05, 2026 9:40 AM']);
+});
+
+it('asks why — and for the document it\'s waiting on, if any — and shows both while it\'s paused', function () {
+    $morgan = userWithRole('Data Entry');
+    $rfq = handedOver('RFQ5601');
+    pauseClock('09:10');
+    dataEntryDoes($morgan, 'start-data-entry', $rfq);
+
+    // The popup is on the page, and the button opens it.
+    $html = test()->actingAs($morgan)->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent();
+    expect($html)->toContain('id="pauseDataEntryModal"')
+        ->toContain('name="pause_reason"')
+        ->toContain('name="pause_reference"')
+        ->toContain('data-bs-target="#pauseDataEntryModal"');
+
+    pauseClock('09:30');
+    dataEntryDoes($morgan, 'pause-data-entry', $rfq, ['pause_reason' => 'Supplier hasn\'t sent prices', 'pause_reference' => 'QT-2210'])
+        ->assertSessionHas('status');
+
+    $part = $rfq->refresh()->assigneeForPart(1)->pivot;
+    expect($part->data_entry_pause_reason)->toBe('Supplier hasn\'t sent prices')
+        ->and($part->data_entry_pause_reference)->toBe('QT-2210');
+
+    expect(readyRow($morgan, 'RFQ5601'))
+        ->toContain(e('Supplier hasn\'t sent prices'))
+        ->toContain('QT-2210');
+
+    // On the RFQ's thread, as Morgan's.
+    $comment = $rfq->comments()->where('action', 'data_entry_paused')->sole();
+    expect($comment->user_id)->toBe($morgan->id)
+        ->and($comment->body)->toBe('Supplier hasn\'t sent prices')
+        ->and($comment->actionLabel())->toBe('Paused')
+        ->and($comment->actionContext())->toBe('Ref QT-2210');
+
+    // Resumed: the reason's done with — the thread keeps it.
+    dataEntryDoes($morgan, 'resume-data-entry', $rfq);
+    $part = $rfq->refresh()->assigneeForPart(1)->pivot;
+    expect($part->data_entry_pause_reason)->toBeNull()
+        ->and($part->data_entry_pause_reference)->toBeNull()
+        ->and($rfq->comments()->where('action', 'data_entry_paused')->count())->toBe(1);
+});
+
+it('won\'t pause without a reason — the document reference can be left out', function () {
+    $morgan = userWithRole('Data Entry');
+    $rfq = handedOver('RFQ5701');
+    pauseClock('09:10');
+    dataEntryDoes($morgan, 'start-data-entry', $rfq);
+
+    dataEntryDoes($morgan, 'pause-data-entry', $rfq, ['pause_reason' => '   ', 'pause_reference' => 'PO-1'])
+        ->assertSessionHas('error', "Say why you're pausing it.");
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->isDataEntryPaused())->toBeFalse();
+
+    dataEntryDoes($morgan, 'pause-data-entry', $rfq, ['pause_reason' => 'Lunch call with the client', 'pause_reference' => ''])
+        ->assertSessionHas('status');
+
+    $part = $rfq->refresh()->assigneeForPart(1)->pivot;
+    expect($part->isDataEntryPaused())->toBeTrue()
+        ->and($part->data_entry_pause_reference)->toBeNull()
+        ->and($rfq->comments()->where('action', 'data_entry_paused')->sole()->actionContext())->toBeNull();
 });

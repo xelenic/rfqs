@@ -6562,3 +6562,19 @@ a.critical-row:hover {
   opacity: 0.85;
   border-style: dashed;
 }
+
+.rfq-list-subnote-paused {
+  margin-top: 0.15rem;
+  color: #92400e;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+:root[data-theme="dark"] .rfq-list-subnote-paused {
+  color: #fbbf24;
+}
+
+/* A deactivated account on the Users list (User::isDeactivated()): dimmed, its actions still there. */
+tr.is-deactivated > td:not(:last-child) {
+  opacity: 0.6;
+}

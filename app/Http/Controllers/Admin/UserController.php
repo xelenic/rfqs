@@ -21,6 +21,7 @@ use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -51,6 +52,9 @@ class UserController extends Controller implements HasMiddleware
                         ->orWhere('email', 'like', "%{$search}%");
                 });
             })
+            // Everyone, or just the active or the deactivated (?state=).
+            ->when($request->query('state') === 'active', fn ($query) => $query->active())
+            ->when($request->query('state') === 'deactivated', fn ($query) => $query->whereNotNull('deactivated_at'))
             ->latest()
             ->paginate(10)
             ->withQueryString();
@@ -58,6 +62,8 @@ class UserController extends Controller implements HasMiddleware
         return view('admin.users.index', [
             'users' => $users,
             'search' => $request->string('search')->toString(),
+            'state' => in_array($request->query('state'), ['active', 'deactivated'], true) ? $request->query('state') : null,
+            'deactivatedCount' => User::query()->whereNotNull('deactivated_at')->count(),
             'roles' => $this->assignableRoles($request->user()),
         ]);
     }
@@ -385,6 +391,75 @@ class UserController extends Controller implements HasMiddleware
         }
 
         return $this->emailPasswordLink($request, $user, "User created — an email is on its way to {$user->email} to set their password.");
+    }
+
+    /**
+     * Deactivates $user's account (User::isDeactivated()): they can't sign
+     * in, they're signed out of any session they have, and they drop out of
+     * every list people are picked from — their name stays on everything
+     * they did. Data Entry parts given to them by name and not yet started go
+     * back to anyone in Data Entry, and nobody's parts go to them by default
+     * any more. What they still hold is said, to hand on. Admin only, never
+     * themselves.
+     */
+    public function deactivate(Request $request, User $user): RedirectResponse
+    {
+        $admin = $request->user();
+        abort_unless($admin->hasRole('Admin'), 403, 'Only an Admin can deactivate an account.');
+
+        if ($admin->is($user)) {
+            return back()->with('error', 'You can\'t deactivate your own account.');
+        }
+
+        if ($user->isDeactivated()) {
+            return back()->with('error', "{$user->name}'s account is already deactivated.");
+        }
+
+        $handedBack = DB::transaction(function () use ($user, $admin) {
+            $user->forceFill(['deactivated_at' => now(), 'deactivated_by' => $admin->id])->save();
+            User::query()->where('default_data_entry_user_id', $user->id)->update(['default_data_entry_user_id' => null]);
+            DB::table('sessions')->where('user_id', $user->id)->delete();
+
+            return DB::table('rfq_user')
+                ->where('data_entry_assigned_to', $user->id)
+                ->whereNull('data_entry_started_at')
+                ->whereNull('data_entry_completed_at')
+                ->update(['data_entry_assigned_to' => null]);
+        });
+
+        $holding = DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
+            ->where(fn ($theirs) => $theirs
+                ->where(fn ($sourcing) => $sourcing->where('rfq_user.user_id', $user->id)->whereNull('rfq_user.finalized_at'))
+                ->orWhere(fn ($dataEntry) => $dataEntry->where('rfq_user.data_entry_started_by', $user->id)->whereNull('rfq_user.data_entry_completed_at')))
+            ->count();
+
+        Log::warning('An Admin deactivated an account.', ['admin_id' => $admin->id, 'user_id' => $user->id, 'user' => $user->email]);
+
+        return back()->with('status', "Deactivated {$user->name} — they can't sign in any more."
+            .($handedBack > 0 ? ' '.trans_choice('1 Data Entry part given to them went back to anyone in Data Entry.|:count Data Entry parts given to them went back to anyone in Data Entry.', $handedBack, ['count' => $handedBack]) : '')
+            .($holding > 0 ? ' '.trans_choice('They still hold 1 open part — hand it on from its RFQ.|They still hold :count open parts — hand them on from their RFQs.', $holding, ['count' => $holding]) : ''));
+    }
+
+    /**
+     * Lets a deactivated account sign in again, and be picked for work.
+     * Admin only.
+     */
+    public function activate(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can activate an account.');
+
+        if (! $user->isDeactivated()) {
+            return back()->with('error', "{$user->name}'s account is already active.");
+        }
+
+        $user->forceFill(['deactivated_at' => null, 'deactivated_by' => null])->save();
+
+        Log::info('An Admin activated an account.', ['admin_id' => $request->user()->id, 'user_id' => $user->id, 'user' => $user->email]);
+
+        return back()->with('status', "Activated {$user->name} — they can sign in again.");
     }
 
     /**

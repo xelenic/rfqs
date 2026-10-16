@@ -32,6 +32,7 @@ class RfqComment extends Model
         'reassigned' => ['label' => 'Reassigned', 'icon' => 'bi-person-gear', 'tone' => 'info'],
         'forwarded_back' => ['label' => 'Sent straight back', 'icon' => 'bi-skip-forward-fill', 'tone' => 'success'],
         'gm_assistant_submitted' => ['label' => 'Submitted to General Manager', 'icon' => 'bi-send-check', 'tone' => 'success'],
+        'data_entry_paused' => ['label' => 'Paused', 'icon' => 'bi-pause-circle-fill', 'tone' => 'info'],
     ];
 
     protected $fillable = [
@@ -94,6 +95,7 @@ class RfqComment extends Model
             isset($meta['assigned_to']) ? "to {$meta['assigned_to']}" : null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
             isset($meta['entries']) ? trans_choice('1 entry|:count entries', $meta['entries'], ['count' => $meta['entries']]) : null,
+            isset($meta['reference']) ? "Ref {$meta['reference']}" : null,
         ])->filter()->implode(' · ');
 
         return $context !== '' ? $context : null;

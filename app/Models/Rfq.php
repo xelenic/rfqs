@@ -749,7 +749,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1532,6 +1532,8 @@ class Rfq extends Model
             'data_entry_started_at' => null,
             'data_entry_started_by' => null,
             'data_entry_paused_at' => null,
+            'data_entry_pause_reason' => null,
+            'data_entry_pause_reference' => null,
             'finalized_at' => null,
             'finalized_by' => null,
             'data_entry_returned_at' => null,
@@ -1631,21 +1633,28 @@ class Rfq extends Model
     }
 
     /**
-     * Data Entry pauses $part, which they'd started: its time stops — the
-     * countdown keeps what's left — and with nothing running they can start
-     * another (RfqStep::runningDataEntryOf()). Idempotent: a part that isn't
-     * running is left alone.
+     * Data Entry pauses $part, which they'd started — saying why ($reason),
+     * and the document it's waiting on ($reference), if any: its time stops —
+     * the countdown keeps what's left — and with nothing running they can
+     * start another (RfqStep::runningDataEntryOf()). The reason goes on the
+     * part while it's paused, and to the RFQ's thread as $pausedBy's.
+     * Idempotent: a part that isn't running is left alone.
      */
-    public function pauseDataEntryPart(int $part): void
+    public function pauseDataEntryPart(int $part, User $pausedBy, string $reason, ?string $reference = null): void
     {
         if ($this->activePart($part)?->isDataEntryRunning() !== true) {
             return;
         }
 
+        $reference = filled($reference) ? trim($reference) : null;
+
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
             'data_entry_paused_at' => now(),
+            'data_entry_pause_reason' => trim($reason),
+            'data_entry_pause_reference' => $reference,
         ]);
 
+        $this->postActionComment($pausedBy, 'data_entry_paused', $reason, $this->partContext($part) + ($reference !== null ? ['reference' => $reference] : []));
         $this->syncSteps();
     }
 
@@ -1663,6 +1672,8 @@ class Rfq extends Model
 
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
             'data_entry_paused_at' => null,
+            'data_entry_pause_reason' => null,
+            'data_entry_pause_reference' => null,
         ]);
 
         $this->syncSteps(resuming: true);
@@ -1791,6 +1802,8 @@ class Rfq extends Model
             'data_entry_started_at' => null,
             'data_entry_started_by' => null,
             'data_entry_paused_at' => null,
+            'data_entry_pause_reason' => null,
+            'data_entry_pause_reference' => null,
             'data_entry_returned_at' => now(),
             'data_entry_return_reason' => $reason,
         ]);
@@ -2014,7 +2027,10 @@ class Rfq extends Model
      *
      * @var array<string, null>
      */
-    private const DATA_ENTRY_START_COLUMNS = ['data_entry_started_at' => null, 'data_entry_started_by' => null, 'data_entry_paused_at' => null];
+    private const DATA_ENTRY_START_COLUMNS = [
+        'data_entry_started_at' => null, 'data_entry_started_by' => null,
+        'data_entry_paused_at' => null, 'data_entry_pause_reason' => null, 'data_entry_pause_reference' => null,
+    ];
 
     private const REJECT_MARKER_COLUMNS = [
         // Redoing Data Entry means finalizing it again too.

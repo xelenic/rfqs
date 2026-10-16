@@ -103,6 +103,15 @@ class MessageController extends Controller
 
         $recipient = User::findOrFail($validated['recipient_id']);
 
+        // A deactivated account can't sign in to read it.
+        if ($recipient->isDeactivated()) {
+            $message = "{$recipient->name}'s account has been deactivated — they won't see it.";
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message, 'errors' => ['body' => [$message]]], 422)
+                : back()->withErrors(['body' => $message])->withInput();
+        }
+
         $me->sentMessages()->create([
             'recipient_id' => $recipient->id,
             'body' => trim($validated['body']),

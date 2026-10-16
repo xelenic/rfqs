@@ -980,6 +980,77 @@ function rfqmsBoot() {
         });
     })();
 
+    // Data Entry's Pause asks why first, and for the document it's waiting
+    // on, if any (_pause_data_entry_modal.blade.php): every Pause button
+    // (.js-pause-data-entry) opens the one popup, pointed at its part. From
+    // inside a quick-detail modal, Cancel goes back to it.
+    (function () {
+        var modalEl = document.getElementById('pauseDataEntryModal');
+        if (!modalEl || modalEl.dataset.bound) return;
+        modalEl.dataset.bound = '1';
+
+        var form = document.getElementById('pauseDataEntryForm');
+        var reason = document.getElementById('pause-reason');
+        var reference = document.getElementById('pause-reference');
+        var count = document.getElementById('pause-count');
+        var error = document.getElementById('pause-error');
+        var cancel = document.getElementById('pause-cancel');
+        var submit = document.getElementById('pause-submit');
+
+        function showError(message) {
+            error.textContent = message;
+            error.classList.toggle('d-none', !message);
+            reason.classList.toggle('is-invalid', !!message);
+        }
+
+        modalEl.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-pause-data-entry')) return;
+
+            form.action = button.dataset.action;
+            form.elements.part.value = button.dataset.part;
+            document.getElementById('pause-subtitle').textContent = button.dataset.rfqNumber + ' \u2014 ' + button.dataset.subject;
+            reason.value = '';
+            reference.value = '';
+            count.textContent = '0 / ' + reason.maxLength;
+            showError('');
+            submit.disabled = false;
+            submit.innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
+
+            if (button.dataset.backModal) {
+                cancel.removeAttribute('data-bs-dismiss');
+                cancel.setAttribute('data-bs-toggle', 'modal');
+                cancel.setAttribute('data-bs-target', '#' + button.dataset.backModal);
+            } else {
+                cancel.removeAttribute('data-bs-toggle');
+                cancel.removeAttribute('data-bs-target');
+                cancel.setAttribute('data-bs-dismiss', 'modal');
+            }
+        });
+
+        modalEl.addEventListener('shown.bs.modal', function () {
+            reason.focus();
+        });
+
+        reason.addEventListener('input', function () {
+            count.textContent = reason.value.length + ' / ' + reason.maxLength;
+            if (reason.value.trim()) showError('');
+        });
+
+        form.addEventListener('submit', function (event) {
+            if (!reason.value.trim()) {
+                event.preventDefault();
+                showError('Say why you\'re pausing it.');
+                reason.focus();
+                return;
+            }
+
+            // One click, one pause.
+            submit.disabled = true;
+            submit.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Pausing\u2026';
+        });
+    })();
+
     // The hover card behind every name marked .js-user-card (see
     // layouts/_user_card.blade.php): hover — or focus, or tap — a person's name
     // on a comment for their details and a Private message button, which opens

@@ -32,7 +32,7 @@ class AlertIdleDataEntry extends Command
             return self::SUCCESS;
         }
 
-        $recipients = User::query()->whereHas('roles', fn ($roles) => $roles->whereIn('name', DataEntryIdle::RECIPIENT_ROLES))->get();
+        $recipients = User::query()->active()->whereHas('roles', fn ($roles) => $roles->whereIn('name', DataEntryIdle::RECIPIENT_ROLES))->get();
         $dataEntry = User::holdingRole('Data Entry')
             ->whereDoesntHave('roles', fn ($roles) => $roles->where('name', 'Admin'))
             ->get();

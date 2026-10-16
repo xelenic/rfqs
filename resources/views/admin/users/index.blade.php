@@ -7,6 +7,12 @@
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <form method="GET" class="d-flex gap-2">
                 <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search users..." style="min-width:220px;">
+                {{-- Everyone, or just the active or the deactivated accounts. --}}
+                <select name="state" class="form-select form-select-sm w-auto" aria-label="Show" onchange="this.form.submit()">
+                    <option value="" @selected($state === null)>Everyone</option>
+                    <option value="active" @selected($state === 'active')>Active</option>
+                    <option value="deactivated" @selected($state === 'deactivated')>Deactivated{{ $deactivatedCount ? " ({$deactivatedCount})" : '' }}</option>
+                </select>
                 <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
             </form>
 
@@ -35,9 +41,14 @@
                             // so they can have extra hours (ExtraWorkingHour) — Admin sets them.
                             $hasTrackedTime = $user->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty();
                         @endphp
-                        <tr>
+                        <tr @class(['is-deactivated' => $user->isDeactivated()])>
                             <td class="fw-semibold">
                                 <a href="{{ route('admin.users.show', $user) }}" class="user-name-link">{{ $user->name }}</a>
+                                @if ($user->isDeactivated())
+                                    <span class="badge badge-soft-danger ms-1" title="Deactivated {{ $user->deactivated_at->toBusinessTimezone()->format('M d, Y g:i A') }} — they can't sign in">
+                                        <i class="bi bi-slash-circle"></i> Deactivated
+                                    </span>
+                                @endif
                                 @if ($hasTrackedTime && $user->extraWorkingHours->isNotEmpty())
                                     <div class="d-flex flex-wrap gap-1 mt-1">
                                         @foreach ($user->extraWorkingHours as $range)
@@ -69,7 +80,7 @@
                                 {{-- Only an Admin touches an Admin's account (UserController). --}}
                                 @php $canManage = auth()->user()->hasRole('Admin') || ! $user->hasRole('Admin'); @endphp
                                 {{-- A fresh set-password email — for a link that expired or went astray. --}}
-                                @if ($canManage && auth()->user()->can('users.create'))
+                                @if ($canManage && auth()->user()->can('users.create') && ! $user->isDeactivated())
                                     <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
                                           data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
                                         @csrf
@@ -98,6 +109,10 @@
                                             <i class="bi bi-incognito"></i>
                                         </button>
                                     </form>
+                                @endif
+                                {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
+                                @if (auth()->user()->hasRole('Admin') && ! auth()->user()->is($user))
+                                    @include('admin.users._deactivate_button', ['user' => $user, 'compact' => true])
                                 @endif
                                 @can('users.delete')
                                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST" class="d-inline" data-confirm="Delete this user?">

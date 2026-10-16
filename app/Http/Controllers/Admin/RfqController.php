@@ -298,7 +298,7 @@ class RfqController extends Controller implements HasMiddleware
         };
 
         $jobCategories = JobCategory::orderBy('name')->get();
-        $sourcingUsers = User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get();
+        $sourcingUsers = User::role('Sourcing')->active()->withSourcingWorkloadCounts()->orderBy('name')->get();
 
         // Senior Operations' Unassigned and Assigned tabs can be narrowed —
         // created range, priority, category, Sourcing member, part status —
@@ -553,7 +553,7 @@ class RfqController extends Controller implements HasMiddleware
             'opsFilters' => $opsFilters,
             'sourcingUsers' => $sourcingUsers,
             'jobCategories' => $jobCategories,
-            'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
+            'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
     }
@@ -745,9 +745,9 @@ class RfqController extends Controller implements HasMiddleware
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
-            'sourcingUsers' => User::role('Sourcing')->withSourcingWorkloadCounts()->orderBy('name')->get(),
+            'sourcingUsers' => User::role('Sourcing')->active()->withSourcingWorkloadCounts()->orderBy('name')->get(),
             'jobCategories' => JobCategory::orderBy('name')->get(),
-            'operationsUsers' => User::role('Senior Operations')->orderBy('name')->get(),
+            'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),
         ]);
     }
@@ -937,7 +937,7 @@ class RfqController extends Controller implements HasMiddleware
 
             $pickedUserIds = $assignments->filter()->values()->unique();
 
-            if ($pickedUserIds->diff(User::role('Sourcing')->pluck('id'))->isNotEmpty()) {
+            if ($pickedUserIds->diff(User::role('Sourcing')->active()->pluck('id'))->isNotEmpty()) {
                 $validator->errors()->add('assignments', 'Only users with the Sourcing role can be assigned.');
             }
         });
@@ -1244,7 +1244,7 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($current, 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->canReplaceSourcing($part), 422, 'This part is closed or cancelled — its Sourcing can\'t be replaced now.');
 
-        $to = User::role('Sourcing')->find($validated['user_id']);
+        $to = User::role('Sourcing')->active()->find($validated['user_id']);
 
         if ($to === null || $to->id === $current->id) {
             return back()->withInput()->withErrors([
@@ -1275,7 +1275,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $operationsUserId = $validated['operations_user'] ?? null;
         $isValidOperationsUser = $operationsUserId
-            && User::role('Senior Operations')->whereKey($operationsUserId)->exists();
+            && User::role('Senior Operations')->active()->whereKey($operationsUserId)->exists();
 
         $rfq->update([
             'operations_assigned_by' => $isValidOperationsUser ? $operationsUserId : null,
@@ -1451,9 +1451,10 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Data Entry's Pause on the part they're on (Rfq::pauseDataEntryPart()):
-     * its countdown stops where it is, and they can start another. Only
-     * whoever started it — Admin can, for them.
+     * Data Entry's Pause on the part they're on (Rfq::pauseDataEntryPart()),
+     * with why and the document it's waiting on, if any: its countdown stops
+     * where it is, and they can start another. Only whoever started it —
+     * Admin can, for them.
      */
     public function pauseDataEntry(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1463,7 +1464,21 @@ class RfqController extends Controller implements HasMiddleware
             return back()->with('error', 'This part isn\'t running, so there\'s nothing to pause.');
         }
 
-        $rfq->pauseDataEntryPart($part);
+        // Why, and the document it's waiting on, if any.
+        $validator = Validator::make($request->all(), [
+            'pause_reason' => ['required', 'string', 'max:1000'],
+            'pause_reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'pause_reason.required' => 'Say why you\'re pausing it.',
+            'pause_reason.max' => 'Keep the reason under 1000 characters.',
+            'pause_reference.max' => 'Keep the document reference under 255 characters.',
+        ]);
+
+        if ($validator->fails()) {
+            return back()->with('error', $validator->errors()->first());
+        }
+
+        $rfq->pauseDataEntryPart($part, $request->user(), $validator->validated()['pause_reason'], $validator->validated()['pause_reference'] ?? null);
 
         return back()->with('status', "Paused {$rfq->partNumberLabel($part)} — its countdown has stopped. You can start another, and resume this one once you've nothing running.");
     }

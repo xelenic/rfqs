@@ -182,6 +182,13 @@
                                                                 <i class="bi bi-pause-fill"></i>
                                                                 <span class="running-pill-label">Paused {{ $pausedAt->isToday() ? $pausedAt->format('g:i A') : $pausedAt->format('M d') }}</span>
                                                             </span>
+                                                            {{-- Why, and the document it's waiting on. --}}
+                                                            <span class="d-block rfq-list-subnote-paused">
+                                                                <i class="bi bi-chat-left-quote"></i> {{ $assignee->pivot->data_entry_pause_reason }}
+                                                                @if ($assignee->pivot->data_entry_pause_reference)
+                                                                    <span class="text-nowrap"><i class="bi bi-file-earmark-text"></i> {{ $assignee->pivot->data_entry_pause_reference }}</span>
+                                                                @endif
+                                                            </span>
                                                         @elseif ($deCountdown)
                                                             <span class="running-pill">
                                                                 <span class="running-dot"></span>
@@ -1543,6 +1550,9 @@
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter])
     @if ($scopedToDataEntry || $scopedToMe || $scopedToReturns)
         @include('admin.rfqs._complete_modal')
+    @endif
+    @if ($scopedToDataEntry)
+        @include('admin.rfqs._pause_data_entry_modal')
     @endif
     @if ($rejectFromStage)
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])

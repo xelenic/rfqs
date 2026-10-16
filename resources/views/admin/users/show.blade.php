@@ -46,6 +46,17 @@
         ];
     @endphp
 
+    {{-- Deactivated: they can't sign in, and aren't picked for work. --}}
+    @if ($user->isDeactivated())
+        <div class="alert alert-secondary d-flex align-items-center gap-2" role="status">
+            <i class="bi bi-slash-circle"></i>
+            <div>
+                <strong>This account is deactivated</strong> — since {{ $user->deactivated_at->toBusinessTimezone()->format('M d, Y g:i A') }}{{ $user->deactivatedBy ? ', by '.$user->deactivatedBy->name : '' }}.
+                They can't sign in, and aren't offered for any work. Everything they did stays as it was.
+            </div>
+        </div>
+    @endif
+
     <div class="card mb-4">
         <div class="card-body user-profile">
             @include('admin.users._photo', ['person' => $user, 'returnTo' => 'show', 'avatarClass' => 'settings-avatar user-profile-avatar'])
@@ -54,6 +65,9 @@
                     <h2 class="user-profile-name">{{ $user->name }}</h2>
                     @if ($isYou)
                         <span class="badge badge-soft-info">You</span>
+                    @endif
+                    @if ($user->isDeactivated())
+                        <span class="badge badge-soft-danger"><i class="bi bi-slash-circle"></i> Deactivated</span>
                     @endif
                 </div>
                 <div class="user-profile-details">
@@ -73,13 +87,13 @@
             </div>
 
             <div class="user-profile-actions">
-                @unless ($isYou)
+                @unless ($isYou || $user->isDeactivated())
                     <a href="{{ route('admin.messages.show', $user) }}" class="btn btn-sm btn-primary">
                         <i class="bi bi-chat-dots"></i> Message
                     </a>
                 @endunless
                 {{-- A fresh set-password email — for a link that expired or went astray. --}}
-                @if ($canManage && auth()->user()->can('users.create'))
+                @if ($canManage && auth()->user()->can('users.create') && ! $user->isDeactivated())
                     <form action="{{ route('admin.users.password-link', $user) }}" method="POST" class="d-inline"
                           data-confirm="Email {{ $user->name }} a link to set their password? Any link sent before stops working.">
                         @csrf
@@ -98,6 +112,10 @@
                             <i class="bi bi-incognito"></i> Log in as
                         </button>
                     </form>
+                @endif
+                {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
+                @if (auth()->user()->hasRole('Admin') && ! $isYou)
+                    @include('admin.users._deactivate_button', ['user' => $user])
                 @endif
                 @if ($user->avatar_path && auth()->user()->canChangePhotoOf($user))
                     <form action="{{ route('admin.users.photo.destroy', $user) }}" method="POST" class="d-inline"

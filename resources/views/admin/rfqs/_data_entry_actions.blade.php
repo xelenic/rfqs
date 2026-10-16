@@ -1,7 +1,8 @@
 {{--
     Data Entry's own buttons on a part with them, by where it is: Start
     before they've begun (_start_data_entry_button); while it's running,
-    Pause — its countdown stops, and they're free to start another — and
+    Pause — asking why (_pause_data_entry_modal, which the page includes);
+    its countdown stops, and they're free to start another — and
     Send to Finalize; once paused, Resume, which carries the countdown on
     from where it stopped — off while they've another part running, as Start
     is. Pause and Resume are whoever started it's (Admin's too, for them).
@@ -32,14 +33,16 @@
     @endif
 @elseif ($pivot?->hasDataEntryStarted())
     @if ($ownsIt)
-        <form action="{{ route('admin.rfqs.pause-data-entry', $rfq) }}" method="POST" class="d-inline-flex">
-            @csrf
-            @method('PATCH')
-            <input type="hidden" name="part" value="{{ $part }}">
-            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Pause — its countdown stops, and you can start another">
-                <i class="bi bi-pause-fill"></i> Pause
-            </button>
-        </form>
+        {{-- Asks why, and for the document it's waiting on (_pause_data_entry_modal). --}}
+        <button type="button" class="btn btn-sm btn-outline-secondary js-pause-data-entry" title="Pause — its countdown stops, and you can start another"
+                data-bs-toggle="modal" data-bs-target="#pauseDataEntryModal"
+                data-action="{{ route('admin.rfqs.pause-data-entry', $rfq) }}"
+                data-part="{{ $part }}"
+                data-rfq-number="{{ $rfq->partNumberLabel((int) $part) }}"
+                data-subject="{{ $rfq->subject }}"
+                data-back-modal="{{ $backModal ?? '' }}">
+            <i class="bi bi-pause-fill"></i> Pause
+        </button>
     @endif
     @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry', 'who' => $who ?? null, 'backModal' => $backModal ?? null])
 @else

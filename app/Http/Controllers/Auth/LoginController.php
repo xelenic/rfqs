@@ -40,6 +40,15 @@ class LoginController extends Controller
                 ->onlyInput('email');
         }
 
+        // Deactivated by an Admin: the right password, but no way in.
+        if ($request->user()->isDeactivated()) {
+            Auth::logout();
+
+            return back()
+                ->withErrors(['email' => 'Your account has been deactivated — ask an Admin if you need it back.'])
+                ->onlyInput('email');
+        }
+
         $request->session()->regenerate();
 
         return redirect()->intended(route('admin.dashboard'));
