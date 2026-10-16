@@ -1451,6 +1451,74 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
+     * Data Entry's Pause on the part they're on (Rfq::pauseDataEntryPart()):
+     * its countdown stops where it is, and they can start another. Only
+     * whoever started it — Admin can, for them.
+     */
+    public function pauseDataEntry(Request $request, Rfq $rfq): RedirectResponse
+    {
+        [$part, $assignee] = $this->dataEntryPartOfStarter($request, $rfq);
+
+        if (! $assignee->pivot->isDataEntryRunning()) {
+            return back()->with('error', 'This part isn\'t running, so there\'s nothing to pause.');
+        }
+
+        $rfq->pauseDataEntryPart($part);
+
+        return back()->with('status', "Paused {$rfq->partNumberLabel($part)} — its countdown has stopped. You can start another, and resume this one once you've nothing running.");
+    }
+
+    /**
+     * Data Entry's Resume on a part they'd paused (Rfq::resumeDataEntryPart()):
+     * its countdown goes on from where it stopped. One part at a time, as with
+     * Start — not while they've another running.
+     */
+    public function resumeDataEntry(Request $request, Rfq $rfq): RedirectResponse
+    {
+        [$part, $assignee] = $this->dataEntryPartOfStarter($request, $rfq);
+
+        if (! $assignee->pivot->isDataEntryPaused()) {
+            return back()->with('error', 'This part isn\'t paused.');
+        }
+
+        $starter = $assignee->pivot->dataEntryStartedBy;
+
+        if ($starter && ($running = RfqStep::runningDataEntryOf($starter))) {
+            return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' on '
+                .$running->rfq->partNumberLabel($running->part_number).' — send it to finalize, or pause it, before resuming this one.');
+        }
+
+        $rfq->resumeDataEntryPart($part);
+
+        return back()->with('status', "Resumed {$rfq->partNumberLabel($part)} — its countdown carries on from where it stopped.");
+    }
+
+    /**
+     * The part a Pause or Resume is for — [its number, its assignee] —
+     * refused unless it's Data Entry's own: whoever started it, or Admin.
+     *
+     * @return array{0: int, 1: User}
+     */
+    private function dataEntryPartOfStarter(Request $request, Rfq $rfq): array
+    {
+        $user = $request->user();
+        abort_unless($user->hasAnyRole(['Data Entry', 'Admin']), 403, 'Only Data Entry can pause or resume a part.');
+
+        $part = (int) $request->validate(['part' => ['required', 'integer']])['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
+        abort_unless(
+            $user->hasRole('Admin') || (int) $assignee->pivot->data_entry_started_by === $user->id,
+            403,
+            'Only whoever started this part can pause or resume it.'
+        );
+
+        return [$part, $assignee];
+    }
+
+    /**
      * Data Entry's "Send to Finalize" — finishes processing one Sourcing part
      * (only that part, never the others on the same RFQ, even other parts
      * held by the same person) and sends it back to its Sourcing member to
@@ -1480,6 +1548,10 @@ class RfqController extends Controller implements HasMiddleware
         // before it (startDataEntry()).
         if ($assignee->pivot->data_entry_completed_at === null && ! $assignee->pivot->hasDataEntryStarted()) {
             return back()->with('error', 'Start on this part first — Send to Finalize comes after.');
+        }
+
+        if ($assignee->pivot->isDataEntryPaused()) {
+            return back()->with('error', 'Resume this part first — it\'s paused.');
         }
 
         // How many entries they made on it, kept with the part.

@@ -52,6 +52,7 @@ class RfqAssignment extends Pivot
             'data_entry_entries' => 'integer',
             'data_entry_assigned_to' => 'integer',
             'data_entry_started_at' => 'datetime',
+            'data_entry_paused_at' => 'datetime',
             'finalized_at' => 'datetime',
             'data_entry_returned_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
@@ -443,6 +444,24 @@ class RfqAssignment extends Pivot
     public function hasDataEntryStarted(): bool
     {
         return $this->data_entry_started_at !== null;
+    }
+
+    /**
+     * Whether Data Entry paused it after starting it — its time stopped, till
+     * they resume it (Rfq::pauseDataEntryPart()).
+     */
+    public function isDataEntryPaused(): bool
+    {
+        return $this->data_entry_paused_at !== null && $this->data_entry_completed_at === null;
+    }
+
+    /**
+     * Whether Data Entry is on it right now: started, not paused, not yet
+     * sent to finalize.
+     */
+    public function isDataEntryRunning(): bool
+    {
+        return $this->hasDataEntryStarted() && ! $this->isDataEntryPaused() && $this->data_entry_completed_at === null;
     }
 
     /**

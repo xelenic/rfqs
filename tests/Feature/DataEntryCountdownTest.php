@@ -145,7 +145,7 @@ it('only counts working time — paused, and still, at lunch', function () {
     [$classes, $row] = dataEntryListRow();
 
     expect($classes)->toContain('rfq-running js-running-row is-paused')
-        ->and($row)->toContain('<span class="running-pill-label">Paused</span>')
+        ->and($row)->toContain('<span class="running-pill-label">Off hours</span>')
         ->toContain('data-remaining="1800"')
         ->toMatch('/sourcing-countdown badge-soft-success\s+is-paused/')
         ->toContain('title="Paused — outside working hours"');

@@ -121,6 +121,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', CaptureLiveVersion::
     Route::patch('rfqs/{rfq}/pass-back-sourcing', [RfqController::class, 'passBackToSourcing'])->name('rfqs.pass-back-sourcing');
     Route::patch('rfqs/{rfq}/forward-back', [RfqController::class, 'forwardBack'])->name('rfqs.forward-back');
     Route::patch('rfqs/{rfq}/reassign-sourcing', [RfqController::class, 'reassignSourcing'])->name('rfqs.reassign-sourcing');
+    Route::patch('rfqs/{rfq}/pause-data-entry', [RfqController::class, 'pauseDataEntry'])->name('rfqs.pause-data-entry');
+    Route::patch('rfqs/{rfq}/resume-data-entry', [RfqController::class, 'resumeDataEntry'])->name('rfqs.resume-data-entry');
     Route::patch('rfqs/{rfq}/start-data-entry', [RfqController::class, 'startDataEntry'])->name('rfqs.start-data-entry');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');

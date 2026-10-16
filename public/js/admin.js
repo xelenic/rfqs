@@ -1988,7 +1988,7 @@ function rfqmsBoot() {
                 var paused = workingClock(countdownSchedule, row.dataset.worker, now).paused;
                 row.classList.toggle('is-paused', paused);
                 var label = row.querySelector('.running-pill-label');
-                if (label) label.textContent = paused ? 'Paused' : 'Running';
+                if (label) label.textContent = paused ? 'Off hours' : 'Running';
             });
         };
 

@@ -749,7 +749,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1531,6 +1531,7 @@ class Rfq extends Model
             'data_entry_completed_by' => null,
             'data_entry_started_at' => null,
             'data_entry_started_by' => null,
+            'data_entry_paused_at' => null,
             'finalized_at' => null,
             'finalized_by' => null,
             'data_entry_returned_at' => null,
@@ -1627,6 +1628,44 @@ class Rfq extends Model
         $this->load('assignees');
 
         $this->syncSteps();
+    }
+
+    /**
+     * Data Entry pauses $part, which they'd started: its time stops — the
+     * countdown keeps what's left — and with nothing running they can start
+     * another (RfqStep::runningDataEntryOf()). Idempotent: a part that isn't
+     * running is left alone.
+     */
+    public function pauseDataEntryPart(int $part): void
+    {
+        if ($this->activePart($part)?->isDataEntryRunning() !== true) {
+            return;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'data_entry_paused_at' => now(),
+        ]);
+
+        $this->syncSteps();
+    }
+
+    /**
+     * Data Entry resumes $part, which they'd paused: its time counts again,
+     * carrying on the same round — the countdown goes on from where it
+     * stopped. Idempotent: a part that isn't paused is left alone. The caller
+     * checks they've nothing else running.
+     */
+    public function resumeDataEntryPart(int $part): void
+    {
+        if ($this->activePart($part)?->isDataEntryPaused() !== true) {
+            return;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'data_entry_paused_at' => null,
+        ]);
+
+        $this->syncSteps(resuming: true);
     }
 
     /**
@@ -1751,6 +1790,7 @@ class Rfq extends Model
             'data_entry_completed_by' => null,
             'data_entry_started_at' => null,
             'data_entry_started_by' => null,
+            'data_entry_paused_at' => null,
             'data_entry_returned_at' => now(),
             'data_entry_return_reason' => $reason,
         ]);
@@ -1974,7 +2014,7 @@ class Rfq extends Model
      *
      * @var array<string, null>
      */
-    private const DATA_ENTRY_START_COLUMNS = ['data_entry_started_at' => null, 'data_entry_started_by' => null];
+    private const DATA_ENTRY_START_COLUMNS = ['data_entry_started_at' => null, 'data_entry_started_by' => null, 'data_entry_paused_at' => null];
 
     private const REJECT_MARKER_COLUMNS = [
         // Redoing Data Entry means finalizing it again too.
@@ -2616,15 +2656,16 @@ class Rfq extends Model
      * not while the RFQ's held on another stage's Returns page, when GM
      * Assistant can't act on it. Nor while it's stopped on its own
      * (changePartStatus()) — nor with Data Entry until they've started on it
-     * (startDataEntryPart()).
+     * (startDataEntryPart()), or while they've paused it (pauseDataEntryPart()).
      */
     private function timedStepFor(RfqAssignment $part): ?string
     {
         return match (true) {
             $part->isStopped() => null,
             $part->completed_at === null => 'sourcing',
-            // With Data Entry, but only timed once they've started on it.
-            $part->data_entry_completed_at === null => $part->data_entry_started_at !== null ? 'data_entry' : null,
+            // With Data Entry, but only timed once they've started on it —
+            // and not while they've paused it.
+            $part->data_entry_completed_at === null => $part->isDataEntryRunning() ? 'data_entry' : null,
             $part->finalized_at === null => 'finalize',
             $part->isAwaitingGmAssistant() && ! $this->isHeldOnAnotherReturnsPage('gm_assistant') => 'gm_assistant',
             default => null,
@@ -2688,17 +2729,33 @@ class Rfq extends Model
     }
 
     /**
-     * $part's countdown at $step: $target less the working time its latest
-     * round there has taken — see sourcingCountdown() / dataEntryCountdown().
-     * Null unless that round is still open.
+     * Where $part's countdown stood when Data Entry paused it — what's left
+     * when they resume. Null unless it's paused.
      *
      * @return array{target: int, remaining: int}|null in seconds
      */
-    private function countdownAt(string $step, int $part, int $target, ?CarbonInterface $now): ?array
+    public function pausedDataEntryCountdown(int $part): ?array
+    {
+        if ($this->activePart($part)?->isDataEntryPaused() !== true) {
+            return null;
+        }
+
+        return $this->countdownAt('data_entry', $part, $this->dataEntryTargetSeconds($part), null, stillOpen: false);
+    }
+
+    /**
+     * $part's countdown at $step: $target less the working time its latest
+     * round there has taken — see sourcingCountdown() / dataEntryCountdown().
+     * Null unless that round is still open — or, with ! $stillOpen, for the
+     * round as it stood when it last stopped (pausedDataEntryCountdown()).
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    private function countdownAt(string $step, int $part, int $target, ?CarbonInterface $now, bool $stillOpen = true): ?array
     {
         $round = self::roundsOf($this->steps->filter(fn (RfqStep $stretch) => $stretch->part_number === $part && $stretch->step === $step))->last();
 
-        if ($round === null || $round->last()->ended_at !== null || $this->status !== 'Pending') {
+        if ($round === null || ($stillOpen && $round->last()->ended_at !== null) || $this->status !== 'Pending') {
             return null;
         }
 

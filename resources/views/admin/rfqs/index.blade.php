@@ -176,10 +176,16 @@
                                                 @endif
                                                 @if ($assignee->pivot->hasDataEntryStarted())
                                                     <div class="rfq-list-subnote">
-                                                        @if ($deCountdown)
+                                                        @if ($assignee->pivot->isDataEntryPaused())
+                                                            @php $pausedAt = $assignee->pivot->data_entry_paused_at->toBusinessTimezone(); @endphp
+                                                            <span class="running-pill is-on-pause" title="Paused {{ $pausedAt->format('M d, Y g:i A') }}">
+                                                                <i class="bi bi-pause-fill"></i>
+                                                                <span class="running-pill-label">Paused {{ $pausedAt->isToday() ? $pausedAt->format('g:i A') : $pausedAt->format('M d') }}</span>
+                                                            </span>
+                                                        @elseif ($deCountdown)
                                                             <span class="running-pill">
                                                                 <span class="running-dot"></span>
-                                                                <span class="running-pill-label">{{ $isOffHours ? 'Paused' : 'Running' }}</span>
+                                                                <span class="running-pill-label">{{ $isOffHours ? 'Off hours' : 'Running' }}</span>
                                                             </span>
                                                         @else
                                                             <i class="bi bi-play-circle"></i>
@@ -193,7 +199,7 @@
                                                 {{-- Its target — per item times its items, or its
                                                      priority's (Rfq::dataEntryTargetSeconds()) — counting
                                                      down once started, and how it's made up under it. --}}
-                                                @include('admin.rfqs._data_entry_target', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'countdown' => $deCountdown, 'workerId' => $assignee->pivot->data_entry_started_by])
+                                                @include('admin.rfqs._data_entry_target', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'countdown' => $deCountdown, 'pausedCountdown' => $rfq->pausedDataEntryCountdown($assignee->pivot->part_number), 'workerId' => $assignee->pivot->data_entry_started_by])
                                             </td>
                                             <td>{{ $assignee->name }}</td>
                                             <td class="text-muted-soft">{{ $assignee->pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
@@ -211,11 +217,8 @@
                                                         @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
                                                     @endif
                                                     @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'return', 'who' => $assignee->name])
-                                                    @if ($assignee->pivot->hasDataEntryStarted())
-                                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'kind' => 'data_entry', 'who' => $assignee->name])
-                                                    @else
-                                                        @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
-                                                    @endif
+                                                    {{-- Start, Pause and Send to Finalize, or Resume. --}}
+                                                    @include('admin.rfqs._data_entry_actions', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'who' => $assignee->name])
                                                 </div>
                                             </td>
                                         </tr>

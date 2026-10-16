@@ -398,6 +398,7 @@
         $deIsReturned = ! $deIsDone && $assignee->pivot->returned_at !== null;
         // Its Sourcing member sent it back instead of finalizing it.
         $deIsReturnedBySourcing = ! $deIsDone && $assignee->pivot->data_entry_returned_at !== null;
+        $deIsPaused = ! $deIsDone && $assignee->pivot->isDataEntryPaused();
         $deIsRunning = ! $deIsDone && $assignee->pivot->hasDataEntryStarted();
 
         // The Data Entry box is Data Entry's: whoever sent it to finalize, or
@@ -413,6 +414,7 @@
 
         $deMeta = match (true) {
             $deIsDone => ['Sent to finalize', $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A')],
+            $deIsPaused => ['Paused', 'Since '.$assignee->pivot->data_entry_paused_at->toBusinessTimezone()->format('M d, Y g:i A')],
             $deIsRunning => ['Working on it', 'Started '.$assignee->pivot->data_entry_started_at->toBusinessTimezone()->format('M d, Y g:i A')],
             $deIsReturned => ['Returned — rework needed'],
             $deIsReturnedBySourcing => ['Returned by Sourcing'],
@@ -1413,16 +1415,7 @@
                                     'kind' => 'return',
                                     'who' => $returnAssignee->name,
                                 ])
-                                @if ($returnAssignee->pivot->hasDataEntryStarted())
-                                    @include('admin.rfqs._complete_button', [
-                                        'rfq' => $rfq,
-                                        'part' => $returnAssignee->pivot->part_number,
-                                        'kind' => 'data_entry',
-                                        'who' => $returnAssignee->name,
-                                    ])
-                                @else
-                                    @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $returnAssignee->pivot->part_number])
-                                @endif
+                                @include('admin.rfqs._data_entry_actions', ['rfq' => $rfq, 'part' => $returnAssignee->pivot->part_number, 'who' => $returnAssignee->name])
                             </div>
                         </div>
                     @endforeach

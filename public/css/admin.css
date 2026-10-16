@@ -6549,3 +6549,16 @@ a.critical-row:hover {
 .backup-table td {
   vertical-align: middle;
 }
+
+/* A part Data Entry paused (Rfq::pauseDataEntryPart()): its pill and its
+   time left, held where it stopped. */
+.running-pill.is-on-pause {
+  white-space: nowrap;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.sourcing-countdown.is-on-pause {
+  opacity: 0.85;
+  border-style: dashed;
+}

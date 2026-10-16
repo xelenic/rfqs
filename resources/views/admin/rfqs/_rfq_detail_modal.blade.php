@@ -141,11 +141,7 @@
                          same RFQ. --}}
                     <div class="d-flex gap-2">
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'return', 'who' => $assignee->name, 'backModal' => $modalId, 'label' => 'Return to Sourcing'])
-                        @if ($assignee->pivot->hasDataEntryStarted())
-                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'data_entry', 'who' => $assignee->name, 'backModal' => $modalId])
-                        @else
-                            @include('admin.rfqs._start_data_entry_button', ['rfq' => $rfq, 'part' => $part])
-                        @endif
+                        @include('admin.rfqs._data_entry_actions', ['rfq' => $rfq, 'part' => $part, 'who' => $assignee->name, 'backModal' => $modalId])
                     </div>
                 @endif
             </div>
