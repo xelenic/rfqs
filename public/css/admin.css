@@ -2922,7 +2922,287 @@ a.pipeline-label:hover {
 }
 
 .rfq-progress-chart {
+  --pc-zoom: 1;
+  --pc-avatar: 56px;
+  --pc-overhang: 28px;
+  position: relative;
   margin: 0 auto;
+}
+
+/* The chart's cards (renderRfqProgressChart in admin.js): a round picture —
+   the person's photo, initial, a lock, or the stage's icon — half over each
+   card's left edge, ringed in the colour of how far that step has got, and
+   the stage, who and when on the card. Each state sets its own colours. */
+.pc-node {
+  --pc-accent: #c3cbdc;
+  --pc-accent-text: #6b7280;
+  --pc-tint: #f3f4f7;
+  position: absolute;
+}
+
+.pc-node.is-done {
+  --pc-accent: #1a9c6a;
+  --pc-accent-text: #157347;
+  --pc-tint: #e7f6ee;
+}
+
+.pc-node.is-current {
+  --pc-accent: #4f6df5;
+  --pc-accent-text: #3b53d1;
+  --pc-tint: #eef1fe;
+}
+
+.pc-node.is-returned {
+  --pc-accent: #e5484d;
+  --pc-accent-text: #b02a37;
+  --pc-tint: #fdecee;
+}
+
+:root[data-theme="dark"] .pc-node {
+  --pc-accent: #4a5468;
+  --pc-accent-text: #98a2b3;
+  --pc-tint: #1d2330;
+}
+
+:root[data-theme="dark"] .pc-node.is-done {
+  --pc-accent: #2f9e6a;
+  --pc-accent-text: #4ade80;
+  --pc-tint: #173327;
+}
+
+:root[data-theme="dark"] .pc-node.is-current {
+  --pc-accent: #5b78f6;
+  --pc-accent-text: #a3b3ff;
+  --pc-tint: #1e2647;
+}
+
+:root[data-theme="dark"] .pc-node.is-returned {
+  --pc-accent: #d0545f;
+  --pc-accent-text: #f87171;
+  --pc-tint: #3a1d22;
+}
+
+.pc-avatar {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pc-avatar);
+  height: var(--pc-avatar);
+  border-radius: 50%;
+  background: var(--pc-tint);
+  color: var(--pc-accent-text);
+  font-size: calc(20px * var(--pc-zoom));
+  font-weight: 700;
+  transform: translateY(-50%);
+  box-shadow:
+    0 0 0 calc(3px * var(--pc-zoom)) var(--rfq-surface),
+    0 0 0 calc(5px * var(--pc-zoom)) var(--pc-accent),
+    0 calc(6px * var(--pc-zoom)) calc(16px * var(--pc-zoom)) rgba(15, 23, 42, 0.16);
+}
+
+.pc-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.pc-avatar.is-icon {
+  font-size: calc(21px * var(--pc-zoom));
+  font-weight: 400;
+}
+
+.pc-badge {
+  position: absolute;
+  right: calc(-4px * var(--pc-zoom));
+  bottom: calc(-4px * var(--pc-zoom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(21px * var(--pc-zoom));
+  height: calc(21px * var(--pc-zoom));
+  border: calc(2px * var(--pc-zoom)) solid var(--rfq-surface);
+  border-radius: 50%;
+  background: var(--pc-accent);
+  color: #fff;
+  font-size: calc(11px * var(--pc-zoom));
+}
+
+.pc-card {
+  position: absolute;
+  inset: 0 0 0 var(--pc-overhang);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: calc(8px * var(--pc-zoom)) calc(12px * var(--pc-zoom)) calc(8px * var(--pc-zoom)) calc(var(--pc-overhang) + 14px * var(--pc-zoom));
+  overflow: hidden;
+  border: 1px solid var(--rfq-border);
+  border-radius: calc(14px * var(--pc-zoom));
+  background: linear-gradient(120deg, var(--pc-tint), var(--rfq-surface) 58%);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 calc(8px * var(--pc-zoom)) calc(22px * var(--pc-zoom)) rgba(15, 23, 42, 0.07);
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
+.pc-node.is-pending .pc-card {
+  border-style: dashed;
+  border-color: var(--rfq-tree-line-soft);
+  background: var(--rfq-surface);
+  box-shadow: none;
+}
+
+.pc-node.is-current .pc-card {
+  border-color: var(--pc-accent);
+  box-shadow: 0 0 0 calc(3px * var(--pc-zoom)) var(--pc-tint), 0 calc(8px * var(--pc-zoom)) calc(22px * var(--pc-zoom)) rgba(79, 109, 245, 0.16);
+}
+
+.pc-node.is-returned .pc-card {
+  border-color: var(--pc-accent);
+}
+
+.pc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(6px * var(--pc-zoom));
+  margin-bottom: calc(2px * var(--pc-zoom));
+}
+
+.pc-kicker,
+.pc-title,
+.pc-number,
+.pc-meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pc-kicker {
+  color: var(--rfq-text-muted);
+  font-size: calc(9px * var(--pc-zoom));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pc-chip {
+  flex-shrink: 0;
+  padding: calc(1px * var(--pc-zoom)) calc(7px * var(--pc-zoom));
+  border-radius: 999px;
+  background: var(--pc-tint);
+  color: var(--pc-accent-text);
+  font-size: calc(9px * var(--pc-zoom));
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.pc-node.is-pending .pc-chip {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--rfq-tree-line-soft);
+}
+
+/* A long stage name ("Head of Business Development") takes two lines. */
+.pc-title {
+  display: -webkit-box;
+  color: var(--rfq-text);
+  font-size: calc(13px * var(--pc-zoom));
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.pc-node.is-pending .pc-title {
+  color: var(--rfq-text-muted);
+}
+
+.pc-number {
+  color: var(--pc-accent-text);
+  font-size: calc(10px * var(--pc-zoom));
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pc-meta {
+  color: var(--rfq-text-muted);
+  font-size: calc(10.5px * var(--pc-zoom));
+  line-height: 1.4;
+}
+
+.pc-when .bi {
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+/* The connectors: from a card's right edge into the next one's picture,
+   coloured by how far that next step has got — dashed while it's to come. */
+.pc-lines {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pc-line {
+  fill: none;
+  stroke: var(--rfq-tree-line-soft);
+  stroke-width: calc(2px * var(--pc-zoom));
+  stroke-linecap: round;
+}
+
+.pc-line.is-pending {
+  stroke-dasharray: 4 6;
+}
+
+.pc-line.is-done {
+  stroke: #1a9c6a;
+}
+
+.pc-line.is-current {
+  stroke: var(--rfq-primary);
+}
+
+.pc-line.is-returned {
+  stroke: var(--rfq-danger);
+}
+
+/* A Step Details tab picked below: its cards lift, ringed in amber. */
+.pc-node.is-highlighted .pc-card {
+  border-color: #f5a524;
+  box-shadow: 0 0 0 calc(3px * var(--pc-zoom)) rgba(245, 165, 36, 0.55), 0 calc(12px * var(--pc-zoom)) calc(26px * var(--pc-zoom)) rgba(245, 165, 36, 0.3);
+  transform: translateY(calc(-2px * var(--pc-zoom)));
+}
+
+.rfq-progress-chart.is-entering .pc-node {
+  animation: pc-node-in 0.45s ease both;
+}
+
+@keyframes pc-node-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rfq-progress-chart.is-entering .pc-node {
+    animation: none;
+  }
+
+  .pc-card {
+    transition: none;
+  }
 }
 
 /* ---------- RFQ activity timeline ---------- */

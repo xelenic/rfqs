@@ -203,9 +203,9 @@
         $activeStep = array_key_exists($activeStep, $stepTabs) ? $activeStep : (end($reached) ?: $visibleSteps[0]);
     }
 
-    // Progress is rendered by Apache ECharts (a single tree series) —
-    // real connector-line geometry instead of fragile pseudo-element math.
-    // Once Sourcing splits, every branch keeps its own copy of the rest of
+    // Progress is drawn by public/js/admin.js (renderRfqProgressChart): a
+    // card per stage, each with its person's round picture ('person' —
+    // photo, initial, or masked), joined by curved lines. Once Sourcing splits, every branch keeps its own copy of the rest of
     // the chain (Senior Operations Approval onward) all the way to Closed,
     // rather than merging back into one shared node — each split reads as
     // its own complete path top to bottom. Each part goes through those
@@ -217,10 +217,18 @@
     //
     // Blurred content (Sourcing not seeing another partner's identity, or
     // who created/routed/approved outside their own sphere) is masked
-    // server-side into a plain label here rather than styled — a canvas
-    // chart can't selectively CSS-blur one rendered text run the way the
-    // rest of the page does.
+    // server-side into a plain label — and a lock for the picture — here
+    // rather than styled, so it never reaches the page at all.
     $maskIfBlurred = fn (?string $label, bool $blurred) => $blurred ? 'Restricted' : ($label ?? 'Unknown');
+
+    // The person a box is about — whoever did that step, or is on it — for
+    // its round picture (their photo, or their initial): nobody yet, null;
+    // someone this viewer mustn't know, masked (a lock, same as the name).
+    $personOf = fn (?\App\Models\User $person, bool $blurred = false) => match (true) {
+        $person === null => null,
+        $blurred => ['masked' => true],
+        default => ['name' => $person->name, 'photo' => $person->avatarUrl(), 'initial' => $person->initial()],
+    };
 
     $nodeState = fn (bool $done, bool $current = false, bool $returned = false) => match (true) {
         $returned => 'returned',
@@ -244,7 +252,7 @@
     // public/js/admin.js (renderRfqProgressChart), which renders name,
     // rfq_number, and every meta entry each as their own line, and reads
     // `step` to drive the tab-select highlight.
-    $buildTailChain = function (?string $rfqNumber, ?\App\Models\RfqAssignment $part = null) use ($rfq, $maskIfBlurred, $restrictSourcingView, $nodeState, $stepDone, $latestRejection) {
+    $buildTailChain = function (?string $rfqNumber, ?\App\Models\RfqAssignment $part = null) use ($rfq, $maskIfBlurred, $personOf, $restrictSourcingView, $nodeState, $stepDone, $latestRejection) {
         // Who did each stage and when, for this part — or the RFQ, with no part.
         $seniorOpsAt = $part ? $part->senior_ops_reviewed_at : $rfq->senior_ops_reviewed_at;
         $seniorOpsBy = $part ? $part->seniorOpsReviewedBy : $rfq->seniorOpsReviewedBy;
@@ -280,6 +288,7 @@
                 ? [$maskIfBlurred($closedBy?->name, $restrictSourcingView), $closedAt->toBusinessTimezone()->format('M d, Y g:i A')]
                 : [$gmAt !== null ? 'Ready for Business Development' : 'Not yet reached'],
             'state' => $nodeState($closedAt !== null, $gmAt !== null && $closedAt === null),
+            'person' => $closedAt ? $personOf($closedBy, $restrictSourcingView) : null,
             'children' => [],
         ];
 
@@ -293,6 +302,7 @@
                 default => [$assistantAt !== null ? 'Awaiting approval' : 'Not yet reached'],
             },
             'state' => $nodeState($gmAt !== null, $assistantAt !== null && $gmAt === null, $gmRejected),
+            'person' => $personOf($gmAt !== null ? $gmBy : ($gmRejected ? $rfq->rejectedBy : null), $restrictSourcingView),
             'children' => [$closed],
         ];
 
@@ -304,6 +314,7 @@
                 ? [$maskIfBlurred($assistantBy?->name, $restrictSourcingView), $assistantAt->toBusinessTimezone()->format('M d, Y g:i A')]
                 : [$headAt !== null ? 'Awaiting GM Assistant' : 'Not yet reached'],
             'state' => $nodeState($assistantAt !== null, $headAt !== null && $assistantAt === null),
+            'person' => $assistantAt ? $personOf($assistantBy, $restrictSourcingView) : null,
             'children' => [$gmReview],
         ];
 
@@ -317,6 +328,7 @@
                 default => [$seniorOpsAt !== null ? 'Awaiting review' : 'Not yet reached'],
             },
             'state' => $nodeState($headAt !== null, $seniorOpsAt !== null && $headAt === null, $headRejected),
+            'person' => $personOf($headAt !== null ? $headBy : ($headRejected ? $rfq->rejectedBy : null), $restrictSourcingView),
             'children' => [$gmAssistant],
         ];
 
@@ -330,6 +342,7 @@
                 default => [$finalized ? 'Awaiting review' : 'Not yet reached'],
             },
             'state' => $nodeState($seniorOpsAt !== null, $finalized && $seniorOpsAt === null, $seniorOpsRejected),
+            'person' => $personOf($seniorOpsAt !== null ? $seniorOpsBy : ($seniorOpsRejected ? $rfq->rejectedBy : null), $restrictSourcingView),
             'children' => [$headOfBd],
         ];
     };
@@ -421,6 +434,7 @@
                 default => ['Not yet reached'],
             },
             'state' => $nodeState($finalizedAt !== null, $deIsDone && $finalizedAt === null),
+            'person' => $personOf($assignee, $blurred),
             'children' => [$buildTailChain($rfqNumber, $assignee->pivot)],
         ];
 
@@ -431,6 +445,8 @@
             'rfq_number' => $rfqNumber,
             'meta' => $deMeta,
             'state' => $nodeState($deIsDone, returned: $deIsReturned || $deIsReturnedBySourcing),
+            // Sourcing never learns who in Data Entry it was.
+            'person' => $restrictSourcingView ? null : $personOf($deWorker),
             'children' => [$finalizeNode],
         ];
 
@@ -443,6 +459,7 @@
                 ? ['Completed', $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A')]
                 : ['Pending since', $assignee->pivot->created_at->toBusinessTimezone()->format('M d, Y g:i A')],
             'state' => $nodeState($sourcingDone),
+            'person' => $personOf($assignee, $blurred),
             'children' => [$dataEntryNode],
         ];
     }
@@ -455,6 +472,7 @@
             ? [$maskIfBlurred($rfq->operationsAssignee->name, $restrictSourcingView), $rfq->operations_assigned_at->toBusinessTimezone()->format('M d, Y g:i A')]
             : ['Not yet assigned'],
         'state' => $nodeState($stepDone['operations'], $currentStep === 'operations'),
+        'person' => $personOf($rfq->operationsAssignee, $restrictSourcingView),
         'children' => [[
             'name' => 'Assigned to Sourcing',
             'step' => 'sourcing',
@@ -471,6 +489,7 @@
         'rfq_number' => $rfq->rfq_number,
         'meta' => ['Created by '.$maskIfBlurred($rfq->creator?->name, $restrictSourcingView), $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A')],
         'state' => 'done',
+        'person' => $personOf($rfq->creator, $restrictSourcingView),
         'children' => [$operationsNode],
     ];
 
@@ -487,6 +506,13 @@
 
         $rfqProgressTree = $pruneTo($rfqProgressTree)[0] ?? $rfqProgressTree;
     }
+
+    // Each box's step icon — the same as its Step Details tab's — for the
+    // round picture where there's nobody to show.
+    $withIcons = function (array $node) use (&$withIcons, $stepTabs): array {
+        return ['icon' => $stepTabs[$node['step']]['icon'] ?? 'bi-circle', 'children' => array_map($withIcons, $node['children'])] + $node;
+    };
+    $rfqProgressTree = $withIcons($rfqProgressTree);
 @endphp
 
 @section('title', $displayRfqNumber)
@@ -753,17 +779,16 @@
             </div>
         </div>
         <div class="card-body">
-            {{-- Rendered by Apache ECharts (tree series, left-to-right) —
-                 real connector-line geometry instead of hand-rolled CSS.
+            {{-- Drawn by public/js/admin.js (renderRfqProgressChart), left to
+                 right: a card per stage, its person's round picture half
+                 over its left edge, joined by curved lines.
                  Sourcing splits into one branch per assignee, and each
                  branch keeps going as its own path — Data Entry, Senior
                  Operations Approval, Head of Business Development, GM
                  Assistant, General Manager, Closed — rather than merging
                  back together, so a 3-way split shows three full chains
                  stacked as parallel rows. The zoom buttons above re-render
-                 the chart bigger/smaller (rather than CSS-scaling it,
-                 which would blur the canvas) — see public/js/admin.js
-                 (renderRfqProgressChart). --}}
+                 the chart bigger/smaller, type and all. --}}
             <script type="application/json" id="rfq-progress-data">{!! json_encode(['tree' => $rfqProgressTree]) !!}</script>
             <div class="rfq-progress-chart-wrap" data-live-scroll="progress-chart">
                 <div id="rfq-progress-chart" class="rfq-progress-chart"></div>
@@ -1476,7 +1501,6 @@
     @endif
 
     @push('scripts')
-        <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 if (window.renderRfqProgressChart) {

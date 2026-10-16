@@ -2317,18 +2317,19 @@ window.rfqmsRebind = rfqmsBoot;
     });
 })();
 
-// RFQ show page — Progress chart, rendered with Apache ECharts (tree
-// series) rather than hand-rolled CSS, for real connector-line geometry
-// and automatic layout instead of fragile pseudo-element math. Left to
-// right ('LR' orient) — RFQ Created starts the row on the left, and
-// Sourcing splits into one lane per assignee running rightward, each lane
-// keeping its own copy of everything after it (Data Entry, Senior
-// Operations Approval, Head of Business Development, GM Assistant,
-// General Manager, Closed) rather than merging back together — a plain
-// fork, which is exactly what a tree series draws natively, no manual
-// layout or overlay needed. Called from show.blade.php once the ECharts
-// CDN script has loaded. Global (not inside the DOMContentLoaded listener
-// above) so that late <script> can call it after everything here has run.
+// RFQ show page — the Progress chart: one card per stage, left to right —
+// RFQ Created starts the row, and Sourcing splits into one lane per part,
+// each lane keeping its own copy of everything after it (Data Entry,
+// Finalize, Senior Operations Approval … Closed) rather than merging back.
+// Each card is HTML laid over its place in the flow — its person's round
+// picture (photo, initial, a lock when it's not theirs to know, or the
+// stage's icon when there's nobody yet) overlapping its left edge, and the
+// stage, who and when on the card — joined by curved SVG lines, coloured
+// by how far the step they lead to has got. Laid out here rather than by a
+// charting library: columns by depth, a row per lane, a parent centred on
+// its children. Called from show.blade.php on load, and by live.js after
+// it swaps in a fresh page body. Global (not inside the DOMContentLoaded
+// listener above) so that late call can reach it.
 window.renderRfqProgressChart = function () {
     // Called again whenever live.js swaps a fresh page body in: the previous
     // chart is put away first, and its zoom kept.
@@ -2340,7 +2341,7 @@ window.renderRfqProgressChart = function () {
 
     var dataEl = document.getElementById('rfq-progress-data');
     var chartEl = document.getElementById('rfq-progress-chart');
-    if (!dataEl || !chartEl || typeof echarts === 'undefined') {
+    if (!dataEl || !chartEl) {
         return;
     }
 
@@ -2351,173 +2352,125 @@ window.renderRfqProgressChart = function () {
         return;
     }
 
-    // Soft two-tone gradients rather than flat fills, plus a matching
-    // border — gives each node a bit of depth without competing with the
-    // text. Pending stays a flat white/dashed outline on purpose, so a
-    // lane still reads left-to-right at a glance: solid + tinted means
-    // "happened", dashed + white means "not yet".
-    // The dark theme (Settings → Preferences) has its own: deep tints, light
-    // text — "not yet" a flat card on the page's surface.
-    var isDark = document.documentElement.dataset.theme === 'dark';
-    var STATE_COLORS = isDark ? {
-        done: { from: '#173327', to: '#1b3b2d', border: '#2f7a52', text: '#4ade80' },
-        current: { from: '#1e2647', to: '#232d55', border: '#5b78f6', text: '#a3b3ff' },
-        pending: { from: '#171c27', to: '#171c27', border: '#3a4357', text: '#98a2b3' },
-        returned: { from: '#3a1d22', to: '#432026', border: '#b4535e', text: '#f87171' },
-    } : {
-        done: { from: '#eafaf1', to: '#d7f2e3', border: '#8fd4ac', text: '#157347' },
-        current: { from: '#eef2ff', to: '#dde5ff', border: '#7c93f7', text: '#3b53d1' },
-        pending: { from: '#ffffff', to: '#ffffff', border: '#c3cbdc', text: '#6b7280' },
-        returned: { from: '#fdf1f2', to: '#fbe0e3', border: '#ee9ca6', text: '#b02a37' },
-    };
-    var LINE_COLOR = isDark ? '#4b556b' : '#a9b4c9';
-    var LABEL_COLORS = isDark
-        ? { kicker: '#7c879c', number: '#8c97ab', role: '#b3bccb', date: '#7c879c' }
-        : { kicker: '#8b98ab', number: '#7c8a9e', role: '#5b6576', date: '#9aa3b2' };
-    var BASE_NODE_WIDTH = 170;
-    var BASE_NODE_HEIGHT = 78;
-    var BASE_COLUMN_GAP = 64;
-    var BASE_ROW_GAP = 26;
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+    // At 100%: a card, the round picture half over its left edge, and the
+    // gaps between columns and lanes. Zoom scales every one of them, and
+    // the type with it (--pc-zoom), so it stays crisp at every size.
+    var BASE = { card: 220, height: 106, avatar: 56, columnGap: 56, rowGap: 24, pad: 24 };
+    var STATE_LABELS = { done: 'Done', current: 'Current', pending: 'Pending', returned: 'Returned' };
+    var STATE_ICONS = { done: 'bi-check-lg', current: 'bi-hourglass-split', returned: 'bi-arrow-counterclockwise' };
 
-    // Walk the nested {name, meta, state, children} data (built server-side
-    // in show.blade.php) and attach the per-node itemStyle/label ECharts
-    // actually reads, rather than shaping that there. Title color is state-
-    // dependent, but a `rich` style block is shared across the whole
-    // series rather than settable per node — so rather than one `title`
-    // style, there's one per state ("title_done", "title_current", ...)
-    // defined once below, and each node's formatter just picks the right
-    // one for its own state.
-    //
-    // The rich styles below also set `overflow: 'truncate'`, but in this
-    // ECharts build that only reliably clips the first line of a \n-joined
-    // multi-line rich label — later lines can render at full width and
-    // bleed past the node's edges instead of being cut off. So every line
-    // is pre-truncated here in plain JS first, using rough per-character
-    // width budgets for each line's font, rather than trusting ECharts to
-    // clip text it's already decided not to reliably clip.
-    function truncate(text, maxChars) {
-        if (!text || text.length <= maxChars) {
-            return text;
-        }
-        return text.slice(0, maxChars - 1).trim() + '…';
-    }
-
-    // The node's normal (non-highlighted) fill/border — its own function
-    // so the tab-select highlight (further down) can revert a single node
-    // back to this without re-running `decorate`'s label/recursion setup
-    // on the rest of the tree.
-    function baseItemStyle(node) {
-        var colors = STATE_COLORS[node.state] || STATE_COLORS.pending;
-        return {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: colors.from },
-                { offset: 1, color: colors.to },
-            ]),
-            borderColor: colors.border,
-            borderWidth: node.state === 'current' ? 2.5 : 1.25,
-            borderType: node.state === 'pending' ? 'dashed' : 'solid',
-        };
-    }
-
-    // node.role (its own small "kicker" line above the title) is which
-    // role this node belongs to — "Sourcing" or "Data Entry" — for the
-    // per-branch nodes where the title is a person's name rather than a
-    // stage name, so it isn't otherwise obvious which step that name is
-    // standing in for. node.meta is a list of 0-2 lines (built server-side
-    // in show.blade.php): who acted / status, then when (date and time) —
-    // each its own line under the title, rather than packed together.
-    // node.rfq_number (also its own line) is the RFQ or per-split number
-    // ("RFQ1005-P1 of P3") this node belongs to. node.step (not rendered)
-    // is which Step Details tab below the chart this node belongs to —
-    // see highlightStep() further down.
-    function decorate(node) {
-        node.itemStyle = baseItemStyle(node);
-        var roleKicker = node.role ? node.role.toUpperCase() : null;
-        var title = truncate(node.name, 28);
-        var rfqNumberLine = truncate(node.rfq_number, 26);
-        var metaLine1 = truncate((node.meta || [])[0], 30);
-        var metaLine2 = truncate((node.meta || [])[1], 30);
-        node.label = {
-            formatter: function () {
-                var titleKey = 'title_' + node.state;
-                var lines = [];
-                if (roleKicker) {
-                    lines.push('{role_kicker|' + roleKicker + '}');
-                }
-                lines.push('{' + titleKey + '|' + title + '}');
-                if (rfqNumberLine) {
-                    lines.push('{rfq_number|' + rfqNumberLine + '}');
-                }
-                if (metaLine1) {
-                    lines.push('{meta_role|' + metaLine1 + '}');
-                }
-                if (metaLine2) {
-                    lines.push('{meta_date|' + metaLine2 + '}');
-                }
-                return lines.join('\n');
-            },
-        };
-        if (node.children && node.children.length) {
-            node.children.forEach(decorate);
-        } else {
-            delete node.children;
-        }
-        return node;
-    }
-
-    function treeDepth(node) {
-        if (!node.children || !node.children.length) {
-            return 1;
-        }
-        return 1 + Math.max.apply(null, node.children.map(treeDepth));
-    }
-
-    function leafCount(node) {
-        if (!node.children || !node.children.length) {
-            return 1;
-        }
-        return node.children.reduce(function (sum, child) {
-            return sum + leafCount(child);
-        }, 0);
-    }
-
-    var rootNode = decorate(data.tree);
-    var depth = treeDepth(rootNode);
-    var leaves = leafCount(rootNode);
-    var chart = echarts.init(chartEl);
-
-    // Every node tagged with a given `step` (built server-side — see
-    // show.blade.php) — a Sourcing/Data Entry/Senior Ops/etc. step can be
-    // several nodes at once, one per split branch, so selecting its tab
-    // needs to highlight (and scroll to) all of them together, not just
-    // one. `_level` (column index, 0 = RFQ Created) is stamped in here
-    // rather than sent from the server, since it's just this node's depth
-    // in the walk — used to know which column to scroll to; where a step
-    // spans two columns (e.g. "sourcing" is both the single fan-out node
-    // and every branch's own Sourcing node one column further right), the
-    // deeper (higher) one wins, since that's the more specific one.
+    var rootNode = data.tree;
     var stepNodesMap = {};
-    (function collectStepNodes(node, level) {
-        if (node.step) {
-            (stepNodesMap[node.step] = stepNodesMap[node.step] || []).push(node);
-        }
+    var leaves = 0;
+    var depth = 0;
+
+    // Columns by depth (`_level`, 0 = RFQ Created), a row per lane, and a
+    // parent centred between its first and last child (`_row`). Every node
+    // of a step (several, once Sourcing splits) is kept by `step`, for the
+    // Step Details tabs below to highlight together.
+    (function place(node, level) {
         node._level = level;
-        if (node.children) {
-            node.children.forEach(function (child) {
-                collectStepNodes(child, level + 1);
-            });
+        depth = Math.max(depth, level + 1);
+        (stepNodesMap[node.step] = stepNodesMap[node.step] || []).push(node);
+
+        var children = node.children || [];
+        if (children.length) {
+            children.forEach(function (child) { place(child, level + 1); });
+            node._row = (children[0]._row + children[children.length - 1]._row) / 2;
+        } else {
+            node._row = leaves++;
         }
     })(rootNode, 0);
 
-    // Fade whichever edge still has more content to scroll to, so a node
-    // sitting mid-scroll at the boundary reads as "scroll for more"
-    // instead of looking hard-clipped — but only that edge, and only
-    // while it's actually scrollable that way. A fade fixed in CSS also
-    // dims the true first/last node once fully scrolled to that end
-    // (nothing there to hint at), which looks exactly like the clipping
-    // this is meant to avoid, so it's recomputed here against live scroll
-    // position instead, and again after every zoom change since that
-    // changes whether there's anything left to scroll to.
+    function el(tag, className, text) {
+        var element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text !== undefined && text !== null) element.textContent = text;
+        return element;
+    }
+
+    // The round picture: whoever did the step (or is on it) — their photo,
+    // else their initial — a lock when they're not this viewer's to know,
+    // or the stage's own icon when there's nobody yet. A small badge on it
+    // says how far the step has got.
+    function avatarFor(node) {
+        var person = node.person;
+        var avatar = el('span', 'pc-avatar');
+
+        if (person && person.masked) {
+            avatar.classList.add('is-icon');
+            avatar.appendChild(el('i', 'bi bi-lock-fill'));
+            avatar.title = 'Restricted';
+        } else if (person && person.photo) {
+            var img = el('img');
+            img.src = person.photo;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            avatar.appendChild(img);
+            avatar.title = person.name;
+        } else if (person) {
+            avatar.classList.add('is-initial');
+            avatar.textContent = person.initial;
+            avatar.title = person.name;
+        } else {
+            avatar.classList.add('is-icon');
+            avatar.appendChild(el('i', 'bi ' + (node.icon || 'bi-circle')));
+        }
+
+        if (STATE_ICONS[node.state]) {
+            var badge = el('span', 'pc-badge');
+            badge.appendChild(el('i', 'bi ' + STATE_ICONS[node.state]));
+            avatar.appendChild(badge);
+        }
+
+        return avatar;
+    }
+
+    // The card: the stage it is (a role's kicker over a person's name on a
+    // lane, or the stage's own name), how far it's got, which part, then
+    // who/what and when — each its own line, cut short with … when long,
+    // all of it on hover.
+    function cardFor(node) {
+        var state = STATE_LABELS[node.state] ? node.state : 'pending';
+        var wrap = el('div', 'pc-node is-' + state);
+        wrap.dataset.step = node.step || '';
+        wrap.setAttribute('role', 'listitem');
+
+        var card = el('div', 'pc-card');
+        var head = el('div', 'pc-head');
+        head.appendChild(el('span', 'pc-kicker', node.role || ''));
+        head.appendChild(el('span', 'pc-chip', STATE_LABELS[state]));
+        card.appendChild(head);
+        card.appendChild(el('div', 'pc-title', node.name));
+
+        if (node.rfq_number) {
+            card.appendChild(el('div', 'pc-number', node.rfq_number));
+        }
+
+        var meta = node.meta || [];
+        if (meta[0]) {
+            card.appendChild(el('div', 'pc-meta', meta[0]));
+        }
+        if (meta[1]) {
+            var when = el('div', 'pc-meta pc-when');
+            when.appendChild(el('i', 'bi bi-clock'));
+            when.appendChild(document.createTextNode(' ' + meta[1]));
+            card.appendChild(when);
+        }
+
+        wrap.title = [node.role, node.name, node.rfq_number].concat(meta).filter(Boolean).join('\n');
+        wrap.appendChild(avatarFor(node));
+        wrap.appendChild(card);
+
+        return wrap;
+    }
+
+    // Fade whichever edge still has more content to scroll to, so a card
+    // sitting mid-scroll at the boundary reads as "scroll for more" instead
+    // of looking cut off — only that edge, and only while it's scrollable
+    // that way; recomputed on scroll and after every zoom change.
     var wrapEl = chartEl.parentElement;
     var FADE = 24;
     var updateEdgeFade = function () {
@@ -2539,87 +2492,82 @@ window.renderRfqProgressChart = function () {
         wrapEl.style.maskImage = mask;
     };
 
-    // Zoom in/out re-renders the chart bigger/smaller — scaling every
-    // size (node, gaps, padding, font) by the same factor — rather than
-    // CSS-scaling the finished canvas, which would blur the text. Discrete
-    // stops rather than continuous so repeated clicks land on predictable,
-    // reproducible sizes. Truncation budgets in `decorate()` above are
-    // character counts, not pixels, so they don't need to change here —
-    // font size and node width scale together, so the same count of
-    // characters keeps fitting at every zoom level.
+    // Zoom re-lays the chart bigger or smaller — every size and the type
+    // together — in discrete stops, so repeated clicks land on predictable
+    // sizes.
     var ZOOM_LEVELS = [0.6, 0.75, 1, 1.25, 1.5, 1.75, 2];
     var zoomIndex = previous ? previous.zoomIndex() : ZOOM_LEVELS.indexOf(1);
     var zoomInBtn = document.getElementById('rfq-progress-zoom-in');
     var zoomOutBtn = document.getElementById('rfq-progress-zoom-out');
     var zoomResetBtn = document.getElementById('rfq-progress-zoom-reset');
-    var currentNodeWidth = BASE_NODE_WIDTH;
-    var currentNodeHeight = BASE_NODE_HEIGHT;
-    var currentColumnGap = BASE_COLUMN_GAP;
-    var currentPad = 50;
+    var geometry = null;
+    // A chart put back by a live update doesn't play its entrance again.
+    var entering = !previous;
 
     function render() {
         var zoom = ZOOM_LEVELS[zoomIndex];
-        var nodeWidth = BASE_NODE_WIDTH * zoom;
-        var nodeHeight = BASE_NODE_HEIGHT * zoom;
-        currentNodeWidth = nodeWidth;
-        currentNodeHeight = nodeHeight;
-        var columnGap = BASE_COLUMN_GAP * zoom;
-        var rowGap = BASE_ROW_GAP * zoom;
-        var pad = 50 * zoom;
-        currentColumnGap = columnGap;
-        currentPad = pad;
+        var g = {
+            card: BASE.card * zoom,
+            height: BASE.height * zoom,
+            avatar: BASE.avatar * zoom,
+            columnGap: BASE.columnGap * zoom,
+            rowGap: BASE.rowGap * zoom,
+            pad: BASE.pad * zoom,
+        };
+        g.overhang = g.avatar / 2;
+        g.node = g.card + g.overhang;
+        g.pitch = g.node + g.columnGap;
+        geometry = g;
 
-        var minHeight = chartEl.parentElement ? chartEl.parentElement.clientHeight : 0;
-        // Columns a node's width plus a gap apart, the first and last node
-        // whole inside the padding — the tree places node centres, so its
-        // edges sit half a node in from the padding. The same geometry the
-        // scroll-to-a-step below works from.
-        chartEl.style.width = ((depth - 1) * (nodeWidth + columnGap) + nodeWidth + pad * 2) + 'px';
-        chartEl.style.height = Math.max(leaves * (nodeHeight + rowGap) + 40, minHeight, 140) + 'px';
-        chart.resize();
+        var width = g.pad * 2 + (depth - 1) * g.pitch + g.node;
+        var contentHeight = g.pad * 2 + leaves * (g.height + g.rowGap) - g.rowGap;
+        var height = Math.max(contentHeight, 140);
+        var top = (height - contentHeight) / 2 + g.pad;
+        var xOf = function (node) { return g.pad + node._level * g.pitch; };
+        var yOf = function (node) { return top + node._row * (g.height + g.rowGap) + g.height / 2; };
 
-        chart.setOption({
-            // A chart put back by a live update shouldn't play its entrance again.
-            animation: !previous,
-            series: [{
-                type: 'tree',
-                data: [rootNode],
-                top: 20 * zoom,
-                bottom: 20 * zoom,
-                left: pad + nodeWidth / 2,
-                right: pad + nodeWidth / 2,
-                orient: 'LR',
-                edgeShape: 'curve',
-                roam: false,
-                expandAndCollapse: false,
-                initialTreeDepth: -1,
-                symbol: 'rect',
-                symbolSize: [nodeWidth, nodeHeight],
-                itemStyle: {
-                    borderWidth: 1,
-                    shadowBlur: 10,
-                    shadowColor: 'rgba(15, 23, 42, 0.10)',
-                    shadowOffsetY: 3,
-                },
-                lineStyle: { color: LINE_COLOR, width: 2, curveness: 0.4 },
-                emphasis: { disabled: true },
-                label: {
-                    position: 'inside',
-                    verticalAlign: 'middle',
-                    align: 'center',
-                    rich: {
-                        role_kicker: { fontWeight: 700, fontSize: 8 * zoom, color: LABEL_COLORS.kicker, lineHeight: 11 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                        title_done: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.done.text, width: nodeWidth - 18, overflow: 'truncate' },
-                        title_current: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.current.text, width: nodeWidth - 18, overflow: 'truncate' },
-                        title_pending: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.pending.text, width: nodeWidth - 18, overflow: 'truncate' },
-                        title_returned: { fontWeight: 700, fontSize: 10 * zoom, lineHeight: 13 * zoom, color: STATE_COLORS.returned.text, width: nodeWidth - 18, overflow: 'truncate' },
-                        rfq_number: { fontSize: 9 * zoom, fontWeight: 600, color: LABEL_COLORS.number, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                        meta_role: { fontSize: 9 * zoom, color: LABEL_COLORS.role, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                        meta_date: { fontSize: 9 * zoom, color: LABEL_COLORS.date, lineHeight: 12 * zoom, width: nodeWidth - 18, overflow: 'truncate' },
-                    },
-                },
-            }],
-        });
+        chartEl.innerHTML = '';
+        chartEl.style.width = width + 'px';
+        chartEl.style.height = height + 'px';
+        chartEl.style.setProperty('--pc-zoom', zoom);
+        chartEl.style.setProperty('--pc-avatar', g.avatar + 'px');
+        chartEl.style.setProperty('--pc-overhang', g.overhang + 'px');
+        chartEl.classList.toggle('is-entering', entering);
+        chartEl.setAttribute('role', 'list');
+        chartEl.setAttribute('aria-label', 'RFQ progress');
+
+        // The lines first, under the cards: from a card's right edge into
+        // the next one's picture.
+        var svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('class', 'pc-lines');
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.setAttribute('aria-hidden', 'true');
+        chartEl.appendChild(svg);
+
+        (function draw(node) {
+            var card = cardFor(node);
+            card.style.left = xOf(node) + 'px';
+            card.style.top = (yOf(node) - g.height / 2) + 'px';
+            card.style.width = g.node + 'px';
+            card.style.height = g.height + 'px';
+            card.style.animationDelay = (entering ? node._level * 45 : 0) + 'ms';
+            node._el = card;
+            chartEl.appendChild(card);
+
+            (node.children || []).forEach(function (child) {
+                var x1 = xOf(node) + g.node;
+                var y1 = yOf(node);
+                var x2 = xOf(child);
+                var y2 = yOf(child);
+                var bend = (x2 - x1) * 0.55;
+                var path = document.createElementNS(SVG_NS, 'path');
+                path.setAttribute('d', 'M' + x1 + ' ' + y1 + ' C' + (x1 + bend) + ' ' + y1 + ' ' + (x2 - bend) + ' ' + y2 + ' ' + x2 + ' ' + y2);
+                path.setAttribute('class', 'pc-line is-' + (STATE_LABELS[child.state] ? child.state : 'pending'));
+                svg.appendChild(path);
+                draw(child);
+            });
+        })(rootNode);
 
         if (zoomOutBtn) {
             zoomOutBtn.disabled = zoomIndex === 0;
@@ -2632,118 +2580,87 @@ window.renderRfqProgressChart = function () {
 
     function setZoomIndex(nextIndex) {
         zoomIndex = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, nextIndex));
+        entering = false;
         render();
     }
 
-    if (zoomInBtn) {
-        zoomInBtn.addEventListener('click', function () {
-            setZoomIndex(zoomIndex + 1);
-        });
-    }
-    if (zoomOutBtn) {
-        zoomOutBtn.addEventListener('click', function () {
-            setZoomIndex(zoomIndex - 1);
-        });
-    }
-    if (zoomResetBtn) {
-        zoomResetBtn.addEventListener('click', function () {
-            setZoomIndex(ZOOM_LEVELS.indexOf(1));
-        });
-    }
+    var onZoomIn = function () { setZoomIndex(zoomIndex + 1); };
+    var onZoomOut = function () { setZoomIndex(zoomIndex - 1); };
+    var onZoomReset = function () { setZoomIndex(ZOOM_LEVELS.indexOf(1)); };
+    var onResize = function () { entering = false; render(); };
+
+    if (zoomInBtn) zoomInBtn.addEventListener('click', onZoomIn);
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', onZoomOut);
+    if (zoomResetBtn) zoomResetBtn.addEventListener('click', onZoomReset);
 
     render();
-    window.addEventListener('resize', render);
+    window.addEventListener('resize', onResize);
     if (wrapEl) {
         wrapEl.addEventListener('scroll', updateEdgeFade);
     }
 
-    window.rfqProgressChart = {
-        zoomIndex: function () {
-            return zoomIndex;
-        },
-        dispose: function () {
-            window.removeEventListener('resize', render);
-            chart.dispose();
-        },
-    };
-
-    // Selecting a Step Details tab (below the chart) briefly highlights
-    // every node for that stage — a bright ring, a bigger shadow, and a
-    // slight grow — so the tab and its place in the flow chart visibly
-    // connect, especially useful for Sourcing/Data Entry where the tab
-    // covers several branch nodes at once. Growing/shrinking symbolSize
-    // and fading the itemStyle color are both properties ECharts already
-    // animates smoothly on its own when they change via setOption, so the
-    // "animation" here is just: set the highlighted style, redraw, wait,
-    // set it back, redraw again — no manual tweening needed.
-    var HIGHLIGHT_BORDER = '#f5a524';
+    // Selecting a Step Details tab (below the chart) briefly highlights every
+    // card for that stage — a bright ring and a slight lift — and scrolls its
+    // column into view, so the tab and its place in the flow visibly connect;
+    // most useful for Sourcing and Data Entry, whose tab covers a card per lane.
     var highlightTimer = null;
 
-    function clearHighlight() {
-        Object.keys(stepNodesMap).forEach(function (step) {
-            stepNodesMap[step].forEach(function (node) {
-                node.itemStyle = baseItemStyle(node);
-                delete node.symbolSize;
-            });
-        });
-    }
-
-    // Scrolls the (often much wider than its card) chart so the target
-    // column is centered in view. Node x-positions aren't exposed by the
-    // tree series' API, but they're deterministic — the same column-pitch
-    // arithmetic used above to size the canvas — so the column is found
-    // by column index (each node's depth, stamped as `_level` while
-    // collecting stepNodesMap) rather than reading positions back out of
-    // ECharts. Where a step's nodes span two columns (the "sourcing" fan-
-    // out node and every branch's own Sourcing node one column past it),
-    // the deepest one wins, since that's the more specific column.
     function scrollToStep(step) {
-        if (!wrapEl) {
+        if (!wrapEl || !geometry) {
             return;
         }
         var maxLevel = stepNodesMap[step].reduce(function (max, node) {
             return Math.max(max, node._level);
         }, 0);
-        var columnCenter = currentPad + maxLevel * (currentNodeWidth + currentColumnGap) + currentNodeWidth / 2;
+        var columnCenter = geometry.pad + maxLevel * geometry.pitch + geometry.node / 2;
         var maxScroll = wrapEl.scrollWidth - wrapEl.clientWidth;
-        var target = Math.max(0, Math.min(maxScroll, columnCenter - wrapEl.clientWidth / 2));
-        wrapEl.scrollTo({ left: target, behavior: 'smooth' });
+        wrapEl.scrollTo({ left: Math.max(0, Math.min(maxScroll, columnCenter - wrapEl.clientWidth / 2)), behavior: 'smooth' });
     }
 
     function highlightStep(step) {
         if (!stepNodesMap[step]) {
             return;
         }
-        if (highlightTimer) {
-            clearTimeout(highlightTimer);
-        }
-        clearHighlight();
-        stepNodesMap[step].forEach(function (node) {
-            node.itemStyle = Object.assign({}, baseItemStyle(node), {
-                borderColor: HIGHLIGHT_BORDER,
-                borderWidth: 3.5,
-                shadowBlur: 24,
-                shadowColor: 'rgba(245, 165, 36, 0.5)',
-            });
-            node.symbolSize = [currentNodeWidth * 1.12, currentNodeHeight * 1.12];
+        clearTimeout(highlightTimer);
+        chartEl.querySelectorAll('.pc-node.is-highlighted').forEach(function (card) {
+            card.classList.remove('is-highlighted');
         });
-        chart.setOption({ series: [{ data: [rootNode] }] });
+        stepNodesMap[step].forEach(function (node) {
+            if (node._el) node._el.classList.add('is-highlighted');
+        });
         scrollToStep(step);
         highlightTimer = setTimeout(function () {
-            clearHighlight();
-            chart.setOption({ series: [{ data: [rootNode] }] });
-            highlightTimer = null;
-        }, 1200);
+            stepNodesMap[step].forEach(function (node) {
+                if (node._el) node._el.classList.remove('is-highlighted');
+            });
+        }, 1400);
     }
 
+    var tabListeners = [];
     Object.keys(stepNodesMap).forEach(function (step) {
         var tabBtn = document.getElementById('step-tab-' + step);
         if (tabBtn) {
-            tabBtn.addEventListener('shown.bs.tab', function () {
-                highlightStep(step);
-            });
+            var onShown = function () { highlightStep(step); };
+            tabBtn.addEventListener('shown.bs.tab', onShown);
+            tabListeners.push([tabBtn, onShown]);
         }
     });
+
+    window.rfqProgressChart = {
+        zoomIndex: function () {
+            return zoomIndex;
+        },
+        dispose: function () {
+            clearTimeout(highlightTimer);
+            window.removeEventListener('resize', onResize);
+            if (zoomInBtn) zoomInBtn.removeEventListener('click', onZoomIn);
+            if (zoomOutBtn) zoomOutBtn.removeEventListener('click', onZoomOut);
+            if (zoomResetBtn) zoomResetBtn.removeEventListener('click', onZoomReset);
+            if (wrapEl) wrapEl.removeEventListener('scroll', updateEdgeFade);
+            tabListeners.forEach(function (pair) { pair[0].removeEventListener('shown.bs.tab', pair[1]); });
+            chartEl.innerHTML = '';
+        },
+    };
 };
 
 // The Time Spent report: hovering (or focusing) a role's time shows how it
