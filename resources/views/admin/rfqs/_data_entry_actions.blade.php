@@ -36,7 +36,7 @@
             @csrf
             @method('PATCH')
             <input type="hidden" name="part" value="{{ $part }}">
-            <button type="submit" class="btn btn-sm btn-outline-warning" title="Pause — its countdown stops, and you can start another">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Pause — its countdown stops, and you can start another">
                 <i class="bi bi-pause-fill"></i> Pause
             </button>
         </form>

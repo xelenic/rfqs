@@ -142,7 +142,7 @@
                                             <a href="{{ route('admin.backups.download', $backup['name']) }}" class="btn btn-sm btn-outline-secondary" title="Download">
                                                 <i class="bi bi-download"></i>
                                             </a>
-                                            <button type="button" class="btn btn-sm btn-outline-warning js-restore-backup" title="Restore" @disabled(! $canRestore)
+                                            <button type="button" class="btn btn-sm btn-outline-primary js-restore-backup" title="Restore" @disabled(! $canRestore)
                                                     data-bs-toggle="modal" data-bs-target="#backupRestoreModal"
                                                     data-name="{{ $backup['name'] }}"
                                                     data-action="{{ route('admin.backups.restore', $backup['name']) }}"
@@ -346,7 +346,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
                 </div>
             </form>
         </div>

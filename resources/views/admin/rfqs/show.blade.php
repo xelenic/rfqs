@@ -615,7 +615,7 @@
                 {{-- Senior Operations stopping an RFQ — on hold, or cancelled — or
                      setting it going again (RfqController::changeStatus()). --}}
                 @if ($rfq->status === 'Pending')
-                    <button type="button" class="btn btn-sm btn-outline-warning js-rfq-status"
+                    <button type="button" class="btn btn-sm btn-outline-secondary js-rfq-status"
                             data-bs-toggle="modal" data-bs-target="#rfqStatusModal" data-status="{{ \App\Models\Rfq::ON_HOLD }}">
                         <i class="bi bi-pause-circle"></i> Put on hold
                     </button>
