@@ -704,13 +704,14 @@
                             @method('PATCH')
 
                             <p class="text-muted-soft small">
-                                Work Data Entry's target out from the RFQ's number of items instead: the minutes an item takes, times its items — 40 items at 3 minutes is 2 hours. A part of a split RFQ gets its share of the items, rounded up. An RFQ with no number of items keeps its priority's target above.
+                                A part Sourcing assigns to Data Entry with its <strong>line items to be added</strong> always gets those times this time per item — 40 line items at 3 minutes is 2 hours.
+                                Switched on, a part without line items works it out from the RFQ's number of items the same way (a split RFQ's part gets its share, rounded up); switched off, it keeps its priority's target above.
                             </p>
 
                             <div class="form-check form-switch mb-3">
                                 <input type="hidden" name="enabled" value="0">
                                 <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="de-per-item-enabled" value="1" @checked($perItemOn)>
-                                <label class="form-check-label" for="de-per-item-enabled">Set Data Entry's target per item</label>
+                                <label class="form-check-label" for="de-per-item-enabled">Also per item for parts without line items (the RFQ's number of items)</label>
                             </div>
 
                             <div class="mb-3" style="max-width: 260px;">

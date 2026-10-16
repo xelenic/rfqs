@@ -6498,15 +6498,6 @@ a.critical-row:hover {
   }
 }
 
-/* Data Entry's list: a part's target, and how it's made up (rfqs/_data_entry_target). */
-.de-target-formula {
-  margin-top: 0.2rem;
-  font-size: 0.72rem;
-  color: var(--rfq-text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 /* A part given to someone in Data Entry by name (rfqs/index, Data Entry's Ready list). */
 .rfq-list-subnote-assigned {
   color: var(--rfq-primary-dark);

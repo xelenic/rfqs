@@ -51,6 +51,7 @@ class RfqAssignment extends Pivot
             'data_entry_completed_at' => 'datetime',
             'data_entry_entries' => 'integer',
             'data_entry_assigned_to' => 'integer',
+            'line_items_to_add' => 'integer',
             'data_entry_started_at' => 'datetime',
             'data_entry_paused_at' => 'datetime',
             'finalized_at' => 'datetime',

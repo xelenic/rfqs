@@ -272,7 +272,7 @@ it('only lets the part\'s own assignee complete it', function () {
 
     // Sam can't complete Riley's part; Riley can complete either of hers, separately.
     test()->actingAs($sam)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1])->assertForbidden();
-    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 3, 'comment' => 'Quotes attached'])->assertSessionHas('status');
+    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 3, 'line_items' => 5, 'comment' => 'Quotes attached'])->assertSessionHas('status');
 
     $rfq->refresh();
     expect($rfq->assigneeForPart(3)->pivot->completed_at)->not->toBeNull()

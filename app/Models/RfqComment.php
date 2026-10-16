@@ -93,6 +93,7 @@ class RfqComment extends Model
             isset($meta['who']) ? "{$meta['who']}'s part" : null,
             $meta['label'] ?? null,
             isset($meta['assigned_to']) ? "to {$meta['assigned_to']}" : null,
+            isset($meta['line_items']) ? trans_choice('1 line item to add|:count line items to add', $meta['line_items'], ['count' => $meta['line_items']]) : null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
             isset($meta['entries']) ? trans_choice('1 entry|:count entries', $meta['entries'], ['count' => $meta['entries']]) : null,
             isset($meta['reference']) ? "Ref {$meta['reference']}" : null,

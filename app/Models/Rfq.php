@@ -749,7 +749,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1448,7 +1448,8 @@ class Rfq extends Model
     /**
      * Marks one Sourcing part done — assigned to Data Entry: to $dataEntry,
      * if they named someone there, else to anyone in Data Entry, whoever
-     * starts it first (rfq_user.data_entry_assigned_to). Idempotent —
+     * starts it first (rfq_user.data_entry_assigned_to) — with how many line
+     * items Data Entry has to add ($lineItems). Idempotent —
      * completing an already-completed part is a no-op. Once every part is
      * assigned and completed, the RFQ itself is marked handed off to Data
      * Entry, recording this part's assignee as the closing completion. A
@@ -1457,7 +1458,7 @@ class Rfq extends Model
      * Caller is responsible for verifying the user completing it is the
      * part's assignee, and that $dataEntry holds Data Entry.
      */
-    public function completeSourcingPart(int $part, ?string $comment = null, ?User $dataEntry = null): void
+    public function completeSourcingPart(int $part, ?string $comment = null, ?User $dataEntry = null, ?int $lineItems = null): void
     {
         $assignee = $this->assigneeForPart($part);
 
@@ -1471,6 +1472,7 @@ class Rfq extends Model
             'return_reason' => null,
             'returned_by' => null,
             'data_entry_assigned_to' => $dataEntry?->id,
+            'line_items_to_add' => $lineItems,
         ]);
         $this->load('assignees');
 
@@ -1479,7 +1481,9 @@ class Rfq extends Model
         // marked as a completion, naming the part on a split, since a thread
         // covers the whole RFQ, and whom in Data Entry it went to.
         if (filled($comment)) {
-            $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part) + ($dataEntry ? ['assigned_to' => $dataEntry->name] : []));
+            $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part)
+                + ($dataEntry ? ['assigned_to' => $dataEntry->name] : [])
+                + ($lineItems !== null ? ['line_items' => $lineItems] : []));
         }
 
         if ($this->allSourcingPartsCompleted() && ! $this->isWithDataEntry()) {
@@ -2819,9 +2823,9 @@ class Rfq extends Model
 
     /**
      * The working time Data Entry has for a round on $part, from their Start:
-     * per item times its items while Data Entry's target is per item
-     * (dataEntryTargetBreakdown()), else by its priority — see
-     * Setting::dataEntryTargets(). In seconds.
+     * the line items to add times the time per item — or, without those,
+     * the RFQ's items times it while per item is on (dataEntryTargetBreakdown())
+     * — else by its priority (Setting::dataEntryTargets()). In seconds.
      */
     public function dataEntryTargetSeconds(?int $part = null): int
     {
@@ -2830,23 +2834,32 @@ class Rfq extends Model
     }
 
     /**
-     * How Data Entry's target for $part comes about while it's worked out per
-     * item (Setting::dataEntryPerItem()): its items (dataEntryItemsFor()),
-     * the working seconds an item takes, and the two multiplied. Null by
-     * priority — per item being off, or the RFQ having no item count.
+     * How Data Entry's target for $part comes about when it's worked out per
+     * item: how many, the working seconds an item takes
+     * (Setting::dataEntryPerItem()), and the two multiplied. The line items
+     * its Sourcing member said to add (rfq_user.line_items_to_add), whenever
+     * they did — 'source' line_items; else, while per item is on, the RFQ's
+     * own items (dataEntryItemsFor()) — 'source' items. Null by priority:
+     * no line items given, and per item off or the RFQ having no item count.
      *
-     * @return array{items: int, perItem: int, seconds: int}|null
+     * @return array{items: int, perItem: int, seconds: int, source: string}|null
      */
     public function dataEntryTargetBreakdown(?int $part = null): ?array
     {
         $perItem = Setting::dataEntryPerItem();
+        $lineItems = $part !== null ? $this->assigneeForPart($part)?->pivot->line_items_to_add : null;
+
+        if ($lineItems) {
+            return ['items' => $lineItems, 'perItem' => $perItem['seconds'], 'seconds' => $lineItems * $perItem['seconds'], 'source' => 'line_items'];
+        }
+
         $items = $this->dataEntryItemsFor($part);
 
         if (! $perItem['enabled'] || $items === null) {
             return null;
         }
 
-        return ['items' => $items, 'perItem' => $perItem['seconds'], 'seconds' => $items * $perItem['seconds']];
+        return ['items' => $items, 'perItem' => $perItem['seconds'], 'seconds' => $items * $perItem['seconds'], 'source' => 'items'];
     }
 
     /**

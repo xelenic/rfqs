@@ -46,7 +46,7 @@ it('moves a part from Pending for Sourcing to With Data Entry once it\'s assigne
         ->toContain('Finalized <span class="rfq-tab-count">0</span>');
 
     // Assigned to Morgan in Data Entry: on With Data Entry, saying so.
-    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Prices in', 'data_entry_user_id' => $morgan->id]);
+    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Prices in', 'data_entry_user_id' => $morgan->id]);
     [$todo, $withDataEntry, $html] = sourcingTabs($riley);
     expect($todo)->not->toContain($row)
         ->and($withDataEntry)->toContain($row)

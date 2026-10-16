@@ -94,7 +94,7 @@ it('leaves them out of every list people are picked from — their name staying 
 
     $sourcing = userWithRole('Sourcing');
     $handedOver = splitAmong(Rfq::factory()->create(), [1 => $sourcing]);
-    test()->actingAs($sourcing)->patch(route('admin.rfqs.complete-sourcing', $handedOver), ['part' => 1, 'comment' => 'Done', 'data_entry_user_id' => $morgan->id])
+    test()->actingAs($sourcing)->patch(route('admin.rfqs.complete-sourcing', $handedOver), ['part' => 1, 'line_items' => 5, 'comment' => 'Done', 'data_entry_user_id' => $morgan->id])
         ->assertSessionHas('error', 'Pick someone in Data Entry from the list, or leave it with anyone there.');
 });
 

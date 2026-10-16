@@ -71,6 +71,12 @@ class RfqController extends Controller implements HasMiddleware
     public const MAX_DATA_ENTRIES = 100000;
 
     /**
+     * The most line items Sourcing can say Data Entry has to add for one part
+     * (completeSourcing()).
+     */
+    public const MAX_LINE_ITEMS = 100000;
+
+    /**
      * How those two tabs can be sorted.
      *
      * @var array<string, string>
@@ -1391,6 +1397,17 @@ class RfqController extends Controller implements HasMiddleware
             return $comment;
         }
 
+        // How many line items Data Entry has to add for it.
+        $lineItems = Validator::make($request->all(), [
+            'line_items' => ['required', 'integer', 'min:1', 'max:'.self::MAX_LINE_ITEMS],
+        ], [
+            'line_items.*' => 'Add how many line items Data Entry has to add — a whole number, 1 or more.',
+        ]);
+
+        if ($lineItems->fails()) {
+            return back()->with('error', $lineItems->errors()->first());
+        }
+
         // Whom in Data Entry it's for — someone there by name, or anyone
         // (left empty): whoever starts it first.
         $dataEntry = null;
@@ -1409,7 +1426,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment, $dataEntry));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment, $dataEntry, (int) $lineItems->validated()['line_items']));
 
         // They're told, in their bell.
         $dataEntry?->notify(new DataEntryAssigned($rfq->refresh(), (int) $validated['part'], $assignee));

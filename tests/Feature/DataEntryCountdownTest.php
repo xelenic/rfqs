@@ -97,8 +97,7 @@ it('shows no countdown, and nothing running, until Data Entry starts', function 
     // Its whole target, still to run from Start: High's hour.
     expect($classes)->not->toContain('rfq-running')
         ->and($row)->toContain('<i class="bi bi-stopwatch"></i> 1h')
-        ->toContain("High's target")
-        ->toContain('· from Start')
+        ->toContain('title="Counts down from Start, in working hours · '.e("High's target").'"')
         ->not->toContain('data-countdown')
         ->not->toContain('running-pill');
 });
@@ -114,7 +113,7 @@ it('counts a started part down from its priority\'s target, running and glowing'
     expect($classes)->toContain('rfq-running js-running-row')->not->toContain('is-paused')
         ->and($row)->toContain('<span class="running-pill-label">Running</span>')
         ->toContain('data-countdown data-remaining="2400" data-target="3600"')
-        ->toContain('data-running-title="Working time left to send it to finalize"')
+        ->toContain('data-running-title="Working time left to send it to finalize · '.e("High's target").'"')
         ->toMatch('/badge sourcing-countdown badge-soft-success/')
         ->toContain('40m left')
         ->and(test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent())

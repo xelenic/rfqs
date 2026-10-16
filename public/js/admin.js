@@ -825,7 +825,28 @@ function rfqmsBoot() {
         var entries = document.getElementById('complete-entries-input');
         var entriesHint = document.getElementById('complete-entries-hint');
         var entriesError = document.getElementById('complete-entries-error');
+        // Assign to Data Entry asks how many line items Data Entry has to add.
+        var lineItemsBox = document.getElementById('complete-line-items');
+        var lineItems = document.getElementById('complete-line-items-input');
+        var lineItemsError = document.getElementById('complete-line-items-error');
         var kind = KINDS.complete;
+
+        function asksLineItems() {
+            return lineItems && !lineItems.disabled;
+        }
+
+        // A whole number, 1 or more, and at most the input's max.
+        function lineItemsGiven() {
+            var value = lineItems.value.trim();
+            return /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= Number(lineItems.max);
+        }
+
+        function showLineItemsError(message) {
+            if (!lineItems) return;
+            lineItemsError.textContent = message;
+            lineItemsError.classList.toggle('d-none', !message);
+            lineItems.classList.toggle('is-invalid', !!message);
+        }
 
         function asksEntries() {
             return entries && !entries.disabled;
@@ -914,12 +935,22 @@ function rfqmsBoot() {
                 if (dataEntrySelect.selectedIndex === -1) dataEntrySelect.value = '';
             }
 
+            if (lineItemsBox) {
+                var wantsLineItems = (button.dataset.kind || 'sourcing') === 'sourcing';
+                lineItemsBox.classList.toggle('d-none', !wantsLineItems);
+                lineItems.disabled = !wantsLineItems;
+                // What was given the last time it went to Data Entry, if it has.
+                lineItems.value = wantsLineItems ? (button.dataset.lineItems || '') : '';
+                showLineItemsError('');
+            }
+
             if (entriesBox) {
                 var wantsEntries = button.dataset.kind === 'data_entry';
                 entriesBox.classList.toggle('d-none', !wantsEntries);
                 entries.disabled = !wantsEntries;
                 entries.value = '';
                 entriesHint.textContent = 'How many entries you made on this part.'
+                    + (button.dataset.lineItems ? ' Sourcing asked for ' + button.dataset.lineItems + (button.dataset.lineItems === '1' ? ' line item.' : ' line items.') : '')
                     + (button.dataset.items ? ' The RFQ has ' + button.dataset.items + (button.dataset.items === '1' ? ' item.' : ' items.') : '');
             }
 
@@ -945,7 +976,7 @@ function rfqmsBoot() {
         });
 
         modalEl.addEventListener('shown.bs.modal', function () {
-            (asksEntries() ? entries : comment).focus();
+            (asksEntries() ? entries : (asksLineItems() && !lineItems.value ? lineItems : comment)).focus();
         });
 
         if (entries) {
@@ -959,7 +990,20 @@ function rfqmsBoot() {
             if (comment.value.trim()) showError('');
         });
 
+        if (lineItems) {
+            lineItems.addEventListener('input', function () {
+                if (lineItemsGiven()) showLineItemsError('');
+            });
+        }
+
         form.addEventListener('submit', function (event) {
+            if (asksLineItems() && !lineItemsGiven()) {
+                event.preventDefault();
+                showLineItemsError('Add how many line items Data Entry has to add — a whole number, 1 or more.');
+                lineItems.focus();
+                return;
+            }
+
             if (asksEntries() && !entriesGiven()) {
                 event.preventDefault();
                 showError('Add how many entries you made on this part — a whole number, 0 or more.', 'entries');

@@ -387,8 +387,8 @@ class SettingsController extends Controller
         ]);
 
         return $this->backToTab('data-entry-targets', $request->boolean('enabled')
-            ? 'Data Entry\'s target is now worked out per item.'
-            : 'Data Entry\'s target is back to its priority\'s.');
+            ? 'Saved — line items to add times the time per item, and parts without line items worked out per item too.'
+            : 'Saved — line items to add times the time per item; parts without line items keep their priority\'s target.');
     }
 
     /**

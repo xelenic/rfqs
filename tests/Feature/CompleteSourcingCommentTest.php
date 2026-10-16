@@ -15,7 +15,7 @@ beforeEach(function () {
 
 function completeAs($user, Rfq $rfq, array $payload)
 {
-    return test()->actingAs($user)->patch(route('admin.rfqs.complete-sourcing', $rfq), $payload);
+    return test()->actingAs($user)->patch(route('admin.rfqs.complete-sourcing', $rfq), $payload + ['line_items' => 5]);
 }
 
 it('asks for a comment before a part can be completed', function (array $payload) {
@@ -61,7 +61,8 @@ it('completes the part and posts the comment as theirs', function () {
         // What they wrote, marked as a completion — the thread says so beside their name.
         ->and($comment->body)->toBe('Three quotes attached.')
         ->and($comment->action)->toBe('sourcing_completed')
-        ->and($comment->meta)->toBeNull()
+        // Just how many line items Data Entry has to add — no part to name on a whole RFQ.
+        ->and($comment->meta)->toBe(['line_items' => 5])
         ->and($comment->parent_id)->toBeNull();
 });
 
@@ -75,7 +76,7 @@ it('names the part when the RFQ is split, since the thread covers the whole RFQ'
 
     expect($comment->body)->toBe('Prices confirmed.')
         ->and($comment->action)->toBe('sourcing_completed')
-        ->and($comment->meta)->toBe(['part' => 2, 'label' => 'RFQ1001-P2 of P3']);
+        ->and($comment->meta)->toBe(['part' => 2, 'label' => 'RFQ1001-P2 of P3', 'line_items' => 5]);
 });
 
 it('posts nothing a second time for a part that is already complete', function () {

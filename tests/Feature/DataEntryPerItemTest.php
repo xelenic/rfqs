@@ -60,17 +60,17 @@ it('lets an Admin set Data Entry\'s target per item, on Settings → Data Entry 
 
     test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'data-entry-targets']))->assertOk()
         ->assertSee('action="'.route('admin.settings.data-entry-per-item').'"', false)
-        ->assertSee("Set Data Entry's target per item", false);
+        ->assertSee('Also per item for parts without line items', false);
 
     test()->actingAs($admin)->patch(route('admin.settings.data-entry-per-item'), ['enabled' => '1', 'minutes' => '2.5'])
         ->assertRedirect(route('admin.settings.edit'))
-        ->assertSessionHas('status', 'Data Entry\'s target is now worked out per item.')
+        ->assertSessionHas('status', 'Saved — line items to add times the time per item, and parts without line items worked out per item too.')
         ->assertSessionHas('settings_tab', 'data-entry-targets');
 
     expect(Setting::dataEntryPerItem())->toBe(['enabled' => true, 'seconds' => 150]);
 
     test()->actingAs($admin)->patch(route('admin.settings.data-entry-per-item'), ['enabled' => '0', 'minutes' => '2.5'])
-        ->assertSessionHas('status', 'Data Entry\'s target is back to its priority\'s.');
+        ->assertSessionHas('status', 'Saved — line items to add times the time per item; parts without line items keep their priority\'s target.');
 
     expect(Setting::dataEntryPerItem()['enabled'])->toBeFalse();
 });
@@ -114,7 +114,7 @@ it('works a part\'s target out as the time per item times its items', function (
     perItemOn(180);
 
     expect($whole->dataEntryTargetSeconds(1))->toBe(40 * 180)
-        ->and($whole->dataEntryTargetBreakdown(1))->toBe(['items' => 40, 'perItem' => 180, 'seconds' => 7200])
+        ->and($whole->dataEntryTargetBreakdown(1))->toBe(['items' => 40, 'perItem' => 180, 'seconds' => 7200, 'source' => 'items'])
         // A split's parts share its items, rounded up: 21 each.
         ->and($split->dataEntryTargetSeconds(1))->toBe(21 * 180)
         ->and($split->dataEntryTargetSeconds(2))->toBe(21 * 180)
@@ -146,13 +146,46 @@ it('shows each part\'s time left on Ready for Data Entry — items × time per i
     $html = test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     $row = fn (string $number) => Str::betweenFirst($html, '<td class="text-nowrap">'.$number.'</td>', '</tr>');
 
+    // Just the time in the column; how it's made up on hover.
     expect($row('RFQ9201'))
         ->toContain('data-remaining="5400" data-target="7200"')
-        ->toMatch('/40 items × 3 min = 2h\s*<\/div>/')
+        ->toContain('title="Working time left to send it to finalize · 40 items × 3 min = 2h"')
+        ->not->toContain('de-target-formula')
         ->and($row('RFQ9202'))
         ->toContain('<i class="bi bi-stopwatch"></i> 30m')
-        ->toMatch('/10 items × 3 min = 30m\s*· from Start/')
+        ->toContain('title="Counts down from Start, in working hours · 10 items × 3 min = 30m"')
         ->and($row('RFQ9203'))
         ->toContain('<i class="bi bi-stopwatch"></i> 2h')
-        ->toContain("No number of items — Medium's target");
+        ->toContain(e("No number of items — Medium's target"));
+});
+
+// ---- Line items to be added -----------------------------------------------
+
+it('works a part given line items out as those times the time per item — the switch on or off', function (bool $switchOn) {
+    Setting::putDataEntryPerItem(['enabled' => $switchOn, 'seconds' => 180]);
+    perItemAt('08:30');
+    $riley = userWithRole('Sourcing');
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9901', 'priority_level' => 'Medium', 'number_of_items' => 40]), [1 => $riley]);
+    $rfq->refresh()->completeSourcingPart(1, 'Done', null, 25);
+
+    // 25 line items at 3 minutes: 1h 15m — not the RFQ's 40 items, nor Medium's 2 hours.
+    expect($rfq->refresh()->dataEntryTargetSeconds(1))->toBe(25 * 180)
+        ->and($rfq->dataEntryTargetBreakdown(1))->toBe(['items' => 25, 'perItem' => 180, 'seconds' => 4500, 'source' => 'line_items']);
+
+    $row = Str::betweenFirst(test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent(), '<td class="text-nowrap">RFQ9901</td>', '</tr>');
+    expect($row)->toContain('<i class="bi bi-stopwatch"></i> 1h 15m')
+        ->toMatch('/25 line items × 3 min = 1h 15m/');
+})->with(['switch on' => true, 'switch off' => false]);
+
+it('counts a started part down from its line items\' time', function () {
+    Setting::putDataEntryPerItem(['enabled' => false, 'seconds' => 120]);
+    perItemAt('08:30');
+    $rfq = splitAmong(Rfq::factory()->create(['priority_level' => 'Urgent']), [1 => userWithRole('Sourcing')]);
+    $rfq->refresh()->completeSourcingPart(1, null, null, 30);
+    perItemAt('09:00');
+    startDataEntryOn($rfq, 1);
+    perItemAt('09:20');
+
+    // 30 line items at 2 minutes: an hour — Urgent's own 30 minutes aside.
+    expect($rfq->refresh()->dataEntryCountdown(1))->toBe(['target' => 3600, 'remaining' => 2400]);
 });

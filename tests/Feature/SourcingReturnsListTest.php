@@ -100,7 +100,7 @@ it('brings a reworked part back to Returns when it is completed from there, and 
     ['riley' => $riley, 'split' => $split] = rileysWork();
 
     test()->actingAs($riley)
-        ->patch(route('admin.rfqs.complete-sourcing', $split), ['part' => 2, 'comment' => 'Prices added', 'redirect_status' => 'Pending', 'redirect_view' => 'returns'])
+        ->patch(route('admin.rfqs.complete-sourcing', $split), ['part' => 2, 'line_items' => 5, 'comment' => 'Prices added', 'redirect_status' => 'Pending', 'redirect_view' => 'returns'])
         ->assertRedirect(myReturnsUrl())
         ->assertSessionHas('status');
 
@@ -118,7 +118,7 @@ it('still goes back to My Pending RFQs when a part is completed from there', fun
     ['riley' => $riley, 'split' => $split] = rileysWork();
 
     test()->actingAs($riley)
-        ->patch(route('admin.rfqs.complete-sourcing', $split), ['part' => 1, 'comment' => 'Done', 'redirect_status' => 'Pending'])
+        ->patch(route('admin.rfqs.complete-sourcing', $split), ['part' => 1, 'line_items' => 5, 'comment' => 'Done', 'redirect_status' => 'Pending'])
         ->assertRedirect(myPendingUrl());
 });
 

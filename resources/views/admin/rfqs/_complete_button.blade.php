@@ -111,6 +111,7 @@
         data-subject="{{ $rfq->subject }}"
         data-items="{{ $kind === 'data_entry' ? $rfq->number_of_items : '' }}"
         data-de-assignee="{{ $kind === 'sourcing' ? $deAssignee : '' }}"
+        data-line-items="{{ in_array($kind, ['sourcing', 'data_entry'], true) ? $rfq->assigneeForPart((int) $part)?->pivot->line_items_to_add : '' }}"
         data-who="{{ $who ?? $forAssignee?->name ?? '' }}"
         data-audience="{{ $audience }}"
         data-heading="{{ $heading }}"

@@ -75,6 +75,22 @@
                             ->pluck('total', 'person');
                         $runningFor = \App\Models\RfqStep::query()->where('step', 'data_entry')->whereNull('ended_at')->pluck('worked_by')->countBy();
                     @endphp
+                    {{-- How many line items Data Entry has to add — asked, and sent,
+                         for Assign to Data Entry alone (admin.js). --}}
+                    <div class="mb-3 d-none" id="complete-line-items">
+                        <label class="form-label" for="complete-line-items-input">Line items to be added</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-list-ol" aria-hidden="true"></i></span>
+                            <input type="number" name="line_items" id="complete-line-items-input" class="form-control" min="1"
+                                   max="{{ \App\Http\Controllers\Admin\RfqController::MAX_LINE_ITEMS }}" step="1" inputmode="numeric" disabled
+                                   aria-describedby="complete-line-items-hint">
+                            <span class="input-group-text">line items</span>
+                        </div>
+                        @php $minutesPerItem = rtrim(rtrim(number_format(\App\Models\Setting::dataEntryPerItem()['seconds'] / 60, 1), '0'), '.'); @endphp
+                        <div class="form-text" id="complete-line-items-hint">How many line items Data Entry has to add for this part — their time on it is these × {{ $minutesPerItem }} min.</div>
+                        <div class="text-danger small mt-1 d-none" id="complete-line-items-error" role="alert"></div>
+                    </div>
+
                     <div class="mb-3 d-none" id="complete-data-entry">
                         <label class="form-label" for="complete-data-entry-select">Data Entry person</label>
                         <select name="data_entry_user_id" id="complete-data-entry-select" class="form-select" disabled>

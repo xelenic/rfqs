@@ -159,6 +159,13 @@
                                             <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
                                             <td>
                                                 {{ $rfq->subject }}
+                                                {{-- How many line items its Sourcing member said to add. --}}
+                                                @if ($assignee->pivot->line_items_to_add)
+                                                    <div class="rfq-list-subnote">
+                                                        <i class="bi bi-list-ol"></i>
+                                                        {{ trans_choice('1 line item to add|:count line items to add', $assignee->pivot->line_items_to_add, ['count' => number_format($assignee->pivot->line_items_to_add)]) }}
+                                                    </div>
+                                                @endif
                                                 {{-- Its Sourcing member sent it back instead of finalizing it
                                                      (Rfq::returnToDataEntry()). --}}
                                                 @if ($assignee->pivot->data_entry_returned_at)
@@ -1297,13 +1304,10 @@
                                              to finalize. --}}
                                         @php
                                             $countdown = $iHaveCompletedMyPart ? $rfq->finalizeCountdown($myPart) : $rfq->sourcingCountdown($myPart);
-                                            $countdownTitle = $iHaveCompletedMyPart ? 'Working time left to finalize it' : 'Working time left to mark it complete';
+                                            $countdownTitle = $iHaveCompletedMyPart ? "Working time left to finalize it · {$rfq->priority_level}'s Finalize target" : 'Working time left to mark it complete';
                                         @endphp
                                         @if ($countdown)
                                             @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => $countdownTitle, 'workerId' => auth()->id()])
-                                            @if ($iHaveCompletedMyPart)
-                                                <div class="de-target-formula">To finalize · {{ $rfq->priority_level }}'s target</div>
-                                            @endif
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif
@@ -1364,7 +1368,15 @@
                                         <tr>
                                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                             <td class="text-nowrap">{{ $rfq->partNumberLabel($handedOver->part_number) }}</td>
-                                            <td>{{ $rfq->subject }}</td>
+                                            <td>
+                                                {{ $rfq->subject }}
+                                                @if ($handedOver->line_items_to_add)
+                                                    <div class="rfq-list-subnote">
+                                                        <i class="bi bi-list-ol"></i>
+                                                        {{ trans_choice('1 line item to add|:count line items to add', $handedOver->line_items_to_add, ['count' => number_format($handedOver->line_items_to_add)]) }}
+                                                    </div>
+                                                @endif
+                                            </td>
                                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                             <td>
                                                 @if ($handedOver->isDataEntryPaused())

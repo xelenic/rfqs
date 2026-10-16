@@ -91,7 +91,7 @@ it('picks the member\'s Data Entry person to begin with — whoever had the part
         ->assertSee('data-de-assignee="'.$morgan->id.'"', false);
 
     // Given to Sam, and sent back: Sam had it last.
-    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Done', 'data_entry_user_id' => $sam->id]);
+    test()->actingAs($riley)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Done', 'data_entry_user_id' => $sam->id]);
     $rfq->refresh()->returnSourcingPart(1, 'Prices missing', $sam);
 
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()

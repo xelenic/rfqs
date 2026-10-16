@@ -33,7 +33,7 @@ it('lets Admin mark a part complete as the Sourcing member it is assigned to', f
     ['admin' => $admin, 'riley' => $riley, 'rfq' => $rfq] = adminSourcingSplit();
 
     test()->actingAs($admin)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Quotes gathered', 'acting_user_id' => $riley->id])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Quotes gathered', 'acting_user_id' => $riley->id])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status', 'Part assigned to Data Entry — the rest of the parts are still with Sourcing.');
 
@@ -52,7 +52,7 @@ it('hands off straight away when Admin completes an RFQ\'s only part', function 
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
     test()->actingAs(userWithRole('Admin'))
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Done', 'acting_user_id' => $riley->id])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Done', 'acting_user_id' => $riley->id])
         ->assertSessionHas('status', 'Assigned to Data Entry — every part is with them now.');
 
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
@@ -61,8 +61,8 @@ it('hands off straight away when Admin completes an RFQ\'s only part', function 
 it('hands the RFQ to Data Entry once Admin has completed every part', function () {
     ['admin' => $admin, 'riley' => $riley, 'sam' => $sam, 'rfq' => $rfq] = adminSourcingSplit();
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'One', 'acting_user_id' => $riley->id])->assertSessionHasNoErrors();
-    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'comment' => 'Two', 'acting_user_id' => $sam->id])->assertSessionHasNoErrors();
+    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'One', 'acting_user_id' => $riley->id])->assertSessionHasNoErrors();
+    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'line_items' => 5, 'comment' => 'Two', 'acting_user_id' => $sam->id])->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->isWithDataEntry())->toBeTrue();
 });
@@ -71,7 +71,7 @@ it('completes it as the assignee when Admin names no one, since that is who does
     ['admin' => $admin, 'sam' => $sam, 'rfq' => $rfq] = adminSourcingSplit();
 
     test()->actingAs($admin)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'comment' => 'Done'])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'line_items' => 5, 'comment' => 'Done'])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(2)->pivot->completed_at)->not->toBeNull()
@@ -84,7 +84,7 @@ it('refuses Admin naming someone the part is not assigned to, changing nothing',
 
     foreach ([$sam->id, $outsider->id, 999999] as $wrong) {
         test()->actingAs($admin)
-            ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Nope', 'acting_user_id' => $wrong])
+            ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Nope', 'acting_user_id' => $wrong])
             ->assertStatus(422);
     }
 
@@ -96,7 +96,7 @@ it('still asks Admin for the comment', function () {
     ['admin' => $admin, 'riley' => $riley, 'rfq' => $rfq] = adminSourcingSplit();
 
     test()->actingAs($admin)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'acting_user_id' => $riley->id])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'acting_user_id' => $riley->id])
         ->assertSessionHas('error', 'Add a comment to assign this part to Data Entry.');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->toBeNull();
@@ -106,17 +106,17 @@ it('gives Admin nothing to complete where no one holds the part', function () {
     $admin = userWithRole('Admin');
     $rfq = Rfq::factory()->create();
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Hm'])->assertForbidden();
+    test()->actingAs($admin)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Hm'])->assertForbidden();
 });
 
 it('keeps it the assignee\'s call for everyone else — a pick does not open it up', function () {
     ['riley' => $riley, 'sam' => $sam, 'rfq' => $rfq] = adminSourcingSplit();
 
     test()->actingAs($sam)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
         ->assertForbidden();
     test()->actingAs(userWithRole('Senior Operations'))
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
         ->assertForbidden();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->toBeNull();
@@ -126,7 +126,7 @@ it('brings Admin back to the Sourcing page they were on', function (array $field
     ['admin' => $admin, 'riley' => $riley, 'rfq' => $rfq] = adminSourcingSplit();
 
     test()->actingAs($admin)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Done', 'acting_user_id' => $riley->id] + $fields)
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Done', 'acting_user_id' => $riley->id] + $fields)
         ->assertRedirect(route('admin.rfqs.index', $expected));
 })->with([
     'Pending' => [['redirect_status' => 'Pending', 'redirect_role' => 'sourcing'], ['status' => 'Pending', 'role' => 'sourcing']],

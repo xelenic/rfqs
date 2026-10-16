@@ -59,8 +59,8 @@ it('counts a part Data Entry sent back down to its Finalize target, on Sourcing\
     $row = Str::betweenFirst($html, '<td class="text-nowrap">RFQ6001</td>', '</tr>');
 
     expect($row)->toContain('data-remaining="1200" data-target="1800"')
-        ->toContain('data-running-title="Working time left to finalize it"')
-        ->toContain("To finalize · High's target")
+        ->toContain('data-running-title="Working time left to finalize it · '.e("High's Finalize target").'"')
+        ->not->toContain('To finalize ·')
         ->not->toContain('<span class="text-muted-soft">—</span>');
 });
 

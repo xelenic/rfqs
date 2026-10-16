@@ -48,6 +48,7 @@ function assignToDe(Rfq $rfq, User $by, ?User $to = null): TestResponse
     return test()->actingAs($by)->patch(route('admin.rfqs.complete-sourcing', $rfq), array_filter([
         'part' => 1,
         'comment' => 'Prices are in',
+        'line_items' => 12,
         'data_entry_user_id' => $to?->id,
     ]));
 }
@@ -79,7 +80,7 @@ it('gives the part to them by name — recorded, said on the thread, and told in
     $part = $rfq->refresh()->assigneeForPart(1)->pivot;
     expect($part->data_entry_assigned_to)->toBe($morgan->id)
         ->and($part->completed_at)->not->toBeNull()
-        ->and(RfqComment::query()->where('action', 'sourcing_completed')->sole()->actionContext())->toBe("to {$morgan->name}");
+        ->and(RfqComment::query()->where('action', 'sourcing_completed')->sole()->actionContext())->toBe("to {$morgan->name} · 12 line items to add");
 
     $alert = $morgan->notifications()->sole();
     expect($alert->type)->toBe(DataEntryAssigned::class)

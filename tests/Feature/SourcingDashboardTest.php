@@ -192,7 +192,7 @@ it('completes a part from the dashboard and comes back to it', function () {
     $rfq = splitAmong(sourcingRfq('Split job'), [1 => $riley, 2 => $riley]);
 
     test()->actingAs($riley)
-        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'comment' => 'Quotes attached', 'return_to' => 'dashboard'])
+        ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Quotes attached', 'return_to' => 'dashboard'])
         ->assertRedirect(route('admin.dashboard'))
         ->assertSessionHas('status');
 

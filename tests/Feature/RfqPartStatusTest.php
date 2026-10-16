@@ -95,7 +95,7 @@ it('puts one part on hold — out of its member\'s queue, its time stopped — w
     // Off Sam's list, and nothing for them to do on it; Riley's is as it was.
     test()->actingAs($sam)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertDontSee('<td class="text-nowrap">RFQ13001-P2 of P2</td>', false);
-    test()->actingAs($sam)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'comment' => 'Done'])
+    test()->actingAs($sam)->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 2, 'line_items' => 5, 'comment' => 'Done'])
         ->assertStatus(422);
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('<td class="text-nowrap">RFQ13001-P1 of P2</td>', false);

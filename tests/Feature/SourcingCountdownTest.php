@@ -157,7 +157,7 @@ it('shows no countdown while the part\'s with Data Entry — and Finalize\'s own
 
     // Back to finalize: the Finalize target's countdown (FinalizeCountdownTest).
     expect(countdownBadge($html, 'RFQ8001'))->toBeNull()
-        ->and(countdownBadge($html, 'RFQ8002'))->toContain('data-running-title="Working time left to finalize it"');
+        ->and(countdownBadge($html, 'RFQ8002'))->toContain('data-running-title="Working time left to finalize it · ');
 });
 
 it('counts a part sent back to Sourcing down again on their Returns list, from its return', function () {
