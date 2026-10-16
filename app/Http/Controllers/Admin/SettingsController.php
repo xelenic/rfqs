@@ -55,6 +55,7 @@ class SettingsController extends Controller
             'timezone' => Setting::timezone(),
             'sourcingTargets' => Setting::sourcingTargets(),
             'dataEntryTargets' => Setting::dataEntryTargets(),
+            'finalizeTargets' => Setting::finalizeTargets(),
             'dataEntryPerItem' => Setting::dataEntryPerItem(),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
@@ -341,6 +342,21 @@ class SettingsController extends Controller
         Setting::put('data_entry_targets', json_encode($this->validatedTargets($request, 'data_entry_targets', Setting::DEFAULT_DATA_ENTRY_TARGETS)));
 
         return $this->backToTab('data-entry-targets', 'Data Entry targets saved.');
+    }
+
+    /**
+     * How long Sourcing has to finalize a part of each priority once Data
+     * Entry sends it to them, in working hours — given in hours (quarters
+     * allowed), kept in minutes. What the countdown on their list runs from
+     * then. See Setting::finalizeTargets().
+     */
+    public function updateFinalizeTargets(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Finalize targets.');
+
+        Setting::put('finalize_targets', json_encode($this->validatedTargets($request, 'finalize_targets', Setting::DEFAULT_FINALIZE_TARGETS)));
+
+        return $this->backToTab('finalize-targets', 'Finalize targets saved.');
     }
 
     /**

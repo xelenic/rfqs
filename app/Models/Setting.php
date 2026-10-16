@@ -94,6 +94,16 @@ class Setting extends Model
     public const DEFAULT_DATA_ENTRY_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
 
     /**
+     * How long the part's Sourcing member has to finalize it once Data Entry
+     * sends it to them, by its RFQ's priority, in working minutes, until an
+     * Admin changes it — what the countdown on their list runs from then
+     * (Rfq::finalizeCountdown()).
+     *
+     * @var array<string, int>
+     */
+    public const DEFAULT_FINALIZE_TARGETS = ['Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15];
+
+    /**
      * Whether Senior Operations is alerted when someone in Data Entry hasn't
      * started anything for a while in working time with parts waiting on
      * them, and after how many working minutes — until an Admin changes it.
@@ -940,6 +950,18 @@ class Setting extends Model
     public static function dataEntryTargets(): array
     {
         return static::targets('data_entry_targets', self::DEFAULT_DATA_ENTRY_TARGETS);
+    }
+
+    /**
+     * Finalize's target per priority, in working minutes — what was saved on
+     * the Settings page, or DEFAULT_FINALIZE_TARGETS, kept within
+     * TARGET_RANGE.
+     *
+     * @return array<string, int>
+     */
+    public static function finalizeTargets(): array
+    {
+        return static::targets('finalize_targets', self::DEFAULT_FINALIZE_TARGETS);
     }
 
     /**

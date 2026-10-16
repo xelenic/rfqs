@@ -2745,6 +2745,28 @@ class Rfq extends Model
     }
 
     /**
+     * Where $part's countdown stands with its Sourcing member to finalize it,
+     * once Data Entry has sent it to them: its priority's Finalize target
+     * (Setting::finalizeTargets()) less the working time this round has
+     * taken. Null unless it's waiting on their Finalize now.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function finalizeCountdown(int $part, ?CarbonInterface $now = null): ?array
+    {
+        return $this->countdownAt('finalize', $part, $this->finalizeTargetSeconds(), $now);
+    }
+
+    /**
+     * The working time Sourcing has to finalize a part of this RFQ, by its
+     * priority — see Setting::finalizeTargets(). In seconds.
+     */
+    public function finalizeTargetSeconds(): int
+    {
+        return (Setting::finalizeTargets()[$this->priority_level] ?? Setting::DEFAULT_FINALIZE_TARGETS['Medium']) * 60;
+    }
+
+    /**
      * Where $part's countdown stood when Data Entry paused it — what's left
      * when they resume. Null unless it's paused.
      *
@@ -2761,7 +2783,8 @@ class Rfq extends Model
 
     /**
      * $part's countdown at $step: $target less the working time its latest
-     * round there has taken — see sourcingCountdown() / dataEntryCountdown().
+     * round there has taken — see sourcingCountdown() / dataEntryCountdown() /
+     * finalizeCountdown().
      * Null unless that round is still open — or, with ! $stillOpen, for the
      * round as it stood when it last stopped (pausedDataEntryCountdown()).
      *

@@ -141,7 +141,7 @@ it('follows the targets as set', function () {
         ->toContain('45m left');
 });
 
-it('shows no countdown once the part\'s with Data Entry, or waiting on Finalize', function () {
+it('shows no countdown while the part\'s with Data Entry — and Finalize\'s own once it\'s back to finalize', function () {
     $riley = userWithRole('Sourcing');
 
     test()->travelTo(inColombo('2026-10-05 09:00'));
@@ -155,8 +155,9 @@ it('shows no countdown once the part\'s with Data Entry, or waiting on Finalize'
 
     $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
 
+    // Back to finalize: the Finalize target's countdown (FinalizeCountdownTest).
     expect(countdownBadge($html, 'RFQ8001'))->toBeNull()
-        ->and(countdownBadge($html, 'RFQ8002'))->toBeNull();
+        ->and(countdownBadge($html, 'RFQ8002'))->toContain('data-running-title="Working time left to finalize it"');
 });
 
 it('counts a part sent back to Sourcing down again on their Returns list, from its return', function () {

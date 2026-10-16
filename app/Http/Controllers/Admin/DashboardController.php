@@ -368,10 +368,10 @@ class DashboardController extends Controller
      * Every task someone's on right now — each open stretch of a tracked
      * step (RfqStep::ROLE_STEPS) on a pending RFQ — with whose it is, the
      * working time it's taken, and, for Sourcing's and Data Entry's own
-     * work, where it stands against its target (Rfq::sourcingCountdown() /
-     * dataEntryCountdown(), so absences and resumed rounds count as they do
-     * there): overdue first, then nearest to it, then the longest-running.
-     * Finalize and GM Assistant have no target.
+     * work and Finalize, where it stands against its target
+     * (Rfq::sourcingCountdown() / dataEntryCountdown() / finalizeCountdown(),
+     * so absences and resumed rounds count as they do there): overdue first,
+     * then nearest to it, then the longest-running. GM Assistant has no target.
      *
      * @return Collection<int, array{rfq: Rfq, label: string, task: string, role: ?string, worker: ?User, started_at: CarbonInterface, seconds: int, target: ?int, remaining: ?int, state: string}>
      */
@@ -393,6 +393,7 @@ class DashboardController extends Controller
                 $countdown = match ($step->step) {
                     'sourcing' => $rfq->sourcingCountdown((int) $step->part_number, $now),
                     'data_entry' => $rfq->dataEntryCountdown((int) $step->part_number, $now),
+                    'finalize' => $rfq->finalizeCountdown((int) $step->part_number, $now),
                     default => null,
                 };
 

@@ -1268,10 +1268,18 @@
                                     <td class="text-nowrap">
                                         {{-- Counts down this round's working time against its
                                              priority's target, ticking in admin.js — paused
-                                             outside working hours. --}}
-                                        @php $countdown = $iHaveCompletedMyPart ? null : $rfq->sourcingCountdown($myPart); @endphp
+                                             outside working hours: Sourcing's while it's theirs to
+                                             complete, Finalize's once Data Entry has sent it back
+                                             to finalize. --}}
+                                        @php
+                                            $countdown = $iHaveCompletedMyPart ? $rfq->finalizeCountdown($myPart) : $rfq->sourcingCountdown($myPart);
+                                            $countdownTitle = $iHaveCompletedMyPart ? 'Working time left to finalize it' : 'Working time left to mark it complete';
+                                        @endphp
                                         @if ($countdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => 'Working time left to mark it complete', 'workerId' => auth()->id()])
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $countdown, 'title' => $countdownTitle, 'workerId' => auth()->id()])
+                                            @if ($iHaveCompletedMyPart)
+                                                <div class="de-target-formula">To finalize · {{ $rfq->priority_level }}'s target</div>
+                                            @endif
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif

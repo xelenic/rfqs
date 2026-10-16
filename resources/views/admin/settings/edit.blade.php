@@ -12,7 +12,8 @@
     Expects: $user, $closesRfqs, $isAdmin, $managesWorkingHours, $companyName, $liveInterval,
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
-    $dataEntryTargets (Setting::dataEntryTargets()), $dataEntryIdleAlert
+    $dataEntryTargets (Setting::dataEntryTargets()), $finalizeTargets
+    (Setting::finalizeTargets()), $dataEntryIdleAlert
     (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
     (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
@@ -45,6 +46,7 @@
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Targets', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
+            'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
@@ -725,6 +727,46 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save per item</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'finalize-targets' ? 'show active' : '' }}" id="settings-pane-finalize-targets" role="tabpanel" aria-labelledby="settings-tab-finalize-targets" tabindex="0">
+                {{-- How long the part's Sourcing member has to finalize it once Data
+                     Entry sends it to them, by its RFQ's priority — what their
+                     list counts down then (Rfq::finalizeCountdown()). --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Finalize Targets
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.finalize-targets') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">Working hours Sourcing has to finalize a part once Data Entry sends it back to them, by its RFQ's priority. Their list counts it down, only during working hours.</p>
+
+                            {{-- Every target tab sends targets[]: only the one that failed gets what was typed back. --}}
+                            <div class="row g-3 mb-3">
+                                @foreach (array_reverse($finalizeTargets, true) as $priority => $minutes)
+                                    <div class="col-sm-6">
+                                        <label for="fin-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <div class="input-group">
+                                            <input type="number" name="targets[{{ $priority }}]" id="fin-target-{{ \Illuminate\Support\Str::slug($priority) }}"
+                                                   class="form-control @error('targets.'.$priority, 'finalize_targets') is-invalid @enderror"
+                                                   value="{{ $errors->getBag('finalize_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
+                                            <span class="input-group-text">hours</span>
+                                            @error('targets.'.$priority, 'finalize_targets')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Finalize targets</button>
                         </form>
                     </div>
                 </div>
