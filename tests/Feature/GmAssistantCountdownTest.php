@@ -74,12 +74,14 @@ it('goes overdue past its target, and stops once it\'s submitted', function () {
     expect($rfq->refresh()->gmAssistantCountdown(1))->toBeNull();
 });
 
-it('lets an Admin set the GM Assistant targets on their own tab', function () {
+it('keeps GM Assistant\'s per-priority targets off the page — their tab is GM Assistant Time — but takes them still', function () {
     $admin = userWithRole('Admin');
 
     test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'gm-assistant-targets']))->assertOk()
-        ->assertSee('action="'.route('admin.settings.gm-assistant-targets').'"', false)
-        ->assertSee('id="gma-target-urgent"', false);
+        ->assertSee('GM Assistant Time')
+        ->assertSee('Time per line item')
+        ->assertDontSee('action="'.route('admin.settings.gm-assistant-targets').'"', false)
+        ->assertDontSee('id="gma-target-urgent"', false);
 
     test()->actingAs($admin)->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Low' => '6', 'Medium' => '3', 'High' => '1.5', 'Urgent' => '0.5']])
         ->assertSessionHas('status', 'GM Assistant targets saved.')
@@ -92,5 +94,69 @@ it('lets an Admin set the GM Assistant targets on their own tab', function () {
         ->assertSessionHasErrorsIn('gm_assistant_targets', ['targets.Medium', 'targets.Urgent']);
 
     test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1']])
+        ->assertForbidden();
+});
+
+// ---- Per line item ---------------------------------------------------------
+
+it('starts with GM Assistant\'s target by priority, a minute a line item when it\'s switched on', function () {
+    expect(Setting::gmAssistantPerItem())->toBe(['enabled' => false, 'seconds' => 60]);
+});
+
+it('works a part out per line item when that\'s on — the line items Data Entry added, else those Sourcing said to add', function () {
+    Setting::putGmAssistantPerItem(['enabled' => true, 'seconds' => 90]);
+
+    // Data Entry added 2 line items (withGmAssistant()): 2 × 1.5 min.
+    $added = withGmAssistant();
+    expect($added->gmAssistantTargetSeconds(1))->toBe(180)
+        ->and($added->gmAssistantTargetBreakdown(1))->toBe(['items' => 2, 'perItem' => 90, 'seconds' => 180, 'source' => 'added']);
+
+    // None added: Sourcing's 30 to add.
+    $added->assigneeForPart(1)->pivot->update(['data_entry_entries' => 0, 'line_items_to_add' => 30]);
+    expect($added->refresh()->gmAssistantTargetSeconds(1))->toBe(30 * 90)
+        ->and($added->gmAssistantTargetBreakdown(1)['source'])->toBe('to_add');
+
+    // Neither: High's hour.
+    $added->assigneeForPart(1)->pivot->update(['line_items_to_add' => null]);
+    expect($added->refresh()->gmAssistantTargetSeconds(1))->toBe(3600);
+
+    // Switched off: High's hour whatever the line items.
+    Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 90]);
+    $added->assigneeForPart(1)->pivot->update(['data_entry_entries' => 40]);
+    expect($added->refresh()->gmAssistantTargetSeconds(1))->toBe(3600);
+});
+
+it('counts the list down from the line items, the formula on hover', function () {
+    Setting::putGmAssistantPerItem(['enabled' => true, 'seconds' => 60]);
+    $rfq = withGmAssistant();
+    $rfq->assigneeForPart(1)->pivot->update(['data_entry_entries' => 45]);
+
+    gmaClock('10:15');
+    expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 2700, 'remaining' => 1800]);
+
+    $html = test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+    expect(Str::betweenFirst($html, '<td class="text-nowrap">RFQ9301</td>', '</tr>'))
+        ->toContain('data-remaining="1800" data-target="2700"')
+        ->toContain('Working time left to submit it to the General Manager · 45 line items × 1 min = 45m');
+});
+
+it('lets an Admin switch it on and set the time a line item takes', function () {
+    $admin = userWithRole('Admin');
+
+    test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'gm-assistant-targets']))->assertOk()
+        ->assertSee('action="'.route('admin.settings.gm-assistant-per-item').'"', false)
+        ->assertSee("Set GM Assistant's target per line item", false);
+
+    test()->actingAs($admin)->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '1', 'minutes' => '1.5'])
+        ->assertSessionHas('status', 'GM Assistant\'s target is now worked out per line item.')
+        ->assertSessionHas('settings_tab', 'gm-assistant-targets');
+
+    expect(Setting::gmAssistantPerItem())->toBe(['enabled' => true, 'seconds' => 90]);
+
+    test()->actingAs($admin)->from(route('admin.settings.edit'))
+        ->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '1', 'minutes' => '0.3'])
+        ->assertSessionHasErrorsIn('gm_assistant_per_item', ['minutes']);
+
+    test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '0', 'minutes' => '1'])
         ->assertForbidden();
 });

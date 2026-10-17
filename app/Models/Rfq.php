@@ -2782,17 +2782,60 @@ class Rfq extends Model
      */
     public function gmAssistantCountdown(int $part, ?CarbonInterface $now = null): ?array
     {
-        return $this->countdownAt('gm_assistant', $part, $this->gmAssistantTargetSeconds(), $now);
+        return $this->countdownAt('gm_assistant', $part, $this->gmAssistantTargetSeconds($part), $now);
     }
 
     /**
-     * The working time GM Assistant has to submit a part of this RFQ to the
-     * General Manager, by its priority — see Setting::gmAssistantTargets().
-     * In seconds.
+     * The working time GM Assistant has to submit $part to the General
+     * Manager: its line items times the time a line item takes while that's
+     * on (gmAssistantTargetBreakdown()), else by its priority — see
+     * Setting::gmAssistantTargets(). In seconds.
      */
-    public function gmAssistantTargetSeconds(): int
+    public function gmAssistantTargetSeconds(?int $part = null): int
     {
-        return (Setting::gmAssistantTargets()[$this->priority_level] ?? Setting::DEFAULT_GM_ASSISTANT_TARGETS['Medium']) * 60;
+        return $this->gmAssistantTargetBreakdown($part)['seconds']
+            ?? (Setting::gmAssistantTargets()[$this->priority_level] ?? Setting::DEFAULT_GM_ASSISTANT_TARGETS['Medium']) * 60;
+    }
+
+    /**
+     * How GM Assistant's target for $part comes about while it's worked out
+     * per line item (Setting::gmAssistantPerItem()): its line items
+     * (gmAssistantLineItemsFor()), the working seconds a line item takes, and
+     * the two multiplied. Null by priority — per line item being off, or the
+     * part having no line items to go by.
+     *
+     * @return array{items: int, perItem: int, seconds: int, source: string}|null
+     */
+    public function gmAssistantTargetBreakdown(?int $part = null): ?array
+    {
+        $perItem = Setting::gmAssistantPerItem();
+        $lineItems = $part !== null ? $this->gmAssistantLineItemsFor($part) : null;
+
+        if (! $perItem['enabled'] || $lineItems === null) {
+            return null;
+        }
+
+        return ['items' => $lineItems['count'], 'perItem' => $perItem['seconds'], 'seconds' => $lineItems['count'] * $perItem['seconds'], 'source' => $lineItems['source']];
+    }
+
+    /**
+     * The line items GM Assistant has on $part: those Data Entry said they
+     * added (rfq_user.data_entry_entries) — what's actually there — else
+     * those Sourcing said to add (line_items_to_add). Null with neither (or
+     * none of either).
+     *
+     * @return array{count: int, source: string}|null
+     */
+    public function gmAssistantLineItemsFor(int $part): ?array
+    {
+        $assignment = $this->assigneeForPart($part)?->pivot;
+
+        return match (true) {
+            $assignment === null => null,
+            (int) $assignment->data_entry_entries > 0 => ['count' => (int) $assignment->data_entry_entries, 'source' => 'added'],
+            (int) $assignment->line_items_to_add > 0 => ['count' => (int) $assignment->line_items_to_add, 'source' => 'to_add'],
+            default => null,
+        };
     }
 
     /**

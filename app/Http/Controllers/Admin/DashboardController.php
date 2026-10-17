@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Notifications\DataEntryIdle;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Carbon;
@@ -146,16 +147,23 @@ class DashboardController extends Controller
         // The General Manager's is their approvals — what's waiting on them,
         // what they've approved and sent back — and how the business stands:
         // the open RFQs, where they are, and what's been created and closed.
-        if ($canViewRfqs && $user->hasRole('General Manager') && ! $user->hasRole('Admin')) {
-            $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
-            $overview = $this->generalManagerOverview($user, $period);
+        // The Head of Business Development's and GM Assistant's are the same,
+        // for their own step: what's been sent on to them, and what the
+        // General Manager has sent back.
+        foreach (['General Manager' => 'general-manager', 'Head of Business Development' => 'head-of-business-development', 'GM Assistant' => 'gm-assistant'] as $role => $page) {
+            if ($canViewRfqs && $user->hasRole($role) && ! $user->hasRole('Admin')) {
+                $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
+                $stage = $this->approverStage($role);
+                $overview = $this->approverOverview($user, $period, $stage);
 
-            return view('admin.dashboard.general-manager', [
-                'period' => $period,
-                'overview' => $overview,
-                'rfqActivity' => $this->rfqActivityIn($period),
-                'notifications' => $this->generalManagerNotifications($overview),
-            ]);
+                return view("admin.dashboard.{$page}", [
+                    'period' => $period,
+                    'stage' => $stage,
+                    'overview' => $overview,
+                    'rfqActivity' => $this->rfqActivityIn($period),
+                    'notifications' => $this->approverNotifications($overview, $stage),
+                ]);
+            }
         }
 
         // Sourcing's is about their own parts: what's on their plate, what's
@@ -511,7 +519,7 @@ class DashboardController extends Controller
                 $target = match ($stretch->step) {
                     'sourcing' => $stretch->rfq->sourcingTargetSeconds(),
                     'data_entry' => $stretch->rfq->dataEntryTargetSeconds($stretch->part_number),
-                    'gm_assistant' => $stretch->rfq->gmAssistantTargetSeconds(),
+                    'gm_assistant' => $stretch->rfq->gmAssistantTargetSeconds($stretch->part_number),
                     default => null,
                 };
                 $seconds = (int) $round->sum(fn (RfqStep $part) => $part->secondsExcludingAbsence($book, $now));
@@ -612,7 +620,7 @@ class DashboardController extends Controller
      * row's name, and keyOf() to tell which span a moment falls in.
      *
      * @param  array{from: string, to: string}  $period
-     * @return array{unit: string, spans: array<int, array{key: string, label: string, title: string}>, keyOf: \Closure(CarbonInterface): string}
+     * @return array{unit: string, spans: array<int, array{key: string, label: string, title: string}>, keyOf: Closure(CarbonInterface): string}
      */
     protected function periodSpans(array $period): array
     {
@@ -1272,15 +1280,115 @@ class DashboardController extends Controller
     }
 
     /**
-     * What the General Manager's dashboard shows:
+     * What sets one approver's dashboard apart (approverOverview()) — the
+     * General Manager's, the Head of Business Development's or GM
+     * Assistant's: who they are, what's waiting on them (an RFQ query, and
+     * whether one part of it is), the part's columns for who passed it on and
+     * when, the one it's measured from (when it reached them), who sends it
+     * to them, their Returns page for what the General Manager sent back to
+     * them (not the General Manager's own), the countdown on their queue
+     * where their step has a target, and how their step reads — approving,
+     * or (GM Assistant's) submitting.
      *
-     *  - now: every part waiting on their approval (Rfq::partAwaitsGmApproval()
-     *    — GM Assistant has submitted it), Urgent first then longest-waiting;
-     *    and the business as it stands — the open RFQs by priority, and how
-     *    many wait at each stage (pipeline(), the sidebar's counts);
+     * @return array{role: string, from: string, since: string, by: string, at: string, rfqBy: string, rfqAt: string, waiting: Closure, awaits: Closure, returns: ?Closure, returnsUrl: ?string, countdown: ?Closure, countdownStep: ?string, anchor: string, words: array<string, string>}
+     */
+    protected function approverStage(string $role): array
+    {
+        $approving = [
+            'awaiting' => 'Awaiting your approval',
+            'done' => 'Approved',
+            'doneToday' => 'Approved today',
+            'average' => 'Avg. time to approve',
+            'waitingTitle' => 'Waiting for your approval',
+            'queueLink' => 'Your approvals',
+            'fullyDone' => '1 RFQ fully approved|:count RFQs fully approved',
+            'waits' => '1 part waits on your approval|:count parts wait on your approval',
+            'urgentWaits' => '1 urgent part waits on your approval|:count urgent parts wait on your approval',
+            'urgentHint' => 'Marked Urgent — approve or send back first.',
+            'waitsHint' => 'Approve it, or send it back with why.',
+            'noDecisions' => "You haven't approved or sent back anything yet.",
+        ];
+
+        return match ($role) {
+            'GM Assistant' => [
+                'role' => $role,
+                'from' => 'Head of Business Development',
+                'since' => 'head_of_bd_approved_at',
+                'by' => 'gm_assistant_completed_by',
+                'at' => 'gm_assistant_completed_at',
+                'rfqBy' => 'gm_assistant_completed_by',
+                'rfqAt' => 'gm_assistant_completed_at',
+                'waiting' => fn ($rfqs) => $rfqs->awaitingGmAssistant()->notHeldOnAReturnsPage(),
+                'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsGmAssistant($part),
+                'returns' => fn () => Rfq::query()->returnedToGmAssistant()->with('rejectedBy')->latest('rejected_at')->get(),
+                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']),
+                // Their step has a target (Settings → GM Assistant Time).
+                'countdown' => fn (Rfq $rfq, int $part) => $rfq->gmAssistantCountdown($part),
+                'countdownStep' => 'gm_assistant',
+                'anchor' => 'gma',
+                'words' => [
+                    'awaiting' => 'Awaiting your submit',
+                    'done' => 'Submitted',
+                    'doneToday' => 'Submitted today',
+                    'average' => 'Avg. time to submit',
+                    'waitingTitle' => 'Waiting for you to submit',
+                    'queueLink' => 'Your queue',
+                    'fullyDone' => '1 RFQ fully submitted|:count RFQs fully submitted',
+                    'waits' => '1 part waits on your submit|:count parts wait on your submit',
+                    'urgentWaits' => '1 urgent part waits on your submit|:count urgent parts wait on your submit',
+                    'urgentHint' => 'Marked Urgent — submit it or send it back first.',
+                    'waitsHint' => 'Add your details and submit it to the General Manager, or send it back with why.',
+                    'noDecisions' => "You haven't submitted or sent back anything yet.",
+                ],
+            ],
+            'Head of Business Development' => [
+                'role' => $role,
+                'from' => 'Senior Operations',
+                'since' => 'senior_ops_reviewed_at',
+                'by' => 'head_of_bd_approved_by',
+                'at' => 'head_of_bd_approved_at',
+                'rfqBy' => 'head_of_bd_approved_by',
+                'rfqAt' => 'head_of_bd_approved_at',
+                'waiting' => fn ($rfqs) => $rfqs->awaitingHeadOfBdReview()->notHeldOnAReturnsPage(),
+                'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsHeadOfBdReview($part),
+                'returns' => fn () => Rfq::query()->returnedToHeadOfBd()->with('rejectedBy')->latest('rejected_at')->get(),
+                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']),
+                'countdown' => null,
+                'countdownStep' => null,
+                'anchor' => 'hbd',
+                'words' => $approving,
+            ],
+            default => [
+                'role' => 'General Manager',
+                'from' => 'GM Assistant',
+                'since' => 'gm_assistant_completed_at',
+                'by' => 'gm_approved_by',
+                'at' => 'gm_approved_at',
+                'rfqBy' => 'gm_approved_by',
+                'rfqAt' => 'gm_approved_at',
+                'waiting' => fn ($rfqs) => $rfqs->awaitingGmApproval(),
+                'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsGmApproval($part),
+                'returns' => null,
+                'returnsUrl' => null,
+                'countdown' => null,
+                'countdownStep' => null,
+                'anchor' => 'gm',
+                'words' => $approving,
+            ],
+        };
+    }
+
+    /**
+     * What an approver's dashboard shows — the General Manager's or the Head
+     * of Business Development's ($stage, approverStage()):
+     *
+     *  - now: every part waiting on their approval, Urgent first then
+     *    longest-waiting; for the Head, what the General Manager sent back to
+     *    them; and the business as it stands — the open RFQs by priority, and
+     *    how many wait at each stage (pipeline(), the sidebar's counts);
      *  - over $period (summaryPeriod()): the parts they approved and the
      *    RFQs that left them fully approved, how long an approval took them
-     *    — working time from GM Assistant's submit, in their hours
+     *    — working time from when it reached them, in their hours
      *    (Setting::workingSecondsBetween()) — the send-backs they made (the
      *    reject's own comment, as Business Development's dashboard counts
      *    them) and to where, both span by span for the decisions chart; and
@@ -1288,37 +1396,40 @@ class DashboardController extends Controller
      *  - and their latest decisions, whenever.
      *
      * @param  array{start: CarbonImmutable, end: CarbonImmutable, from: string, to: string, isToday: bool, dates: string}  $period
+     * @param  array<string, mixed>  $stage  approverStage()
      * @return array<string, mixed>
      */
-    protected function generalManagerOverview(User $user, array $period): array
+    protected function approverOverview(User $user, array $period, array $stage): array
     {
         $window = [$period['start'], $period['end']];
         $priorities = array_reverse(Rfq::PRIORITIES);
 
         $waiting = Rfq::query()
             ->where('rfqs.status', 'Pending')
-            ->awaitingGmApproval()
+            ->tap($stage['waiting'])
             ->with('assignees')
+            ->when($stage['countdownStep'], fn ($rfqs, string $step) => $rfqs->with(['steps' => fn ($steps) => $steps->where('step', $step)]))
             ->get()
             ->flatMap(fn (Rfq $rfq) => $rfq->assignees
-                ->filter(fn (User $holder) => $rfq->partAwaitsGmApproval($holder->pivot->part_number))
+                ->filter(fn (User $holder) => ($stage['awaits'])($rfq, $holder->pivot->part_number))
                 ->map(fn (User $holder) => [
                     'rfq' => $rfq,
                     'label' => $rfq->isSplit() ? $rfq->partNumberLabel($holder->pivot->part_number) : $rfq->rfq_number,
-                    'since' => $holder->pivot->gm_assistant_completed_at,
+                    'since' => $holder->pivot->{$stage['since']},
+                    'countdown' => $stage['countdown'] !== null ? ($stage['countdown'])($rfq, $holder->pivot->part_number) : null,
                 ]))
             ->sortBy(fn (array $part) => [array_search($part['rfq']->priority_level, $priorities, true), $part['since']?->getTimestamp() ?? 0])
             ->values();
 
         $approved = DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
-            ->where('rfq_user.gm_approved_by', $user->id)
-            ->whereBetween('rfq_user.gm_approved_at', $window)
-            ->get(['rfq_user.gm_approved_at', 'rfq_user.gm_assistant_completed_at'])
+            ->where("rfq_user.{$stage['by']}", $user->id)
+            ->whereBetween("rfq_user.{$stage['at']}", $window)
+            ->get(["rfq_user.{$stage['at']} as decided_at", "rfq_user.{$stage['since']} as reached_at"])
             ->map(fn (object $part) => [
-                'at' => CarbonImmutable::parse($part->gm_approved_at),
-                'seconds' => $part->gm_assistant_completed_at === null ? null
-                    : Setting::workingSecondsBetween(CarbonImmutable::parse($part->gm_assistant_completed_at), CarbonImmutable::parse($part->gm_approved_at), $user->id),
+                'at' => CarbonImmutable::parse($part->decided_at),
+                'seconds' => $part->reached_at === null ? null
+                    : Setting::workingSecondsBetween(CarbonImmutable::parse($part->reached_at), CarbonImmutable::parse($part->decided_at), $user->id),
             ]);
         $timed = $approved->whereNotNull('seconds');
 
@@ -1338,8 +1449,10 @@ class DashboardController extends Controller
         return [
             'waiting' => $waiting,
             'waitingUrgent' => $waiting->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
+            'waitingOverdue' => $waiting->filter(fn (array $part) => $part['countdown'] !== null && $part['countdown']['remaining'] <= 0)->count(),
+            'returnedToMe' => $stage['returns'] !== null ? ($stage['returns'])() : collect(),
             'approved' => $approved->count(),
-            'approvedRfqs' => Rfq::query()->where('gm_approved_by', $user->id)->whereBetween('gm_approved_at', $window)->count(),
+            'approvedRfqs' => Rfq::query()->where($stage['rfqBy'], $user->id)->whereBetween($stage['rfqAt'], $window)->count(),
             'average' => $timed->isEmpty() ? null : intdiv((int) $timed->sum('seconds'), $timed->count()),
             'returned' => $returns->count(),
             'returnedTo' => $returns->countBy(fn (RfqComment $comment) => $comment->meta['stage'] ?? 'an earlier step')->sortDesc()->all(),
@@ -1352,29 +1465,29 @@ class DashboardController extends Controller
                 'labels' => array_column($spans, 'label'),
                 'dates' => array_column($spans, 'title'),
                 'series' => [
-                    ['key' => 'approved', 'label' => 'Approved', 'values' => collect($spans)->map(fn (array $span) => (int) ($approvedBySpan[$span['key']] ?? 0))->all()],
+                    ['key' => 'approved', 'label' => $stage['words']['done'], 'values' => collect($spans)->map(fn (array $span) => (int) ($approvedBySpan[$span['key']] ?? 0))->all()],
                     ['key' => 'returned', 'label' => 'Sent back', 'values' => collect($spans)->map(fn (array $span) => (int) ($returnedBySpan[$span['key']] ?? 0))->all()],
                 ],
             ],
-            'latest' => $this->generalManagerDecisions($user),
+            'latest' => $this->approverDecisions($user, $stage),
         ];
     }
 
     /**
-     * The General Manager's latest decisions, whenever: each part they
-     * approved, and each send-back they made with where to and why — latest
-     * first.
+     * An approver's latest decisions, whenever: each part they approved, and
+     * each send-back they made with where to and why — latest first.
      *
+     * @param  array<string, mixed>  $stage  approverStage()
      * @return Collection<int, array{rfq: Rfq, label: string, at: CarbonInterface, approved: bool, detail: ?string}>
      */
-    protected function generalManagerDecisions(User $user, int $limit = 8): Collection
+    protected function approverDecisions(User $user, array $stage, int $limit = 8): Collection
     {
         $approvals = DB::table('rfq_user')
-            ->where('gm_approved_by', $user->id)
-            ->whereNotNull('gm_approved_at')
-            ->orderByDesc('gm_approved_at')
+            ->where($stage['by'], $user->id)
+            ->whereNotNull($stage['at'])
+            ->orderByDesc($stage['at'])
             ->limit($limit)
-            ->get(['rfq_id', 'part_number', 'gm_approved_at']);
+            ->get(['rfq_id', 'part_number', "{$stage['at']} as decided_at"]);
         $rfqs = Rfq::query()->whereIn('id', $approvals->pluck('rfq_id'))->get()->keyBy('id');
 
         $approved = $approvals
@@ -1382,7 +1495,7 @@ class DashboardController extends Controller
             ->map(fn (object $part) => [
                 'rfq' => $rfqs[$part->rfq_id],
                 'label' => $rfqs[$part->rfq_id]->isSplit() ? $rfqs[$part->rfq_id]->partNumberLabel((int) $part->part_number) : $rfqs[$part->rfq_id]->rfq_number,
-                'at' => Carbon::parse($part->gm_approved_at),
+                'at' => Carbon::parse($part->decided_at),
                 'approved' => true,
                 'detail' => null,
             ]);
@@ -1407,22 +1520,44 @@ class DashboardController extends Controller
     }
 
     /**
-     * The General Manager's alerts — about what waits on them.
+     * An approver's alerts — about what waits on them, and (the Head's) what
+     * the General Manager sent back to them.
      *
-     * @param  array<string, mixed>  $overview  generalManagerOverview()
+     * @param  array<string, mixed>  $overview  approverOverview()
+     * @param  array<string, mixed>  $stage  approverStage()
      * @return array<int, array{type: string, icon: string, title: string, description: string, url: string}>
      */
-    protected function generalManagerNotifications(array $overview): array
+    protected function approverNotifications(array $overview, array $stage): array
     {
         $queue = route('admin.rfqs.index', ['status' => 'Pending']);
         $notifications = [];
+
+        if ($overview['returnedToMe']->isNotEmpty()) {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-arrow-counterclockwise',
+                'title' => trans_choice('1 RFQ sent back to you|:count RFQs sent back to you', $overview['returnedToMe']->count(), ['count' => $overview['returnedToMe']->count()]),
+                'description' => 'By the General Manager — on your Returns page.',
+                'url' => $stage['returnsUrl'],
+            ];
+        }
+
+        if ($overview['waitingOverdue'] > 0) {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-alarm',
+                'title' => trans_choice('1 part is past your target|:count parts are past your target', $overview['waitingOverdue'], ['count' => $overview['waitingOverdue']]),
+                'description' => 'Their working time has run past the target — see to them first.',
+                'url' => $queue,
+            ];
+        }
 
         if ($overview['waitingUrgent'] > 0) {
             $notifications[] = [
                 'type' => 'danger',
                 'icon' => 'bi-exclamation-triangle-fill',
-                'title' => trans_choice('1 urgent part waits on your approval|:count urgent parts wait on your approval', $overview['waitingUrgent'], ['count' => $overview['waitingUrgent']]),
-                'description' => 'Marked Urgent — approve or send back first.',
+                'title' => trans_choice($stage['words']['urgentWaits'], $overview['waitingUrgent'], ['count' => $overview['waitingUrgent']]),
+                'description' => $stage['words']['urgentHint'],
                 'url' => $queue,
             ];
         }
@@ -1434,7 +1569,7 @@ class DashboardController extends Controller
                 'type' => 'warning',
                 'icon' => 'bi-hourglass-split',
                 'title' => trans_choice('1 part has waited over a day|:count parts have waited over a day', $longWaiting, ['count' => $longWaiting]),
-                'description' => 'Since GM Assistant submitted them.',
+                'description' => "Since {$stage['from']} sent them on.",
                 'url' => $queue,
             ];
         }
@@ -1443,8 +1578,8 @@ class DashboardController extends Controller
             $notifications[] = [
                 'type' => 'primary',
                 'icon' => 'bi-patch-check',
-                'title' => trans_choice('1 part waits on your approval|:count parts wait on your approval', $overview['waiting']->count(), ['count' => $overview['waiting']->count()]),
-                'description' => 'Approve it, or send it back with why.',
+                'title' => trans_choice($stage['words']['waits'], $overview['waiting']->count(), ['count' => $overview['waiting']->count()]),
+                'description' => $stage['words']['waitsHint'],
                 'url' => $queue,
             ];
         }

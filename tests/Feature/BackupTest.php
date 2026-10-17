@@ -223,8 +223,11 @@ it('saves when the automatic backups run', function () {
 
 it('makes the day\'s and week\'s backups once their time comes — once each — and prunes those older than a week', function () {
     $zone = Setting::timezone();
-    // The coming Sunday: daily at 02:00 and weekly at 03:00 by default.
-    $sunday = CarbonImmutable::now($zone)->next(CarbonImmutable::SUNDAY);
+    // This Sunday — today, if it is one — never a week or more ahead, or the
+    // backups just made (dated today by their files) would be pruned as
+    // already a week old. Daily at 02:00 and weekly at 03:00 by default.
+    $today = CarbonImmutable::now($zone);
+    $sunday = $today->isSunday() ? $today : $today->next(CarbonImmutable::SUNDAY);
 
     test()->travelTo($sunday->setTime(1, 59));
     test()->artisan('backup:scheduled')->assertSuccessful();

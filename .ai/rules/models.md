@@ -47,3 +47,6 @@ Since 2026-10-16, the finalize step (Sourcing finalizing a part that Data Entry 
 
 ## Sourcing time carries on across rounds (Rfq::sourcingTimeOf())
 Since 2026-10-17, at the user's request, a part sent back to Sourcing keeps counting from where it was rather than starting a fresh round. Its countdown, sourcingDeadline() (late_parts / late_by) and the dashboards' on-time judgement all sum every Sourcing stretch of that part by the same member (assignee_id). A part reassigned to someone else starts afresh with them. Lists that show Sourcing countdowns must eager-load all of the part's sourcing steps, not just the open ones. Data Entry and Finalize countdowns still run per round.
+
+## GM Assistant's target: Rfq::gmAssistantTargetSeconds($part)
+Since 2026-10-18, while Setting::gmAssistantPerItem() is on (it's off by default), a part's GM Assistant target is line items × seconds per line item. The count comes from Rfq::gmAssistantLineItemsFor(): the line items Data Entry added (rfq_user.data_entry_entries) if more than 0, otherwise Sourcing's line_items_to_add. With neither, or with the switch off, the priority target applies. Always pass the part. gmAssistantTargetBreakdown() gives the formula for hover text.

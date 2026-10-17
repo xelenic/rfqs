@@ -14,7 +14,8 @@
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $finalizeTargets
     (Setting::finalizeTargets()), $gmAssistantTargets
-    (Setting::gmAssistantTargets()), $dataEntryIdleAlert
+    (Setting::gmAssistantTargets()), $gmAssistantPerItem
+    (Setting::gmAssistantPerItem()), $dataEntryIdleAlert
     (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
     (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
@@ -48,7 +49,7 @@
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
-            'gm-assistant-targets' => ['label' => 'GM Assistant Targets', 'icon' => 'bi-file-earmark-text', 'bag' => 'gm_assistant_targets'],
+            'gm-assistant-targets' => ['label' => 'GM Assistant Time', 'icon' => 'bi-file-earmark-text', 'bag' => ['gm_assistant_targets', 'gm_assistant_per_item']],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
@@ -743,41 +744,55 @@
             </div>
 
             <div class="tab-pane fade {{ $activeTab === 'gm-assistant-targets' ? 'show active' : '' }}" id="settings-pane-gm-assistant-targets" role="tabpanel" aria-labelledby="settings-tab-gm-assistant-targets" tabindex="0">
-                {{-- How long GM Assistant has to submit a part to the General Manager
-                     once the Head of Business Development has approved it, by its
-                     RFQ's priority — what their list counts down
-                     (Rfq::gmAssistantCountdown()). --}}
-                <div class="card mb-4">
+                {{-- GM Assistant's time per line item. The per-priority targets aren't
+                     shown any more — they stay as saved (or their defaults) for a part
+                     with no line items, or while per line item is off;
+                     SettingsController::updateGmAssistantTargets() still takes them. --}}
+                {{-- Per line item: so many minutes a line item, times a part's line
+                     items — Setting::gmAssistantPerItem(), Rfq::gmAssistantTargetSeconds(). --}}
+                @php
+                    $gmaPerItemFailed = $errors->getBag('gm_assistant_per_item')->any();
+                    $gmaPerItemOn = $gmaPerItemFailed ? old('enabled') === '1' : $gmAssistantPerItem['enabled'];
+                    $gmaPerItemMinutes = $gmaPerItemFailed ? old('minutes') : $gmAssistantPerItem['seconds'] / 60;
+                @endphp
+                <div class="card mb-4" id="gm-assistant-per-item">
                     <div class="card-header d-flex align-items-center gap-2">
-                        GM Assistant Targets
+                        Time per line item
                         <span class="badge badge-soft-primary">Admin</span>
+                        @if ($gmAssistantPerItem['enabled'])
+                            <span class="badge badge-soft-success">On</span>
+                        @endif
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ route('admin.settings.gm-assistant-targets') }}" novalidate>
+                        <form method="POST" action="{{ route('admin.settings.gm-assistant-per-item') }}" novalidate>
                             @csrf
                             @method('PATCH')
 
-                            <p class="text-muted-soft small">Working hours GM Assistant has to submit a part to the General Manager once the Head of Business Development has approved it, by its RFQ's priority. Their list counts it down, only during working hours.</p>
+                            <p class="text-muted-soft small">
+                                Work GM Assistant's target out from the part's line items instead: the minutes a line item takes, times its line items — 40 line items at 1.5 minutes is 1 hour.
+                                It goes by the <strong>line items Data Entry added</strong>, or the line items Sourcing said to add if Data Entry gave none. A part with neither — or with this off — keeps its priority's target.
+                            </p>
 
-                            {{-- Every target tab sends targets[]: only the one that failed gets what was typed back. --}}
-                            <div class="row g-3 mb-3">
-                                @foreach (array_reverse($gmAssistantTargets, true) as $priority => $minutes)
-                                    <div class="col-sm-6">
-                                        <label for="gma-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
-                                        <div class="input-group">
-                                            <input type="number" name="targets[{{ $priority }}]" id="gma-target-{{ \Illuminate\Support\Str::slug($priority) }}"
-                                                   class="form-control @error('targets.'.$priority, 'gm_assistant_targets') is-invalid @enderror"
-                                                   value="{{ $errors->getBag('gm_assistant_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
-                                            <span class="input-group-text">hours</span>
-                                            @error('targets.'.$priority, 'gm_assistant_targets')
-                                                <div class="invalid-feedback">{{ $message }}</div>
-                                            @enderror
-                                        </div>
-                                    </div>
-                                @endforeach
+                            <div class="form-check form-switch mb-3">
+                                <input type="hidden" name="enabled" value="0">
+                                <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="gma-per-item-enabled" value="1" @checked($gmaPerItemOn)>
+                                <label class="form-check-label" for="gma-per-item-enabled">Set GM Assistant's target per line item</label>
                             </div>
 
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save GM Assistant targets</button>
+                            <div class="mb-3" style="max-width: 260px;">
+                                <label for="gma-per-item-minutes" class="form-label">Time per line item</label>
+                                <div class="input-group">
+                                    <input type="number" name="minutes" id="gma-per-item-minutes"
+                                           class="form-control @error('minutes', 'gm_assistant_per_item') is-invalid @enderror"
+                                           value="{{ $gmaPerItemMinutes }}" min="{{ $dataEntryPerItemRange[0] / 60 }}" max="{{ $dataEntryPerItemRange[1] / 60 }}" step="0.5" required>
+                                    <span class="input-group-text">minutes</span>
+                                    @error('minutes', 'gm_assistant_per_item')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save per line item</button>
                         </form>
                     </div>
                 </div>

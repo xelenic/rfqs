@@ -44,7 +44,7 @@ it('gives Sourcing a dashboard of its own', function () {
 });
 
 it('leaves the other roles with the general dashboard, and Admin with its own', function () {
-    foreach (['Senior Operations', 'GM Assistant', 'Head of Business Development'] as $role) {
+    foreach (['Senior Operations'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()

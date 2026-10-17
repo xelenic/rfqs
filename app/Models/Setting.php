@@ -114,6 +114,17 @@ class Setting extends Model
     public const DEFAULT_GM_ASSISTANT_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
 
     /**
+     * Whether GM Assistant's target is worked out per line item — so many
+     * working seconds a line item, times the part's line items
+     * (Rfq::gmAssistantLineItemsFor()) — rather than by priority
+     * (DEFAULT_GM_ASSISTANT_TARGETS), until an Admin changes it. See
+     * gmAssistantPerItem().
+     *
+     * @var array{enabled: bool, seconds: int}
+     */
+    public const DEFAULT_GM_ASSISTANT_PER_ITEM = ['enabled' => false, 'seconds' => 60];
+
+    /**
      * Whether Senior Operations is alerted when someone in Data Entry hasn't
      * started anything for a while in working time with parts waiting on
      * them, and after how many working minutes — until an Admin changes it.
@@ -984,6 +995,39 @@ class Setting extends Model
     public static function gmAssistantTargets(): array
     {
         return static::targets('gm_assistant_targets', self::DEFAULT_GM_ASSISTANT_TARGETS);
+    }
+
+    /**
+     * GM Assistant's target per line item — whether it's on, and the working
+     * seconds a line item takes — as saved on the Settings page, or
+     * DEFAULT_GM_ASSISTANT_PER_ITEM, kept within DATA_ENTRY_PER_ITEM_RANGE.
+     * While it's on, a part with line items gets that times them
+     * (Rfq::gmAssistantTargetSeconds()); one without keeps its priority's.
+     *
+     * @return array{enabled: bool, seconds: int}
+     */
+    public static function gmAssistantPerItem(): array
+    {
+        $saved = json_decode((string) static::get('gm_assistant_per_item'), true);
+        $saved = is_array($saved) ? $saved : [];
+        [$fewest, $most] = self::DATA_ENTRY_PER_ITEM_RANGE;
+
+        return [
+            'enabled' => is_bool($saved['enabled'] ?? null) ? $saved['enabled'] : self::DEFAULT_GM_ASSISTANT_PER_ITEM['enabled'],
+            'seconds' => is_numeric($saved['seconds'] ?? null)
+                ? max($fewest, min($most, (int) $saved['seconds']))
+                : self::DEFAULT_GM_ASSISTANT_PER_ITEM['seconds'],
+        ];
+    }
+
+    /**
+     * Saves GM Assistant's target per line item — see gmAssistantPerItem().
+     *
+     * @param  array{enabled: bool, seconds: int}  $perItem
+     */
+    public static function putGmAssistantPerItem(array $perItem): void
+    {
+        static::put('gm_assistant_per_item', json_encode($perItem));
     }
 
     /**

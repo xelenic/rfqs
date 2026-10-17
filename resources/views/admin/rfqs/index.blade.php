@@ -705,7 +705,7 @@
                             <th>RFQ Number</th>
                             <th>Subject</th>
                             <th>Priority</th>
-                            <th title="Working time left to submit it to the General Manager — see Settings → GM Assistant Targets">Time Left</th>
+                            <th title="Working time left to submit it to the General Manager — see Settings → GM Assistant Time">Time Left</th>
                             <th>Sourcing</th>
                             <th>{{ $scopedToGmAssistantReturns ? 'Returned At' : 'Approved by Head of BD' }}</th>
                             <th class="text-end">Actions</th>
@@ -728,9 +728,16 @@
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-nowrap">
                                         {{-- Counts down their target, ticking in admin.js — paused outside working hours. --}}
-                                        @php $gmaCountdown = $rfq->gmAssistantCountdown($assignee->pivot->part_number); @endphp
+                                        @php
+                                            $gmaCountdown = $rfq->gmAssistantCountdown($assignee->pivot->part_number);
+                                            $gmaBreakdown = $rfq->gmAssistantTargetBreakdown($assignee->pivot->part_number);
+                                            // How it's made up, for the hover: line items × time a line item, or its priority's.
+                                            $gmaMadeUp = $gmaBreakdown
+                                                ? number_format($gmaBreakdown['items']).' '.\Illuminate\Support\Str::plural('line item', $gmaBreakdown['items']).' × '.rtrim(rtrim(number_format($gmaBreakdown['perItem'] / 60, 1), '0'), '.').' min = '.\App\Models\Setting::durationLabel($gmaBreakdown['seconds'])
+                                                : "{$rfq->priority_level}'s GM Assistant target";
+                                        @endphp
                                         @if ($gmaCountdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$rfq->priority_level}'s GM Assistant target"])
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$gmaMadeUp}"])
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif
