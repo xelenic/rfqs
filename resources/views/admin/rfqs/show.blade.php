@@ -1353,7 +1353,8 @@
                 </div>
             </div>
 
-            @include('admin.rfqs._time_spent', ['rfq' => $rfq])
+            {{-- Sourcing sees their own role's time alone — not Data Entry's or GM Assistant's. --}}
+            @include('admin.rfqs._time_spent', ['rfq' => $rfq, 'onlyRoles' => $restrictSourcingView ? ['Sourcing'] : null])
         </div>
     </div>
 
