@@ -6,7 +6,10 @@
 // from, the page is fetched again in the background and brought up to date in
 // place — no reload, so nothing you're doing is lost:
 //
-//   - the sidebar's counts, and the top bar's bell (alerts), always;
+//   - the sidebar's counts, and the top bar's bell (alerts), always — and
+//     anything new in the bell pops up as a toast, counts in the tab's title,
+//     and (if they've let it) shows as a desktop notification while the tab's
+//     in the background, which keeps checking too, if less often;
 //   - the page body (<main>), unless someone's in the middle of something in
 //     it (a dialog open, something typed, text selected), in which case the
 //     update waits — for the dialog to close, or for a click on the notice —
@@ -26,6 +29,8 @@
     var INTERVAL = Math.max(2000, Math.min(60000, parseInt(intervalMeta && intervalMeta.content, 10) || 3000));
     var RETRY_INTERVAL = 10000; // after a failed check
     var COOL_DOWN = 10000; // when refreshes are coming thick and fast
+    var HIDDEN_INTERVAL = 15000; // while the tab's in the background — still told of messages
+    var baseTitle = document.title.replace(/^\(\d+\)\s+/, '');
 
     var pulseUrl = pulseMeta.content;
     // Without admin.js's rfqmsRebind (an old copy still cached) a swapped-in body
@@ -52,6 +57,7 @@
     // rewriting the data on every visit, say) than to hammer the server.
     function nextDelay() {
         if (failures) return RETRY_INTERVAL;
+        if (document.hidden) return Math.max(INTERVAL, HIDDEN_INTERVAL);
 
         var now = Date.now();
         refreshedAt = refreshedAt.filter(function (at) { return now - at < COOL_DOWN; });
@@ -60,7 +66,9 @@
 
     function tick() {
         clearTimeout(timer);
-        if (document.hidden || busy) return; // a hidden tab is picked up again when it's shown
+        // A tab in the background keeps checking (less often — nextDelay()),
+        // so a message reaches them wherever they are.
+        if (busy) return;
         if (Date.now() < holdUntil) {
             schedule(1000);
             return;
@@ -242,9 +250,111 @@
         var wanted = freshButton.querySelector('.notification-bell-count');
         var grew = wanted && (!count || Number(wanted.textContent) > Number(count.textContent));
 
+        // What's newly unread: an unread line the menu didn't have before.
+        var known = {};
+        menu.querySelectorAll('.notification-item.is-unread').forEach(function (item) { known[itemKey(item)] = true; });
+        var arrived = Array.prototype.filter.call(freshMenu.querySelectorAll('.notification-item.is-unread'), function (item) {
+            return !known[itemKey(item)];
+        });
+
         button.innerHTML = freshButton.innerHTML;
         menu.innerHTML = freshMenu.innerHTML;
         if (grew) bump(button.querySelector('.notification-bell-count'));
+        showUnreadInTitle();
+        syncDesktopAlertsButton();
+        if (grew) arrived.slice(0, 3).forEach(announce);
+    }
+
+    // A bell line, told apart by where it leads and what it says.
+    function itemKey(item) {
+        var text = item.querySelector('.notification-item-text');
+        return item.getAttribute('href') + '|' + (text ? text.textContent.trim() : '');
+    }
+
+    // ----------------------------------------------------------- new arrivals
+
+    // The tab's title leads with how many are unread — "(2) Dashboard" — so a
+    // tab in the background shows it too.
+    function showUnreadInTitle() {
+        var badge = document.querySelector('#notificationBell .notification-bell-count');
+        var unread = badge ? parseInt(badge.textContent, 10) || 0 : 0;
+        document.title = unread > 0 ? '(' + unread + ') ' + baseTitle : baseTitle;
+    }
+
+    // Something new in the bell — a message, an alert: a toast on the page,
+    // and a desktop notification too while the tab's in the background (if
+    // they've allowed them — the bell's "Desktop alerts").
+    function announce(item) {
+        var textEl = item.querySelector('.notification-item-text');
+        var text = textEl ? textEl.textContent.trim() : 'Something new';
+        var isMessage = item.classList.contains('is-message');
+        var heading = isMessage ? 'New message' : 'New alert';
+        var url = item.getAttribute('href');
+
+        showToast(heading, text, url, isMessage);
+
+        if (document.hidden && window.Notification && Notification.permission === 'granted') {
+            try {
+                var desktop = new Notification(heading, { body: text, tag: url, renotify: true });
+                desktop.onclick = function () {
+                    window.focus();
+                    window.location.href = url;
+                    desktop.close();
+                };
+            } catch (e) {
+                // Some browsers only notify from a service worker — the toast still shows.
+            }
+        }
+    }
+
+    function showToast(heading, text, url, isMessage) {
+        var holder = document.getElementById('liveToasts');
+        if (!holder) {
+            holder = document.createElement('div');
+            holder.id = 'liveToasts';
+            holder.className = 'live-toasts';
+            holder.setAttribute('aria-live', 'polite');
+            document.body.appendChild(holder);
+        }
+
+        var toast = document.createElement('div');
+        toast.className = 'live-toast' + (isMessage ? ' is-message' : '');
+        toast.setAttribute('role', 'status');
+        toast.innerHTML = '<span class="live-toast-icon"><i class="bi" aria-hidden="true"></i></span>'
+            + '<span class="live-toast-body"><strong></strong><span class="live-toast-text"></span></span>'
+            + '<a class="btn btn-sm btn-primary live-toast-open">Open</a>'
+            + '<button type="button" class="btn-close live-toast-close" aria-label="Dismiss"></button>';
+        toast.querySelector('.bi').classList.add(isMessage ? 'bi-chat-dots-fill' : 'bi-bell-fill');
+        toast.querySelector('strong').textContent = heading;
+        toast.querySelector('.live-toast-text').textContent = text;
+        toast.querySelector('.live-toast-open').href = url;
+
+        var close = function () {
+            toast.classList.add('is-leaving');
+            setTimeout(function () { toast.remove(); }, 250);
+        };
+        toast.querySelector('.live-toast-close').addEventListener('click', close);
+        holder.appendChild(toast);
+
+        // Long enough to read; kept while the pointer's on it.
+        var timer = setTimeout(close, 9000);
+        toast.addEventListener('mouseenter', function () { clearTimeout(timer); });
+        toast.addEventListener('mouseleave', function () { timer = setTimeout(close, 4000); });
+    }
+
+    // The bell's "Desktop alerts": asks the browser, on their click, to let
+    // the page notify them while it's in the background.
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('.js-desktop-alerts');
+        if (!button || !window.Notification) return;
+        event.preventDefault();
+        Notification.requestPermission().then(function () { syncDesktopAlertsButton(); });
+    });
+
+    function syncDesktopAlertsButton() {
+        document.querySelectorAll('.js-desktop-alerts').forEach(function (button) {
+            button.classList.toggle('d-none', !window.Notification || Notification.permission !== 'default');
+        });
     }
 
     // The top bar's Critical monitor button: its count and whether it glows.
@@ -504,5 +614,7 @@
         notice = null;
     }
 
+    showUnreadInTitle();
+    syncDesktopAlertsButton();
     schedule(INTERVAL);
 })();

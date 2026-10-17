@@ -4,7 +4,9 @@
     to them, one line per person, newest first, with how many of both are
     unread (User::bellItems()). An alert opens on what it's about
     (Admin\NotificationController); a message, on the conversation, which
-    reads it. live.js keeps the count and the list up to date.
+    reads it. live.js keeps the count and the list up to date — popping up
+    what's new as a toast, the count in the tab's title, and (once allowed,
+    "Desktop alerts") a desktop notification while the tab's in the background.
 --}}
 @php
     ['items' => $bellItems, 'unread' => $unreadCount] = auth()->user()->bellItems();
@@ -20,6 +22,12 @@
     <div class="dropdown-menu dropdown-menu-end notification-menu">
         <div class="notification-menu-head">
             <span>Alerts</span>
+            {{-- Shown by live.js while the browser hasn't been asked yet: lets the
+                 page notify them of new messages and alerts while it's in the
+                 background. --}}
+            <button type="button" class="btn btn-link btn-sm p-0 js-desktop-alerts d-none" title="Get a desktop notification for new messages and alerts while this tab is in the background">
+                <i class="bi bi-display"></i> Desktop alerts
+            </button>
             @if ($unreadCount)
                 <form method="POST" action="{{ route('admin.notifications.read-all') }}">
                     @csrf
