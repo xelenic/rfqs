@@ -510,11 +510,11 @@ it('tells how each RFQ stands against Sourcing\'s deadline', function () {
     ['overdue' => $overdue, 'onTrack' => $onTrack, 'late' => $late, 'closed' => $closed] = deadlineSpread();
 
     // 09:00–15:30 less lunch is 5h 30m, against an Urgent 4h.
-    expect($overdue->refresh()->sourcingDeadline())->toMatchArray(['remaining' => -90 * 60, 'late_rounds' => 0, 'exceeded' => true])
+    expect($overdue->refresh()->sourcingDeadline())->toMatchArray(['remaining' => -90 * 60, 'late_parts' => 0, 'exceeded' => true])
         ->and($onTrack->refresh()->sourcingDeadline())->toMatchArray(['remaining' => 8 * 3600 - 90 * 60, 'exceeded' => false])
         // 09:00–14:30 less lunch is 4h 30m: 30m late.
-        ->and($late->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_rounds' => 1, 'late_by' => 30 * 60, 'exceeded' => true])
-        ->and($closed->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_rounds' => 0, 'exceeded' => false])
+        ->and($late->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 1, 'late_by' => 30 * 60, 'exceeded' => true])
+        ->and($closed->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 0, 'exceeded' => false])
         ->and(Rfq::factory()->create()->sourcingDeadline())->toBeNull();
 });
 

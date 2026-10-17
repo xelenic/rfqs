@@ -321,10 +321,10 @@ class RfqController extends Controller implements HasMiddleware
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments']))
             ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with(['rejectedBy', 'latestRejection.attachments']))
             // A Sourcing member's own Pending list counts each part down, and
-            // so does their Returns list — a part sent back is timed again
-            // from its return. Only the stretches still open matter
-            // (Rfq::sourcingCountdown()).
-            ->when(($scopedToMe || $scopedToReturns) && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereNull('ended_at')]))
+            // so does their Returns list — a part sent back carries on from
+            // where it was, so every Sourcing stretch of it counts
+            // (Rfq::sourcingCountdown()), and Finalize's round its own.
+            ->when(($scopedToMe || $scopedToReturns) && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereIn('step', ['sourcing', 'finalize'])]))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // A part still with its member, or waiting on their Finalize —

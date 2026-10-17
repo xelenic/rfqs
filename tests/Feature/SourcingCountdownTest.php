@@ -160,7 +160,7 @@ it('shows no countdown while the part\'s with Data Entry — and Finalize\'s own
         ->and(countdownBadge($html, 'RFQ8002'))->toContain('data-running-title="Working time left to finalize it · ');
 });
 
-it('counts a part sent back to Sourcing down again on their Returns list, from its return', function () {
+it('carries a part sent back to Sourcing on from where it was, on their Returns list — not from the start', function () {
     $riley = userWithRole('Sourcing');
     $dataEntry = userWithRole('Data Entry');
 
@@ -174,7 +174,9 @@ it('counts a part sent back to Sourcing down again on their Returns list, from i
     test()->travelTo(inColombo('2026-10-05 10:30'));
     $rfq->refresh()->returnSourcingPart(1, 'Prices missing', $dataEntry);
 
-    // An hour on: a new round of the Urgent target (4h), an hour of it gone.
+    // An hour on: the Urgent target (4h) less the hour before it went to
+    // Data Entry and the hour since it came back — the half hour with Data
+    // Entry not counted.
     test()->travelTo(inColombo('2026-10-05 11:30'));
     $html = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
         ->assertSee('Time left')
@@ -183,8 +185,8 @@ it('counts a part sent back to Sourcing down again on their Returns list, from i
 
     expect(countdownBadge($html, 'RFQ8101'))
         ->toContain('badge-soft-success')
-        ->toContain('data-remaining="10800" data-target="14400"')
-        ->toContain('3h left')
+        ->toContain('data-remaining="7200" data-target="14400"')
+        ->toContain('2h left')
         ->toContain('data-worker="'.$riley->id.'"');
 
     // The time counts on the RFQ too: 09–10 and 10:30–11:30, two rounds.
@@ -221,3 +223,40 @@ it('reads the countdown labels the way the page shows them', function (int $seco
     [0, 'Due now'],
     [-90 * 60, 'Overdue by 1h 30m'],
 ]);
+
+it('counts a part late across its rounds with the same member — on the deadline too', function () {
+    $riley = userWithRole('Sourcing');
+    $dataEntry = userWithRole('Data Entry');
+
+    // Urgent: 4 hours. Three hours, then back from Data Entry for two more.
+    test()->travelTo(inColombo('2026-10-05 08:30'));
+    $rfq = splitAmong(Rfq::factory()->create(['priority_level' => 'Urgent']), [1 => $riley]);
+    test()->travelTo(inColombo('2026-10-05 11:30'));
+    $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1, $dataEntry);
+    test()->travelTo(inColombo('2026-10-05 11:45'));
+    $rfq->refresh()->returnSourcingPart(1, 'Prices missing', $dataEntry);
+
+    // Each round alone was within four hours; together they're an hour over.
+    test()->travelTo(inColombo('2026-10-05 14:45'));
+    expect($rfq->refresh()->sourcingCountdown(1))->toBe(['target' => 14400, 'remaining' => -3600]);
+
+    $rfq->completeSourcingPart(1);
+    expect($rfq->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 1, 'late_by' => 3600, 'exceeded' => true]);
+});
+
+it('starts a part afresh with whoever it\'s reassigned to', function () {
+    $riley = userWithRole('Sourcing');
+    $sam = userWithRole('Sourcing');
+
+    test()->travelTo(inColombo('2026-10-05 09:00'));
+    $rfq = splitAmong(Rfq::factory()->create(['priority_level' => 'Urgent']), [1 => $riley]);
+
+    // Riley has it three hours; then it's Sam's.
+    test()->travelTo(inColombo('2026-10-05 12:00'));
+    $rfq->refresh()->replaceSourcingPart(1, $sam, userWithRole('Senior Operations'), 'Riley is away');
+
+    // Sam's hour and a half since (lunch aside) — not Riley's three as well.
+    test()->travelTo(inColombo('2026-10-05 14:30'));
+    expect($rfq->refresh()->sourcingCountdown(1))->toBe(['target' => 14400, 'remaining' => 14400 - 5400]);
+});

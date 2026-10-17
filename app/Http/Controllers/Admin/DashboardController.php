@@ -513,8 +513,14 @@ class DashboardController extends Controller
                     default => null,
                 };
                 $seconds = (int) $round->sum(fn (RfqStep $part) => $part->secondsExcludingAbsence($book, $now));
+                // Sourcing's time on a part runs on across its rounds with the
+                // same member (Rfq::sourcingTimeOf()): on time if, all told,
+                // it was within the target when they finished this round.
+                $judged = $stretch->step === 'sourcing'
+                    ? (int) Rfq::sourcingTimeOf($stretch->rfq->steps, $stretch)->sum(fn (RfqStep $part) => $part->secondsExcludingAbsence($book, $now))
+                    : $seconds;
 
-                return ['worker' => $stretch->workerId(), 'seconds' => $seconds, 'onTime' => $target === null ? null : $seconds <= $target];
+                return ['worker' => $stretch->workerId(), 'seconds' => $seconds, 'onTime' => $target === null ? null : $judged <= $target];
             })
             ->groupBy('worker');
 

@@ -44,3 +44,6 @@ Since 2026-10-16, Rfq::pauseDataEntryPart($part, $by, $reason, $reference) sets 
 
 ## Finalize has its own target: Rfq::finalizeCountdown()
 Since 2026-10-16, the finalize step (Sourcing finalizing a part that Data Entry sent back) counts down against Setting::finalizeTargets(). These are working minutes per priority, defaulting to Urgent 15 / High 30 / Medium 60 / Low 120, set on Settings → Finalize Targets. Sourcing's Pending list and the Critical monitor (ongoingTasks) both use finalizeCountdown(). Only GM Assistant's step still has no target. A new timed step needs both a target and a countdown wherever time left is shown.
+
+## Sourcing time carries on across rounds (Rfq::sourcingTimeOf())
+Since 2026-10-17, at the user's request, a part sent back to Sourcing keeps counting from where it was rather than starting a fresh round. Its countdown, sourcingDeadline() (late_parts / late_by) and the dashboards' on-time judgement all sum every Sourcing stretch of that part by the same member (assignee_id). A part reassigned to someone else starts afresh with them. Lists that show Sourcing countdowns must eager-load all of the part's sourcing steps, not just the open ones. Data Entry and Finalize countdowns still run per round.

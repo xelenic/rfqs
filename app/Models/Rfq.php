@@ -2694,11 +2694,13 @@ class Rfq extends Model
 
     /**
      * Where $part's countdown stands with its Sourcing member: the working
-     * time its priority allows them (Setting::sourcingTargets()) less what
-     * this round with them has taken so far, less any day they were absent
-     * (Attendance) — negative once it's overdue.
-     * Null if the part isn't with Sourcing right now. Each round starts its
-     * own countdown. Expects steps to be loaded, or loads them.
+     * time its priority allows them (Setting::sourcingTargets()) less all the
+     * time they've had it so far — every round, a part sent back for rework
+     * carrying on from where it was rather than starting again — less any
+     * day they were absent (Attendance); negative once it's overdue. A part
+     * given to someone else (Senior Operations' Reassign) is theirs afresh.
+     * Null if the part isn't with Sourcing right now. Expects steps to be
+     * loaded — all of the part's Sourcing ones — or loads them.
      *
      * @return array{target: int, remaining: int}|null in seconds
      */
@@ -2796,20 +2798,44 @@ class Rfq extends Model
      */
     private function countdownAt(string $step, int $part, int $target, ?CarbonInterface $now, bool $stillOpen = true): ?array
     {
-        $round = self::roundsOf($this->steps->filter(fn (RfqStep $stretch) => $stretch->part_number === $part && $stretch->step === $step))->last();
+        $stretches = $this->steps->filter(fn (RfqStep $stretch) => $stretch->part_number === $part && $stretch->step === $step);
+        $round = self::roundsOf($stretches)->last();
 
         if ($round === null || ($stillOpen && $round->last()->ended_at !== null) || $this->status !== 'Pending') {
             return null;
         }
 
-        $book = Attendance::book($round->pluck('worked_by'));
+        // Sourcing's time on a part runs on across its rounds with the same
+        // member (sourcingTimeOf()); the other steps' each round afresh.
+        $counted = $step === 'sourcing'
+            ? self::sourcingTimeOf($stretches, $round->last())
+            : $round;
+        $book = Attendance::book($counted->pluck('worked_by'));
 
-        // Every stretch of the round — time on hold aside — less any day its
+        // Every stretch counted — time on hold aside — less any day its
         // member was absent.
         return [
             'target' => $target,
-            'remaining' => $target - (int) $round->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)),
+            'remaining' => $target - (int) $counted->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)),
         ];
+    }
+
+    /**
+     * The Sourcing stretches that count against $upTo's part's target, from
+     * $stretches: that part's, with the same member, up to and including
+     * $upTo — every round they've had it, a return for rework carrying on
+     * rather than starting again. A part reassigned to someone else starts
+     * afresh with them.
+     *
+     * @param  Collection<int, RfqStep>  $stretches
+     * @return Collection<int, RfqStep>
+     */
+    public static function sourcingTimeOf(Collection $stretches, RfqStep $upTo): Collection
+    {
+        return $stretches->filter(fn (RfqStep $stretch) => $stretch->step === 'sourcing'
+            && $stretch->part_number === $upTo->part_number
+            && $stretch->assignee_id === $upTo->assignee_id
+            && $stretch->started_at->lte($upTo->started_at))->values();
     }
 
     /**
@@ -2880,16 +2906,17 @@ class Rfq extends Model
 
     /**
      * How this RFQ stands against Sourcing's deadline — its priority's target
-     * for each round with them (sourcingTargetSeconds()): the least time left
-     * on a round still open (negative once it's overdue; null with none open),
-     * how many finished rounds ran past the target and by how much in all,
+     * (sourcingTargetSeconds()) for each part with each member, every round
+     * they've had it added up (sourcingTimeOf()): the least time left on a
+     * part still with them (negative once it's overdue; null with none),
+     * how many parts they finished past the target and by how much in all,
      * and whether it's been exceeded at all — overdue now, or finished late.
      * A day its member was absent (Attendance) doesn't count against it. Null
      * if Sourcing hasn't had it yet. $book is Attendance::book(), loaded if
      * not given. Expects steps to be loaded, or loads them.
      *
      * @param  array<int, array<string, string>>|null  $book
-     * @return array{target: int, remaining: ?int, late_rounds: int, late_by: int, exceeded: bool}|null in seconds
+     * @return array{target: int, remaining: ?int, late_parts: int, late_by: int, exceeded: bool}|null in seconds
      */
     public function sourcingDeadline(?CarbonInterface $now = null, ?array $book = null): ?array
     {
@@ -2902,23 +2929,27 @@ class Rfq extends Model
         $now ??= now();
         $book ??= Attendance::book($stretches->pluck('worked_by'));
         $target = $this->sourcingTargetSeconds();
-        $rounds = self::roundsOf($stretches);
-        $isOpen = fn (Collection $round) => $round->last()->ended_at === null;
 
-        // Every stretch of a round — time on hold aside — less any day its
-        // member was absent.
-        $taken = $rounds->map(fn (Collection $round) => (int) $round->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)));
+        // One budget for each part with each member: every stretch of every
+        // round they've had it — time on hold aside — less any day they were
+        // absent.
+        $budgets = $stretches
+            ->groupBy(fn (RfqStep $stretch) => $stretch->part_number.'|'.$stretch->assignee_id)
+            ->map(fn (Collection $theirs) => [
+                'taken' => (int) $theirs->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)),
+                'open' => $theirs->contains(fn (RfqStep $stretch) => $stretch->ended_at === null),
+            ]);
 
         $remaining = $this->status === 'Pending'
-            ? $rounds->filter($isOpen)->keys()->map(fn (int $round) => $target - $taken[$round])->min()
+            ? $budgets->where('open', true)->map(fn (array $budget) => $target - $budget['taken'])->min()
             : null;
-        $late = $rounds->reject($isOpen)->keys()->filter(fn (int $round) => $taken[$round] > $target);
+        $late = $budgets->where('open', false)->filter(fn (array $budget) => $budget['taken'] > $target);
 
         return [
             'target' => $target,
             'remaining' => $remaining,
-            'late_rounds' => $late->count(),
-            'late_by' => (int) $late->sum(fn (int $round) => $taken[$round] - $target),
+            'late_parts' => $late->count(),
+            'late_by' => (int) $late->sum(fn (array $budget) => $budget['taken'] - $target),
             'exceeded' => $late->isNotEmpty() || ($remaining !== null && $remaining <= 0),
         ];
     }

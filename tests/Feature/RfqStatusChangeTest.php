@@ -158,7 +158,7 @@ it('stops the clock while it\'s on hold, and starts it again on resuming', funct
     $time = $rfq->refresh()->timeSpent()['roles']['Sourcing'];
     expect($time)->toMatchArray(['seconds' => 2 * 3600, 'rounds' => 1, 'reworks' => 0])
         ->and($rfq->sourcingCountdown(1)['remaining'])->toBe(4 * 3600 - 2 * 3600)
-        ->and($rfq->sourcingDeadline())->toMatchArray(['remaining' => 2 * 3600, 'late_rounds' => 0, 'exceeded' => false]);
+        ->and($rfq->sourcingDeadline())->toMatchArray(['remaining' => 2 * 3600, 'late_parts' => 0, 'exceeded' => false]);
 });
 
 it('credits Data Entry\'s time on both sides of a hold to whoever started on it', function () {
