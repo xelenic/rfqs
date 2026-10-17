@@ -705,6 +705,7 @@
                             <th>RFQ Number</th>
                             <th>Subject</th>
                             <th>Priority</th>
+                            <th title="Working time left to submit it to the General Manager — see Settings → GM Assistant Targets">Time Left</th>
                             <th>Sourcing</th>
                             <th>{{ $scopedToGmAssistantReturns ? 'Returned At' : 'Approved by Head of BD' }}</th>
                             <th class="text-end">Actions</th>
@@ -725,6 +726,15 @@
                                         @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td class="text-nowrap">
+                                        {{-- Counts down their target, ticking in admin.js — paused outside working hours. --}}
+                                        @php $gmaCountdown = $rfq->gmAssistantCountdown($assignee->pivot->part_number); @endphp
+                                        @if ($gmaCountdown)
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$rfq->priority_level}'s GM Assistant target"])
+                                        @else
+                                            <span class="text-muted-soft">—</span>
+                                        @endif
+                                    </td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToGmAssistantReturns)
@@ -767,6 +777,7 @@
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-muted-soft">—</td>
+                                    <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToGmAssistantReturns)
                                             {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
@@ -793,7 +804,7 @@
                             @endif
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center text-muted-soft py-4">
+                                <td colspan="8" class="text-center text-muted-soft py-4">
                                     @if ($scopedToGmAssistantReturns)
                                         Nothing's been sent back to GM Assistant.
                                     @else
@@ -805,6 +816,11 @@
                     </tbody>
                 </table>
             </div>
+
+            {{-- What the countdowns above tick against — see admin.js. --}}
+            @if ($countdownSchedule)
+                <script type="application/json" id="countdown-schedule">{!! json_encode($countdownSchedule) !!}</script>
+            @endif
         @elseif ($scopedToGmReview)
             {{-- General Manager's final approval queue — one row per part GM
                  Assistant has submitted,

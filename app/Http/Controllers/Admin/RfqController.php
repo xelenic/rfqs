@@ -325,6 +325,9 @@ class RfqController extends Controller implements HasMiddleware
             // where it was, so every Sourcing stretch of it counts
             // (Rfq::sourcingCountdown()), and Finalize's round its own.
             ->when(($scopedToMe || $scopedToReturns) && ! $sourcingOverview, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->whereIn('step', ['sourcing', 'finalize'])]))
+            // GM Assistant's Review and Returns lists count each part down
+            // against their target (Rfq::gmAssistantCountdown()).
+            ->when($scopedToGmAssistant || $scopedToGmAssistantReturns, fn ($query) => $query->with(['steps' => fn ($steps) => $steps->where('step', 'gm_assistant')]))
             ->tap($applyCommonFilters)
             ->when($scopedToMe, function ($query) use ($user, $sourcingOverview) {
                 // A part still with its member, or waiting on their Finalize —
@@ -606,7 +609,7 @@ class RfqController extends Controller implements HasMiddleware
             'myDataEntryIdle' => $scopedToDataEntry && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')
                 ? $user->dataEntryIdleness()
                 : null,
-            'countdownSchedule' => (($scopedToMe || $scopedToReturns) && ! $sourcingOverview) || $scopedToDataEntry
+            'countdownSchedule' => (($scopedToMe || $scopedToReturns) && ! $sourcingOverview) || $scopedToDataEntry || $scopedToGmAssistant || $scopedToGmAssistantReturns
                 ? [
                     'now' => now()->getTimestamp(),
                     'periods' => Setting::workingPeriodsBetween(now(), now()->addDays(14)),

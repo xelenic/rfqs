@@ -56,6 +56,7 @@ class SettingsController extends Controller
             'sourcingTargets' => Setting::sourcingTargets(),
             'dataEntryTargets' => Setting::dataEntryTargets(),
             'finalizeTargets' => Setting::finalizeTargets(),
+            'gmAssistantTargets' => Setting::gmAssistantTargets(),
             'dataEntryPerItem' => Setting::dataEntryPerItem(),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
@@ -357,6 +358,22 @@ class SettingsController extends Controller
         Setting::put('finalize_targets', json_encode($this->validatedTargets($request, 'finalize_targets', Setting::DEFAULT_FINALIZE_TARGETS)));
 
         return $this->backToTab('finalize-targets', 'Finalize targets saved.');
+    }
+
+    /**
+     * How long GM Assistant has to submit a part of each priority to the
+     * General Manager once the Head of Business Development has approved it,
+     * in working hours — given in hours (quarters allowed), kept in minutes.
+     * What the countdown on their list runs from. See
+     * Setting::gmAssistantTargets().
+     */
+    public function updateGmAssistantTargets(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the GM Assistant targets.');
+
+        Setting::put('gm_assistant_targets', json_encode($this->validatedTargets($request, 'gm_assistant_targets', Setting::DEFAULT_GM_ASSISTANT_TARGETS)));
+
+        return $this->backToTab('gm-assistant-targets', 'GM Assistant targets saved.');
     }
 
     /**

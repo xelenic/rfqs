@@ -369,9 +369,9 @@ class DashboardController extends Controller
      * step (RfqStep::ROLE_STEPS) on a pending RFQ — with whose it is, the
      * working time it's taken, and, for Sourcing's and Data Entry's own
      * work and Finalize, where it stands against its target
-     * (Rfq::sourcingCountdown() / dataEntryCountdown() / finalizeCountdown(),
-     * so absences and resumed rounds count as they do there): overdue first,
-     * then nearest to it, then the longest-running. GM Assistant has no target.
+     * (Rfq::sourcingCountdown() / dataEntryCountdown() / finalizeCountdown() /
+     * gmAssistantCountdown(), so absences and resumed rounds count as they do
+     * there): overdue first, then nearest to it, then the longest-running.
      *
      * @return Collection<int, array{rfq: Rfq, label: string, task: string, role: ?string, worker: ?User, started_at: CarbonInterface, seconds: int, target: ?int, remaining: ?int, state: string}>
      */
@@ -394,6 +394,7 @@ class DashboardController extends Controller
                     'sourcing' => $rfq->sourcingCountdown((int) $step->part_number, $now),
                     'data_entry' => $rfq->dataEntryCountdown((int) $step->part_number, $now),
                     'finalize' => $rfq->finalizeCountdown((int) $step->part_number, $now),
+                    'gm_assistant' => $rfq->gmAssistantCountdown((int) $step->part_number, $now),
                     default => null,
                 };
 
@@ -510,6 +511,7 @@ class DashboardController extends Controller
                 $target = match ($stretch->step) {
                     'sourcing' => $stretch->rfq->sourcingTargetSeconds(),
                     'data_entry' => $stretch->rfq->dataEntryTargetSeconds($stretch->part_number),
+                    'gm_assistant' => $stretch->rfq->gmAssistantTargetSeconds(),
                     default => null,
                 };
                 $seconds = (int) $round->sum(fn (RfqStep $part) => $part->secondsExcludingAbsence($book, $now));

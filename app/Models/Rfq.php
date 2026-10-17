@@ -2773,6 +2773,29 @@ class Rfq extends Model
     }
 
     /**
+     * Where $part's countdown stands with GM Assistant, once the Head of
+     * Business Development has approved it: its priority's GM Assistant
+     * target (Setting::gmAssistantTargets()) less the working time this round
+     * has taken. Null unless it's waiting on GM Assistant's Submit now.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function gmAssistantCountdown(int $part, ?CarbonInterface $now = null): ?array
+    {
+        return $this->countdownAt('gm_assistant', $part, $this->gmAssistantTargetSeconds(), $now);
+    }
+
+    /**
+     * The working time GM Assistant has to submit a part of this RFQ to the
+     * General Manager, by its priority — see Setting::gmAssistantTargets().
+     * In seconds.
+     */
+    public function gmAssistantTargetSeconds(): int
+    {
+        return (Setting::gmAssistantTargets()[$this->priority_level] ?? Setting::DEFAULT_GM_ASSISTANT_TARGETS['Medium']) * 60;
+    }
+
+    /**
      * Where $part's countdown stood when Data Entry paused it — what's left
      * when they resume. Null unless it's paused.
      *
@@ -2790,7 +2813,7 @@ class Rfq extends Model
     /**
      * $part's countdown at $step: $target less the working time its latest
      * round there has taken — see sourcingCountdown() / dataEntryCountdown() /
-     * finalizeCountdown().
+     * finalizeCountdown() / gmAssistantCountdown().
      * Null unless that round is still open — or, with ! $stillOpen, for the
      * round as it stood when it last stopped (pausedDataEntryCountdown()).
      *

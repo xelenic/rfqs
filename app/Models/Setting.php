@@ -104,6 +104,16 @@ class Setting extends Model
     public const DEFAULT_FINALIZE_TARGETS = ['Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15];
 
     /**
+     * How long GM Assistant has to submit a part to the General Manager once
+     * the Head of Business Development has approved it, by its RFQ's
+     * priority, in working minutes, until an Admin changes it — what the
+     * countdown on their list runs from (Rfq::gmAssistantCountdown()).
+     *
+     * @var array<string, int>
+     */
+    public const DEFAULT_GM_ASSISTANT_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
+
+    /**
      * Whether Senior Operations is alerted when someone in Data Entry hasn't
      * started anything for a while in working time with parts waiting on
      * them, and after how many working minutes — until an Admin changes it.
@@ -962,6 +972,18 @@ class Setting extends Model
     public static function finalizeTargets(): array
     {
         return static::targets('finalize_targets', self::DEFAULT_FINALIZE_TARGETS);
+    }
+
+    /**
+     * GM Assistant's target per priority, in working minutes — what was saved
+     * on the Settings page, or DEFAULT_GM_ASSISTANT_TARGETS, kept within
+     * TARGET_RANGE.
+     *
+     * @return array<string, int>
+     */
+    public static function gmAssistantTargets(): array
+    {
+        return static::targets('gm_assistant_targets', self::DEFAULT_GM_ASSISTANT_TARGETS);
     }
 
     /**

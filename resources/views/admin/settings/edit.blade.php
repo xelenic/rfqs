@@ -13,7 +13,8 @@
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $finalizeTargets
-    (Setting::finalizeTargets()), $dataEntryIdleAlert
+    (Setting::finalizeTargets()), $gmAssistantTargets
+    (Setting::gmAssistantTargets()), $dataEntryIdleAlert
     (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
     (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
@@ -47,6 +48,7 @@
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
+            'gm-assistant-targets' => ['label' => 'GM Assistant Targets', 'icon' => 'bi-file-earmark-text', 'bag' => 'gm_assistant_targets'],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
@@ -735,6 +737,47 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Finalize targets</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'gm-assistant-targets' ? 'show active' : '' }}" id="settings-pane-gm-assistant-targets" role="tabpanel" aria-labelledby="settings-tab-gm-assistant-targets" tabindex="0">
+                {{-- How long GM Assistant has to submit a part to the General Manager
+                     once the Head of Business Development has approved it, by its
+                     RFQ's priority — what their list counts down
+                     (Rfq::gmAssistantCountdown()). --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        GM Assistant Targets
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.gm-assistant-targets') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">Working hours GM Assistant has to submit a part to the General Manager once the Head of Business Development has approved it, by its RFQ's priority. Their list counts it down, only during working hours.</p>
+
+                            {{-- Every target tab sends targets[]: only the one that failed gets what was typed back. --}}
+                            <div class="row g-3 mb-3">
+                                @foreach (array_reverse($gmAssistantTargets, true) as $priority => $minutes)
+                                    <div class="col-sm-6">
+                                        <label for="gma-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <div class="input-group">
+                                            <input type="number" name="targets[{{ $priority }}]" id="gma-target-{{ \Illuminate\Support\Str::slug($priority) }}"
+                                                   class="form-control @error('targets.'.$priority, 'gm_assistant_targets') is-invalid @enderror"
+                                                   value="{{ $errors->getBag('gm_assistant_targets')->any() ? old('targets.'.$priority, $minutes / 60) : $minutes / 60 }}" min="0.25" step="0.25" required>
+                                            <span class="input-group-text">hours</span>
+                                            @error('targets.'.$priority, 'gm_assistant_targets')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save GM Assistant targets</button>
                         </form>
                     </div>
                 </div>

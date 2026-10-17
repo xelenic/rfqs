@@ -52,6 +52,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('settings/sourcing-targets', [SettingsController::class, 'updateSourcingTargets'])->name('settings.sourcing-targets');
     Route::patch('settings/data-entry-targets', [SettingsController::class, 'updateDataEntryTargets'])->name('settings.data-entry-targets');
     Route::patch('settings/finalize-targets', [SettingsController::class, 'updateFinalizeTargets'])->name('settings.finalize-targets');
+    Route::patch('settings/gm-assistant-targets', [SettingsController::class, 'updateGmAssistantTargets'])->name('settings.gm-assistant-targets');
     Route::patch('settings/data-entry-per-item', [SettingsController::class, 'updateDataEntryPerItem'])->name('settings.data-entry-per-item');
     Route::patch('settings/rfq-numbers', [SettingsController::class, 'updateRfqNumbers'])->name('settings.rfq-numbers');
     Route::delete('settings/rfq-data', [SettingsController::class, 'clearRfqData'])->middleware('throttle:5,1')->name('settings.rfq-data.clear');
