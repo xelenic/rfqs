@@ -57,14 +57,24 @@ it('shows Sourcing only Sourcing\'s time on the RFQ\'s page — not the other ro
         ->and($admin)->toContain('id="rfq-time-spent-total"');
 });
 
-it('shows when each of today\'s ongoing tasks started as a date and time, not how long ago', function () {
+it('shows when each of today\'s ongoing tasks was last updated, as a date and time', function () {
+    $ops = userWithRole('Senior Operations');
     test()->travelTo(CarbonImmutable::parse('2026-10-19 09:15', Setting::DEFAULT_TIMEZONE));
-    splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1679']), [1 => userWithRole('Sourcing')]);
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1679']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     test()->travelTo(CarbonImmutable::parse('2026-10-19 16:20', Setting::DEFAULT_TIMEZONE));
 
-    $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard'))->assertOk()->getContent();
+    $ongoing = fn () => Str::after(test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard'))->assertOk()->getContent(), "Today's ongoing tasks");
 
-    expect(Str::after($html, "Today's ongoing tasks"))
+    expect($ongoing())
+        ->toContain('Last Updated</th>')
+        ->not->toContain('>Started</th>')
         ->toContain('Oct 19, 2026 9:15 AM')
         ->not->toContain('hours ago');
+
+    // Held and resumed: it was updated then.
+    $rfq->refresh()->changePartStatus(1, Rfq::ON_HOLD, $ops, 'Waiting');
+    test()->travelTo(CarbonImmutable::parse('2026-10-19 16:45', Setting::DEFAULT_TIMEZONE));
+    $rfq->refresh()->changePartStatus(1, 'Pending', $ops);
+
+    expect(Str::betweenFirst($ongoing(), 'RFQ1679-P1 of P2', '</tr>'))->toContain('Oct 19, 2026 4:45 PM');
 });

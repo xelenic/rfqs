@@ -380,8 +380,10 @@ class DashboardController extends Controller
      * (Rfq::sourcingCountdown() / dataEntryCountdown() / finalizeCountdown() /
      * gmAssistantCountdown(), so absences and resumed rounds count as they do
      * there): overdue first, then nearest to it, then the longest-running.
+     * Each with when it was last updated: the later of when it reached the
+     * step it's at (or was resumed there) and its part's last change.
      *
-     * @return Collection<int, array{rfq: Rfq, label: string, task: string, role: ?string, worker: ?User, started_at: CarbonInterface, seconds: int, target: ?int, remaining: ?int, state: string}>
+     * @return Collection<int, array{rfq: Rfq, label: string, task: string, role: ?string, worker: ?User, started_at: CarbonInterface, updated_at: CarbonInterface, seconds: int, target: ?int, remaining: ?int, state: string}>
      */
     protected function ongoingTasks(CarbonInterface $now): Collection
     {
@@ -413,6 +415,7 @@ class DashboardController extends Controller
                     'role' => $step->role(),
                     'worker' => $workers->get($step->workerId()),
                     'started_at' => $step->started_at,
+                    'updated_at' => max($step->started_at, $rfq->assignees->first(fn (User $assignee) => $assignee->pivot->part_number === $step->part_number)?->pivot->updated_at ?? $step->started_at),
                     'seconds' => max(0, $countdown !== null ? $countdown['target'] - $countdown['remaining'] : $step->workingSeconds($now)),
                     'target' => $countdown['target'] ?? null,
                     'remaining' => $countdown['remaining'] ?? null,

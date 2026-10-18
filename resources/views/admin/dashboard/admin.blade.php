@@ -79,7 +79,7 @@
                                     <th>Task</th>
                                     <th>Assignee</th>
                                     <th>Priority</th>
-                                    <th>Started</th>
+                                    <th title="When the task last changed — reached its step, was resumed, or its part was updated">Last Updated</th>
                                     <th>Time vs target</th>
                                     <th>Status</th>
                                 </tr>
@@ -106,7 +106,7 @@
                                             @endif
                                         </td>
                                         <td><span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priority_level }}</span></td>
-                                        <td class="text-nowrap text-muted-soft">{{ $task['started_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</td>
+                                        <td class="text-nowrap text-muted-soft">{{ $task['updated_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</td>
                                         <td>
                                             @if ($task['target'])
                                                 <div class="task-progress {{ $stateTone }}">
