@@ -4,7 +4,8 @@
     and the working days still without one. A new sheet, or a correction to
     one, is filled in the popup below (#attendanceModal): every Sourcing, Data
     Entry and GM Assistant person, Present, Half day (the morning or the
-    afternoon off — Attendance::HALF_DAY) or Leave (stored as absent —
+    afternoon off, or a custom time of up to 4 working hours —
+    Attendance::HALF_DAY, CUSTOM_HALF) or Leave (stored as absent —
     Attendance::ABSENT), with why when they were off.
 
     Each sheet submitted — new, or corrected — goes to HR Manager, who approves
@@ -94,7 +95,8 @@
                                     $absentees = $sheet->attendances->whereIn('status', [\App\Models\Attendance::ABSENT, \App\Models\Attendance::HALF_DAY])->sortBy(fn ($line) => $line->user?->name);
                                     $presentCount = $sheet->attendances->where('status', \App\Models\Attendance::PRESENT)->count();
                                     $halfDayCount = $sheet->attendances->where('status', \App\Models\Attendance::HALF_DAY)->count();
-                                    $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'half_off' => $line->half_off, 'note' => $line->note]]);
+                                    $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'half_off' => $line->half_off, 'note' => $line->note]
+                                        + ($line->half_off === \App\Models\Attendance::CUSTOM_HALF ? ['half_off_start' => $line->half_off_start, 'half_off_end' => $line->half_off_end] : [])]);
                                 @endphp
                                 <tr data-attendance-sheet="{{ $date }}" @class(['table-warning' => $canApprove && $sheet->isAwaitingApproval()])>
                                     <td class="fw-semibold text-nowrap">{{ $dayLabel($date) }}</td>
@@ -109,7 +111,7 @@
                                             <div class="small">
                                                 <span class="fw-semibold">{{ $line->user?->name ?? 'Unknown' }}</span>
                                                 @if ($line->status === \App\Models\Attendance::HALF_DAY)
-                                                    <span class="badge badge-soft-orange"><i class="bi bi-circle-half"></i> Half day · {{ \App\Models\Attendance::HALVES[$line->half_off] ?? 'Half off' }}</span>
+                                                    <span class="badge badge-soft-orange"><i class="bi bi-circle-half"></i> Half day · {{ $line->timeOffLabel() }}</span>
                                                 @endif
                                                 {{-- Only on an older sheet: why's no longer asked. --}}
                                                 @if ($line->reason)
@@ -260,7 +262,7 @@
                             @enderror
                             <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
                         </div>
-                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off. It goes to HR Manager for approval; once approved, nobody's time counts while they were off.</p>
+                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off (or a custom time, up to 4 working hours). It goes to HR Manager for approval; once approved, nobody's time counts while they were off.</p>
                     </div>
 
                     <div class="table-responsive">
@@ -296,15 +298,25 @@
                                             </div>
                                         </td>
                                         <td>
-                                            <div class="d-flex gap-2 attendance-absence">
+                                            @php $customOff = $status === 'half_day' && $failed && old($field('half_off')) === \App\Models\Attendance::CUSTOM_HALF; @endphp
+                                            <div class="d-flex flex-wrap gap-2 attendance-absence">
                                                 <select name="attendance[{{ $person->id }}][half_off]" class="form-select form-select-sm w-auto attendance-half @error($field('half_off'), 'attendance') is-invalid @enderror @if ($status !== 'half_day') d-none @endif"
                                                         aria-label="Which half {{ $person->name }} was off">
                                                     <option value="">Which half…</option>
                                                     @foreach (array_keys(\App\Models\Attendance::HALVES) as $half)
                                                         <option value="{{ $half }}" @selected($failed && old($field('half_off')) === $half)>{{ $halfLabel($half) }}</option>
                                                     @endforeach
+                                                    <option value="{{ \App\Models\Attendance::CUSTOM_HALF }}" @selected($failed && old($field('half_off')) === \App\Models\Attendance::CUSTOM_HALF)>Custom time (up to 4 hours)…</option>
                                                 </select>
-                                                <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm"
+                                                {{-- A custom time off: the end fills in 4 hours after the start (admin.js). --}}
+                                                <div class="d-flex align-items-center gap-1 attendance-custom-off @unless ($customOff) d-none @endunless">
+                                                    <input type="time" name="attendance[{{ $person->id }}][half_off_start]" class="form-control form-control-sm attendance-off-start"
+                                                           value="{{ $failed ? old($field('half_off_start')) : '' }}" aria-label="When {{ $person->name }}'s time off starts">
+                                                    <span class="text-muted-soft small">to</span>
+                                                    <input type="time" name="attendance[{{ $person->id }}][half_off_end]" class="form-control form-control-sm attendance-off-end"
+                                                           value="{{ $failed ? old($field('half_off_end')) : '' }}" aria-label="When {{ $person->name }}'s time off ends">
+                                                </div>
+                                                <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm attendance-note"
                                                        value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s leave">
                                             </div>
                                             @error($field('half_off'), 'attendance')

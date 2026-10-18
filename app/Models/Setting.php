@@ -619,11 +619,40 @@ class Setting extends Model
     public static function isInHalfDayOff(string $half, CarbonInterface $at): bool
     {
         $off = static::halfDayOff()[$half] ?? null;
+
+        return $off !== null && static::isInTimeOff($off, $at);
+    }
+
+    /**
+     * Whether $at falls in $off — from $off['start'] to $off['end'] ("HH:MM")
+     * on its own day, in the working hours' time zone: a half day's time off
+     * (Attendance::timeOff()).
+     *
+     * @param  array{start: string, end: string}  $off
+     */
+    public static function isInTimeOff(array $off, CarbonInterface $at): bool
+    {
         $local = CarbonImmutable::instance($at)->setTimezone(static::timezone());
 
-        return $off !== null
-            && $local >= $local->setTimeFromTimeString($off['start'])
+        return $local >= $local->setTimeFromTimeString($off['start'])
             && $local < $local->setTimeFromTimeString($off['end']);
+    }
+
+    /**
+     * The working seconds between $from and $to that fall in $off on $date
+     * ("Y-m-d") — from $off['start'] to $off['end'], in the working hours'
+     * time zone: what a half day off a custom time doesn't count. With
+     * $userId, in their own hours.
+     *
+     * @param  array{start: string, end: string}  $off
+     */
+    public static function workingSecondsInTimeOff(CarbonInterface $from, CarbonInterface $to, string $date, array $off, ?int $userId = null): int
+    {
+        $day = CarbonImmutable::parse($date, static::timezone());
+        $start = max(CarbonImmutable::instance($from), $day->setTimeFromTimeString($off['start']));
+        $end = min(CarbonImmutable::instance($to), $day->setTimeFromTimeString($off['end']));
+
+        return $start < $end ? static::workingSecondsBetween($start, $end, $userId) : 0;
     }
 
     /**

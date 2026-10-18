@@ -20,8 +20,8 @@ class AlertIdleDataEntry extends Command
      * Entry person who's been idle — nothing running, with parts waiting —
      * for as many working minutes as Setting::dataEntryIdleAlert() allows
      * (User::dataEntryIdleness()) gets Senior Operations and Admin alerted
-     * (DataEntryIdle), once for each stretch they're free. Not in the half of
-     * a half day they're off. Their Ready for Data Entry page counts down to
+     * (DataEntryIdle), once for each stretch they're free. Not in the time
+     * they're off on a half day. Their Ready for Data Entry page counts down to
      * it, and then says it's been sent.
      */
     public function handle(): int
@@ -46,7 +46,7 @@ class AlertIdleDataEntry extends Command
             $idle = $person->dataEntryIdleness($now);
 
             if ($idle === null || $idle['alerted_at'] !== null || $idle['idle_seconds'] < $idle['alert_after']
-                || ($idle['half_off'] !== null && Setting::isInHalfDayOff($idle['half_off'], $now))) {
+                || ($idle['time_off'] !== null && Setting::isInTimeOff($idle['time_off'], $now))) {
                 continue;
             }
 

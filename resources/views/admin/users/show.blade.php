@@ -460,7 +460,7 @@
                         @else
                             <ul class="list-unstyled user-attendance mb-0">
                                 @foreach ($attendance as $day)
-                                    @php [$statusLabel, $statusBadge] = $attendanceLooks[$day['status']] ?? [$day['status'], 'badge-soft-secondary']; @endphp
+                                    @php [$statusLabel, $statusBadge] = $attendanceLooks[$day['status']] ?? [\App\Models\Attendance::timeOffLabelOf($day['status']) ?? $day['status'], 'badge-soft-info']; @endphp
                                     <li>
                                         <span>{{ $day['date']->format('D, M j') }}</span>
                                         <span class="badge {{ $statusBadge }}">{{ $statusLabel }}</span>

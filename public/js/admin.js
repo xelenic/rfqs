@@ -2169,27 +2169,65 @@ function rfqmsBoot() {
 
     // The attendance popup (admin/attendance): marking someone on leave, or
     // on a half day, tints their row and opens up why — and, for a half day,
-    // which half they were off; present greys it out again — it's only kept
-    // for time off (see AttendanceController). The button that opens it
-    // says whether it's a new day's sheet or a submitted one to correct, and
-    // with what marks; one with no button (a refused submission coming back)
-    // is left as the server filled it.
+    // which half they were off, or from when to when (a custom time); present
+    // greys it out again — it's only kept for time off (see
+    // AttendanceController). The button that opens it says whether it's a
+    // new day's sheet or a submitted one to correct, and with what marks; one
+    // with no button (a refused submission coming back) is left as the
+    // server filled it.
     var syncAttendanceRow = function (row) {
         var checked = row.querySelector('.js-attendance-status:checked');
         var status = checked ? checked.value : 'present';
         var halfDay = status === 'half_day';
+        var half = row.querySelector('.attendance-half');
+        var custom = halfDay && half && half.value === 'custom';
         row.classList.toggle('is-absent', status === 'absent');
         row.classList.toggle('is-half-day', halfDay);
         row.querySelectorAll('.attendance-absence select, .attendance-absence input').forEach(function (field) {
-            field.disabled = field.classList.contains('attendance-half') ? !halfDay : status === 'present';
+            if (field.classList.contains('attendance-half')) {
+                field.disabled = !halfDay;
+            } else if (field.closest('.attendance-custom-off')) {
+                field.disabled = !custom;
+            } else {
+                field.disabled = status === 'present';
+            }
         });
-        var half = row.querySelector('.attendance-half');
         if (half) half.classList.toggle('d-none', !halfDay);
+        var customOff = row.querySelector('.attendance-custom-off');
+        if (customOff) customOff.classList.toggle('d-none', !custom);
+    };
+
+    // A custom time off is up to 4 hours: its end fills in 4 hours after its
+    // start, until it's changed by hand.
+    var fourHoursAfter = function (time) {
+        var parts = time.split(':');
+        var minutes = Math.min(parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) + 240, 23 * 60 + 59);
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        return pad(Math.floor(minutes / 60)) + ':' + pad(minutes % 60);
     };
 
     document.querySelectorAll('.js-attendance-status').forEach(function (radio) {
         radio.addEventListener('change', function () {
             syncAttendanceRow(radio.closest('tr'));
+        });
+    });
+    document.querySelectorAll('.attendance-half').forEach(function (select) {
+        select.addEventListener('change', function () {
+            syncAttendanceRow(select.closest('tr'));
+        });
+    });
+    document.querySelectorAll('.attendance-off-start').forEach(function (start) {
+        start.addEventListener('change', function () {
+            var end = start.closest('.attendance-custom-off').querySelector('.attendance-off-end');
+            if (start.value && (!end.value || end.dataset.auto === '1')) {
+                end.value = fourHoursAfter(start.value);
+                end.dataset.auto = '1';
+            }
+        });
+    });
+    document.querySelectorAll('.attendance-off-end').forEach(function (end) {
+        end.addEventListener('input', function () {
+            end.dataset.auto = '0';
         });
     });
     document.querySelectorAll('[data-attendance-user]').forEach(syncAttendanceRow);
@@ -2245,7 +2283,10 @@ function rfqmsBoot() {
                 var mark = marks[row.dataset.attendanceUser] || { status: 'present' };
                 row.querySelector('.js-attendance-status[value="' + mark.status + '"]').checked = true;
                 row.querySelector('.attendance-half').value = mark.half_off || '';
-                row.querySelector('.attendance-absence input').value = mark.note || '';
+                row.querySelector('.attendance-off-start').value = mark.half_off_start || '';
+                row.querySelector('.attendance-off-end').value = mark.half_off_end || '';
+                row.querySelector('.attendance-off-end').dataset.auto = '0';
+                row.querySelector('.attendance-note').value = mark.note || '';
                 syncAttendanceRow(row);
             });
         });

@@ -6,19 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\AttendanceSheet;
 use App\Models\Setting;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
  * Senior Operations' daily attendance sheets (AttendanceSheet), one a day:
  * every day's submitted sheet listed, newest first, and a new one — or a
  * correction to one already submitted — filled in a popup: every Sourcing, Data Entry and GM
- * Assistant person, present, on a half day (the morning or the afternoon off)
- * or on leave, with why when they were off. Kept by
+ * Assistant person, present, on a half day (the morning or the afternoon off,
+ * or a custom time of up to 4 working hours) or on leave, with why when they were off. Kept by
  * Admin and Senior Operations (User::canManageAttendance()); each submitted
  * one goes to HR Manager, who approves it or returns it to be corrected
  * (User::canApproveAttendance()). A person's time only counts on a day whose
@@ -86,6 +88,7 @@ class AttendanceController extends Controller
         ]);
 
         $this->ensureBelong($validated['attendance']);
+        $this->ensureCustomTimeOff($validated['attendance'], $validated['date']);
 
         // The date is unique in the database too: two submissions for the same
         // day at once, and the second is turned away like any other.
@@ -119,6 +122,7 @@ class AttendanceController extends Controller
         $validated = $request->validateWithBag('attendance', $this->markRules(), $this->markMessages());
 
         $this->ensureBelong($validated['attendance'], $sheet);
+        $this->ensureCustomTimeOff($validated['attendance'], $sheet->date->toDateString());
 
         DB::transaction(function () use ($request, $sheet, $validated) {
             $sheet->submitted($request->user());
@@ -166,8 +170,9 @@ class AttendanceController extends Controller
 
     /**
      * Everyone's mark, as the popup sends it: attendance[user id][status,
-     * half_off, note] — which half they were off on a half day, and a note if
-     * there's anything to say. Why they were off isn't asked.
+     * half_off, half_off_start, half_off_end, note] — which half they were
+     * off on a half day, or from when to when (Attendance::CUSTOM_HALF), and
+     * a note if there's anything to say. Why they were off isn't asked.
      *
      * @return array<string, array<int, mixed>>
      */
@@ -176,7 +181,9 @@ class AttendanceController extends Controller
         return [
             'attendance' => ['required', 'array'],
             'attendance.*.status' => ['required', Rule::in([Attendance::PRESENT, Attendance::HALF_DAY, Attendance::ABSENT])],
-            'attendance.*.half_off' => ['nullable', 'required_if:attendance.*.status,'.Attendance::HALF_DAY, Rule::in(array_keys(Attendance::HALVES))],
+            'attendance.*.half_off' => ['nullable', 'required_if:attendance.*.status,'.Attendance::HALF_DAY, Rule::in([...array_keys(Attendance::HALVES), Attendance::CUSTOM_HALF])],
+            'attendance.*.half_off_start' => ['nullable', 'date_format:H:i'],
+            'attendance.*.half_off_end' => ['nullable', 'date_format:H:i'],
             'attendance.*.note' => ['nullable', 'string', 'max:500'],
         ];
     }
@@ -188,7 +195,59 @@ class AttendanceController extends Controller
     {
         return [
             'attendance.*.half_off.required_if' => 'Say which half they were off.',
+            'attendance.*.half_off_start.date_format' => 'Give the time off as times, like 10:00 to 14:00.',
+            'attendance.*.half_off_end.date_format' => 'Give the time off as times, like 10:00 to 14:00.',
         ];
+    }
+
+    /**
+     * Refuses a half day off a custom time that isn't one on $date: both
+     * times, the end after the start, some of the person's working time
+     * (Setting::workingSecondsBetween(), in their own hours) and no more than
+     * Attendance::MAX_CUSTOM_OFF_SECONDS of it. Said under their half day.
+     *
+     * @param  array<int|string, array<string, mixed>>  $marks
+     *
+     * @throws ValidationException
+     */
+    private function ensureCustomTimeOff(array $marks, string $date): void
+    {
+        $errors = [];
+
+        foreach ($marks as $userId => $mark) {
+            if ($mark['status'] !== Attendance::HALF_DAY || ($mark['half_off'] ?? null) !== Attendance::CUSTOM_HALF) {
+                continue;
+            }
+
+            $start = $mark['half_off_start'] ?? null;
+            $end = $mark['half_off_end'] ?? null;
+            $field = "attendance.{$userId}.half_off";
+
+            if ($start === null || $end === null) {
+                $errors[$field] = 'Give the time they were off — from and to.';
+
+                continue;
+            }
+
+            if ($end <= $start) {
+                $errors[$field] = 'The time off has to end after it starts.';
+
+                continue;
+            }
+
+            $zone = Setting::timezone();
+            $seconds = Setting::workingSecondsBetween(CarbonImmutable::parse("{$date} {$start}", $zone), CarbonImmutable::parse("{$date} {$end}", $zone), (int) $userId);
+
+            if ($seconds === 0) {
+                $errors[$field] = "{$start}–{$end} is outside their working hours that day.";
+            } elseif ($seconds > Attendance::MAX_CUSTOM_OFF_SECONDS) {
+                $errors[$field] = 'A half day is up to '.Setting::durationLabel(Attendance::MAX_CUSTOM_OFF_SECONDS)." of working time — {$start}–{$end} is ".Setting::durationLabel($seconds).'.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors)->errorBag('attendance');
+        }
     }
 
     /**
@@ -213,16 +272,19 @@ class AttendanceController extends Controller
      * Writes everyone's mark onto $sheet. Someone marked present again loses
      * any reason an older sheet gave for their leave.
      *
-     * @param  array<int|string, array{status: string, half_off?: ?string, note?: ?string}>  $marks
+     * @param  array<int|string, array{status: string, half_off?: ?string, half_off_start?: ?string, half_off_end?: ?string, note?: ?string}>  $marks
      */
     private function saveMarks(AttendanceSheet $sheet, array $marks): void
     {
         foreach ($marks as $userId => $mark) {
             $present = $mark['status'] === Attendance::PRESENT;
+            $custom = $mark['status'] === Attendance::HALF_DAY && $mark['half_off'] === Attendance::CUSTOM_HALF;
 
             $sheet->attendances()->updateOrCreate(['user_id' => (int) $userId], [
                 'status' => $mark['status'],
                 'half_off' => $mark['status'] === Attendance::HALF_DAY ? $mark['half_off'] : null,
+                'half_off_start' => $custom ? $mark['half_off_start'] : null,
+                'half_off_end' => $custom ? $mark['half_off_end'] : null,
                 'note' => $present ? null : ($mark['note'] ?? null),
             ] + ($present ? ['reason' => null] : []));
         }

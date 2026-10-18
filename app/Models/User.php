@@ -461,14 +461,14 @@ class User extends Authenticatable
      * part waiting for them came in — given to them, or to anyone in Data
      * Entry (Rfq::dataEntryWaitingSince()) —
      * that many of their working seconds (own extra hours included), less
-     * the half of a half day they're off —
+     * the time they're off on a half day (Attendance::timeOff()) —
      * and when Senior Operations was told about it, if they have been
      * (DataEntryIdle, sent by App\Console\Commands\AlertIdleDataEntry).
      * Null when it doesn't apply: the alert's off, nothing's waiting, they've
      * a part running (RfqStep::runningDataEntryOf()), or today's attendance
      * sheet has them on leave.
      *
-     * @return array{idle_from: CarbonImmutable, idle_seconds: int, alert_after: int, waiting: int, half_off: ?string, alerted_at: ?CarbonImmutable}|null
+     * @return array{idle_from: CarbonImmutable, idle_seconds: int, alert_after: int, waiting: int, time_off: array{start: string, end: string}|null, alerted_at: ?CarbonImmutable}|null
      */
     public function dataEntryIdleness(?CarbonInterface $now = null): ?array
     {
@@ -488,7 +488,7 @@ class User extends Authenticatable
             return null;
         }
 
-        $halfOff = $mark?->status === Attendance::HALF_DAY ? $mark->half_off : null;
+        $timeOff = $mark?->timeOff();
         $lastRunning = RfqStep::query()->where('step', 'data_entry')->where('worked_by', $this->id)->max('ended_at');
         $startOfToday = $local->startOfDay()->setTimezone($now->getTimezone());
         $freeSince = $lastRunning !== null ? max($startOfToday, CarbonImmutable::parse($lastRunning)) : $startOfToday;
@@ -502,10 +502,11 @@ class User extends Authenticatable
         return [
             'idle_from' => $idleFrom,
             'idle_seconds' => (int) collect(Setting::workingSecondsWithHalfDaysOff($idleFrom, $now, $this->id))
-                ->sum(fn (array $day) => $day['all'] - ($halfOff !== null ? $day[$halfOff] : 0)),
+                ->map(fn (array $day, string $date) => $day['all'] - ($timeOff !== null ? Setting::workingSecondsInTimeOff($idleFrom, $now, $date, $timeOff, $this->id) : 0))
+                ->sum(),
             'alert_after' => $alert['minutes'] * 60,
             'waiting' => $waiting->count(),
-            'half_off' => $halfOff,
+            'time_off' => $timeOff,
             'alerted_at' => $alertedAt !== null ? CarbonImmutable::parse($alertedAt) : null,
         ];
     }

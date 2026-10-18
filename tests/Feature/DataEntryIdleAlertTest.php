@@ -212,6 +212,21 @@ it('doesn\'t count the half of a half day they\'re off', function () {
     expect(idleAlertsOf($seniorOps))->toHaveCount(1);
 });
 
+it('doesn\'t count a custom time off on a half day', function () {
+    [$morgan, $seniorOps] = idleCast();
+    handedOverAt('2026-10-05 10:30');
+    Attendance::factory()->for(AttendanceSheet::factory()->state(['date' => '2026-10-05']), 'sheet')
+        ->create(['user_id' => $morgan->id, 'status' => Attendance::HALF_DAY, 'half_off' => Attendance::CUSTOM_HALF, 'half_off_start' => '10:00', 'half_off_end' => '14:00']);
+
+    // Off 10:00–14:00: nothing then — it counts from 14:00.
+    checkIdleAt('2026-10-05 11:00');
+    checkIdleAt('2026-10-05 14:09');
+    expect(idleAlertsOf($seniorOps))->toBe([]);
+
+    checkIdleAt('2026-10-05 14:10');
+    expect(idleAlertsOf($seniorOps))->toHaveCount(1);
+});
+
 // ---- The bell --------------------------------------------------------------------
 
 it('rings the bell for Senior Operations — not for Data Entry, whose bell stays quiet — and opens on the person to nudge', function () {
