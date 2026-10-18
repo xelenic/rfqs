@@ -523,6 +523,18 @@ class User extends Authenticatable
     }
 
     /**
+     * Narrows to the people who hold any of $roles and can work — as
+     * holdingRole(), for several roles at once.
+     *
+     * @param  Builder<User>  $query
+     * @param  array<int, string>  $roles
+     */
+    public function scopeHoldingAnyRole(Builder $query, array $roles): void
+    {
+        $query->active()->whereHas('roles', fn (Builder $named) => $named->whereIn('name', $roles));
+    }
+
+    /**
      * The people who hold a role, by name — for the "Done by" pickers on
      * Admin's forms. Looked up once per request per role, since a page can
      * carry one on every row. See RfqController::doneBy().

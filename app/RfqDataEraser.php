@@ -4,6 +4,7 @@ namespace App;
 
 use App\Models\RfqCommentAttachment;
 use App\Notifications\DataEntryAssigned;
+use App\Notifications\DataEntryPaused;
 use App\Notifications\LineItemsDiscrepancy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -49,8 +50,8 @@ final class RfqDataEraser
 
     /**
      * Empties them — and the photos and files attached to comments, and the
-     * "assigned to you" and "line items differ" alerts about parts that are
-     * gone — then has every open page refresh (LiveVersion: a truncate
+     * "assigned to you", "paused" and "line items differ" alerts about parts
+     * that are gone — then has every open page refresh (LiveVersion: a truncate
      * isn't a write it watches).
      *
      * @return array<string, int> how many rows each table had
@@ -66,7 +67,7 @@ final class RfqDataEraser
         });
 
         Storage::disk(RfqCommentAttachment::DISK)->deleteDirectory('rfq-attachments');
-        DB::table('notifications')->whereIn('type', [DataEntryAssigned::class, LineItemsDiscrepancy::class])->delete();
+        DB::table('notifications')->whereIn('type', [DataEntryAssigned::class, DataEntryPaused::class, LineItemsDiscrepancy::class])->delete();
         LiveVersion::bump();
 
         return $counts;

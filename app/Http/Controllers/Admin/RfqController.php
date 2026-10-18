@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
 use App\Notifications\DataEntryAssigned;
+use App\Notifications\DataEntryPaused;
 use App\Notifications\LineItemsDiscrepancy;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -1566,6 +1567,14 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         $rfq->pauseDataEntryPart($part, $request->user(), $validator->validated()['pause_reason'], $validator->validated()['pause_reference'] ?? null);
+
+        // Senior Operations and the General Manager hear of every pause, with
+        // the reason and reference as saved on the part.
+        $paused = $rfq->refresh()->assigneeForPart($part)?->pivot;
+
+        if ($paused?->isDataEntryPaused()) {
+            Notification::send(DataEntryPaused::recipients(), new DataEntryPaused($rfq, $part, $request->user(), $paused->data_entry_pause_reason, $paused->data_entry_pause_reference));
+        }
 
         return back()->with('status', "Paused {$rfq->partNumberLabel($part)} — its countdown has stopped. You can start another, and resume this one once you've nothing running.");
     }

@@ -6,7 +6,6 @@ use App\Models\Rfq;
 use App\Models\RfqAssignment;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Notifications\Notification;
 
@@ -41,10 +40,7 @@ class LineItemsDiscrepancy extends Notification
      */
     public static function recipients(): Collection
     {
-        return User::query()
-            ->active()
-            ->whereHas('roles', fn (Builder $roles) => $roles->whereIn('name', self::RECIPIENT_ROLES))
-            ->get();
+        return User::query()->holdingAnyRole(self::RECIPIENT_ROLES)->get();
     }
 
     /**
