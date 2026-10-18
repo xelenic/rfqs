@@ -6705,3 +6705,87 @@ tr.is-deactivated > td:not(:last-child) {
     animation: none;
   }
 }
+
+/* ---------- Admin's performance reports (admin/reports/performance) ---------- */
+/* Who a report covers: one chip per person, picked like the priority chips. */
+.report-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  background: var(--rfq-surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--rfq-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.report-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.report-chip:hover {
+  border-color: var(--rfq-primary);
+}
+
+.report-chip:has(input:checked) {
+  border-color: var(--rfq-primary);
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+}
+
+.report-chip:has(input:focus-visible) {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.report-table th {
+  vertical-align: bottom;
+}
+
+.report-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.report-sort i {
+  font-size: 0.8em;
+  opacity: 0.45;
+}
+
+.report-sort.is-sorted,
+.report-sort.is-sorted i {
+  color: var(--rfq-primary-dark);
+  opacity: 1;
+}
+
+.report-total th {
+  background: var(--rfq-primary-soft);
+  border-top: 2px solid var(--rfq-primary);
+}
+
+/* Print the report alone: no sidebar, filters or tabs. */
+@media print {
+  .sidebar,
+  .sidebar-backdrop,
+  .topbar .btn,
+  .report-filters,
+  .report-tabs,
+  .live-toasts {
+    display: none !important;
+  }
+
+  .main-col {
+    margin-left: 0 !important;
+  }
+}

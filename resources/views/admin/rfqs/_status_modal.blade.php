@@ -1,7 +1,8 @@
 {{--
     The popup Senior Operations puts an RFQ on hold, or cancels it, from —
     asking why, which is kept with it and posted to its thread
-    (RfqController::changeStatus()) — or one part of a split, on its own
+    (RfqController::changeStatus()), and for a hold whether it's waiting for
+    the customer's clarification — or one part of a split, on its own
     (data-part). Pointed at the change, and on a list at the RFQ too (its
     data-action, data-rfq-id and data-label), by the .js-rfq-status button
     that opens it (see admin.js); after a refused submission — no reason — it
@@ -62,6 +63,12 @@
                     @error('status', 'rfq_status')
                         <div class="text-danger small mt-2">{{ $message }}</div>
                     @enderror
+                    {{-- A hold only: counted apart in the reports (App\PerformanceReports). --}}
+                    <div class="form-check mt-3 {{ $isCancelling ? 'd-none' : '' }}" id="rfqStatusCustomer">
+                        <input type="checkbox" class="form-check-input" name="customer_clarification" value="1" id="rfq-status-customer"
+                               @checked($isFailedStatus && old('customer_clarification')) @disabled($isCancelling)>
+                        <label class="form-check-label" for="rfq-status-customer">Waiting for customer clarification</label>
+                    </div>
                     @include('admin.rfqs._attachments_input', ['attachmentsId' => 'rfq-status-attachments'])
                     <div class="mt-3">
                         @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'rfq-status-acting-as', 'label' => 'Done by'])

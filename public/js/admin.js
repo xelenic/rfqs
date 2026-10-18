@@ -1643,6 +1643,14 @@ function rfqmsBoot() {
             submit.querySelector('span').textContent = title;
             reason.value = '';
             reason.classList.remove('is-invalid');
+
+            // Waiting for the customer is a kind of hold, not of cancelling.
+            var customer = document.getElementById('rfq-status-customer');
+            if (customer) {
+                customer.checked = false;
+                customer.disabled = cancelling;
+                document.getElementById('rfqStatusCustomer').classList.toggle('d-none', cancelling);
+            }
         });
     });
 

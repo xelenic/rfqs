@@ -26,8 +26,9 @@ it('groups the workflow by role in the Admin sidebar', function () {
         ->assertOk();
 
     // A node for each role, the "RFQ Management" parent they all hang from,
-    // and Human Resource after it, with HR Manager under it.
-    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 3);
+    // Human Resource after it, with HR Manager under it, then Reports with
+    // its three groups (Sourcing, Data Entry, RFQ tracking).
+    expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 7);
 
     foreach ([
         ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development'],

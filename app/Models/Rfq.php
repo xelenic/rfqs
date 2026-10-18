@@ -536,14 +536,16 @@ class Rfq extends Model
      * sets it going again (Pending), resuming exactly where it was: every
      * part's progress, and its stage, are left as they were; only the status
      * changes. A stop needs a reason. Either way it's recorded — who, when,
-     * why — and posted to the RFQ's thread, and the step log follows: time
+     * why, and for a hold whether it's waiting on the customer's
+     * clarification ($awaitingCustomer) — and posted to the RFQ's thread, and
+     * the step log follows: time
      * stops while it's stopped, and starts again when it's resumed, each
      * part's round carrying on rather than starting over (syncSteps()).
      *
      * Caller is responsible for verifying the change is allowed — see
      * RfqController::changeStatus().
      */
-    public function changeStatus(string $status, User $by, ?string $reason = null): void
+    public function changeStatus(string $status, User $by, ?string $reason = null, bool $awaitingCustomer = false): void
     {
         $action = match ($status) {
             self::ON_HOLD => 'put_on_hold',
@@ -561,9 +563,21 @@ class Rfq extends Model
         $this->postActionComment($by, $action, filled($reason) ? $reason : match ($action) {
             'reopened' => 'Reopened.',
             default => 'Resumed.',
-        });
+        }, $this->customerClarificationMeta($status, $awaitingCustomer));
 
         $this->syncSteps(resuming: $status === 'Pending');
+    }
+
+    /**
+     * What a hold's comment keeps to say it's waiting on the customer — for
+     * clarification of what they asked for (App\PerformanceReports counts
+     * these apart from the pending ones). Nothing for any other change.
+     *
+     * @return array{customer_clarification?: true}
+     */
+    private function customerClarificationMeta(string $status, bool $awaitingCustomer): array
+    {
+        return $status === self::ON_HOLD && $awaitingCustomer ? ['customer_clarification' => true] : [];
     }
 
     /**
@@ -589,7 +603,7 @@ class Rfq extends Model
      * Caller is responsible for verifying the change is allowed — see
      * RfqController::changeStatus().
      */
-    public function changePartStatus(int $part, string $status, User $by, ?string $reason = null): void
+    public function changePartStatus(int $part, string $status, User $by, ?string $reason = null, bool $awaitingCustomer = false): void
     {
         $assignee = $this->assigneeForPart($part);
         $wasCancelled = $assignee->pivot->isCancelled();
@@ -608,7 +622,7 @@ class Rfq extends Model
             default => $wasCancelled ? 'reopened' : 'resumed',
         };
 
-        $this->postActionComment($by, $action, filled($reason) ? $reason : ($wasCancelled ? 'Reopened.' : 'Resumed.'), $this->partContext($part));
+        $this->postActionComment($by, $action, filled($reason) ? $reason : ($wasCancelled ? 'Reopened.' : 'Resumed.'), $this->partContext($part) + $this->customerClarificationMeta($status, $awaitingCustomer));
 
         if ($status === self::CANCELLED) {
             $this->catchUpWithLiveParts($by);

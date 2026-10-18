@@ -98,6 +98,7 @@ class RfqComment extends Model
             isset($meta['entries']) ? trans_choice('1 line item added|:count line items added', $meta['entries'], ['count' => $meta['entries']]) : null,
             isset($meta['entries'], $meta['to_add']) ? RfqAssignment::lineItemsDiscrepancyText($meta['entries'], $meta['to_add']) : null,
             isset($meta['reference']) ? "Ref {$meta['reference']}" : null,
+            ! empty($meta['customer_clarification']) ? 'Waiting for customer clarification' : null,
         ])->filter()->implode(' · ');
 
         return $context !== '' ? $context : null;

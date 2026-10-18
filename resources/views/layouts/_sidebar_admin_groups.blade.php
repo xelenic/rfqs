@@ -19,7 +19,9 @@
 
     After it, "Human Resource", laid out the same way: the people side, with
     HR Manager as its step — the attendance sheets (and what's waiting there
-    to make, correct or approve) and everyone's time spent.
+    to make, correct or approve) and everyone's time spent. Then "Reports":
+    the performance reports, Sourcing's, Data Entry's and the RFQ tracking
+    sheet.
 --}}
 @php
     // Besides the queues: the attendance sheets to make (working days still
@@ -111,6 +113,28 @@
                 'links' => [
                     ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
                     ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
+                ],
+            ],
+        ]],
+        // Admin's performance reports (Admin\PerformanceReportController).
+        ['slug' => 'reports', 'label' => 'Reports', 'icon' => 'bi-graph-up', 'groups' => [
+            [
+                'role' => 'Sourcing Reports', 'badge' => [],
+                'links' => [
+                    ['label' => 'Daily Report', 'icon' => 'bi-calendar-day', 'route' => 'admin.reports.sourcing-daily', 'activeOn' => 'admin.reports.sourcing-daily', 'count' => null, 'hint' => ''],
+                    ['label' => 'Monthly Report', 'icon' => 'bi-calendar3', 'route' => 'admin.reports.sourcing-monthly', 'activeOn' => 'admin.reports.sourcing-monthly', 'count' => null, 'hint' => ''],
+                ],
+            ],
+            [
+                'role' => 'Data Entry Reports', 'badge' => [],
+                'links' => [
+                    ['label' => 'Daily Report', 'icon' => 'bi-keyboard', 'route' => 'admin.reports.data-entry-daily', 'activeOn' => 'admin.reports.data-entry-daily', 'count' => null, 'hint' => ''],
+                ],
+            ],
+            [
+                'role' => 'RFQ Tracking', 'badge' => [],
+                'links' => [
+                    ['label' => 'Tracking Sheet', 'icon' => 'bi-table', 'route' => 'admin.reports.rfq-tracking', 'activeOn' => 'admin.reports.rfq-tracking', 'count' => null, 'hint' => ''],
                 ],
             ],
         ]],

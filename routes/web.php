@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\LogController;
 use App\Http\Controllers\Admin\MessageController;
 use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\Admin\PerformanceReportController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RfqCommentController;
 use App\Http\Controllers\Admin\RfqController;
@@ -68,6 +69,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::delete('settings/user-hours/{user}', [SettingsController::class, 'destroyUserHours'])->name('settings.user-hours.destroy');
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
+    Route::get('reports/sourcing-daily', [PerformanceReportController::class, 'sourcingDaily'])->name('reports.sourcing-daily');
+    Route::get('reports/data-entry-daily', [PerformanceReportController::class, 'dataEntryDaily'])->name('reports.data-entry-daily');
+    Route::get('reports/sourcing-monthly', [PerformanceReportController::class, 'sourcingMonthly'])->name('reports.sourcing-monthly');
+    Route::get('reports/rfq-tracking', [PerformanceReportController::class, 'rfqTracking'])->name('reports.rfq-tracking');
 
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');

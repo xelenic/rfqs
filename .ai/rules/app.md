@@ -1,6 +1,7 @@
 ---
 paths:
   - 'app/**'
+  - app/PerformanceReports.php
 ---
 
 # App
@@ -55,3 +56,12 @@ Since 2026-10-18, every successful Pause (RfqController::pauseDataEntry()) sends
 
 ## @mentions on a closed RFQ go to Messages (private_messages.rfq_comment_id)
 Since 2026-10-19, RfqCommentController::store() calls RfqComment::messageMentionedUsers() on every comment and reply. On a closed RFQ (Rfq::isClosed(), status Completed) it creates a PrivateMessage from the author to each person mentioned: "Mentioned you [in a reply] on closed RFQ… — subject:\n" followed by the comment body. It never goes to the author, and on an open, held or cancelled RFQ nothing is sent. Mentionable people are RfqComment::mentionableUsers() (active Sourcing, as in the @mention dropdown). mentionedUsers() matches whole names, longest first; everyone sharing a name gets it. rfq_comment_id links the message so the conversation can show "Open RFQ…"; it cascades on comment delete, and RfqDataEraser deletes these messages.
+
+## Performance reports' definitions live in App\PerformanceReports
+Since 2026-10-19, Admin-only reports (PerformanceReportController: sourcing-daily, data-entry-daily, sourcing-monthly, rfq-tracking) implement the business's reporting spec. Shared definitions:
+- An RFQ counts once per person and once in a total; items are rfqs.number_of_items.
+- Received is the person's first Sourcing stretch on the part (rfq_steps), else rfq_user.created_at.
+- Finalized and quotation completed are rfq_user.finalized_at / finalized_by. Data Entry completed is data_entry_completed_at / by.
+- Pending is received and not yet finalized at the end of the day, excluding cancelled parts and those waiting for customer clarification, which are counted apart.
+- Hold state on a past day is rebuilt from put_on_hold / cancelled / resumed / reopened comments (meta.part, meta.customer_clarification), never from the current status.
+Change a definition here, not in a view, so all four reports stay consistent.

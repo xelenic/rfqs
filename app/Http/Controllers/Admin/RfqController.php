@@ -1099,7 +1099,8 @@ class RfqController extends Controller implements HasMiddleware
      * Senior Operations puts an RFQ on hold, cancels it, or sets it going
      * again (status Pending): an open RFQ can be put on hold or cancelled, one
      * on hold resumed or cancelled, a cancelled one reopened. Putting on hold
-     * or cancelling needs a reason. A closed RFQ is done with. Admin can too,
+     * or cancelling needs a reason; a hold can say it's waiting for the
+     * customer's clarification (customer_clarification). A closed RFQ is done with. Admin can too,
      * as one of Senior Operations (doneBy()). See Rfq::changeStatus(). With a
      * part, just that part of a split — see changePartStatus().
      */
@@ -1122,6 +1123,7 @@ class RfqController extends Controller implements HasMiddleware
         $validated = $request->validateWithBag('rfq_status', [
             'status' => ['required', Rule::in($allowed)],
             'reason' => ['nullable', 'required_unless:status,Pending', 'string', 'max:1000'],
+            'customer_clarification' => ['nullable', 'boolean'],
         ], [
             'status.in' => 'That isn\'t a change this RFQ can make right now.',
             'reason.required_unless' => 'Say why.',
@@ -1133,7 +1135,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
 
         return redirect()->back()->with('status', match ($validated['status']) {
             Rfq::ON_HOLD => "{$rfq->rfq_number} is on hold.",
@@ -1171,6 +1173,7 @@ class RfqController extends Controller implements HasMiddleware
                 }
             }],
             'reason' => ['nullable', 'required_unless:status,Pending', 'string', 'max:1000'],
+            'customer_clarification' => ['nullable', 'boolean'],
         ], [
             'status.in' => 'That isn\'t a change this part can make right now.',
             'reason.required_unless' => 'Say why.',
@@ -1182,7 +1185,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
 
         $label = $rfq->partNumberLabel($part);
 
