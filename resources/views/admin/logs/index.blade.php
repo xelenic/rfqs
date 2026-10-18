@@ -81,7 +81,6 @@
                             <td class="text-nowrap text-muted-soft small">
                                 @if ($entry['at'])
                                     <span title="{{ $entry['at']->format('Y-m-d H:i:s T') }}">{{ $entry['at']->format('M d, g:i:s A') }}</span>
-                                    <div>{{ $entry['at']->diffForHumans() }}</div>
                                 @else
                                     —
                                 @endif

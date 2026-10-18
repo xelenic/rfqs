@@ -10,3 +10,6 @@ Since 2026-10-15, people can have a profile photo (users.avatar_path, stored on 
 
 ## No yellow (warning) buttons
 Since 2026-10-16, at the user's request, don't use btn-warning or btn-outline-warning: yellow buttons don't read well in this UI. Use btn-outline-secondary for neutral actions like Pause or Put on hold, btn-primary or btn-outline-primary for go-ahead actions, and btn-danger for confirming something that replaces or deletes data (Restore, Clear all RFQ data). Amber is still fine for small status pills and badges.
+
+## Show date and time, never "… ago"
+At the user's request (2026-10-17 for the thread, 2026-10-19 everywhere), past times are shown as a date and time in the business time zone, for example $at->toBusinessTimezone()->format('M d, Y g:i A'). Never use diffForHumans(), not even in a title tooltip, and not as a "waiting N hours" figure: label such a column "Waiting since" and show the date. Future countdowns such as the next backup ("in 3 hours") are the only exception.

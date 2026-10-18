@@ -25,7 +25,7 @@
                             <td>{{ $rfq->subject }}</td>
                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                             <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
-                            <td class="text-muted-soft">{{ $rfq->created_at->diffForHumans() }}</td>
+                            <td class="text-muted-soft text-nowrap">{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                             <td class="text-end">
                                 <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                     <i class="bi bi-eye"></i>

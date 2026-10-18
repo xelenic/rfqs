@@ -194,7 +194,7 @@
                                 <a href="{{ route('admin.rfqs.show', $item['rfq']) }}" class="fw-semibold">{{ $item['rfq_number'] }}</a>
                                 <div class="small">{{ $item['subject'] }}</div>
                                 <div class="text-muted-soft small">
-                                    Approved {{ $item['approved_at']?->diffForHumans() ?? '—' }}@if ($item['approved_by']) by {{ $item['approved_by'] }}@endif
+                                    Approved {{ $item['approved_at']?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}@if ($item['approved_by']) by {{ $item['approved_by'] }}@endif
                                 </div>
                             </div>
                             @include('admin.rfqs._close_button', [

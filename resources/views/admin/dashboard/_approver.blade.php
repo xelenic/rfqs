@@ -87,7 +87,7 @@
                                     @if ($hasCountdown)
                                         <th>Time left</th>
                                     @endif
-                                    <th>Waiting</th>
+                                    <th>Waiting since</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -109,7 +109,7 @@
                                                 @endif
                                             </td>
                                         @endif
-                                        <td class="text-nowrap text-muted-soft" @if ($part['since']) title="Sent on {{ $part['since']->toBusinessTimezone()->format('M d, Y g:i A') }}" @endif>{{ $part['since']?->diffForHumans(null, true) ?? '—' }}</td>
+                                        <td class="text-nowrap text-muted-soft">{{ $part['since']?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>

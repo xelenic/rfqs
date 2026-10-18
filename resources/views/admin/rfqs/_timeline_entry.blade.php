@@ -75,7 +75,7 @@
                     <div class="rfq-comment-meta">
                         @include('admin.rfqs._comment_author', ['author' => $comment->author])
                         @include('admin.rfqs._comment_action', ['comment' => $comment])
-                        <span class="text-muted-soft rfq-comment-time" title="{{ $comment->created_at->diffForHumans() }}">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
+                        <span class="text-muted-soft rfq-comment-time">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                     </div>
                     @if ($entry['detail'])
                         <div class="text-muted-soft small mb-1">

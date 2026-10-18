@@ -42,7 +42,7 @@
                     <span class="notification-item-body">
                         <span class="notification-item-text">{{ $item['text'] }}</span>
                         <span class="notification-item-time" title="{{ $item['at']->copy()->setTimezone(\App\Models\Setting::timezone())->format('M d, Y g:i A') }}">
-                            {{ $item['at']->diffForHumans() }} &middot; {{ $item['note'] }}
+                            {{ $item['at']->toBusinessTimezone()->format('M d, Y g:i A') }} &middot; {{ $item['note'] }}
                         </span>
                     </span>
                 </a>

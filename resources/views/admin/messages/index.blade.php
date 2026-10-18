@@ -32,7 +32,7 @@
                     </span>
                 </span>
                 <span class="conversation-meta">
-                    <span class="text-muted-soft small">{{ $last->created_at->diffForHumans() }}</span>
+                    <span class="text-muted-soft small">{{ $last->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                     @if ($unreadCount > 0)
                         <span class="nav-link-count" title="{{ $unreadCount }} unread">{{ $unreadCount }}</span>
                     @endif

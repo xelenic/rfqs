@@ -1320,7 +1320,7 @@
                                             <i class="bi {{ $assignee->pivot->isOnHold() ? 'bi-pause-circle' : 'bi-x-circle' }}"></i> {{ $assignee->pivot->isOnHold() ? 'On hold' : 'Cancelled' }}
                                         </span>
                                     @elseif ($assignee->pivot->completed_at)
-                                        <span class="badge badge-soft-success" title="Completed {{ $assignee->pivot->completed_at->diffForHumans() }}">
+                                        <span class="badge badge-soft-success" title="Completed {{ $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}">
                                             <i class="bi bi-check-circle-fill"></i> Done
                                         </span>
                                     @elseif ($assignee->pivot->returned_at)

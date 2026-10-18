@@ -27,14 +27,15 @@ it('shows a comment\'s and a reply\'s full date and time — on the timeline and
 
     // The RFQ's page: its timeline.
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertSee('title="14 hours ago">Oct 16, 2026 7:27 PM</span>', false)
+        ->assertSee('<span class="text-muted-soft rfq-comment-time">Oct 16, 2026 7:27 PM</span>', false)
         ->assertSee('Oct 16, 2026 8:05 PM')
-        ->assertDontSee('>14 hours ago<', false);
+        ->assertDontSee('hours ago');
 
     // Sourcing's list: the quick-detail popup's thread.
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSee('title="14 hours ago">Oct 16, 2026 7:27 PM</span>', false)
-        ->assertSee('title="13 hours ago">Oct 16, 2026 8:05 PM</span>', false);
+        ->assertSee('<span class="text-muted-soft rfq-comment-time">Oct 16, 2026 7:27 PM</span>', false)
+        ->assertSee('<span class="text-muted-soft rfq-comment-time">Oct 16, 2026 8:05 PM</span>', false)
+        ->assertDontSee('hours ago');
 });
 
 it('shows Sourcing only Sourcing\'s time on the RFQ\'s page — not the other roles\', nor the total', function () {
@@ -54,4 +55,16 @@ it('shows Sourcing only Sourcing\'s time on the RFQ\'s page — not the other ro
     $admin = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
     expect($timeCard($admin))->toContain('Data Entry')->toContain('GM Assistant')
         ->and($admin)->toContain('id="rfq-time-spent-total"');
+});
+
+it('shows when each of today\'s ongoing tasks started as a date and time, not how long ago', function () {
+    test()->travelTo(CarbonImmutable::parse('2026-10-19 09:15', Setting::DEFAULT_TIMEZONE));
+    splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1679']), [1 => userWithRole('Sourcing')]);
+    test()->travelTo(CarbonImmutable::parse('2026-10-19 16:20', Setting::DEFAULT_TIMEZONE));
+
+    $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard'))->assertOk()->getContent();
+
+    expect(Str::after($html, "Today's ongoing tasks"))
+        ->toContain('Oct 19, 2026 9:15 AM')
+        ->not->toContain('hours ago');
 });

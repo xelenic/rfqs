@@ -61,7 +61,7 @@
         @foreach ([
             ['label' => 'Backups kept', 'value' => $backups->count(), 'caption' => "For {$retention} days each", 'icon' => 'bi-archive', 'tone' => ''],
             ['label' => 'Storage used', 'value' => $backups->isEmpty() ? '0 KB' : $sizeLabel($totalSize), 'caption' => 'storage/app/private/backups', 'icon' => 'bi-hdd', 'tone' => 'teal'],
-            ['label' => 'Last backup', 'value' => $latest ? $latest['created_at']->diffForHumans(null, true).' ago' : 'None yet', 'caption' => $latest ? $latest['created_at']->format('M d, Y g:i A').' · '.\App\BackupManager::TYPES[$latest['type']] : 'Back up now to make one', 'icon' => 'bi-clock-history', 'tone' => 'success'],
+            ['label' => 'Last backup', 'value' => $latest ? $latest['created_at']->format('M d, Y g:i A') : 'None yet', 'caption' => $latest ? \App\BackupManager::TYPES[$latest['type']] : 'Back up now to make one', 'icon' => 'bi-clock-history', 'tone' => 'success'],
             ['label' => 'Next automatic', 'value' => $nextRun ? $nextRun->format('D g:i A') : 'Off', 'caption' => $nextRun ? $nextRunLabel.' · in '.$nextRun->diffForHumans(null, true) : 'Turn on the schedule', 'icon' => 'bi-calendar-check', 'tone' => 'violet'],
         ] as $kpi)
             <div class="col-6 col-xl-3">

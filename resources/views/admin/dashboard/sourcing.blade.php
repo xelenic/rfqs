@@ -87,7 +87,7 @@
                                         </td>
                                         <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                         <td class="text-muted-soft">
-                                            {{ $assignment->created_at?->diffForHumans() ?? '—' }}
+                                            {{ $assignment->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                             <div class="small">{{ $assignment->created_at?->toBusinessTimezone()->format('M d, g:i A') }}</div>
                                         </td>
                                         <td><span class="badge {{ $assignment->progressBadgeClass() }}">{{ $assignment->progressLabel() }}</span></td>
@@ -175,7 +175,7 @@
                                         <i class="bi bi-arrow-counterclockwise"></i> {{ $part['assignment']->return_reason }}
                                     </div>
                                 @endif
-                                <div class="text-muted-soft small">Returned {{ $part['assignment']->returned_at?->diffForHumans() ?? '' }}</div>
+                                <div class="text-muted-soft small">Returned {{ $part['assignment']->returned_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '' }}</div>
                             </div>
                         </div>
                     @empty
@@ -191,7 +191,7 @@
                             <div>
                                 <a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a>
                                 <div class="small">{{ $part['rfq']->subject }}</div>
-                                <div class="text-muted-soft small">You completed it {{ $part['assignment']->completed_at?->diffForHumans() ?? '' }}</div>
+                                <div class="text-muted-soft small">You completed it {{ $part['assignment']->completed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '' }}</div>
                             </div>
                         </div>
                     @empty

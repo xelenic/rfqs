@@ -28,7 +28,7 @@
         <div class="rfq-comment-meta">
             @include('admin.rfqs._comment_author', ['author' => $comment->author])
             @include('admin.rfqs._comment_action', ['comment' => $comment])
-            <span class="text-muted-soft rfq-comment-time" title="{{ $comment->created_at->diffForHumans() }}">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
+            <span class="text-muted-soft rfq-comment-time">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
         </div>
         <div class="rfq-thread-bubble">
             <p class="mb-0" style="white-space: pre-line;">{!! $comment->bodyWithMentions($rfq->assignees) !!}</p>
@@ -41,7 +41,7 @@
                     <div class="rfq-thread-reply">
                         <div class="rfq-comment-meta">
                             @include('admin.rfqs._comment_author', ['author' => $reply->author])
-                            <span class="text-muted-soft rfq-comment-time" title="{{ $reply->created_at->diffForHumans() }}">{{ $reply->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
+                            <span class="text-muted-soft rfq-comment-time">{{ $reply->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                         </div>
                         <div class="rfq-thread-bubble">
                             <p class="mb-0" style="white-space: pre-line;">{!! $reply->bodyWithMentions($rfq->assignees) !!}</p>

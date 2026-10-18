@@ -234,7 +234,7 @@
                         <dt>Last step taken</dt>
                         <dd>
                             @if ($activity->isNotEmpty())
-                                {{ $activity->first()['label'] }} {{ $activity->first()['rfq']->rfq_number }} · {{ $activity->first()['at']->diffForHumans() }}
+                                {{ $activity->first()['label'] }} {{ $activity->first()['rfq']->rfq_number }} · {{ $activity->first()['at']->toBusinessTimezone()->format('M d, Y g:i A') }}
                             @else
                                 <span class="text-muted-soft">None yet</span>
                             @endif
@@ -323,7 +323,7 @@
                                             <td>{{ $item['rfq']->subject }}</td>
                                             <td><span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priority_level }}</span></td>
                                             <td><span class="badge {{ $item['badge'] }}">{{ $item['state'] }}</span></td>
-                                            <td class="text-muted-soft text-nowrap">{{ $item['since']?->diffForHumans() ?? '—' }}</td>
+                                            <td class="text-muted-soft text-nowrap">{{ $item['since']?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

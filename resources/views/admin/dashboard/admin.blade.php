@@ -106,7 +106,7 @@
                                             @endif
                                         </td>
                                         <td><span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priority_level }}</span></td>
-                                        <td class="text-nowrap text-muted-soft" title="{{ $task['started_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}">{{ $task['started_at']->diffForHumans() }}</td>
+                                        <td class="text-nowrap text-muted-soft">{{ $task['started_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</td>
                                         <td>
                                             @if ($task['target'])
                                                 <div class="task-progress {{ $stateTone }}">

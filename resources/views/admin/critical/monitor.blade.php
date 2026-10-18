@@ -131,7 +131,7 @@
                             <span class="critical-row-sub">{{ $item['rfq']->subject }}</span>
                         </span>
                         <span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priority_level }}</span>
-                        <span class="critical-row-figure" title="{{ $item['rfq']->created_at->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}">{{ $item['rfq']->created_at->diffForHumans(null, true) }}</span>
+                        <span class="critical-row-figure">{{ $item['rfq']->created_at->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</span>
                     </a>
                 @empty
                     <p class="critical-empty"><i class="bi bi-check2-circle"></i> No Urgent or High RFQ is open.</p>
@@ -166,7 +166,7 @@
                         <span class="critical-row-mark tone-warning"><i class="bi {{ $alert['icon'] }}"></i></span>
                         <span class="critical-row-main">
                             {{ $alert['text'] }}
-                            <span class="critical-row-sub">{{ $alert['at']->diffForHumans() }}</span>
+                            <span class="critical-row-sub">{{ $alert['at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</span>
                         </span>
                     </a>
                 @empty
@@ -184,7 +184,7 @@
                         <span class="critical-row-mark tone-primary"><i class="bi {{ $message['icon'] }}"></i></span>
                         <span class="critical-row-main">
                             {{ $message['text'] }}
-                            <span class="critical-row-sub">{{ $message['at']->diffForHumans() }} · {{ $message['note'] }}</span>
+                            <span class="critical-row-sub">{{ $message['at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }} · {{ $message['note'] }}</span>
                         </span>
                     </a>
                 @empty

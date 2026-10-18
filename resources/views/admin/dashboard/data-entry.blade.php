@@ -101,7 +101,7 @@
                                     <span class="badge {{ $current['rfq']->priorityBadgeClass() }}">{{ $current['rfq']->priority_level }}</span>
                                     <span class="badge {{ $stateBadge }}">{{ $stateLabel }}</span>
                                 </div>
-                                <div class="small text-muted-soft text-truncate">{{ $current['rfq']->subject }} · started {{ $current['started_at']->diffForHumans() }}</div>
+                                <div class="small text-muted-soft text-truncate">{{ $current['rfq']->subject }} · started {{ $current['started_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</div>
                                 @if ($current['target'])
                                     <div class="task-progress {{ $stateTone }} mt-2">
                                         <span class="task-progress-track"><span class="task-progress-bar" style="width: {{ min(100, round($current['seconds'] / max(1, $current['target']) * 100, 1)) }}%"></span></span>
@@ -178,7 +178,7 @@
                                     <th>Part</th>
                                     <th>Subject</th>
                                     <th>Priority</th>
-                                    <th>Waiting</th>
+                                    <th>Waiting since</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -195,7 +195,7 @@
                                         </td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
                                         <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priority_level }}</span></td>
-                                        <td class="text-nowrap text-muted-soft" @if ($part['since']) title="{{ $part['since']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}" @endif>{{ $part['since']?->diffForHumans(null, true) ?? '—' }}</td>
+                                        <td class="text-nowrap text-muted-soft">{{ $part['since']?->copy()->setTimezone($timezone)->format('M d, Y g:i A') ?? '—' }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
