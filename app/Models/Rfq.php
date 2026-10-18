@@ -1718,9 +1718,13 @@ class Rfq extends Model
         $this->load('assignees');
 
         // Marked as Data Entry's completion, naming whose part and — on a
-        // split — which, since a thread covers the whole RFQ.
+        // split — which, since a thread covers the whole RFQ. The line items
+        // Sourcing gave them to add go with it when the count differs, so the
+        // thread keeps the discrepancy (RfqAssignment::lineItemsDiscrepancy()).
         if (filled($comment)) {
-            $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name] + ($entries !== null ? ['entries' => $entries] : []));
+            $toAdd = RfqAssignment::lineItemsDiscrepancyBetween($entries, $assignee->pivot->line_items_to_add) !== null ? ['to_add' => $assignee->pivot->line_items_to_add] : [];
+
+            $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name] + ($entries !== null ? ['entries' => $entries] + $toAdd : []));
         }
 
         if ($this->allDataEntryPartsCompleted()) {

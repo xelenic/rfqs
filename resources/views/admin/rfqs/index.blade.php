@@ -295,7 +295,7 @@
                                                 <td>{{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) ?? '—' }}</td>
                                             @endif
                                             <td class="text-muted-soft text-nowrap">{{ $assignee->pivot->data_entry_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
-                                            <td class="text-end fw-semibold" style="font-variant-numeric: tabular-nums;">{{ $assignee->pivot->data_entry_entries !== null ? number_format($assignee->pivot->data_entry_entries) : '—' }}</td>
+                                            <td class="text-end fw-semibold" style="font-variant-numeric: tabular-nums;">{{ $assignee->pivot->data_entry_entries !== null ? number_format($assignee->pivot->data_entry_entries) : '—' }}@if ($assignee->pivot->lineItemsDiscrepancyLabel())<div class="small fw-normal text-danger text-nowrap"><i class="bi bi-exclamation-diamond"></i> {{ $assignee->pivot->lineItemsDiscrepancyLabel() }}</div>@endif</td>
                                             <td><span class="badge {{ $nowClass }}">{{ $nowLabel }}</span></td>
                                             <td class="text-end">
                                                 <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
@@ -457,6 +457,9 @@
                                                     $assignee->pivot->data_entry_entries !== null ? trans_choice('1 line item added|:count line items added', $assignee->pivot->data_entry_entries, ['count' => number_format($assignee->pivot->data_entry_entries)]) : null,
                                                 ])->filter()->join(' · ') }}
                                             </div>
+                                        @endif
+                                        @if ($assignee->pivot->lineItemsDiscrepancyLabel())
+                                            <div class="small text-danger"><i class="bi bi-exclamation-diamond"></i> {{ $assignee->pivot->lineItemsDiscrepancyLabel() }}</div>
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -1316,6 +1319,12 @@
                                                 <i class="bi bi-send-check"></i>
                                                 Sent to finalize by Data Entry
                                             </div>
+                                            @if ($myAssignment->pivot->lineItemsDiscrepancyLabel())
+                                                <div class="rfq-list-subnote text-danger">
+                                                    <i class="bi bi-exclamation-diamond"></i>
+                                                    {{ trans_choice('1 line item added|:count line items added', $myAssignment->pivot->data_entry_entries, ['count' => number_format($myAssignment->pivot->data_entry_entries)]) }}, {{ $myAssignment->pivot->lineItemsDiscrepancyLabel() }}
+                                                </div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>

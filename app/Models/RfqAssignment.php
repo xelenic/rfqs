@@ -486,6 +486,57 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * How far the line items Data Entry added are from the ones Sourcing gave
+     * them to add, once Data Entry has sent the part to finalize: added minus
+     * to add, so -2 is two short and 3 is three over. Null when they match or
+     * either count is missing.
+     */
+    public function lineItemsDiscrepancy(): ?int
+    {
+        return $this->data_entry_completed_at === null
+            ? null
+            : self::lineItemsDiscrepancyBetween($this->data_entry_entries, $this->line_items_to_add);
+    }
+
+    /**
+     * The discrepancy as it reads beside the line items added ("2 fewer than
+     * the 24 to add"), or null when there's none — see lineItemsDiscrepancy().
+     */
+    public function lineItemsDiscrepancyLabel(): ?string
+    {
+        return $this->lineItemsDiscrepancy() === null
+            ? null
+            : self::lineItemsDiscrepancyText($this->data_entry_entries, $this->line_items_to_add);
+    }
+
+    /**
+     * $added minus $toAdd, or null when they match or either is missing.
+     */
+    public static function lineItemsDiscrepancyBetween(?int $added, ?int $toAdd): ?int
+    {
+        if ($added === null || $toAdd === null || $added === $toAdd) {
+            return null;
+        }
+
+        return $added - $toAdd;
+    }
+
+    /**
+     * "2 fewer than the 24 to add" or "3 more than the 24 to add" — null
+     * when they match or either is missing.
+     */
+    public static function lineItemsDiscrepancyText(?int $added, ?int $toAdd): ?string
+    {
+        $discrepancy = self::lineItemsDiscrepancyBetween($added, $toAdd);
+
+        if ($discrepancy === null) {
+            return null;
+        }
+
+        return number_format(abs($discrepancy)).($discrepancy < 0 ? ' fewer' : ' more').' than the '.number_format($toAdd).' to add';
+    }
+
+    /**
      * The Data Entry (or Admin) user who started on this part.
      */
     public function dataEntryStartedBy(): BelongsTo

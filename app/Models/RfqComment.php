@@ -96,6 +96,7 @@ class RfqComment extends Model
             isset($meta['line_items']) ? trans_choice('1 line item to add|:count line items to add', $meta['line_items'], ['count' => $meta['line_items']]) : null,
             isset($meta['stage']) ? "Returned to {$meta['stage']}" : null,
             isset($meta['entries']) ? trans_choice('1 line item added|:count line items added', $meta['entries'], ['count' => $meta['entries']]) : null,
+            isset($meta['entries'], $meta['to_add']) ? RfqAssignment::lineItemsDiscrepancyText($meta['entries'], $meta['to_add']) : null,
             isset($meta['reference']) ? "Ref {$meta['reference']}" : null,
         ])->filter()->implode(' · ');
 

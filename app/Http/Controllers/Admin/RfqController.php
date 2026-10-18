@@ -14,6 +14,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
 use App\Notifications\DataEntryAssigned;
+use App\Notifications\LineItemsDiscrepancy;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +26,7 @@ use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -1680,7 +1682,18 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeDataEntryPart((int) $validated['part'], $this->doneBy($request, 'Data Entry'), $comment, (int) $entries->validated()['entries']));
+        $wasWithDataEntry = $assignee->pivot->data_entry_completed_at === null;
+        $doneBy = $this->doneBy($request, 'Data Entry');
+
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeDataEntryPart((int) $validated['part'], $doneBy, $comment, (int) $entries->validated()['entries']));
+
+        // Senior Operations and the General Manager hear of it when the line
+        // items added aren't the ones Sourcing gave to add.
+        $sent = $rfq->refresh()->assigneeForPart((int) $validated['part'])?->pivot;
+
+        if ($wasWithDataEntry && $sent?->lineItemsDiscrepancy() !== null) {
+            Notification::send(LineItemsDiscrepancy::recipients(), new LineItemsDiscrepancy($rfq, (int) $validated['part'], $sent->data_entry_entries, $sent->line_items_to_add, $doneBy));
+        }
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part to finalize.");
     }
