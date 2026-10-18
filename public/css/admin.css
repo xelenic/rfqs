@@ -6789,3 +6789,34 @@ tr.is-deactivated > td:not(:last-child) {
     margin-left: 0 !important;
   }
 }
+
+/* ---------- Senior Operations' Approve: verify the line items (_senior_ops_approve_modal) ---------- */
+.line-items-check + .line-items-check {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rfq-border);
+}
+
+.line-items-check-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* Worked out by the system: shown, never edited. */
+.line-items-check-readonly,
+.line-items-check-readonly:focus {
+  background: var(--rfq-bg);
+  color: var(--rfq-text);
+  font-weight: 600;
+  box-shadow: none;
+  cursor: default;
+}
+
+.line-items-check-readonly.is-match {
+  color: var(--rfq-success);
+}
+
+.line-items-check-readonly.is-off {
+  color: var(--rfq-danger);
+}

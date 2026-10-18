@@ -26,6 +26,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
@@ -1810,7 +1811,13 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsSeniorOpsReview($part), 422, 'This part is not awaiting Senior Operations review.');
 
-        $rfq->approveSeniorOpsPart($part, $this->doneBy($request, 'Senior Operations'));
+        $verified = $this->verifiedLineItems($request, $rfq, collect([$rfq->assigneeForPart($part)]));
+
+        if ($verified instanceof RedirectResponse) {
+            return $verified;
+        }
+
+        $rfq->approveSeniorOpsPart($part, $this->doneBy($request, 'Senior Operations'), $verified[$part]);
 
         return redirect()->back()->with('status', $rfq->stage === 'head_of_bd_review'
             ? 'Approved — every part is through, escalated to Head of Business Development.'
@@ -1833,9 +1840,55 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->stage === 'senior_ops_review', 422, 'This RFQ is not awaiting Senior Operations review.');
         $this->abortIfPartOnHold($rfq);
 
-        $rfq->completeSeniorOpsReview($this->doneBy($request, 'Senior Operations'));
+        $verified = $this->verifiedLineItems($request, $rfq, $rfq->partsAwaitingSeniorOpsApproval());
+
+        if ($verified instanceof RedirectResponse) {
+            return $verified;
+        }
+
+        $rfq->completeSeniorOpsReview($this->doneBy($request, 'Senior Operations'), $verified);
 
         return redirect()->back()->with('status', 'Approved — escalated to Head of Business Development.');
+    }
+
+    /**
+     * The line items Senior Operations counted on each of $parts as they
+     * approve them on to the Head of Business Development —
+     * actual_line_items[part number], a whole number from 0 to
+     * MAX_DATA_ENTRIES, for every one — or back, saying what's wrong. Asked
+     * in the approve popup (_senior_ops_approve_modal) beside what Sourcing
+     * gave to add and Data Entry added.
+     *
+     * @param  Collection<int, User>  $parts
+     * @return array<int, int>|RedirectResponse part number => line items
+     */
+    private function verifiedLineItems(Request $request, Rfq $rfq, Collection $parts): array|RedirectResponse
+    {
+        $rules = [];
+        $messages = [];
+
+        foreach ($parts as $assignee) {
+            $field = "actual_line_items.{$assignee->pivot->part_number}";
+            $label = $rfq->partNumberLabel($assignee->pivot->part_number);
+
+            $rules[$field] = ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES];
+            $messages += [
+                "{$field}.required" => "Enter the actual line items you verified on {$label}.",
+                "{$field}.integer" => 'Give the actual line items as a whole number, like 12.',
+                "{$field}.min" => 'The actual line items can\'t be less than 0.',
+                "{$field}.max" => 'That\'s more line items than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
+            ];
+        }
+
+        $validator = Validator::make($request->all(), $rules, $messages);
+
+        if ($validator->fails()) {
+            return back()->with('error', $validator->errors()->first());
+        }
+
+        return $parts->mapWithKeys(fn (User $assignee) => [
+            $assignee->pivot->part_number => (int) $request->input("actual_line_items.{$assignee->pivot->part_number}"),
+        ])->all();
     }
 
     /**

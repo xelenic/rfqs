@@ -772,7 +772,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1897,11 +1897,12 @@ class Rfq extends Model
      * a split. Once every part has been approved the RFQ as a whole moves
      * on, exactly as completeSeniorOpsReview() does. Idempotent — a part
      * that isn't waiting on review (not through Data Entry yet, or already
-     * approved) is left alone.
+     * approved) is left alone. $verifiedLineItems — the line items Senior
+     * Operations counted on it as they approved it — is kept with the part.
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function approveSeniorOpsPart(int $part, User $reviewer): void
+    public function approveSeniorOpsPart(int $part, User $reviewer, ?int $verifiedLineItems = null): void
     {
         if (! $this->partAwaitsSeniorOpsReview($part)) {
             return;
@@ -1910,6 +1911,7 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
             'senior_ops_reviewed_at' => now(),
             'senior_ops_reviewed_by' => $reviewer->id,
+            'verified_line_items' => $verifiedLineItems,
         ]);
         $this->load('assignees');
 
@@ -1921,26 +1923,33 @@ class Rfq extends Model
     /**
      * Senior Operations gives the second-stage review of the whole RFQ, after
      * Data Entry has finished every assignee's split — approving whatever
-     * parts haven't been approved one by one along the way. Idempotent.
-     * Escalates the RFQ on to Head of Business Development.
+     * parts haven't been approved one by one along the way
+     * (partsAwaitingSeniorOpsApproval()), each with the line items Senior
+     * Operations counted on it ($verifiedLineItems, by part number).
+     * Idempotent. Escalates the RFQ on to Head of Business Development.
      *
      * Caller is responsible for verifying stage === 'senior_ops_review'.
+     *
+     * @param  array<int, int>  $verifiedLineItems
      */
-    public function completeSeniorOpsReview(User $reviewer): void
+    public function completeSeniorOpsReview(User $reviewer, array $verifiedLineItems = []): void
     {
         if ($this->senior_ops_reviewed_at !== null) {
             return;
         }
 
-        DB::table('rfq_user')
-            ->where('rfq_id', $this->id)
-            ->whereNotNull('finalized_at')
-            ->whereNull('senior_ops_reviewed_at')
-            ->whereNull('status')
-            ->update([
-                'senior_ops_reviewed_at' => now(),
-                'senior_ops_reviewed_by' => $reviewer->id,
-            ]);
+        $this->load('assignees');
+
+        foreach ($this->partsAwaitingSeniorOpsApproval() as $assignee) {
+            DB::table('rfq_user')
+                ->where('rfq_id', $this->id)
+                ->where('part_number', $assignee->pivot->part_number)
+                ->update([
+                    'senior_ops_reviewed_at' => now(),
+                    'senior_ops_reviewed_by' => $reviewer->id,
+                    'verified_line_items' => $verifiedLineItems[$assignee->pivot->part_number] ?? null,
+                ]);
+        }
         $this->load('assignees');
 
         $this->update($this->clearedRejectRecord() + [
@@ -1948,6 +1957,23 @@ class Rfq extends Model
             'senior_ops_reviewed_at' => now(),
             'stage' => 'head_of_bd_review',
         ]);
+    }
+
+    /**
+     * The parts Senior Operations' approval of the whole RFQ
+     * (completeSeniorOpsReview()) approves: finalized, not yet approved, and
+     * not stopped on their own.
+     *
+     * @return Collection<int, User>
+     */
+    public function partsAwaitingSeniorOpsApproval(): Collection
+    {
+        return $this->assignees
+            ->filter(fn (User $assignee) => $assignee->pivot->finalized_at !== null
+                && $assignee->pivot->senior_ops_reviewed_at === null
+                && $assignee->pivot->status === null)
+            ->sortBy('pivot.part_number')
+            ->values();
     }
 
     /**

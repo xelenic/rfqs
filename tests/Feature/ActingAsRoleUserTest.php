@@ -131,7 +131,7 @@ it('records each approval, and the closing, as the person Admin picks for that s
     $rfq = actingRfqAt($stage, $people);
 
     test()->actingAs($people['admin'])
-        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id, 'reference_code' => 'PO-1001'])
+        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id, 'reference_code' => 'PO-1001', 'actual_line_items' => [1 => 12]])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->{$column})->toBe($people[$person]->id, "recorded as the {$role}");
@@ -193,7 +193,7 @@ it('records Admin themselves when no one is picked, as it always did', function 
     $people = actingPeople();
     $rfq = actingRfqAt('data_entry_done', $people);
 
-    test()->actingAs($people['admin'])->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'acting_user_id' => '']);
+    test()->actingAs($people['admin'])->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12], 'acting_user_id' => '']);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_by)->toBe($people['admin']->id);
 });
@@ -206,7 +206,7 @@ it('ignores the pick from anyone but Admin', function () {
     $rfq = actingRfqAt('data_entry_done', $people);
 
     test()->actingAs($people['ops'])
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'acting_user_id' => $someoneElse->id])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12], 'acting_user_id' => $someoneElse->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_by)->toBe($people['ops']->id);
@@ -217,11 +217,11 @@ it('refuses a pick of someone who doesn\'t hold the stage\'s role, changing noth
     $rfq = actingRfqAt('data_entry_done', $people);
 
     test()->actingAs($people['admin'])
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'acting_user_id' => $people['dataEntry']->id])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12], 'acting_user_id' => $people['dataEntry']->id])
         ->assertStatus(422);
 
     test()->actingAs($people['admin'])
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'acting_user_id' => 999999])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12], 'acting_user_id' => 999999])
         ->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_at)->toBeNull();
@@ -268,7 +268,8 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
         ->assertOk()
         ->assertDontSee('acting_user_id', false);
 })->with([
-    'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops', 'aria-label="Done by (Senior Operations)"'],
+    // Approving verifies the line items in a popup — the picker's there.
+    'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops', 'id="senior-ops-approve-acting-as"'],
     'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head', 'aria-label="Done by (Head of Business Development)"'],
     'the General Manager\'s Review' => [['role' => 'general-manager'], 'assistant_done', 'General Manager', 'gm', 'aria-label="Done by (General Manager)"'],
     // Closing asks for the reference code in a popup — the picker's there.

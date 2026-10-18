@@ -466,18 +466,9 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        {{-- Only this one part — see
+                                        {{-- Only this one part, its line items verified first — see
                                              RfqController::approveSeniorOpsPart() and rejectSeniorOps(). --}}
-                                        <form action="{{ route('admin.rfqs.approve-senior-ops-part', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Approve {{ $rfq->partNumberLabel($assignee->pivot->part_number) }}?{{ $rfq->isSplit() ? ' The RFQ moves on to Head of Business Development once every part is approved.' : ' It moves on to Head of Business Development.' }}">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
-                                            @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-check2-circle"></i> Approve
-                                            </button>
-                                        </form>
+                                        @include('admin.rfqs._senior_ops_approve_button', ['rfq' => $rfq, 'approvePart' => $assignee->pivot->part_number])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
@@ -509,15 +500,7 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <form action="{{ route('admin.rfqs.complete-senior-ops-review', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Approve this RFQ? It moves on to Head of Business Development.">
-                                            @csrf
-                                            @method('PATCH')
-                                            @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-check2-circle"></i> Approve
-                                            </button>
-                                        </form>
+                                        @include('admin.rfqs._senior_ops_approve_button', ['rfq' => $rfq, 'approvePart' => null])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
@@ -593,6 +576,10 @@
                                             {{ $assignee->pivot->senior_ops_reviewed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                             @if ($seniorOpsNames->has($assignee->pivot->senior_ops_reviewed_by))
                                                 <div class="text-muted-soft small">by {{ $seniorOpsNames->get($assignee->pivot->senior_ops_reviewed_by) }}</div>
+                                            @endif
+                                            {{-- What they counted approving it (_senior_ops_approve_modal). --}}
+                                            @if ($assignee->pivot->verifiedLineItems() !== null)
+                                                <div class="text-muted-soft small"><i class="bi bi-list-check"></i> {{ trans_choice('1 line item verified|:count line items verified', $assignee->pivot->verifiedLineItems(), ['count' => number_format($assignee->pivot->verifiedLineItems())]) }}</div>
                                             @endif
                                         @endif
                                     </td>
@@ -1759,6 +1746,10 @@
     @endif
     @if ($rejectFromStage)
         @include('admin.rfqs._reject_modal', ['rejectTargetStages' => $rejectTargetStages, 'rejectRole' => $rejectRole])
+    @endif
+
+    @if ($seniorOpsReviewRfqs)
+        @include('admin.rfqs._senior_ops_approve_modal')
     @endif
     @if ($scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._gm_assistant_submit_modal')

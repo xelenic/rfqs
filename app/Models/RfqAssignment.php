@@ -52,6 +52,7 @@ class RfqAssignment extends Pivot
             'data_entry_entries' => 'integer',
             'data_entry_assigned_to' => 'integer',
             'line_items_to_add' => 'integer',
+            'verified_line_items' => 'integer',
             'data_entry_started_at' => 'datetime',
             'data_entry_paused_at' => 'datetime',
             'finalized_at' => 'datetime',
@@ -507,6 +508,35 @@ class RfqAssignment extends Pivot
         return $this->lineItemsDiscrepancy() === null
             ? null
             : self::lineItemsDiscrepancyText($this->data_entry_entries, $this->line_items_to_add);
+    }
+
+    /**
+     * The line items as Senior Operations sees them approving the part (the
+     * popup of _senior_ops_approve_modal): what Sourcing gave Data Entry to
+     * add, what Data Entry added — once they've sent it to finalize — and
+     * added minus to add (0 when they match; null while either is missing).
+     *
+     * @return array{to_add: ?int, added: ?int, difference: ?int}
+     */
+    public function lineItemsCheck(): array
+    {
+        $added = $this->data_entry_completed_at !== null ? $this->data_entry_entries : null;
+
+        return [
+            'to_add' => $this->line_items_to_add,
+            'added' => $added,
+            'difference' => $added !== null && $this->line_items_to_add !== null ? $added - $this->line_items_to_add : null,
+        ];
+    }
+
+    /**
+     * The line items Senior Operations counted on the part as they approved
+     * it (Rfq::approveSeniorOpsPart()) — null until they have, or since it
+     * was sent back past their review.
+     */
+    public function verifiedLineItems(): ?int
+    {
+        return $this->isSeniorOpsApproved() ? $this->verified_line_items : null;
     }
 
     /**

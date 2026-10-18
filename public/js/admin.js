@@ -1606,6 +1606,75 @@ function rfqmsBoot() {
         });
     });
 
+    // Senior Operations' Approve (_senior_ops_approve_modal): the popup lists
+    // each part it approves with its line items — to add, added and the
+    // difference, read only — and asks for the actual line items they
+    // verified. Filled in from the button that opened it (data-parts), from
+    // a listener on the document, so it holds however often the page is
+    // swapped.
+    if (!window.__rfqmsSeniorOpsApprove) {
+        window.__rfqmsSeniorOpsApprove = true;
+
+        document.addEventListener('show.bs.modal', function (event) {
+            if (!event.target || event.target.id !== 'seniorOpsApproveModal') return;
+
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-senior-ops-approve')) return;
+
+            var form = document.getElementById('seniorOpsApproveForm');
+            var parts = JSON.parse(button.dataset.parts || '[]');
+            var list = document.getElementById('seniorOpsApproveParts');
+            var template = document.getElementById('seniorOpsApprovePart');
+            var partInput = form.querySelector('[name="part"]');
+            var count = function (value) { return value === null || value === undefined ? '—' : Number(value).toLocaleString(); };
+
+            form.action = button.dataset.action;
+            partInput.value = button.dataset.part || '';
+            partInput.disabled = !button.dataset.part;
+            document.getElementById('seniorOpsApproveTarget').textContent = button.dataset.label || '';
+            document.getElementById('seniorOpsApproveHint').textContent = button.dataset.hint || '';
+            document.getElementById('seniorOpsApproveNone').classList.toggle('d-none', parts.length > 0);
+
+            list.innerHTML = '';
+            parts.forEach(function (part) {
+                var block = template.content.firstElementChild.cloneNode(true);
+                var difference = block.querySelector('.js-difference');
+                var note = block.querySelector('.js-difference-note');
+                var actual = block.querySelector('.js-actual');
+                var id = 'senior-ops-approve-' + part.part;
+
+                block.querySelector('.line-items-check-title').textContent = part.label + (part.who ? ' · ' + part.who : '');
+                [['to-add', 'to_add'], ['added', 'added'], ['difference', 'difference']].forEach(function (field) {
+                    var input = block.querySelector('.js-' + field[0]);
+                    input.id = id + '-' + field[0];
+                    block.querySelector('.js-label-' + field[0]).setAttribute('for', input.id);
+                    if (field[0] !== 'difference') input.value = count(part[field[1]]);
+                });
+
+                if (part.difference === null || part.difference === undefined) {
+                    difference.value = '—';
+                    note.textContent = 'Not both recorded';
+                } else {
+                    difference.value = (part.difference > 0 ? '+' : (part.difference < 0 ? '−' : '')) + Math.abs(part.difference).toLocaleString();
+                    note.textContent = part.difference === 0 ? 'They match' : Math.abs(part.difference).toLocaleString() + (part.difference < 0 ? ' fewer than requested' : ' more than requested');
+                    difference.classList.add(part.difference === 0 ? 'is-match' : 'is-off');
+                }
+
+                actual.id = id + '-actual';
+                actual.name = 'actual_line_items[' + part.part + ']';
+                block.querySelector('.js-label-actual').setAttribute('for', actual.id);
+                list.appendChild(block);
+            });
+        });
+
+        // The first box to fill gets the cursor.
+        document.addEventListener('shown.bs.modal', function (event) {
+            if (!event.target || event.target.id !== 'seniorOpsApproveModal') return;
+            var first = event.target.querySelector('.js-actual');
+            if (first) first.focus();
+        });
+    }
+
     // Senior Operations putting an RFQ on hold, or cancelling it: the button
     // that opens the popup says which, and the popup asks why. On a list, the
     // popup is shared by the rows, so the button says which RFQ too.

@@ -149,9 +149,9 @@ it('refuses approving the RFQ as a whole while a part is on hold, leaving the ot
     test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('RFQ13003-P1 of P2')
         ->assertDontSee('RFQ13003-P2 of P2');
-    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 2])
+    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 2, 'actual_line_items' => [2 => 12]])
         ->assertStatus(422);
-    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1])
+    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12]])
         ->assertSessionHasNoErrors();
 
     // Part 2 still to come: the RFQ stays at the review, off its page meanwhile.

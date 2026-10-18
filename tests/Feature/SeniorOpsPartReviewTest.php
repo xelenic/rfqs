@@ -49,9 +49,9 @@ it('lists a part as its own row as soon as it is through Sourcing and Data Entry
         ->assertDontSee('RFQ1001-P2 of P2')
         ->getContent();
 
-    expect($html)->toContain('<input type="hidden" name="part" value="1">')
+    expect($html)->toMatch('/js-senior-ops-approve"[^>]*data-part="1"/')
         ->toContain(route('admin.rfqs.approve-senior-ops-part', $rfq))
-        ->not->toContain('<input type="hidden" name="part" value="2">')
+        ->not->toMatch('/js-senior-ops-approve"[^>]*data-part="2"/')
         // Each part is approved on its own: nothing for the RFQ as a whole, no grouping.
         ->not->toContain(route('admin.rfqs.complete-senior-ops-review', $rfq))
         ->not->toContain('rfq-part-row');
@@ -74,9 +74,8 @@ it('lists each ready part of an RFQ separately, leaving out the ones with Sourci
 
     $html = test()->actingAs($ops)->get(reviewUrl())->assertOk()->getContent();
 
-    // Each ready part's own row has a numbered one; the shared reject
-    // modal's own hidden "part" field (blank until a row sets it) isn't one.
-    expect(preg_match_all('/name="part" value="\d+"/', $html))->toBe(2)
+    // Each ready part's own row has an Approve for its part.
+    expect(preg_match_all('/js-senior-ops-approve"[^>]*data-part="\d+"/', $html))->toBe(2)
         ->and($html)->toContain('RFQ1001-P2 of P6')
         ->toContain('RFQ1001-P3 of P6')
         ->not->toContain('RFQ1001-P1 of P6')
@@ -106,7 +105,7 @@ it('approves a part on its own, and the RFQ moves on once every part has been ap
     [$rfq, $ops, $dataEntry] = splitWithPartOneThrough();
 
     test()->actingAs($ops)->from(reviewUrl())
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12]])
         ->assertRedirect(reviewUrl())
         ->assertSessionHas('status', 'Approved RFQ1001-P1 of P2 — waiting on the rest of the parts.');
 
@@ -131,10 +130,10 @@ it('approves a part on its own, and the RFQ moves on once every part has been ap
     test()->actingAs($ops)->get(reviewUrl())->assertOk()
         ->assertSee('RFQ1001-P2 of P2')
         ->assertDontSee('RFQ1001-P1 of P2')
-        ->assertSee('<input type="hidden" name="part" value="2">', false);
+        ->assertSee('data-part="2"', false);
 
     test()->actingAs($ops)->from(reviewUrl())
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 2])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 2, 'actual_line_items' => [2 => 12]])
         ->assertSessionHas('status', 'Approved — every part is through, escalated to Head of Business Development.');
 
     $rfq->refresh();
@@ -154,7 +153,7 @@ it('approves the parts still waiting when the whole RFQ is approved', function (
     $rfq->refresh()->finalizePart(2);
 
     test()->actingAs($ops)
-        ->patch(route('admin.rfqs.complete-senior-ops-review', $rfq->refresh()))
+        ->patch(route('admin.rfqs.complete-senior-ops-review', $rfq->refresh()), ['actual_line_items' => [2 => 12]])
         ->assertSessionHas('status', 'Approved — escalated to Head of Business Development.');
 
     $rfq->refresh();
@@ -176,9 +175,9 @@ it('lists an RFQ kept whole as one row, whose Approve moves it on', function () 
 
     // Its plain RFQ number, not a part's.
     expect($html)->toContain('<td class="text-nowrap">'.$rfq->rfq_number.'</td>')
-        ->toContain('<input type="hidden" name="part" value="1">');
+        ->toMatch('/js-senior-ops-approve"[^>]*data-part="1"/');
 
-    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1]);
+    test()->actingAs($ops)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12]]);
 
     expect($rfq->refresh()->stage)->toBe('head_of_bd_review')
         ->and($rfq->assigneeForPart(1)->pivot->senior_ops_reviewed_at)->not->toBeNull();
@@ -199,9 +198,9 @@ it('lets Admin approve a part from Senior Operations\' page', function () {
 
     test()->actingAs($admin)->get(reviewUrl(['role' => 'senior-operations']))
         ->assertOk()
-        ->assertSee('<input type="hidden" name="part" value="1">', false);
+        ->assertSee('data-part="1"', false);
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1]);
+    test()->actingAs($admin)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12]]);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_by)->toBe($admin->id);
 });
@@ -220,8 +219,8 @@ it('refuses a part approval that isn\'t Senior Operations\' to give', function (
     $approve($ops, [])->assertSessionHasErrors('part');
 
     // And a part already approved.
-    $approve($ops, ['part' => 1])->assertSessionHas('status');
-    $approve($ops, ['part' => 1])->assertStatus(422);
+    $approve($ops, ['part' => 1, 'actual_line_items' => [1 => 12]])->assertSessionHas('status');
+    $approve($ops, ['part' => 1, 'actual_line_items' => [1 => 12]])->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(2)->pivot->senior_ops_reviewed_at)->toBeNull();
 });
@@ -307,7 +306,7 @@ it('counts each approval waiting — a row on the Review page — and shows it a
 
     // Five rows on the page, five on the badge — wherever Senior Operations is.
     $review = $sidebar(reviewUrl());
-    expect(substr_count($review, 'data-confirm="Approve '))->toBe(5)
+    expect(substr_count($review, 'js-senior-ops-approve"'))->toBe(5)
         ->and($review)->toContain('<span class="nav-link-label">Review</span>')
         ->toContain($badge(5))
         ->and($sidebar(route('admin.rfqs.index', ['status' => 'Pending'])))->toContain($badge(5));

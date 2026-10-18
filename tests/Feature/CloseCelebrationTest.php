@@ -163,7 +163,7 @@ it('is not part of the other approvals\' flash messages', function () {
     $rfq->refresh()->finalizePart(1);
 
     test()->actingAs($ops)->from(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))
-        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 12]])
         ->assertSessionHas('status')
         ->assertSessionMissing('celebrate');
 });

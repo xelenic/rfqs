@@ -9,8 +9,10 @@
     when the stage is done for a part), $byRelation (the RfqAssignment
     relation for who did it), $reachedColumn (the column of the stage before —
     a part has reached this one once that's set) and $awaiting (what a part
-    that's reached it reads until it's done). From the page: $maskIfBlurred,
-    $restrictAssignment, $restrictSourcingView.
+    that's reached it reads until it's done). Optional: $doneNote — given the
+    part's pivot, more to say once it's done (Senior Operations' verified line
+    items), or null. From the page: $maskIfBlurred, $restrictAssignment,
+    $restrictSourcingView.
 --}}
 <div class="table-responsive">
     <table class="table table-sm mb-0 align-middle">
@@ -35,7 +37,7 @@
                         <td>{{ $stepBlurred ? 'Restricted' : $part['number'] }}</td>
                         <td>
                             @if ($stepDoneAt)
-                                <span class="badge bg-success-subtle text-success-emphasis">{{ $maskIfBlurred($stepAssignee->pivot->{$byRelation}?->name, $restrictSourcingView) }} · {{ $stepDoneAt->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
+                                <span class="badge bg-success-subtle text-success-emphasis">{{ $maskIfBlurred($stepAssignee->pivot->{$byRelation}?->name, $restrictSourcingView) }} · {{ $stepDoneAt->toBusinessTimezone()->format('M d, Y g:i A') }}@if (isset($doneNote) && ! $stepBlurred && ($note = $doneNote($stepAssignee->pivot)) !== null) · {{ $note }}@endif</span>
                             @elseif ($stepReached)
                                 <span class="badge bg-primary-subtle text-primary-emphasis">{{ $awaiting }}</span>
                             @else
