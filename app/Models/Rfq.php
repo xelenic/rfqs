@@ -732,6 +732,15 @@ class Rfq extends Model
     }
 
     /**
+     * Whether Business Development has closed it (status Completed, which
+     * reads as "Closed" — see statusLabel()).
+     */
+    public function isClosed(): bool
+    {
+        return $this->status === 'Completed';
+    }
+
+    /**
      * Sourcing assignments on this RFQ — one row per PART, each a User with
      * its own pivot (part_number, completed_at, returned_at, ...), so the
      * same person appears once for every part they hold. Ordered by part

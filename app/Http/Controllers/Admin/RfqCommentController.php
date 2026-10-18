@@ -59,18 +59,23 @@ class RfqCommentController extends Controller implements HasMiddleware
         // Via the rfq() relation so rfq_id is set automatically — comments()
         // itself is scoped to whereNull('parent_id'), which only filters
         // reads, not what gets written here.
-        $rfq->comments()->create([
+        $comment = $rfq->comments()->create([
             'user_id' => $request->user()->id,
             'parent_id' => $parent?->id,
             'body' => $validated['body'],
-        ])->storeAttachments($files);
+        ]);
+        $comment->storeAttachments($files);
+
+        // On a closed RFQ, whoever it @mentions gets it in their Messages.
+        $messaged = $comment->setRelation('rfq', $rfq)->messageMentionedUsers();
 
         // Comments can now be posted from more than one place — the RFQ's
         // own show page, or the quick-detail modal on Data Entry's "By
         // Sourcing" list — so send the user back wherever they came from
         // rather than always the show page.
         return redirect()->back()
-            ->with('status', $parent ? 'Reply posted.' : 'Comment posted.');
+            ->with('status', ($parent ? 'Reply posted.' : 'Comment posted.')
+                .($messaged->isNotEmpty() ? ' '.$messaged->pluck('name')->join(', ', ' and ').' will see it in Messages.' : ''));
     }
 
     /**

@@ -2056,6 +2056,26 @@ a.pipeline-label:hover {
   opacity: 0.7;
 }
 
+/* The RFQ an @mention message was sent from (PrivateMessage::rfqComment). */
+.message-rfq-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--rfq-primary);
+  text-decoration: none;
+}
+
+.message-rfq-link:hover {
+  text-decoration: underline;
+}
+
+.message-bubble-row.is-mine .message-rfq-link {
+  color: #fff;
+}
+
 /* ---------- Operations' Assigned tab — each RFQ with its parts ---------- */
 /* One tbody per RFQ (_rfq_row with $groupedParts, then _rfq_parts): its row,
    then a nested line per part — who holds it and how it's going — hanging

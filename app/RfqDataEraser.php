@@ -50,9 +50,9 @@ final class RfqDataEraser
 
     /**
      * Empties them — and the photos and files attached to comments, and the
-     * "assigned to you", "paused" and "line items differ" alerts about parts
-     * that are gone — then has every open page refresh (LiveVersion: a truncate
-     * isn't a write it watches).
+     * "assigned to you", "paused" and "line items differ" alerts, and the
+     * messages sent for mentions, about RFQs that are gone — then has every
+     * open page refresh (LiveVersion: a truncate isn't a write it watches).
      *
      * @return array<string, int> how many rows each table had
      */
@@ -68,6 +68,7 @@ final class RfqDataEraser
 
         Storage::disk(RfqCommentAttachment::DISK)->deleteDirectory('rfq-attachments');
         DB::table('notifications')->whereIn('type', [DataEntryAssigned::class, DataEntryPaused::class, LineItemsDiscrepancy::class])->delete();
+        DB::table('private_messages')->whereNotNull('rfq_comment_id')->delete();
         LiveVersion::bump();
 
         return $counts;

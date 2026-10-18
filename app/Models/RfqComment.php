@@ -233,4 +233,81 @@ class RfqComment extends Model
 
         return $escaped;
     }
+
+    /**
+     * Everyone who can be @mentioned in a comment: the active Sourcing team,
+     * as the @mention dropdown on the RFQ's page lists them.
+     *
+     * @return Collection<int, User>
+     */
+    public static function mentionableUsers(): Collection
+    {
+        return User::query()->holdingRole('Sourcing')->orderBy('name')->get();
+    }
+
+    /**
+     * Those of $mentionableUsers this comment @mentions by their full name,
+     * each once — everyone of that name, when two share one. A name inside
+     * a longer one ("@Riley Chenoweth") isn't Riley Chen: the longest names
+     * are matched, and taken out, first.
+     *
+     * @param  Collection<int, User>  $mentionableUsers
+     * @return Collection<int, User>
+     */
+    public function mentionedUsers(Collection $mentionableUsers): Collection
+    {
+        $body = (string) $this->body;
+
+        return $mentionableUsers
+            ->filter(fn (User $user) => filled($user->name))
+            ->groupBy('name')
+            ->sortByDesc(fn (Collection $named, string $name) => mb_strlen($name))
+            ->filter(function (Collection $named, string $name) use (&$body): bool {
+                $pattern = '/@'.preg_quote($name, '/').'(?![\p{L}\p{N}])/u';
+
+                if (! preg_match($pattern, $body)) {
+                    return false;
+                }
+
+                $body = preg_replace($pattern, '', $body);
+
+                return true;
+            })
+            ->flatten(1)
+            ->unique('id')
+            ->values();
+    }
+
+    /**
+     * On a closed RFQ — where nobody's work brings them back to its thread —
+     * sends everyone this comment @mentions a private message from its
+     * author, so it's in their Messages (and bell): what was said, and which
+     * RFQ it's on. Not to the author themselves. Returns who was sent one;
+     * nobody on an RFQ that's still open.
+     *
+     * @return Collection<int, User>
+     */
+    public function messageMentionedUsers(): Collection
+    {
+        if (! $this->rfq->isClosed()) {
+            return collect();
+        }
+
+        $mentioned = $this->mentionedUsers(self::mentionableUsers())
+            ->reject(fn (User $user) => $user->id === $this->user_id)
+            ->values();
+
+        $where = ($this->parent_id !== null ? 'in a reply ' : '')."on closed {$this->rfq->rfq_number} — {$this->rfq->subject}";
+
+        foreach ($mentioned as $user) {
+            PrivateMessage::query()->create([
+                'sender_id' => $this->user_id,
+                'recipient_id' => $user->id,
+                'rfq_comment_id' => $this->id,
+                'body' => "Mentioned you {$where}:\n{$this->body}",
+            ]);
+        }
+
+        return $mentioned;
+    }
 }

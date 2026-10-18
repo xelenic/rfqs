@@ -1427,7 +1427,7 @@
                     <form action="{{ route('admin.rfqs.comments.store', $rfq) }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="mb-2">
-                            <textarea name="body" rows="2" class="form-control js-mention-input @error('body', 'comment') is-invalid @enderror" placeholder="Write a comment... (@ to mention Sourcing)">{{ ! $failedReplyParentId ? old('body') : '' }}</textarea>
+                            <textarea name="body" rows="2" class="form-control js-mention-input @error('body', 'comment') is-invalid @enderror" placeholder="Write a comment... (@ to mention Sourcing{{ $rfq->isClosed() ? ' — they\'ll get it in Messages' : '' }})">{{ ! $failedReplyParentId ? old('body') : '' }}</textarea>
                             @error('body', 'comment')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror

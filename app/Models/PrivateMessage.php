@@ -10,8 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A private message from one user to another — sent from the "Message"
- * button on a person's hover card (see layouts/_user_card.blade.php) and
- * read in Messages. Only its sender and recipient can see it.
+ * button on a person's hover card (see layouts/_user_card.blade.php), or
+ * for them by a comment @mentioning them on a closed RFQ (rfq_comment_id,
+ * RfqComment::messageMentionedUsers()) — and read in Messages. Only its
+ * sender and recipient can see it.
  */
 class PrivateMessage extends Model
 {
@@ -26,6 +28,7 @@ class PrivateMessage extends Model
     protected $fillable = [
         'sender_id',
         'recipient_id',
+        'rfq_comment_id',
         'body',
     ];
 
@@ -47,6 +50,15 @@ class PrivateMessage extends Model
     public function recipient(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recipient_id');
+    }
+
+    /**
+     * The comment on a closed RFQ that @mentioned the recipient, when that's
+     * what this message was sent for (RfqComment::messageMentionedUsers()).
+     */
+    public function rfqComment(): BelongsTo
+    {
+        return $this->belongsTo(RfqComment::class);
     }
 
     /**
