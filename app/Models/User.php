@@ -127,7 +127,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HR Executive'];
+    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
 
     /**
      * The roles that fill in and submit the daily attendance sheet.

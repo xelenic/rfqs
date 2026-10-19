@@ -273,7 +273,7 @@ it('sorts the tracking sheet', function () {
 
 // ---- Access ------------------------------------------------------------------------
 
-it('is Admin\'s and HR Executive\'s alone', function (string $role) {
+it('is Admin\'s, Senior Operations\' and HR Executive\'s alone', function (string $role) {
     $user = userWithRole($role);
 
     foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
@@ -284,7 +284,28 @@ it('is Admin\'s and HR Executive\'s alone', function (string $role) {
     expect(test()->actingAs($user)->get(route('admin.dashboard'))->assertOk()->getContent())
         ->not->toContain('href="'.route('admin.reports.sourcing-daily').'"')
         ->not->toContain('href="'.route('admin.reports.rfq-tracking').'"');
-})->with(['Senior Operations', 'Sourcing', 'General Manager']);
+})->with(['Sourcing', 'Data Entry', 'General Manager', 'Business Development']);
+
+it('lets Senior Operations see every report, from Reports in their sidebar', function () {
+    mondaysWork();
+    $ops = userWithRole('Senior Operations');
+
+    foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
+        $html = test()->actingAs($ops)->get(route("admin.reports.{$report}"))->assertOk()->getContent();
+
+        expect(Str::after($html, '<div class="sidebar-section-title">Reports</div>'))
+            ->toContain('href="'.route('admin.reports.sourcing-daily').'"')
+            ->toContain('href="'.route('admin.reports.sourcing-monthly').'"')
+            ->toContain('href="'.route('admin.reports.data-entry-daily').'"')
+            ->toContain('href="'.route('admin.reports.rfq-tracking').'"');
+    }
+
+    expect(reportDataAs($ops, 'sourcing-daily', ['from' => '2026-10-05', 'to' => '2026-10-05'])['total'])->toMatchArray(['finalized' => 1, 'pending' => 1, 'customer' => 1]);
+
+    // They see the RFQs too, so the tracking sheet links to them.
+    test()->actingAs($ops)->get(route('admin.reports.rfq-tracking'))->assertOk()
+        ->assertSee('href="'.route('admin.rfqs.show', Rfq::query()->where('rfq_number', 'RFQ8001')->sole()).'"', false);
+});
 
 it('lets HR Executive see every report, from Reports in their sidebar', function () {
     mondaysWork();

@@ -91,8 +91,8 @@
                     <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
                         <i class="bi bi-stopwatch"></i> Time Spent
                     </a>
-                    {{-- The performance reports — HR Executive's here; Admin's under
-                         Reports in _sidebar_admin_groups. --}}
+                    {{-- The performance reports — Senior Operations' and HR Executive's
+                         here; Admin's under Reports in _sidebar_admin_groups. --}}
                     @if (auth()->user()->canViewPerformanceReports())
                         @foreach ([
                             'admin.reports.sourcing-daily' => ['Sourcing Daily', 'bi-calendar-day'],
