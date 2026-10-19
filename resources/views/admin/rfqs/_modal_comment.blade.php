@@ -11,8 +11,7 @@
     Each name shows the person's role and, on hover, a card of their details
     with a private-message button (_comment_author.blade.php).
 
-    Expects: $comment, $rfq (for mention highlighting against its Sourcing
-    team), $index, $excludedAuthorIds (the *other* Sourcing assignees' ids —
+    Expects: $comment, $rfq, $index, $excludedAuthorIds (the *other* Sourcing assignees' ids —
     their replies are filtered out here too, same as top-level comments).
 --}}
 @php
@@ -31,7 +30,7 @@
             <span class="text-muted-soft rfq-comment-time">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
         </div>
         <div class="rfq-thread-bubble">
-            <p class="mb-0" style="white-space: pre-line;">{!! $comment->bodyWithMentions($rfq->assignees) !!}</p>
+            <p class="mb-0" style="white-space: pre-line;">{!! $comment->bodyWithMentions(\App\Models\RfqComment::mentionableUsers()) !!}</p>
             @include('admin.rfqs._comment_attachments', ['comment' => $comment])
         </div>
 
@@ -44,7 +43,7 @@
                             <span class="text-muted-soft rfq-comment-time">{{ $reply->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                         </div>
                         <div class="rfq-thread-bubble">
-                            <p class="mb-0" style="white-space: pre-line;">{!! $reply->bodyWithMentions($rfq->assignees) !!}</p>
+                            <p class="mb-0" style="white-space: pre-line;">{!! $reply->bodyWithMentions(\App\Models\RfqComment::mentionableUsers()) !!}</p>
                             @include('admin.rfqs._comment_attachments', ['comment' => $reply])
                         </div>
                     </div>

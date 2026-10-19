@@ -215,36 +215,65 @@ class RfqComment extends Model
 
     /**
      * The comment body, HTML-escaped, with any "@Full Name" mentions of a
-     * known mentionable user (the RFQ's Sourcing team — see the @mention
-     * dropdown in admin.js) wrapped in a highlight span. Renders raw HTML,
-     * so callers must use {!! !!}, never {{ }}.
+     * known mentionable user (mentionableUsers() — see the @mention dropdown
+     * in admin.js) wrapped in a highlight span: whole names only, the longest
+     * first, so "@Sam Rivera" is one mention, not Sam's inside it. Renders raw
+     * HTML, so callers must use {!! !!}, never {{ }}.
      */
     public function bodyWithMentions(Collection $mentionableUsers): string
     {
         $escaped = e($this->body);
 
         $names = $mentionableUsers->pluck('name')->filter()->unique()
-            // Longest names first, so "Riley Chen" isn't matched inside a
-            // longer "Riley Chen Jr" before the full name gets its turn.
-            ->sortByDesc(fn (string $name) => mb_strlen($name));
+            ->sortByDesc(fn (string $name) => mb_strlen($name))
+            ->map(fn (string $name) => preg_quote(e($name), '/'));
 
-        foreach ($names as $name) {
-            $needle = '@'.e($name);
-            $escaped = str_replace($needle, '<span class="mention-highlight">'.$needle.'</span>', $escaped);
+        if ($names->isEmpty()) {
+            return $escaped;
         }
 
-        return $escaped;
+        return preg_replace_callback(
+            '/@(?:'.$names->implode('|').')(?![\p{L}\p{N}])/u',
+            fn (array $match) => '<span class="mention-highlight">'.$match[0].'</span>',
+            $escaped,
+        ) ?? $escaped;
     }
 
     /**
-     * Everyone who can be @mentioned in a comment: the active Sourcing team,
-     * as the @mention dropdown on the RFQ's page lists them.
+     * Everyone who can be @mentioned in a comment: all the active staff, as
+     * the @mention dropdown on the RFQ's page lists them (mentionDirectory()),
+     * by name. Looked up once a request — kept on the request — since every
+     * comment on a page asks.
      *
      * @return Collection<int, User>
      */
     public static function mentionableUsers(): Collection
     {
-        return User::query()->holdingRole('Sourcing')->orderBy('name')->get();
+        $request = request();
+
+        if (! $request->attributes->has('mentionable_users')) {
+            $request->attributes->set('mentionable_users', User::query()->active()->with('roles')->orderBy('name')->get());
+        }
+
+        return $request->attributes->get('mentionable_users');
+    }
+
+    /**
+     * The @mention dropdown's people (mentionableUsers()), for the page to
+     * hand admin.js: each one's name, roles, and photo (User::avatarUrl()) or
+     * initial.
+     *
+     * @return array<int, array{id: int, name: string, role: string, avatar: ?string, initial: string}>
+     */
+    public static function mentionDirectory(): array
+    {
+        return self::mentionableUsers()->map(fn (User $user) => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'role' => $user->roles->pluck('name')->sort()->implode(', '),
+            'avatar' => $user->avatarUrl(),
+            'initial' => $user->initial(),
+        ])->values()->all();
     }
 
     /**

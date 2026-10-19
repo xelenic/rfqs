@@ -59,6 +59,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('settings/rfq-numbers', [SettingsController::class, 'updateRfqNumbers'])->name('settings.rfq-numbers');
     Route::delete('settings/rfq-data', [SettingsController::class, 'clearRfqData'])->middleware('throttle:5,1')->name('settings.rfq-data.clear');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
+    Route::patch('settings/gm-assistant-idle-alert', [SettingsController::class, 'updateGmAssistantIdleAlert'])->name('settings.gm-assistant-idle-alert');
     Route::patch('settings/wc-validation', [SettingsController::class, 'updateWcValidation'])->name('settings.wc-validation');
     Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');
     Route::delete('settings/extra-hours/{extraHours}', [SettingsController::class, 'destroyExtraHours'])->name('settings.extra-hours.destroy');

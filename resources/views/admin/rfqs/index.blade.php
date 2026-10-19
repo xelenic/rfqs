@@ -79,6 +79,10 @@
     @if ($myDataEntryIdle)
         @include('admin.rfqs._data_entry_idle_banner', ['idle' => $myDataEntryIdle])
     @endif
+    {{-- GM Assistant's, the same (User::gmAssistantIdleness()). --}}
+    @if ($myGmAssistantIdle)
+        @include('admin.rfqs._data_entry_idle_banner', ['idle' => $myGmAssistantIdle])
+    @endif
 
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">

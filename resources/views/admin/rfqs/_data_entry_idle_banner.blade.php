@@ -7,7 +7,10 @@
     Once it's been sent (App\Console\Commands\AlertIdleDataEntry), it says
     so instead; live updates bring that in as it happens.
 
-    Expects: $idle (User::dataEntryIdleness()).
+    GM Assistant's Review page has it too, the same way, against their own
+    idle alert (User::gmAssistantIdleness(), App\Console\Commands\AlertIdleGmAssistant).
+
+    Expects: $idle (User::dataEntryIdleness() or gmAssistantIdleness()).
 --}}
 @php
     $waitingLabel = $idle['waiting'] === 1 ? '1 part is waiting' : "{$idle['waiting']} parts are waiting";

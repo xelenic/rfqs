@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Notifications\DataEntryIdle;
+use App\Notifications\GmAssistantIdle;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
@@ -404,7 +406,7 @@ class User extends Authenticatable
      * person, their latest message, saying how many are unread. And how many
      * of both are unread, for its count.
      *
-     * @return array{items: \Illuminate\Support\Collection<int, array{kind: string, at: CarbonInterface, unread: bool, url: string, icon: string, text: string, note: string}>, unread: int}
+     * @return array{items: SupportCollection<int, array{kind: string, at: CarbonInterface, unread: bool, url: string, icon: string, text: string, note: string}>, unread: int}
      */
     public function bellItems(int $limit = 8): array
     {
@@ -490,11 +492,43 @@ class User extends Authenticatable
      */
     public function dataEntryIdleness(?CarbonInterface $now = null): ?array
     {
-        $alert = Setting::dataEntryIdleAlert();
         // Only what's theirs to start: given to them, or to anyone in Data Entry.
-        $waiting = Rfq::dataEntryWaitingSince($this->id);
+        return $this->idlenessAt('data_entry', Setting::dataEntryIdleAlert(), Rfq::dataEntryWaitingSince($this->id),
+            RfqStep::runningDataEntryOf($this) !== null, DataEntryIdle::class, 'data_entry_user_id', $now);
+    }
 
-        if (! $alert['enabled'] || $waiting->isEmpty() || RfqStep::runningDataEntryOf($this) !== null) {
+    /**
+     * Where this GM Assistant person stands against their idle alert
+     * (Setting::gmAssistantIdleAlert()) at $now — the same as
+     * dataEntryIdleness(), with the parts waiting for GM Assistant to start
+     * (Rfq::gmAssistantWaitingSince()), their running part
+     * (RfqStep::runningGmAssistantOf()) and the alerts about them
+     * (GmAssistantIdle, sent by App\Console\Commands\AlertIdleGmAssistant).
+     *
+     * @return array{idle_from: CarbonImmutable, idle_seconds: int, alert_after: int, waiting: int, time_off: array{start: string, end: string}|null, alerted_at: ?CarbonImmutable}|null
+     */
+    public function gmAssistantIdleness(?CarbonInterface $now = null): ?array
+    {
+        return $this->idlenessAt('gm_assistant', Setting::gmAssistantIdleAlert(), Rfq::gmAssistantWaitingSince(),
+            RfqStep::runningGmAssistantOf($this) !== null, GmAssistantIdle::class, 'gm_assistant_user_id', $now);
+    }
+
+    /**
+     * Idleness at $step against $alert (dataEntryIdleness(), gmAssistantIdleness()):
+     * null when the alert's off, nothing's $waiting, they've a part $running,
+     * or today's sheet has them on leave; otherwise idle since the latest of
+     * the start of today, when they last had a part running at $step, and when
+     * the oldest waiting part came in — in their working seconds less a half
+     * day's time off — and when they were last alerted about ($alertType,
+     * naming them under $alertKey) since they were free.
+     *
+     * @param  array{enabled: bool, minutes: int}  $alert
+     * @param  SupportCollection<int, CarbonImmutable>  $waiting
+     * @return array{idle_from: CarbonImmutable, idle_seconds: int, alert_after: int, waiting: int, time_off: array{start: string, end: string}|null, alerted_at: ?CarbonImmutable}|null
+     */
+    private function idlenessAt(string $step, array $alert, SupportCollection $waiting, bool $running, string $alertType, string $alertKey, ?CarbonInterface $now): ?array
+    {
+        if (! $alert['enabled'] || $waiting->isEmpty() || $running) {
             return null;
         }
 
@@ -507,13 +541,13 @@ class User extends Authenticatable
         }
 
         $timeOff = $mark?->timeOff();
-        $lastRunning = RfqStep::query()->where('step', 'data_entry')->where('worked_by', $this->id)->max('ended_at');
+        $lastRunning = RfqStep::query()->where('step', $step)->where('worked_by', $this->id)->max('ended_at');
         $startOfToday = $local->startOfDay()->setTimezone($now->getTimezone());
         $freeSince = $lastRunning !== null ? max($startOfToday, CarbonImmutable::parse($lastRunning)) : $startOfToday;
         $idleFrom = max($freeSince, $waiting->min());
         $alertedAt = DatabaseNotification::query()
-            ->where('type', DataEntryIdle::class)
-            ->where('data->data_entry_user_id', $this->id)
+            ->where('type', $alertType)
+            ->where("data->{$alertKey}", $this->id)
             ->where('created_at', '>=', $freeSince)
             ->min('created_at');
 

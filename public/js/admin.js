@@ -1921,8 +1921,10 @@ function rfqmsBoot() {
     });
 
     // "@mention" suggestions in comment/reply boxes — typing "@" opens a
-    // dropdown of Sourcing team members (data from the JSON island in
-    // show.blade.php); picking one inserts "@Full Name " at the cursor.
+    // dropdown of all the staff, each with their picture and roles (data
+    // from the JSON island in show.blade.php, RfqComment::mentionDirectory());
+    // picking one inserts "@Full Name " at the cursor. What's typed after the
+    // "@" matches a name or a role.
     // Rendered mentions are highlighted server-side, see
     // RfqComment::bodyWithMentions().
     (function () {
@@ -1979,13 +1981,13 @@ function rfqmsBoot() {
             // Names starting with the query rank above ones that merely
             // contain it (so "Ri" favors "Riley Chen" over "Priya Desai").
             var matches = mentionUsers
-                .filter(function (u) { return u.name.toLowerCase().indexOf(q) !== -1; })
+                .filter(function (u) { return u.name.toLowerCase().indexOf(q) !== -1 || (u.role || '').toLowerCase().indexOf(q) !== -1; })
                 .sort(function (a, b) {
                     var aStarts = a.name.toLowerCase().indexOf(q) === 0 ? 0 : 1;
                     var bStarts = b.name.toLowerCase().indexOf(q) === 0 ? 0 : 1;
                     return aStarts !== bStarts ? aStarts - bStarts : a.name.localeCompare(b.name);
                 })
-                .slice(0, 6);
+                .slice(0, 8);
 
             if (!matches.length) {
                 closeDropdown();
@@ -1997,8 +1999,36 @@ function rfqmsBoot() {
                 var item = document.createElement('button');
                 item.type = 'button';
                 item.className = 'mention-dropdown-item' + (index === 0 ? ' is-active' : '');
-                item.textContent = u.name;
                 item.dataset.name = u.name;
+
+                // Their picture, or their initial without one — as <x-avatar>.
+                var avatar = document.createElement('span');
+                avatar.className = 'assignee-avatar mention-dropdown-avatar' + (u.avatar ? ' has-photo' : '');
+                if (u.avatar) {
+                    var photo = document.createElement('img');
+                    photo.src = u.avatar;
+                    photo.alt = '';
+                    photo.loading = 'lazy';
+                    avatar.appendChild(photo);
+                } else {
+                    avatar.textContent = u.initial || '?';
+                }
+
+                var who = document.createElement('span');
+                who.className = 'mention-dropdown-who';
+                var name = document.createElement('span');
+                name.className = 'mention-dropdown-name';
+                name.textContent = u.name;
+                who.appendChild(name);
+                if (u.role) {
+                    var role = document.createElement('span');
+                    role.className = 'mention-dropdown-role';
+                    role.textContent = u.role;
+                    who.appendChild(role);
+                }
+
+                item.appendChild(avatar);
+                item.appendChild(who);
                 // mousedown (not click) fires before the textarea blurs and
                 // closes the dropdown out from under it.
                 item.addEventListener('mousedown', function (e) {
@@ -2011,7 +2041,7 @@ function rfqmsBoot() {
             var rect = textarea.getBoundingClientRect();
             dropdown.style.left = (rect.left + window.scrollX) + 'px';
             dropdown.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-            dropdown.style.minWidth = Math.min(rect.width, 260) + 'px';
+            dropdown.style.minWidth = Math.min(rect.width, 300) + 'px';
             dropdown.style.display = 'block';
         }
 

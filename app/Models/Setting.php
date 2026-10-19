@@ -135,6 +135,15 @@ class Setting extends Model
     public const DEFAULT_DATA_ENTRY_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
 
     /**
+     * The same for GM Assistant: alerted when someone there hasn't started
+     * anything for a while with parts waiting on them — until an Admin
+     * changes it. See App\Console\Commands\AlertIdleGmAssistant.
+     *
+     * @var array{enabled: bool, minutes: int}
+     */
+    public const DEFAULT_GM_ASSISTANT_IDLE_ALERT = ['enabled' => true, 'minutes' => 10];
+
+    /**
      * The automatic backups (Admin → Backups, backup:scheduled) until an Admin
      * changes them: one a day at 02:00 and one a week on Sunday at 03:00, in
      * the working hours' time zone, uploaded files included.
@@ -861,15 +870,40 @@ class Setting extends Model
      */
     public static function dataEntryIdleAlert(): array
     {
-        $saved = json_decode((string) static::get('data_entry_idle_alert'), true);
+        return static::idleAlert('data_entry_idle_alert', self::DEFAULT_DATA_ENTRY_IDLE_ALERT);
+    }
+
+    /**
+     * The GM Assistant idle alert — whether it's on, and after how many
+     * working minutes — as saved on the Settings page, or
+     * DEFAULT_GM_ASSISTANT_IDLE_ALERT, its minutes kept within
+     * DATA_ENTRY_IDLE_MINUTES_RANGE, as Data Entry's are.
+     *
+     * @return array{enabled: bool, minutes: int}
+     */
+    public static function gmAssistantIdleAlert(): array
+    {
+        return static::idleAlert('gm_assistant_idle_alert', self::DEFAULT_GM_ASSISTANT_IDLE_ALERT);
+    }
+
+    /**
+     * An idle alert saved under $key, or $default — its minutes kept within
+     * DATA_ENTRY_IDLE_MINUTES_RANGE.
+     *
+     * @param  array{enabled: bool, minutes: int}  $default
+     * @return array{enabled: bool, minutes: int}
+     */
+    private static function idleAlert(string $key, array $default): array
+    {
+        $saved = json_decode((string) static::get($key), true);
         $saved = is_array($saved) ? $saved : [];
         [$fewest, $most] = self::DATA_ENTRY_IDLE_MINUTES_RANGE;
 
         return [
-            'enabled' => is_bool($saved['enabled'] ?? null) ? $saved['enabled'] : self::DEFAULT_DATA_ENTRY_IDLE_ALERT['enabled'],
+            'enabled' => is_bool($saved['enabled'] ?? null) ? $saved['enabled'] : $default['enabled'],
             'minutes' => is_numeric($saved['minutes'] ?? null)
                 ? max($fewest, min($most, (int) $saved['minutes']))
-                : self::DEFAULT_DATA_ENTRY_IDLE_ALERT['minutes'],
+                : $default['minutes'],
         ];
     }
 
@@ -954,6 +988,17 @@ class Setting extends Model
     public static function putDataEntryIdleAlert(array $alert): void
     {
         static::put('data_entry_idle_alert', json_encode($alert));
+    }
+
+    /**
+     * Saves the GM Assistant idle alert — see gmAssistantIdleAlert() for its
+     * shape.
+     *
+     * @param  array{enabled: bool, minutes: int}  $alert
+     */
+    public static function putGmAssistantIdleAlert(array $alert): void
+    {
+        static::put('gm_assistant_idle_alert', json_encode($alert));
     }
 
     /**

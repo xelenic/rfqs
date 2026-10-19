@@ -127,14 +127,15 @@ it('matches whole names only — not one inside a longer name', function () {
         ->and($riley->receivedMessages()->count())->toBe(0);
 });
 
-it('mentions only the Sourcing team, as the @mention list offers them', function () {
-    personNamed('Morgan Ellis', 'General Manager');
+it('mentions anyone on the staff, as the @mention list offers them — not a deactivated account', function () {
+    $morgan = personNamed('Morgan Ellis', 'General Manager');
+    personNamed('Pat Gone', 'Data Entry')->forceFill(['deactivated_at' => now()])->save();
     $rfq = rfqForMentions();
 
-    commentMentioning(userWithRole('Senior Operations'), $rfq, '@Morgan Ellis FYI')
-        ->assertSessionHas('status', 'Comment posted.');
+    commentMentioning(userWithRole('Senior Operations'), $rfq, '@Morgan Ellis FYI, and @Pat Gone')
+        ->assertSessionHas('status', 'Comment posted. Morgan Ellis will see it in Messages.');
 
-    expect(PrivateMessage::query()->count())->toBe(0);
+    expect(PrivateMessage::query()->pluck('recipient_id')->all())->toBe([$morgan->id]);
 });
 
 it('takes the message away when the comment is deleted', function () {
@@ -164,10 +165,10 @@ it('tells the commenter, in the comment box, that a mention on a closed RFQ goes
     $operations = userWithRole('Senior Operations');
 
     test()->actingAs($operations)->get(route('admin.rfqs.show', rfqForMentions()))->assertOk()
-        ->assertSee('Write a comment... (@ to mention Sourcing — they\'ll get it in Messages)');
+        ->assertSee('Write a comment... (@ to mention someone — they\'ll get it in Messages)');
 
     test()->actingAs($operations)->get(route('admin.rfqs.show', Rfq::factory()->create()))->assertOk()
-        ->assertSee('Write a comment... (@ to mention Sourcing)')
+        ->assertSee('Write a comment... (@ to mention someone)')
         ->assertDontSee('get it in Messages');
 });
 

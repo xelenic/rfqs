@@ -1394,9 +1394,10 @@
             : collect();
     @endphp
 
-    {{-- Sourcing team roster for the @mention dropdown in comments — read
-         by admin.js, kept as inert JSON so it never executes as markup. --}}
-    <script type="application/json" id="rfq-mention-users">{!! $sourcingUsers->map(fn ($user) => ['id' => $user->id, 'name' => $user->name])->values()->toJson() !!}</script>
+    {{-- Everyone who can be @mentioned in a comment, with their roles and
+         picture, for the dropdown in admin.js (RfqComment::mentionDirectory()) —
+         kept as inert JSON so it never executes as markup. --}}
+    <script type="application/json" id="rfq-mention-users">{!! json_encode(\App\Models\RfqComment::mentionDirectory(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 
     <div class="card mb-3">
         <div class="card-header">Activity Timeline ({{ $commentCount }} comments)</div>
@@ -1439,7 +1440,7 @@
                     <form action="{{ route('admin.rfqs.comments.store', $rfq) }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="mb-2">
-                            <textarea name="body" rows="2" class="form-control js-mention-input @error('body', 'comment') is-invalid @enderror" placeholder="Write a comment... (@ to mention Sourcing{{ $rfq->isClosed() ? ' — they\'ll get it in Messages' : '' }})">{{ ! $failedReplyParentId ? old('body') : '' }}</textarea>
+                            <textarea name="body" rows="2" class="form-control js-mention-input @error('body', 'comment') is-invalid @enderror" placeholder="Write a comment... (@ to mention someone{{ $rfq->isClosed() ? ' — they\'ll get it in Messages' : '' }})">{{ ! $failedReplyParentId ? old('body') : '' }}</textarea>
                             @error('body', 'comment')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror

@@ -61,6 +61,7 @@ class SettingsController extends Controller
             'dataEntryPerItem' => Setting::dataEntryPerItem(),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
+            'gmAssistantIdleAlert' => Setting::gmAssistantIdleAlert(),
             'wcFormatRequired' => Setting::wcFormatRequired(),
             'rfqNumberStart' => Setting::rfqNumberStart(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
@@ -467,6 +468,35 @@ class SettingsController extends Controller
         ]);
 
         return $this->backToTab('idle-alert', 'Idle alert saved.');
+    }
+
+    /**
+     * Whether Senior Operations is alerted when someone in GM Assistant hasn't
+     * started anything for a while, and after how many working minutes — as
+     * for Data Entry (updateIdleAlert()). See Setting::gmAssistantIdleAlert()
+     * and App\Console\Commands\AlertIdleGmAssistant.
+     */
+    public function updateGmAssistantIdleAlert(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the idle alert.');
+
+        [$fewest, $most] = Setting::DATA_ENTRY_IDLE_MINUTES_RANGE;
+
+        $validated = $request->validateWithBag('gm_assistant_idle_alert', [
+            'enabled' => ['boolean'],
+            'minutes' => ['required', 'integer', "between:{$fewest},{$most}"],
+        ], [
+            'minutes.required' => 'Give how many minutes.',
+            'minutes.integer' => 'Give the minutes as a whole number, like 10.',
+            'minutes.between' => "Keep it between {$fewest} and {$most} minutes.",
+        ]);
+
+        Setting::putGmAssistantIdleAlert([
+            'enabled' => $request->boolean('enabled'),
+            'minutes' => (int) $validated['minutes'],
+        ]);
+
+        return $this->backToTab('idle-alert', 'GM Assistant idle alert saved.');
     }
 
     /**

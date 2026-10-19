@@ -16,7 +16,8 @@
     (Setting::finalizeTargets()), $gmAssistantTargets
     (Setting::gmAssistantTargets()), $gmAssistantPerItem
     (Setting::gmAssistantPerItem()), $dataEntryIdleAlert
-    (Setting::dataEntryIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
+    (Setting::dataEntryIdleAlert()), $gmAssistantIdleAlert
+    (Setting::gmAssistantIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
     (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
     (App\RfqDataEraser::counts(), for an Admin), $extraHours
@@ -50,7 +51,7 @@
             'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
             'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
             'gm-assistant-targets' => ['label' => 'GM Assistant Time', 'icon' => 'bi-file-earmark-text', 'bag' => ['gm_assistant_targets', 'gm_assistant_per_item']],
-            'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => 'idle_alert'],
+            'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => ['idle_alert', 'gm_assistant_idle_alert']],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
         ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
@@ -803,7 +804,7 @@
                      started anything — see App\Console\Commands\AlertIdleDataEntry. --}}
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center gap-2">
-                        Idle Alert
+                        Idle Alert — Data Entry
                         <span class="badge badge-soft-primary">Admin</span>
                     </div>
                     <div class="card-body">
@@ -836,6 +837,46 @@
                             </div>
 
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save idle alert</button>
+                        </form>
+                    </div>
+                </div>
+
+                {{-- The same for GM Assistant — see App\Console\Commands\AlertIdleGmAssistant. --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Idle Alert — GM Assistant
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.gm-assistant-idle-alert') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">When parts are waiting for GM Assistant and someone there hasn't started anything for this many working minutes, Senior Operations gets an alert in their bell. Lunch, out of hours, and anyone on leave on today's attendance sheet don't count.</p>
+
+                            @php $gmaIdleAlertFailed = $errors->getBag('gm_assistant_idle_alert')->any(); @endphp
+                            <div class="form-check form-switch mb-3">
+                                <input type="hidden" name="enabled" value="0">
+                                <input class="form-check-input" type="checkbox" role="switch" name="enabled" id="gma-idle-alert-enabled" value="1"
+                                       @checked($gmaIdleAlertFailed ? old('enabled') : $gmAssistantIdleAlert['enabled'])>
+                                <label class="form-check-label" for="gma-idle-alert-enabled">Alert Senior Operations</label>
+                            </div>
+
+                            <div class="mb-3 settings-narrow-field">
+                                <label for="gma-idle-alert-minutes" class="form-label">Alert after</label>
+                                <div class="input-group">
+                                    <input type="number" name="minutes" id="gma-idle-alert-minutes"
+                                           class="form-control @error('minutes', 'gm_assistant_idle_alert') is-invalid @enderror"
+                                           value="{{ $gmaIdleAlertFailed ? old('minutes') : $gmAssistantIdleAlert['minutes'] }}"
+                                           min="{{ $dataEntryIdleMinutesRange[0] }}" max="{{ $dataEntryIdleMinutesRange[1] }}" step="1" required>
+                                    <span class="input-group-text">minutes</span>
+                                    @error('minutes', 'gm_assistant_idle_alert')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save GM Assistant idle alert</button>
                         </form>
                     </div>
                 </div>

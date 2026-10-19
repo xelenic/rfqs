@@ -2824,6 +2824,29 @@ class Rfq extends Model
     }
 
     /**
+     * When each part waiting for GM Assistant to start came in — approved on
+     * to them by the Head of Business Development, set going again, or sent
+     * back to them — on a Pending RFQ that's on its way through their step:
+     * what GM Assistant's idle alert counts from (User::gmAssistantIdleness()).
+     * Anyone in GM Assistant can take any of them.
+     *
+     * @return Collection<int, CarbonImmutable>
+     */
+    public static function gmAssistantWaitingSince(): Collection
+    {
+        return DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->where(fn ($stages) => $stages->whereNull('rfqs.stage')->orWhereIn('rfqs.stage', ['senior_ops_review', 'head_of_bd_review', 'gm_assistant']))
+            ->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.head_of_bd_approved_at')
+            ->whereNull('rfq_user.gm_assistant_completed_at')
+            ->whereNull('rfq_user.gm_assistant_started_at')
+            ->get(['rfq_user.head_of_bd_approved_at', 'rfq_user.status_changed_at', 'rfqs.rejected_at'])
+            ->map(fn (object $part) => collect((array) $part)->filter()->map(fn (string $at) => CarbonImmutable::parse($at))->max());
+    }
+
+    /**
      * Where $part's countdown stands with Data Entry: the working time it
      * allows them (dataEntryTargetSeconds() — per item, or by priority) less
      * what this round has taken since their Start, less any day whoever

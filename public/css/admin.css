@@ -2833,16 +2833,55 @@ a.pipeline-label:hover {
   overflow-y: auto;
 }
 
+.mention-dropdown {
+  max-height: 320px;
+}
+
 .mention-dropdown-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
   text-align: left;
-  padding: 0.35rem 0.6rem;
+  padding: 0.4rem 0.6rem;
   border: none;
   background: none;
   border-radius: 6px;
   font-size: 0.85rem;
   color: var(--rfq-text);
+}
+
+/* Each person's picture (or initial) and roles, as on the thread. */
+.mention-dropdown-avatar {
+  flex: 0 0 auto;
+  margin-left: 0;
+  width: 30px;
+  height: 30px;
+  font-size: 0.75rem;
+}
+
+.mention-dropdown-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.mention-dropdown-name {
+  font-weight: 600;
+}
+
+.mention-dropdown-role {
+  font-size: 0.72rem;
+  color: var(--rfq-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-dropdown-item.is-active .mention-dropdown-role,
+.mention-dropdown-item:hover .mention-dropdown-role {
+  color: var(--rfq-primary-dark);
 }
 
 .mention-dropdown-item.is-active,

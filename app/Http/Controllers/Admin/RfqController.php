@@ -620,6 +620,10 @@ class RfqController extends Controller implements HasMiddleware
             'myDataEntryIdle' => $scopedToDataEntry && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')
                 ? $user->dataEntryIdleness()
                 : null,
+            // GM Assistant's own Review page, the same.
+            'myGmAssistantIdle' => $scopedToGmAssistant && $user->hasRole('GM Assistant') && ! $user->hasRole('Admin')
+                ? $user->gmAssistantIdleness()
+                : null,
             'countdownSchedule' => (($scopedToMe || $scopedToReturns) && ! $sourcingOverview) || $scopedToDataEntry || $scopedToGmAssistant || $scopedToGmAssistantReturns
                 ? [
                     'now' => now()->getTimestamp(),

@@ -84,7 +84,7 @@
                             <i class="bi bi-reply-fill"></i> {{ $entry['detail'] }}
                         </div>
                     @endif
-                    <p class="mb-1" style="white-space: pre-line;">{!! $comment->bodyWithMentions($sourcingUsers) !!}</p>
+                    <p class="mb-1" style="white-space: pre-line;">{!! $comment->bodyWithMentions(\App\Models\RfqComment::mentionableUsers()) !!}</p>
                     @include('admin.rfqs._comment_attachments', ['comment' => $comment])
 
                     @unless ($restrictAssignment)
@@ -100,7 +100,7 @@
                                     @csrf
                                     <input type="hidden" name="parent_id" value="{{ $comment->id }}">
                                     <textarea name="body" rows="1" class="form-control form-control-sm js-mention-input @error('body', 'reply') is-invalid @enderror"
-                                              placeholder="Write a reply... (@ to mention Sourcing{{ $rfq->isClosed() ? ' — they\'ll get it in Messages' : '' }})">{{ $isFailedReply ? old('body') : '' }}</textarea>
+                                              placeholder="Write a reply... (@ to mention someone{{ $rfq->isClosed() ? ' — they\'ll get it in Messages' : '' }})">{{ $isFailedReply ? old('body') : '' }}</textarea>
                                     @if ($isFailedReply)
                                         @error('body', 'reply')
                                             <div class="invalid-feedback d-block">{{ $message }}</div>
