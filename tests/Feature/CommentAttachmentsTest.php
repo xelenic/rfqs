@@ -165,8 +165,8 @@ it('serves a file only to those who can see RFQs', function () {
     $attachment = RfqCommentAttachment::factory()->create();
     Storage::disk(RfqCommentAttachment::DISK)->put($attachment->path, 'jpeg bytes');
 
-    Role::findOrCreate('HR Manager');
-    test()->actingAs(User::factory()->create()->assignRole('HR Manager'))->get($attachment->url())->assertForbidden();
+    Role::findOrCreate('HR Executive');
+    test()->actingAs(User::factory()->create()->assignRole('HR Executive'))->get($attachment->url())->assertForbidden();
     test()->actingAs(userWithRole('Sourcing'))->get($attachment->url())->assertOk();
 });
 

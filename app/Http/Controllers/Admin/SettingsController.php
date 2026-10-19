@@ -94,7 +94,7 @@ class SettingsController extends Controller
     {
         $user = $request->user();
 
-        abort_unless($user->canChangeUserDetails(), 403, 'Only an Admin or HR Manager can change your name or email.');
+        abort_unless($user->canChangeUserDetails(), 403, 'Only an Admin or HR Executive can change your name or email.');
 
         $validated = $request->validateWithBag('profile', [
             'name' => ['required', 'string', 'max:255'],
@@ -195,12 +195,12 @@ class SettingsController extends Controller
      * A role's own working week, in place of the company's — the same days,
      * hours and lunches, checked the same way — from today on: its people's
      * time counts in it unless they have their own. Days before keep the
-     * hours they had. Admin or HR Manager (User::WORKING_HOURS_ROLES). See
+     * hours they had. Admin or HR Executive (User::WORKING_HOURS_ROLES). See
      * WorkingSchedule.
      */
     public function updateRoleHours(Request $request, Role $role): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change a role\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change a role\'s working hours.');
 
         $validated = $this->validatedWeek($request, 'role_hours');
         $base = WorkingSchedule::currentFor($role)?->week ?? Setting::workingHours();
@@ -216,7 +216,7 @@ class SettingsController extends Controller
      */
     public function destroyRoleHours(Request $request, Role $role): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change a role\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change a role\'s working hours.');
         abort_unless(WorkingSchedule::endFor($role), 404);
 
         return $this->backToTab('role-hours', "{$role->name} works the company's working hours again from today.");
@@ -225,12 +225,12 @@ class SettingsController extends Controller
     /**
      * One person's own working week, in place of their role's or the
      * company's, from today on. Days before keep the hours they had. Set from
-     * their page, and back to it, by an Admin or HR Manager
+     * their page, and back to it, by an Admin or HR Executive
      * (User::WORKING_HOURS_ROLES). See WorkingSchedule.
      */
     public function updateUserHours(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change someone\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change someone\'s working hours.');
 
         $validated = $this->validatedWeek($request, 'user_hours');
         $base = Setting::weekOn(Setting::today(), $user->id);
@@ -247,7 +247,7 @@ class SettingsController extends Controller
      */
     public function destroyUserHours(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Manager can change someone\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change someone\'s working hours.');
         abort_unless(WorkingSchedule::endFor($user), 404);
 
         return redirect()->route('admin.users.show', ['user' => $user, 'tab' => 'working-hours'])

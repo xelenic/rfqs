@@ -63,14 +63,14 @@ function makeSheet($by, string $date, array $absent = [])
 }
 
 /**
- * HR Manager approves $date's sheet — only then does its day count.
+ * HR Executive approves $date's sheet — only then does its day count.
  */
 function approveSheetAsHr(string $date): void
 {
-    Role::findOrCreate('HR Manager');
+    Role::findOrCreate('HR Executive');
     $sheet = AttendanceSheet::query()->whereDate('date', $date)->sole();
 
-    test()->actingAs(User::factory()->create()->assignRole('HR Manager'))
+    test()->actingAs(User::factory()->create()->assignRole('HR Executive'))
         ->patch(route('admin.attendance.approve', $sheet))
         ->assertSessionHasNoErrors();
 }
@@ -138,7 +138,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Sick leave'])
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 on leave. Sent to HR Manager for approval.');
+        ->assertSessionHas('status', 'Attendance saved for today — 1 present, 1 on leave. Sent to HR Executive for approval.');
 
     $sheet = AttendanceSheet::query()->sole();
     expect($sheet->created_by)->toBe($ops->id)
@@ -204,7 +204,7 @@ it('marks someone on leave, and back again', function () {
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => null]))
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.attendance.index'))
-        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Manager for approval.');
+        ->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Executive for approval.');
 
     expect($sheet->attendances()->where('user_id', $riley->id)->first())->toMatchArray(['status' => 'absent', 'reason' => null])
         ->and($sheet->refresh()->updated_by)->toBe($ops->id);
@@ -308,13 +308,13 @@ it('counts the day for someone present, and not for someone absent', function ()
     $ops = userWithRole('Senior Operations');
     makeSheet($ops, '2026-10-05');
 
-    // Submitted, but not counted until HR Manager approves it.
+    // Submitted, but not counted until HR Executive approves it.
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'awaiting' => 7200]);
 
     approveSheetAsHr('2026-10-05');
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 7200, 'awaiting' => 0]);
 
-    // Corrected to on leave: back to HR Manager — awaiting again until approved.
+    // Corrected to on leave: back to HR Executive — awaiting again until approved.
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Casual leave']));
 

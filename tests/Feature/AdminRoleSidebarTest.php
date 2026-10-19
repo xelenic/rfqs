@@ -26,7 +26,7 @@ it('groups the workflow by role in the Admin sidebar', function () {
         ->assertOk();
 
     // A node for each role, the "RFQ Management" parent they all hang from,
-    // Human Resource after it, with HR Manager under it, then Reports with
+    // Human Resource after it, with HR Executive under it, then Reports with
     // its three groups (Sourcing, Data Entry, RFQ tracking).
     expect(substr_count($response->getContent(), 'sidebar-group-title'))->toBe(count(Rfq::WORKFLOW_ROLES) + 7);
 
@@ -313,15 +313,15 @@ it('leaves Assign Operations off Admin\'s list and RFQ pages, but not off everyo
     }
 });
 
-it('gives Admin Attendance and Time Spent under Human Resource\'s HR Manager step, after RFQ Management — not in Senior Operations\' group, or a Reports section', function () {
+it('gives Admin Attendance and Time Spent under Human Resource\'s HR Executive step, after RFQ Management — not in Senior Operations\' group, or a Reports section', function () {
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.attendance.index'))->assertOk()->getContent();
-    $humanResource = Str::betweenFirst($html, 'id="sidebar-group-hr-manager">', '</div>');
+    $humanResource = Str::betweenFirst($html, 'id="sidebar-group-hr-executive">', '</div>');
     $seniorOperations = Str::betweenFirst($html, 'id="sidebar-group-senior-operations">', '</div>');
 
     expect($html)->toContain('<span class="sidebar-group-name">Human Resource</span>')
         ->and(strpos($html, 'Human Resource</span>'))->toBeGreaterThan(strpos($html, 'RFQ Management</span>'))
-        // HR Manager is its one step, numbered 1 — and the current one, with Attendance open.
-        ->and(Str::after($html, 'Human Resource</span>'))->toMatch('/<span class="sidebar-step-number is-current" aria-hidden="true">1<\/span>\s*<span class="sidebar-group-name"><span class="visually-hidden">Stage 1: <\/span>HR Manager<\/span>/')
+        // HR Executive is its one step, numbered 1 — and the current one, with Attendance open.
+        ->and(Str::after($html, 'Human Resource</span>'))->toMatch('/<span class="sidebar-step-number is-current" aria-hidden="true">1<\/span>\s*<span class="sidebar-group-name"><span class="visually-hidden">Stage 1: <\/span>HR Executive<\/span>/')
         ->and($humanResource)->toContain('href="'.route('admin.attendance.index').'"')
         ->toContain('href="'.route('admin.reports.time-spent').'"')
         // Open on Attendance: its link is the current one.

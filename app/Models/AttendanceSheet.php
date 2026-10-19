@@ -14,7 +14,7 @@ use Illuminate\Support\Collection;
  * Senior Operations' attendance sheet for one day: every Sourcing, Data Entry
  * and GM Assistant person, present or on leave (Attendance). Made fresh each
  * day — everyone present until marked otherwise — and kept up to date after.
- * Each one submitted goes to HR Manager, who approves it or returns it to
+ * Each one submitted goes to HR Executive, who approves it or returns it to
  * Senior Operations, with why, to correct and submit again (submitted(),
  * approve(), sendBack()). From the day attendance starts
  * (Setting::attendanceSince()), a person's time only counts on a day whose
@@ -49,7 +49,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * Whether HR Manager has approved it — what makes its day count.
+     * Whether HR Executive has approved it — what makes its day count.
      */
     public function isApproved(): bool
     {
@@ -57,7 +57,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * Whether HR Manager has returned it to Senior Operations, still to be
+     * Whether HR Executive has returned it to Senior Operations, still to be
      * corrected and submitted again.
      */
     public function isReturned(): bool
@@ -66,7 +66,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * Whether it's waiting on HR Manager's review.
+     * Whether it's waiting on HR Executive's review.
      */
     public function isAwaitingApproval(): bool
     {
@@ -75,7 +75,7 @@ class AttendanceSheet extends Model
 
     /**
      * Senior Operations has submitted it — new, or corrected — so it's
-     * HR Manager's to review again: any approval or return before goes.
+     * HR Executive's to review again: any approval or return before goes.
      */
     public function submitted(User $by): void
     {
@@ -90,7 +90,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * HR Manager approves it: from now its day's attendance counts — present
+     * HR Executive approves it: from now its day's attendance counts — present
      * people's time, and none of anyone's on leave.
      */
     public function approve(User $by): void
@@ -105,7 +105,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * HR Manager returns it to Senior Operations, with why, to correct and
+     * HR Executive returns it to Senior Operations, with why, to correct and
      * submit again.
      */
     public function sendBack(User $by, string $reason): void
@@ -118,7 +118,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * How many sheets are waiting on HR Manager's review.
+     * How many sheets are waiting on HR Executive's review.
      */
     public static function awaitingApprovalCount(): int
     {
@@ -126,7 +126,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * How many sheets HR Manager has returned to Senior Operations, still to
+     * How many sheets HR Executive has returned to Senior Operations, still to
      * be corrected.
      */
     public static function returnedCount(): int
@@ -205,7 +205,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * The HR Manager who approved it.
+     * The HR Executive who approved it.
      */
     public function approvedBy(): BelongsTo
     {
@@ -213,7 +213,7 @@ class AttendanceSheet extends Model
     }
 
     /**
-     * The HR Manager who returned it.
+     * The HR Executive who returned it.
      */
     public function returnedBy(): BelongsTo
     {

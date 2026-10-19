@@ -18,12 +18,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 });
 
 /**
@@ -128,10 +128,10 @@ it('says on the page why a photo didn\'t go in', function () {
         ->assertSee('Choose a photo — JPG, PNG, WebP or GIF.');
 });
 
-it('leaves someone else\'s photo to Admin and HR Manager — and an Admin\'s to an Admin', function () {
+it('leaves someone else\'s photo to Admin and HR Executive — and an Admin\'s to an Admin', function () {
     $riley = userWithRole('Sourcing');
     $admin = userWithRole('Admin');
-    $hr = User::factory()->create()->assignRole('HR Manager');
+    $hr = User::factory()->create()->assignRole('HR Executive');
 
     putUpPhoto(userWithRole('Senior Operations'), $riley)->assertForbidden();
     putUpPhoto($hr, $admin)->assertForbidden();

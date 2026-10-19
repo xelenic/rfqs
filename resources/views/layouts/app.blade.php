@@ -68,13 +68,13 @@
                     @if (auth()->user()->canViewAttendance())
                         {{-- What's waiting on them there, as a red count: for Senior
                              Operations, the working days still without a sheet and the
-                             sheets HR Manager returned; for HR Manager, the sheets
+                             sheets HR Executive returned; for HR Executive, the sheets
                              awaiting their approval. --}}
                         @php
                             $daysWithoutSheet = auth()->user()->canManageAttendance() ? count(\App\Models\AttendanceSheet::missingDays()) : 0;
                             $attendanceToDo = array_filter([
                                 $daysWithoutSheet.' working '.\Illuminate\Support\Str::plural('day', $daysWithoutSheet).' without a sheet' => $daysWithoutSheet,
-                                'returned by HR Manager' => auth()->user()->canManageAttendance() ? \App\Models\AttendanceSheet::returnedCount() : 0,
+                                'returned by HR Executive' => auth()->user()->canManageAttendance() ? \App\Models\AttendanceSheet::returnedCount() : 0,
                                 'awaiting your approval' => auth()->user()->canApproveAttendance() ? \App\Models\AttendanceSheet::awaitingApprovalCount() : 0,
                             ]);
                             $attendanceCount = array_sum($attendanceToDo);
@@ -91,7 +91,7 @@
                     <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
                         <i class="bi bi-stopwatch"></i> Time Spent
                     </a>
-                    {{-- The performance reports — HR Manager's here; Admin's under
+                    {{-- The performance reports — HR Executive's here; Admin's under
                          Reports in _sidebar_admin_groups. --}}
                     @if (auth()->user()->canViewPerformanceReports())
                         @foreach ([

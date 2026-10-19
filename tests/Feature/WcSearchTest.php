@@ -9,7 +9,7 @@ use Spatie\Permission\Models\Role;
 uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -35,7 +35,7 @@ it('puts the WC number search on every dashboard', function (string $role) {
 })->with(['Admin', 'Business Development', 'Sourcing', 'Senior Operations', 'Data Entry']);
 
 it('leaves it off for those who can\'t open RFQs, and turns their requests down', function () {
-    $hr = User::factory()->create()->assignRole('HR Manager');
+    $hr = User::factory()->create()->assignRole('HR Executive');
 
     test()->actingAs($hr)->get(route('admin.dashboard'))->assertOk()
         ->assertDontSee('id="wcSearchForm"', false);

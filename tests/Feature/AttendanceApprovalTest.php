@@ -15,7 +15,7 @@ beforeEach(function () {
     foreach (Rfq::WORKFLOW_ROLES as $role) {
         Role::findOrCreate($role);
     }
-    Role::findOrCreate('HR Manager');
+    Role::findOrCreate('HR Executive');
 
     // Attendance from Monday 2026-10-05 — and it's Monday, 11:00.
     Setting::put('attendance_since', '2026-10-05');
@@ -46,10 +46,10 @@ function mondaysSheet(): array
 
 function hrReviewer(): User
 {
-    return User::factory()->create()->assignRole('HR Manager');
+    return User::factory()->create()->assignRole('HR Executive');
 }
 
-it('sends a submitted sheet to HR Manager, who sees it waiting with Approve and Return', function () {
+it('sends a submitted sheet to HR Executive, who sees it waiting with Approve and Return', function () {
     ['ops' => $ops, 'sheet' => $sheet] = mondaysSheet();
     $hr = hrReviewer();
 
@@ -73,7 +73,7 @@ it('sends a submitted sheet to HR Manager, who sees it waiting with Approve and 
         ->not->toContain(route('admin.attendance.approve', $sheet));
 });
 
-it('counts the day only once HR Manager approves it', function () {
+it('counts the day only once HR Executive approves it', function () {
     ['riley' => $riley, 'sheet' => $sheet] = mondaysSheet();
     $hr = hrReviewer();
 
@@ -103,7 +103,7 @@ it('counts the day only once HR Manager approves it', function () {
     test()->actingAs($hr)->patch(route('admin.attendance.return', $sheet), ['reason' => 'x'])->assertStatus(422);
 });
 
-it('lets HR Manager return a sheet to Senior Operations, with what needs correcting, until it\'s submitted again', function () {
+it('lets HR Executive return a sheet to Senior Operations, with what needs correcting, until it\'s submitted again', function () {
     ['ops' => $ops, 'morgan' => $morgan, 'sheet' => $sheet] = mondaysSheet();
     $hr = hrReviewer();
 
@@ -121,9 +121,9 @@ it('lets HR Manager return a sheet to Senior Operations, with what needs correct
     expect($row)->toContain('Returned')
         ->toContain('Morgan was on casual leave, not sick')
         ->toContain('Correct')
-        ->and($html)->toContain('title="1 returned by HR Manager">1</span>');
+        ->and($html)->toContain('title="1 returned by HR Executive">1</span>');
 
-    // Corrected and submitted again: HR Manager's to review afresh.
+    // Corrected and submitted again: HR Executive's to review afresh.
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [
         $morgan->id => ['status' => 'absent', 'note' => 'Casual'],
     ]])->assertSessionHasNoErrors();
@@ -133,7 +133,7 @@ it('lets HR Manager return a sheet to Senior Operations, with what needs correct
         ->return_reason->toBeNull();
 });
 
-it('asks HR Manager what needs correcting, reopening the popup against the same sheet', function () {
+it('asks HR Executive what needs correcting, reopening the popup against the same sheet', function () {
     ['sheet' => $sheet] = mondaysSheet();
     $hr = hrReviewer();
 
@@ -155,14 +155,14 @@ it('sends an approved sheet back for approval once it\'s corrected', function ()
 
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), ['attendance' => [
         $riley->id => ['status' => 'absent'],
-    ]])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Manager for approval.');
+    ]])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on leave. Sent to HR Executive for approval.');
 
     expect($sheet->refresh())
         ->isAwaitingApproval()->toBeTrue()
         ->approved_by->toBeNull();
 });
 
-it('lets only HR Manager and Admin approve or return a sheet', function () {
+it('lets only HR Executive and Admin approve or return a sheet', function () {
     ['sheet' => $sheet] = mondaysSheet();
 
     foreach (['Senior Operations', 'Sourcing', 'Business Development'] as $role) {

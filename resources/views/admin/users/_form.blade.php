@@ -29,7 +29,7 @@
     </div>
 
     @if ($mode === 'edit' && ! auth()->user()->hasRole('Admin'))
-        {{-- Only an Admin sets someone's password; HR Manager sends a link
+        {{-- Only an Admin sets someone's password; HR Executive sends a link
              (the envelope on the list). --}}
     @elseif ($mode === 'edit')
         <div class="col-md-6">

@@ -15,7 +15,7 @@ beforeEach(function () {
     // Monday 5 October, 9:00 in Colombo — the start of a working morning.
     test()->travelTo(Carbon::parse('2026-10-05 03:30:00'));
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -76,7 +76,7 @@ it('keeps it from everyone else', function (string $role) {
         ->assertDontSee('js/critical-monitor.js', false);
 
     test()->actingAs(userWithRole($role))->get(route('admin.critical-monitor'))->assertForbidden();
-})->with(['Sourcing', 'Data Entry', 'Business Development', 'General Manager', 'HR Manager']);
+})->with(['Sourcing', 'Data Entry', 'Business Development', 'General Manager', 'HR Executive']);
 
 // ---- the button ------------------------------------------------------------
 

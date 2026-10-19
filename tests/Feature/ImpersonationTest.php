@@ -15,12 +15,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 });
 
 it('lets an Admin sign in as someone else, says so at the top, and takes them back', function () {
@@ -69,8 +69,8 @@ it('offers "Log in as" to an Admin, on the Users list and a person\'s page — n
         ->assertSee('action="'.route('admin.users.impersonate', $riley).'"', false)
         ->assertSee('Log in as');
 
-    // HR Manager sees the Users pages, but signs in as nobody.
-    $hr = User::factory()->create()->assignRole('HR Manager');
+    // HR Executive sees the Users pages, but signs in as nobody.
+    $hr = User::factory()->create()->assignRole('HR Executive');
     test()->actingAs($hr)->get(route('admin.users.index'))->assertOk()
         ->assertDontSee(route('admin.users.impersonate', $riley));
 });
@@ -79,7 +79,7 @@ it('keeps signing in as someone else to an Admin — and not as an Admin, themse
     $admin = userWithRole('Admin');
     $riley = userWithRole('Sourcing');
 
-    foreach ([userWithRole('Senior Operations'), User::factory()->create()->assignRole('HR Manager')] as $notAdmin) {
+    foreach ([userWithRole('Senior Operations'), User::factory()->create()->assignRole('HR Executive')] as $notAdmin) {
         test()->actingAs($notAdmin)->post(route('admin.users.impersonate', $riley))->assertForbidden();
     }
 

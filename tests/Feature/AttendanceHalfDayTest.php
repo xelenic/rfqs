@@ -17,7 +17,7 @@ beforeEach(function () {
     foreach (Rfq::WORKFLOW_ROLES as $role) {
         Role::findOrCreate($role);
     }
-    Role::findOrCreate('HR Manager');
+    Role::findOrCreate('HR Executive');
 
     // Attendance from Monday 2026-10-05: 08:30–17:00, lunch 12:30–13:30.
     Setting::put('attendance_since', '2026-10-05');
@@ -56,7 +56,7 @@ function halfDayForRiley(User $by, User $riley, string $half): void
         'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => $half]],
     ])->assertSessionHasNoErrors();
 
-    test()->actingAs(User::factory()->create()->assignRole('HR Manager'))
+    test()->actingAs(User::factory()->create()->assignRole('HR Executive'))
         ->patch(route('admin.attendance.approve', AttendanceSheet::query()->sole()))
         ->assertSessionHasNoErrors();
 }
@@ -67,7 +67,7 @@ it('saves a half day — which half off, and a note — and lists it', function 
     test()->actingAs($ops)->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
         'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => 'morning', 'note' => 'Doctor\'s appointment']],
-    ])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on a half day, 0 on leave. Sent to HR Manager for approval.');
+    ])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on a half day, 0 on leave. Sent to HR Executive for approval.');
 
     expect(Attendance::query()->sole())->toMatchArray([
         'status' => 'half_day',
@@ -191,7 +191,7 @@ it('refuses a half day off that ends before it starts, or isn\'t a time', functi
 
 /**
  * $by submits Monday's sheet with Riley on a half day off $start to $end —
- * and HR Manager approves it.
+ * and HR Executive approves it.
  */
 function customHalfDayForRiley(User $by, User $riley, string $start, string $end): void
 {
@@ -200,7 +200,7 @@ function customHalfDayForRiley(User $by, User $riley, string $start, string $end
         'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => 'custom', 'half_off_start' => $start, 'half_off_end' => $end]],
     ])->assertSessionHasNoErrors();
 
-    test()->actingAs(User::factory()->create()->assignRole('HR Manager'))
+    test()->actingAs(User::factory()->create()->assignRole('HR Executive'))
         ->patch(route('admin.attendance.approve', AttendanceSheet::query()->sole()))
         ->assertSessionHasNoErrors();
 }
@@ -216,7 +216,7 @@ it('offers a custom time on a half day, and saves and lists it', function () {
     test()->actingAs($ops)->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
         'attendance' => [$riley->id => ['status' => 'half_day', 'half_off' => 'custom', 'half_off_start' => '10:00', 'half_off_end' => '14:00', 'note' => 'Bank']],
-    ])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on a half day, 0 on leave. Sent to HR Manager for approval.');
+    ])->assertSessionHas('status', 'Attendance saved for today — 0 present, 1 on a half day, 0 on leave. Sent to HR Executive for approval.');
 
     expect(Attendance::query()->sole())->toMatchArray([
         'status' => 'half_day',

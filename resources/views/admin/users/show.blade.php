@@ -7,7 +7,7 @@
     (Overview), the parts in their hands now, what they've done lately, the
     week their time counts in, and, for the people whose time is tracked, the
     last two weeks' attendance and their extra hours. An RFQ links to its
-    page only for those who can open RFQs (HR Manager can't).
+    page only for those who can open RFQs (HR Executive can't).
 
     Expects: $user (with roles, and extraWorkingHours — the current ones),
     $isTracked, $canManage, $roles, $work, $partsInHand, $activity,
@@ -366,7 +366,7 @@
         </div>
 
         {{-- The week their time counts in today — their own, their role's or
-             the company's — which an Admin or HR Manager can give them their
+             the company's — which an Admin or HR Executive can give them their
              own of. --}}
         <div class="tab-pane fade {{ $activeTab === 'working-hours' ? 'show active' : '' }}" id="user-pane-working-hours" role="tabpanel" aria-labelledby="user-tab-working-hours" tabindex="0">
             <div class="card mb-4">
@@ -450,7 +450,7 @@
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <span>Last two weeks</span>
-                        <span class="text-muted-soft small fw-normal">As HR Manager approved it</span>
+                        <span class="text-muted-soft small fw-normal">As HR Executive approved it</span>
                     </div>
                     <div class="card-body">
                         @if ($attendance === null)

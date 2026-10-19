@@ -17,12 +17,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 });
 
 function deactivate(User $admin, User $user): TestResponse
@@ -159,7 +159,7 @@ it('keeps deactivating to an Admin — and never their own account', function ()
     $admin = userWithRole('Admin');
     $riley = userWithRole('Sourcing');
 
-    foreach ([User::factory()->create()->assignRole('HR Manager'), userWithRole('Senior Operations')] as $notAdmin) {
+    foreach ([User::factory()->create()->assignRole('HR Executive'), userWithRole('Senior Operations')] as $notAdmin) {
         deactivate($notAdmin, $riley)->assertForbidden();
     }
 

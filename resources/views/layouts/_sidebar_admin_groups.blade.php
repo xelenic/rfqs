@@ -18,14 +18,14 @@
     Every group ends with Closed RFQs, as every role's own sidebar does.
 
     After it, "Human Resource", laid out the same way: the people side, with
-    HR Manager as its step — the attendance sheets (and what's waiting there
+    HR Executive as its step — the attendance sheets (and what's waiting there
     to make, correct or approve) and everyone's time spent. Then "Reports":
     the performance reports, Sourcing's, Data Entry's and the RFQ tracking
     sheet.
 --}}
 @php
     // Besides the queues: the attendance sheets to make (working days still
-    // without one), correct (returned by HR Manager) or approve.
+    // without one), correct (returned by HR Executive) or approve.
     $counts = \App\Models\Rfq::queueCounts() + ['attendance' => count(\App\Models\AttendanceSheet::missingDays())
         + \App\Models\AttendanceSheet::returnedCount()
         + \App\Models\AttendanceSheet::awaitingApprovalCount()];
@@ -104,12 +104,12 @@
     ];
 
     // The two parents, each a timeline of its steps: the RFQ workflow, and
-    // Human Resource with HR Manager's pages.
+    // Human Resource with HR Executive's pages.
     $trees = [
         ['slug' => 'role-stages', 'label' => 'RFQ Management', 'icon' => 'bi-layers', 'groups' => $groups],
         ['slug' => 'human-resource', 'label' => 'Human Resource', 'icon' => 'bi-person-vcard', 'groups' => [
             [
-                'role' => 'HR Manager', 'badge' => ['attendance'],
+                'role' => 'HR Executive', 'badge' => ['attendance'],
                 'links' => [
                     ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
                     ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],

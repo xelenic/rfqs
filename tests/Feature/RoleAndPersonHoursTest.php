@@ -18,12 +18,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 
     // Monday 5 October, 09:00 in Colombo.
     test()->travelTo(hoursClock('2026-10-05 09:00'));
@@ -272,7 +272,7 @@ it('puts a role back on the company\'s hours from today', function () {
     test()->actingAs($admin)->delete(route('admin.settings.role-hours.destroy', $dataEntry))->assertNotFound();
 });
 
-it('keeps role and personal hours to Admin and HR Manager', function () {
+it('keeps role and personal hours to Admin and HR Executive', function () {
     $dataEntry = Role::findByName('Data Entry');
     $morgan = userWithRole('Data Entry');
     $form = hoursForm(hoursWeek('07:00', '16:00'));
@@ -290,14 +290,14 @@ it('keeps role and personal hours to Admin and HR Manager', function () {
     expect(WorkingSchedule::query()->count())->toBe(0);
 });
 
-it('gives HR Manager Role Hours — and someone\'s own hours — but leaves the company\'s working hours to the Admin', function () {
-    $hr = User::factory()->create()->assignRole('HR Manager');
+it('gives HR Executive Role Hours — and someone\'s own hours — but leaves the company\'s working hours to the Admin', function () {
+    $hr = User::factory()->create()->assignRole('HR Executive');
     $dataEntry = Role::findByName('Data Entry');
     $morgan = userWithRole('Data Entry');
 
     $html = test()->actingAs($hr)->get(route('admin.settings.edit', ['tab' => 'role-hours']))->assertOk()
         ->assertSee('class="tab-pane fade show active" id="settings-pane-role-hours"', false)
-        ->assertSee('<span class="badge badge-soft-primary">HR Manager</span>', false)
+        ->assertSee('<span class="badge badge-soft-primary">HR Executive</span>', false)
         ->assertSee('id="roleHoursModal-'.$dataEntry->id.'"', false)
         ->getContent();
 

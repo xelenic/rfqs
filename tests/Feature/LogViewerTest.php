@@ -81,7 +81,7 @@ it('offers each log file, and downloads the one picked — nothing outside the l
 });
 
 it('keeps the logs to an Admin', function () {
-    foreach (['Senior Operations', 'HR Manager', 'Sourcing'] as $role) {
+    foreach (['Senior Operations', 'HR Executive', 'Sourcing'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.logs.index'))->assertForbidden();
         test()->actingAs(userWithRole($role))->get(route('admin.logs.download', ['file' => 'laravel.log']))->assertForbidden();
     }

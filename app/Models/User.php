@@ -113,12 +113,12 @@ class User extends Authenticatable
     }
 
     /**
-     * The roles that see the Time Spent report. HR Manager has no part in the
+     * The roles that see the Time Spent report. HR Executive has no part in the
      * RFQ workflow itself.
      *
      * @var array<int, string>
      */
-    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Manager'];
+    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
 
     /**
      * The roles that see the performance reports (Admin\PerformanceReportController):
@@ -127,7 +127,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HR Manager'];
+    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HR Executive'];
 
     /**
      * The roles that fill in and submit the daily attendance sheet.
@@ -142,7 +142,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const ATTENDANCE_APPROVER_ROLES = ['Admin', 'HR Manager'];
+    public const ATTENDANCE_APPROVER_ROLES = ['Admin', 'HR Executive'];
 
     /**
      * The roles that change people's details — a name, an email — their
@@ -151,7 +151,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const USER_DETAILS_ROLES = ['Admin', 'HR Manager'];
+    public const USER_DETAILS_ROLES = ['Admin', 'HR Executive'];
 
     /**
      * The roles that give a role, or one person, working hours of their own
@@ -160,7 +160,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const WORKING_HOURS_ROLES = ['Admin', 'HR Manager'];
+    public const WORKING_HOURS_ROLES = ['Admin', 'HR Executive'];
 
     /**
      * Get the attributes that should be cast.

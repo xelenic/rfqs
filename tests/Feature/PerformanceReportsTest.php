@@ -273,7 +273,7 @@ it('sorts the tracking sheet', function () {
 
 // ---- Access ------------------------------------------------------------------------
 
-it('is Admin\'s and HR Manager\'s alone', function (string $role) {
+it('is Admin\'s and HR Executive\'s alone', function (string $role) {
     $user = userWithRole($role);
 
     foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
@@ -286,9 +286,9 @@ it('is Admin\'s and HR Manager\'s alone', function (string $role) {
         ->not->toContain('href="'.route('admin.reports.rfq-tracking').'"');
 })->with(['Senior Operations', 'Sourcing', 'General Manager']);
 
-it('lets HR Manager see every report, from Reports in their sidebar', function () {
+it('lets HR Executive see every report, from Reports in their sidebar', function () {
     mondaysWork();
-    $hr = User::factory()->create()->assignRole(Role::findOrCreate('HR Manager'));
+    $hr = User::factory()->create()->assignRole(Role::findOrCreate('HR Executive'));
 
     foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
         $html = test()->actingAs($hr)->get(route("admin.reports.{$report}"))->assertOk()->getContent();

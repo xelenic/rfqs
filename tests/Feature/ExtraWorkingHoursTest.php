@@ -194,14 +194,14 @@ it('refuses extra hours that don\'t make sense, and keeps them to an Admin', fun
 it('keeps people\'s working hours to an Admin', function () {
     $riley = userWithRole('Sourcing');
 
-    foreach (['HR Manager', 'Senior Operations', 'Sourcing'] as $role) {
+    foreach (['HR Executive', 'Senior Operations', 'Sourcing'] as $role) {
         test()->actingAs(userWithRole($role))->post(route('admin.settings.extra-hours.store'), [
             'user_id' => $riley->id, 'days' => ['monday'], 'start' => '19:00', 'end' => '20:00', 'starts_on' => '2026-10-05',
         ])->assertForbidden();
     }
 
     $range = worksExtra($riley);
-    test()->actingAs(userWithRole('HR Manager'))->delete(route('admin.settings.extra-hours.destroy', $range))->assertForbidden();
+    test()->actingAs(userWithRole('HR Executive'))->delete(route('admin.settings.extra-hours.destroy', $range))->assertForbidden();
     expect($range->refresh()->ended_at)->toBeNull();
 });
 
@@ -223,9 +223,9 @@ it('shows each tracked person\'s extra hours on the Users page, with an Extra ho
         // Not for someone whose time isn't tracked.
         ->not->toContain('id="extraHoursModal-'.$bd->id.'"');
 
-    // HR Manager sees the hours, not the window.
-    Role::findOrCreate('HR Manager')->givePermissionTo('users.view');
-    expect(test()->actingAs(userWithRole('HR Manager'))->get(route('admin.users.index'))->assertOk()->getContent())
+    // HR Executive sees the hours, not the window.
+    Role::findOrCreate('HR Executive')->givePermissionTo('users.view');
+    expect(test()->actingAs(userWithRole('HR Executive'))->get(route('admin.users.index'))->assertOk()->getContent())
         ->toContain('Mon–Fri 19:00–20:00')
         ->not->toContain('id="extraHoursModal-');
 });

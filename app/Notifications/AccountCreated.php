@@ -12,7 +12,7 @@ use Illuminate\Notifications\Notification;
  * A new account's welcome email, to the address it was made with: who made
  * it and as what, and a link to set their own password — the "new_users"
  * password broker's token, good for a week and once (config/auth.php,
- * Auth\SetPasswordController). Sent when HR Manager or Admin adds someone,
+ * Auth\SetPasswordController). Sent when HR Executive or Admin adds someone,
  * and again whenever they send a fresh link (Admin\UserController).
  */
 class AccountCreated extends Notification

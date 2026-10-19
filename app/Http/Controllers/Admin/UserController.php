@@ -263,7 +263,7 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * Their attendance on each of their working days of the last two weeks, latest
-     * first, as HR Manager approved it (Attendance::statusIn()) — from the
+     * first, as HR Executive approved it (Attendance::statusIn()) — from the
      * day attendance started; null while it isn't kept
      * (Setting::attendanceSince()).
      *
@@ -334,7 +334,7 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * The roles $user can give someone: any, for an Admin — and every one
-     * but Admin for anyone else who adds people (HR Manager).
+     * but Admin for anyone else who adds people (HR Executive).
      *
      * @return Collection<int, Role>
      */
@@ -347,7 +347,7 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
-     * Adds someone — HR Manager or Admin. By default with no password of
+     * Adds someone — HR Executive or Admin. By default with no password of
      * their own yet: they're emailed a link to set it (AccountCreated, good
      * for a week and once); if the email can't be sent, the account still
      * stands, and says so — Send link tries again. An Admin can set a
@@ -493,9 +493,9 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
-     * Changes someone's details and roles — Admin, or HR Manager (who holds
+     * Changes someone's details and roles — Admin, or HR Executive (who holds
      * users.edit too). Only an Admin changes an Admin's, or sets anyone's
-     * password: HR Manager sends a link to set it instead.
+     * password: HR Executive sends a link to set it instead.
      */
     public function update(Request $request, User $user): RedirectResponse
     {

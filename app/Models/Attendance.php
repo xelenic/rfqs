@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * up to MAX_CUSTOM_OFF_SECONDS of their working time) — with
  * a note if there's anything to say. (Why they were off isn't asked any
  * more; an older line keeps the reason it was given.) It
- * only stands once HR Manager has
+ * only stands once HR Executive has
  * approved the sheet; until then — like a day nobody's marked them for — the
  * day is unmarked, and doesn't count yet either. Read through book() and
  * statusIn().
@@ -79,7 +79,7 @@ class Attendance extends Model
     ];
 
     /**
-     * Everyone's attendance on every sheet HR Manager has approved, as user
+     * Everyone's attendance on every sheet HR Executive has approved, as user
      * id => date ("Y-m-d") => status — a half day as the half they were off
      * (MORNING_OFF, AFTERNOON_OFF) or the custom time (customOffStatus()) —
      * for the users given, or everyone. A

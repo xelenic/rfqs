@@ -64,7 +64,7 @@ class BusinessRoleSeeder extends Seeder
             // report go by role (User::TIME_SPENT_REPORT_ROLES), not
             // permission. They add people and change their details — never
             // an Admin's, nor as Admin (see Admin\UserController).
-            'HR Manager' => [
+            'HR Executive' => [
                 'description' => 'Approves the daily attendance sheet, sees the Time Spent report, and adds people and keeps their details — new people get an email to set their password.',
                 'permissions' => ['users.view', 'users.create', 'users.edit'],
             ],

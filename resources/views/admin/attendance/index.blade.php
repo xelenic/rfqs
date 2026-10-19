@@ -8,11 +8,11 @@
     Attendance::HALF_DAY, CUSTOM_HALF) or Leave (stored as absent —
     Attendance::ABSENT), with why when they were off.
 
-    Each sheet submitted — new, or corrected — goes to HR Manager, who approves
+    Each sheet submitted — new, or corrected — goes to HR Executive, who approves
     it or returns it to Senior Operations with what needs correcting (the
     return popup, #attendanceReturnModal). A person's time only counts on a
     day whose approved sheet has them present. Senior Operations and Admin
-    fill sheets in (User::canManageAttendance()); HR Manager and Admin review
+    fill sheets in (User::canManageAttendance()); HR Executive and Admin review
     them (User::canApproveAttendance()).
 
     One sheet a day: New attendance sheet opens on the newest day still without
@@ -59,7 +59,7 @@
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span>Attendance sheets</span>
                     @if (! $canKeep)
-                        {{-- HR Manager reviews; Senior Operations fills them in. --}}
+                        {{-- HR Executive reviews; Senior Operations fills them in. --}}
                     @elseif ($newSheetDate)
                         <button type="button" class="btn btn-sm btn-primary js-attendance-open"
                                 data-bs-toggle="modal" data-bs-target="#attendanceModal"
@@ -262,7 +262,7 @@
                             @enderror
                             <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
                         </div>
-                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off (or a custom time, up to 4 working hours). It goes to HR Manager for approval; once approved, nobody's time counts while they were off.</p>
+                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off (or a custom time, up to 4 working hours). It goes to HR Executive for approval; once approved, nobody's time counts while they were off.</p>
                     </div>
 
                     <div class="table-responsive">
@@ -356,7 +356,7 @@
     @endif
     @endif
 
-    {{-- HR Manager's Return — what needs correcting — pointed at a sheet by
+    {{-- HR Executive's Return — what needs correcting — pointed at a sheet by
          the Return button that opens it (admin.js, .js-attendance-return);
          back open against the same sheet if it's sent without a reason. --}}
     @if ($canApprove)

@@ -1,5 +1,5 @@
 {{--
-    The Time Spent report, for Admin, Senior Operations and HR Manager (see
+    The Time Spent report, for Admin, Senior Operations and HR Executive (see
     TimeSpentReportController): the average time each tracked role spends on
     an RFQ, then — one tab per lens: Pending, Deadline exceeded, Out of working
     hours, Closed, All — every RFQ some role has started on, with each role's
@@ -128,7 +128,7 @@
                         @php $time = $times[$rfq->id]; @endphp
                         <tr>
                             <td class="fw-semibold text-nowrap">
-                                {{-- HR Manager sees the report, not the RFQs themselves. --}}
+                                {{-- HR Executive sees the report, not the RFQs themselves. --}}
                                 @can('rfqs.view')
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}">{{ $rfq->rfq_number }}</a>
                                 @else

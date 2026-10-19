@@ -13,12 +13,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 });
 
 it('lets an Admin set a Sourcing member\'s Data Entry person on their page', function () {
@@ -63,11 +63,11 @@ it('takes only someone in Data Entry, and only for someone in Sourcing', functio
     expect($riley->refresh()->default_data_entry_user_id)->toBeNull();
 });
 
-it('leaves setting it to an Admin — HR Manager sees who it is', function () {
+it('leaves setting it to an Admin — HR Executive sees who it is', function () {
     $riley = userWithRole('Sourcing');
     $morgan = userWithRole('Data Entry');
     $riley->forceFill(['default_data_entry_user_id' => $morgan->id])->save();
-    $hr = User::factory()->create()->assignRole('HR Manager');
+    $hr = User::factory()->create()->assignRole('HR Executive');
 
     test()->actingAs($hr)->patch(route('admin.users.default-data-entry', $riley), ['data_entry_user_id' => null])->assertForbidden();
 

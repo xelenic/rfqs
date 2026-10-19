@@ -24,12 +24,12 @@ beforeEach(function () {
         Permission::findOrCreate($permission);
     }
 
-    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Manager'] as $role) {
+    foreach ([...Rfq::WORKFLOW_ROLES, 'Admin', 'HR Executive'] as $role) {
         Role::findOrCreate($role);
     }
 
     Role::findByName('Admin')->givePermissionTo(Permission::all());
-    Role::findByName('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findByName('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
 });
 
 /**
@@ -68,10 +68,10 @@ it('opens each person\'s page from the Users list', function () {
         ->assertSee('href="'.route('admin.messages.show', $riley).'"', false);
 });
 
-it('is for those who can see the Users list — Admin and HR Manager — and nobody else', function () {
+it('is for those who can see the Users list — Admin and HR Executive — and nobody else', function () {
     $riley = userWithRole('Sourcing');
 
-    userPage($riley, User::factory()->create()->assignRole('HR Manager'));
+    userPage($riley, User::factory()->create()->assignRole('HR Executive'));
 
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.users.show', $riley))->assertForbidden();
     test()->actingAs($riley)->get(route('admin.users.show', $riley))->assertForbidden();
@@ -139,13 +139,13 @@ it('says so when they\'ve done nothing on an RFQ yet', function () {
         ->assertSee('Nothing in their hands right now.');
 });
 
-it('names the RFQs to HR Manager without linking into them — they can\'t open RFQs', function () {
+it('names the RFQs to HR Executive without linking into them — they can\'t open RFQs', function () {
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2401']), [1 => $riley]);
     $rfq->completeSourcingPart(1, 'Quotes attached');
     splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2402']), [1 => $riley]);
 
-    $html = userPage($riley, User::factory()->create()->assignRole('HR Manager'))->getContent();
+    $html = userPage($riley, User::factory()->create()->assignRole('HR Executive'))->getContent();
 
     expect($html)->toContain('RFQ2401')
         ->toContain('RFQ2402')
@@ -154,7 +154,7 @@ it('names the RFQs to HR Manager without linking into them — they can\'t open 
 
 // ---- attendance and extra hours ---------------------------------------------
 
-it('lists the working days of the last two weeks\' attendance, as HR Manager approved it', function () {
+it('lists the working days of the last two weeks\' attendance, as HR Executive approved it', function () {
     $riley = userWithRole('Sourcing');
     Setting::put('attendance_since', '2026-09-28');
 
@@ -194,8 +194,8 @@ it('shows the extra hours still counting for them, with Admin\'s window to chang
         ->assertDontSee('06:00 – 07:00')
         ->assertSee('id="extraHoursModal-'.$riley->id.'"', false);
 
-    // HR Manager sees them, without the window.
-    userPage($riley, User::factory()->create()->assignRole('HR Manager'))
+    // HR Executive sees them, without the window.
+    userPage($riley, User::factory()->create()->assignRole('HR Executive'))
         ->assertSee('19:00 – 20:30')
         ->assertDontSee('id="extraHoursModal-'.$riley->id.'"', false);
 });
@@ -233,7 +233,7 @@ it('comes back to the page after sending a password link from there', function (
 it('keeps an Admin\'s Edit and password link to Admins, as the list does', function () {
     $admin = detailAdmin();
 
-    userPage($admin, User::factory()->create()->assignRole('HR Manager'))
+    userPage($admin, User::factory()->create()->assignRole('HR Executive'))
         ->assertDontSee('js-edit-user', false)
         ->assertDontSee(route('admin.users.password-link', $admin))
         ->assertSee('href="'.route('admin.messages.show', $admin).'"', false);

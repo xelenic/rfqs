@@ -2369,7 +2369,7 @@ function rfqmsBoot() {
         });
     }
 
-    // HR Manager's Return on a submitted sheet: the popup asks what needs
+    // HR Executive's Return on a submitted sheet: the popup asks what needs
     // correcting, pointed at the sheet whose button opened it.
     var attendanceReturnModal = document.getElementById('attendanceReturnModal');
     if (attendanceReturnModal) {

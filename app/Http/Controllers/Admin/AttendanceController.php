@@ -22,7 +22,7 @@ use Illuminate\View\View;
  * Assistant person, present, on a half day (the morning or the afternoon off,
  * or a custom time of up to 4 working hours) or on leave, with why when they were off. Kept by
  * Admin and Senior Operations (User::canManageAttendance()); each submitted
- * one goes to HR Manager, who approves it or returns it to be corrected
+ * one goes to HR Executive, who approves it or returns it to be corrected
  * (User::canApproveAttendance()). A person's time only counts on a day whose
  * approved sheet has them present.
  */
@@ -41,7 +41,7 @@ class AttendanceController extends Controller
      */
     public function index(Request $request): View
     {
-        abort_unless($request->user()->canViewAttendance(), 403, 'Only Admin, Senior Operations and HR Manager see the attendance sheets.');
+        abort_unless($request->user()->canViewAttendance(), 403, 'Only Admin, Senior Operations and HR Executive see the attendance sheets.');
 
         $today = Setting::today();
         $missingDays = AttendanceSheet::missingDays();
@@ -112,7 +112,7 @@ class AttendanceController extends Controller
 
     /**
      * Corrects a submitted sheet: who was present and who was absent, and
-     * why — and submits it again, for HR Manager to review afresh, even if
+     * why — and submits it again, for HR Executive to review afresh, even if
      * they'd approved it.
      */
     public function update(Request $request, AttendanceSheet $sheet): RedirectResponse
@@ -133,12 +133,12 @@ class AttendanceController extends Controller
     }
 
     /**
-     * HR Manager approves a submitted sheet: from now its day's attendance
+     * HR Executive approves a submitted sheet: from now its day's attendance
      * counts — present people's time, and none of anyone's on leave.
      */
     public function approve(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Manager approves the attendance sheet.');
+        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Executive approves the attendance sheet.');
         abort_unless($sheet->isAwaitingApproval(), 422, 'That sheet isn\'t waiting for approval.');
 
         $sheet->approve($request->user());
@@ -148,12 +148,12 @@ class AttendanceController extends Controller
     }
 
     /**
-     * HR Manager returns a submitted sheet to Senior Operations, with why, to
+     * HR Executive returns a submitted sheet to Senior Operations, with why, to
      * correct and submit again. It doesn't count meanwhile.
      */
     public function sendBack(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Manager returns the attendance sheet.');
+        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Executive returns the attendance sheet.');
         abort_unless($sheet->isAwaitingApproval(), 422, 'That sheet isn\'t waiting for approval.');
 
         $validated = $request->validateWithBag('attendance_return', [
@@ -303,7 +303,7 @@ class AttendanceController extends Controller
         $halfDayNote = $halfDays > 0 ? " {$halfDays} on a half day," : '';
 
         return redirect()->route('admin.attendance.index')
-            ->with('status', "Attendance saved for {$this->dayLabel($sheet)} — {$present} present,{$halfDayNote} {$absent} on leave. Sent to HR Manager for approval.");
+            ->with('status', "Attendance saved for {$this->dayLabel($sheet)} — {$present} present,{$halfDayNote} {$absent} on leave. Sent to HR Executive for approval.");
     }
 
     /**

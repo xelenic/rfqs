@@ -23,7 +23,7 @@ beforeEach(function () {
     }
 
     Role::findOrCreate('Admin')->givePermissionTo(Permission::all());
-    Role::findOrCreate('HR Manager')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
+    Role::findOrCreate('HR Executive')->givePermissionTo(['users.view', 'users.create', 'users.edit']);
     Role::findOrCreate('Data Entry');
 });
 
@@ -62,9 +62,9 @@ function morgansLink(): string
     return $link;
 }
 
-it('lets HR Manager add someone — no password asked — and emails them a link to set their own', function () {
+it('lets HR Executive add someone — no password asked — and emails them a link to set their own', function () {
     Notification::fake();
-    $alex = personAs('HR Manager', 'Alex Silva');
+    $alex = personAs('HR Executive', 'Alex Silva');
 
     test()->actingAs($alex)->get(route('admin.users.index'))->assertOk()
         ->assertSee('Add user')
@@ -93,7 +93,7 @@ it('lets HR Manager add someone — no password asked — and emails them a link
 
 it('never lets anyone but an Admin make an Admin', function () {
     Notification::fake();
-    $alex = personAs('HR Manager', 'Alex Silva');
+    $alex = personAs('HR Executive', 'Alex Silva');
 
     expect(test()->actingAs($alex)->get(route('admin.users.index'))->getContent())
         ->not->toContain('value="Admin"')
@@ -106,15 +106,15 @@ it('never lets anyone but an Admin make an Admin', function () {
     expect(User::query()->where('email', 'morgan@company.lk')->sole()->hasRole('Admin'))->toBeTrue();
 });
 
-it('keeps people\'s details to Admin and HR Manager', function () {
+it('keeps people\'s details to Admin and HR Executive', function () {
     $dataEntry = personAs('Data Entry', 'Sam');
 
     test()->actingAs($dataEntry)->get(route('admin.users.index'))->assertForbidden();
     addMorgan($dataEntry)->assertForbidden();
     test()->actingAs($dataEntry)->put(route('admin.users.update', $dataEntry), ['name' => 'X', 'email' => 'x@y.lk'])->assertForbidden();
 
-    // HR Manager changes someone's details — deleting stays Admin's.
-    $alex = personAs('HR Manager', 'Alex Silva');
+    // HR Executive changes someone's details — deleting stays Admin's.
+    $alex = personAs('HR Executive', 'Alex Silva');
     test()->actingAs($alex)->put(route('admin.users.update', $dataEntry), ['name' => 'Sam Fernando', 'email' => 'sam@company.lk', 'roles' => ['Data Entry']])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status', 'User updated successfully.');
@@ -123,9 +123,9 @@ it('keeps people\'s details to Admin and HR Manager', function () {
     test()->actingAs($alex)->delete(route('admin.users.destroy', $dataEntry))->assertForbidden();
 });
 
-it('never lets HR Manager touch an Admin\'s account, or set a password', function () {
+it('never lets HR Executive touch an Admin\'s account, or set a password', function () {
     Notification::fake();
-    $alex = personAs('HR Manager', 'Alex Silva');
+    $alex = personAs('HR Executive', 'Alex Silva');
     $root = personAs('Admin', 'Root');
     $sam = personAs('Data Entry', 'Sam');
 
@@ -150,7 +150,7 @@ it('never lets HR Manager touch an Admin\'s account, or set a password', functio
 
 it('sets their password from the link, once, and signs them in', function () {
     Notification::fake();
-    addMorgan(personAs('HR Manager', 'Alex Silva'));
+    addMorgan(personAs('HR Executive', 'Alex Silva'));
     $link = morgansLink();
     $token = basename(parse_url($link, PHP_URL_PATH));
     Auth::logout();
@@ -177,7 +177,7 @@ it('sets their password from the link, once, and signs them in', function () {
 
 it('stops the link working after 7 days, and sends a fresh one that replaces it', function () {
     Notification::fake();
-    $alex = personAs('HR Manager', 'Alex Silva');
+    $alex = personAs('HR Executive', 'Alex Silva');
     addMorgan($alex);
     $first = basename(parse_url(morgansLink(), PHP_URL_PATH));
     $morgan = User::query()->where('email', 'morgan@company.lk')->sole();
@@ -199,7 +199,7 @@ it('keeps the account when the email can\'t be sent, and says so', function () {
     Exceptions::fake();
     config(['mail.default' => 'smtp', 'mail.mailers.smtp.host' => '127.0.0.1', 'mail.mailers.smtp.port' => 1]);
 
-    addMorgan(personAs('HR Manager', 'Alex Silva'))
+    addMorgan(personAs('HR Executive', 'Alex Silva'))
         ->assertSessionHas('error', 'The email to morgan@company.lk couldn\'t be sent — check the mail settings, then use Send link to try again.');
 
     expect(User::query()->where('email', 'morgan@company.lk')->exists())->toBeTrue();
@@ -242,7 +242,7 @@ it('needs a sound password when an Admin sets one, and only an Admin can', funct
         ->post(route('admin.users.store'), ['name' => 'Morgan Perera', 'email' => 'morgan@company.lk', 'sign_in' => 'password'] + $password)
         ->assertSessionHasErrorsIn('create', ['password' => $error]);
 
-    test()->actingAs(personAs('HR Manager', 'Alex Silva'))
+    test()->actingAs(personAs('HR Executive', 'Alex Silva'))
         ->post(route('admin.users.store'), ['name' => 'Morgan Perera', 'email' => 'morgan@company.lk', 'sign_in' => 'password', 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
         ->assertSessionHasErrorsIn('create', ['sign_in' => 'Only an Admin can set a password for someone — email them a link instead.']);
 
@@ -254,8 +254,8 @@ it('needs a sound password when an Admin sets one, and only an Admin can', funct
     'not matching' => [['password' => 'quotes-2026', 'password_confirmation' => 'quotes-2027'], 'The password field confirmation does not match.'],
 ]);
 
-it('shows HR Manager no choice — the link it is', function () {
-    expect(test()->actingAs(personAs('HR Manager', 'Alex Silva'))->get(route('admin.users.index'))->getContent())
+it('shows HR Executive no choice — the link it is', function () {
+    expect(test()->actingAs(personAs('HR Executive', 'Alex Silva'))->get(route('admin.users.index'))->getContent())
         ->not->toContain('name="sign_in"')
         ->not->toContain('id="create-password"')
         ->toContain('to set their own password — it works for 7 days');

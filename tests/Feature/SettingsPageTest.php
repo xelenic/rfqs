@@ -63,7 +63,7 @@ it('is reached from the sidebar and the account menu, and is not one of the live
 
 // ---- profile ---------------------------------------------------------------
 
-it('changes your name and email — for Admin and HR Manager', function (string $role) {
+it('changes your name and email — for Admin and HR Executive', function (string $role) {
     $user = userWithRole($role);
 
     test()->actingAs($user)
@@ -72,7 +72,7 @@ it('changes your name and email — for Admin and HR Manager', function (string 
         ->assertSessionHas('status', 'Profile updated.');
 
     expect($user->refresh())->name->toBe('Riley Chen')->email->toBe('riley@example.test');
-})->with(['Admin', 'HR Manager']);
+})->with(['Admin', 'HR Executive']);
 
 it('keeps everyone else\'s name and email for them — shown, not changed', function (string $role) {
     $user = userWithRole($role);
@@ -81,7 +81,7 @@ it('keeps everyone else\'s name and email for them — shown, not changed', func
     $profile = Str::betweenFirst(test()->actingAs($user)->get(route('admin.settings.edit'))->assertOk()->getContent(), 'id="settings-pane-profile"', 'id="settings-pane-password"');
     expect($profile)->not->toContain('action="'.route('admin.settings.profile').'"')
         ->toContain('value="'.e($user->email).'" readonly')
-        ->toContain('kept by an Admin or HR Manager');
+        ->toContain('kept by an Admin or HR Executive');
 
     test()->actingAs($user)->patch(route('admin.settings.profile'), ['name' => 'Riley Chen', 'email' => 'riley@example.test'])->assertForbidden();
 
@@ -89,7 +89,7 @@ it('keeps everyone else\'s name and email for them — shown, not changed', func
 })->with(['Sourcing', 'Data Entry', 'Senior Operations', 'General Manager']);
 
 it('lets you keep your own email, but not take somebody else\'s', function () {
-    $user = userWithRole('HR Manager');
+    $user = userWithRole('HR Executive');
     $other = User::factory()->create(['email' => 'taken@example.test']);
 
     test()->actingAs($user)

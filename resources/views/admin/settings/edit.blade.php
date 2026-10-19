@@ -2,7 +2,7 @@
     The Settings page (see SettingsController), one tab per part: Profile,
     Password and Preferences for everyone, and for an Admin the Application
     settings, WC Validation, RFQ Numbers, the Working Hours, each role's own
-    (Role Hours — HR Manager's too), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
+    (Role Hours — HR Executive's too), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
     and people's Extra Hours. Each tab is its own form with its own error bag. The tab that
     opens is the one a form was just saved from (session settings_tab) or
     failed on, else ?tab=, else
@@ -38,7 +38,7 @@
             'preferences' => ['label' => 'Preferences', 'icon' => 'bi-sliders', 'bag' => null],
         ];
         $roleHoursTab = ['label' => 'Role Hours', 'icon' => 'bi-person-badge', 'bag' => 'role_hours'];
-        // The Admin's own tabs — or, for HR Manager, Role Hours alone — under their heading.
+        // The Admin's own tabs — or, for HR Executive, Role Hours alone — under their heading.
         $managedTabs = $isAdmin ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
             'wc-validation' => ['label' => 'WC Validation', 'icon' => 'bi-patch-check', 'bag' => null],
@@ -54,7 +54,7 @@
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
         ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
-        $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Manager';
+        $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Executive';
         $allTabs = $accountTabs + $managedTabs;
         // A tab's form — or forms — and whether one of them failed.
         $hasErrors = fn (array $tab) => collect((array) $tab['bag'])->contains(fn (string $bag) => $errors->getBag($bag)->any());
@@ -63,7 +63,7 @@
         $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
     @endphp
 
-    {{-- Tabs down the left — the Admin's own (HR Manager's) under their heading — and the
+    {{-- Tabs down the left — the Admin's own (HR Executive's) under their heading — and the
          open one's form beside them. On a narrow screen they're a row across
          the top, which scrolls. --}}
     <div class="settings-layout">
@@ -176,7 +176,7 @@
                         </div>
 
                         <p class="text-muted-soft small mt-3 mb-0">
-                            <i class="bi bi-lock"></i> Your name, email and role are kept by an Admin or HR Manager — ask them to change anything here. Your password is yours to change, on the Password tab.
+                            <i class="bi bi-lock"></i> Your name, email and role are kept by an Admin or HR Executive — ask them to change anything here. Your password is yours to change, on the Password tab.
                         </p>
                     @endif
                 </div>
@@ -461,7 +461,7 @@
                     <div class="card-header d-flex align-items-center gap-2">
                         Role Hours
                         <span class="badge badge-soft-primary">Admin</span>
-                        <span class="badge badge-soft-primary">HR Manager</span>
+                        <span class="badge badge-soft-primary">HR Executive</span>
                     </div>
                     <div class="card-body">
                         <p class="text-muted-soft small mb-0">
