@@ -10,6 +10,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | public/js/admin-dashboard.js, public/js/live.js | .ai/rules/js.md |
 | database/migrations/** | .ai/rules/migrations.md |
 | app/Models/** | .ai/rules/models.md |
+| app/Notifications/** | .ai/rules/notifications.md |
 | resources/views/admin/rfqs/** | .ai/rules/rfqs.md |
 | routes/console.php | .ai/rules/routes.md |
 | resources/views/admin/settings/** | .ai/rules/settings.md |

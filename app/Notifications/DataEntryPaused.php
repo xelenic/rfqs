@@ -21,6 +21,13 @@ class DataEntryPaused extends Notification
     use Queueable;
 
     /**
+     * How it reads on the RFQ's timeline (Rfq::sentAlerts()), and its tone.
+     */
+    public const TIMELINE_TITLE = 'Data Entry paused — alert sent';
+
+    public const TIMELINE_TONE = 'info';
+
+    /**
      * Who's told of a pause.
      */
     public const RECIPIENT_ROLES = ['Senior Operations', 'General Manager'];

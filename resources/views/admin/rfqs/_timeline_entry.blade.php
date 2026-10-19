@@ -1,7 +1,8 @@
 {{--
     One entry in the RFQ activity timeline — either a read-only lifecycle
-    event (created, assigned, completed, returned, handed off, closed) or a
-    comment/reply, which keeps its full reply/delete/@mention interactivity.
+    event (created, assigned, completed, returned, handed off, closed), an
+    alert the system sent about it (notification), or a comment/reply, which
+    keeps its full reply/delete/@mention interactivity.
 
     Expects: $entry (one element of Rfq::activityTimeline()), $rfq,
     $restrictSourcingView, $restrictAssignment, $sourcingUsers,
@@ -35,6 +36,7 @@
         'gm_approved' => ['bi-award', 'success', 'Approved by General Manager'],
         'bd_closed' => ['bi-flag-fill', 'success', 'RFQ Closed'],
         'comment' => [$entry['comment']->actionIcon(), $entry['comment']->action ? $entry['comment']->actionTone() : 'comment', $entry['comment']->parent_id ? 'Reply' : 'Comment'],
+        'notification' => [$entry['icon'], $entry['tone'], $entry['title']],
         default => ['bi-dot', 'comment', ''],
     };
 
@@ -141,6 +143,19 @@
             </div>
             @if ($entry['detail'])
                 <div class="rfq-timeline-detail text-muted-soft">{{ $entry['detail'] }}</div>
+            @endif
+        @elseif ($entry['type'] === 'notification')
+            {{-- An alert the system sent about it (Rfq::sentAlerts()) — who to,
+                 and what it said. It names people in Data Entry, whom Sourcing
+                 never learns, so it's blurred for them. --}}
+            <div class="rfq-timeline-title">{{ $title }}</div>
+            <div class="rfq-timeline-meta {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">
+                <i class="bi bi-bell"></i> Sent to
+                <span class="fw-semibold">{{ $entry['recipients']->isNotEmpty() ? $entry['recipients']->pluck('name')->join(', ', ' and ') : 'nobody now' }}</span>
+                &middot; {{ $entry['at']->toBusinessTimezone()->format('M d, Y g:i A') }}
+            </div>
+            @if ($entry['detail'])
+                <div class="rfq-timeline-detail text-muted-soft {{ $restrictSourcingView ? 'rfq-blurred' : '' }}">{{ $entry['detail'] }}</div>
             @endif
         @else
             <div class="rfq-timeline-title">{{ $title }}</div>

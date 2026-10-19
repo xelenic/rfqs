@@ -16,6 +16,24 @@ class DataEntryAssigned extends Notification
 {
     use Queueable;
 
+    /**
+     * How it reads on the RFQ's timeline (Rfq::sentAlerts()), and its tone.
+     */
+    public const TIMELINE_TITLE = 'Assigned in Data Entry — they were told';
+
+    public const TIMELINE_TONE = 'secondary';
+
+    /**
+     * What the RFQ's timeline says of it: its message, which reads "to you"
+     * in the bell, with whom it went to instead.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function timelineDetail(array $data, string $recipients): string
+    {
+        return str_replace(' to you', ' to '.$recipients, (string) ($data['message'] ?? ''));
+    }
+
     public function __construct(
         public Rfq $rfq,
         public int $part,

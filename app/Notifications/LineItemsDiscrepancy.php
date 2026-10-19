@@ -21,6 +21,13 @@ class LineItemsDiscrepancy extends Notification
     use Queueable;
 
     /**
+     * How it reads on the RFQ's timeline (Rfq::sentAlerts()), and its tone.
+     */
+    public const TIMELINE_TITLE = 'Line items differ — alert sent';
+
+    public const TIMELINE_TONE = 'danger';
+
+    /**
      * Who's told of a discrepancy.
      */
     public const RECIPIENT_ROLES = ['Senior Operations', 'General Manager'];

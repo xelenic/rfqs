@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -3697,6 +3698,9 @@ class Rfq extends Model
      * return reason), and comment (the RfqComment itself, only for type
      * comment).
      *
+     * Alerts sent about it (sentAlerts()) are entries too, of type
+     * notification, with their title, tone, icon and recipients as well.
+     *
      * @return array<int, array{
      *     type: string,
      *     at: Carbon,
@@ -3704,6 +3708,10 @@ class Rfq extends Model
      *     related: ?User,
      *     detail: ?string,
      *     comment: ?RfqComment,
+     *     title?: string,
+     *     tone?: string,
+     *     icon?: string,
+     *     recipients?: Collection<int, User>,
      * }>
      */
     public function activityTimeline(): array
@@ -3964,9 +3972,61 @@ class Rfq extends Model
             }
         }
 
+        // The alerts sent about it — each send once, with whom it went to.
+        foreach ($this->sentAlerts() as $alert) {
+            $entries[] = [
+                'type' => 'notification',
+                'at' => $alert['at'],
+                'actor' => null,
+                'related' => null,
+                'detail' => $alert['detail'],
+                'comment' => null,
+                'title' => $alert['title'],
+                'tone' => $alert['tone'],
+                'icon' => $alert['icon'],
+                'recipients' => $alert['recipients'],
+            ];
+        }
+
         usort($entries, fn (array $a, array $b) => $a['at'] <=> $b['at']);
 
         return $entries;
+    }
+
+    /**
+     * The alerts sent about this RFQ (database notifications whose data names
+     * it — rfq_id: LineItemsDiscrepancy, DataEntryPaused, DataEntryAssigned,
+     * and any like them), oldest first. One alert to several people is one
+     * send: its title and tone on the timeline (the class's TIMELINE_TITLE and
+     * TIMELINE_TONE), what it said (its message — or the class's
+     * timelineDetail()), its icon, and who it went to.
+     *
+     * @return Collection<int, array{at: Carbon, title: string, tone: string, icon: string, detail: string, recipients: Collection<int, User>}>
+     */
+    public function sentAlerts(): Collection
+    {
+        return DatabaseNotification::query()
+            ->where('data->rfq_id', $this->id)
+            ->with('notifiable')
+            ->oldest()
+            ->get()
+            ->groupBy(fn (DatabaseNotification $alert) => $alert->type.'|'.$alert->created_at->timestamp.'|'.($alert->data['part'] ?? ''))
+            ->map(function (Collection $sent) {
+                $first = $sent->first();
+                $type = $first->type;
+                $recipients = $sent->pluck('notifiable')->filter()->unique('id')->values();
+                $names = $recipients->pluck('name')->join(', ', ' and ');
+
+                return [
+                    'at' => $first->created_at,
+                    'title' => defined("{$type}::TIMELINE_TITLE") ? $type::TIMELINE_TITLE : 'Alert sent',
+                    'tone' => defined("{$type}::TIMELINE_TONE") ? $type::TIMELINE_TONE : 'info',
+                    'icon' => $first->data['icon'] ?? 'bi-bell',
+                    'detail' => method_exists($type, 'timelineDetail') ? $type::timelineDetail($first->data, $names) : (string) ($first->data['message'] ?? ''),
+                    'recipients' => $recipients,
+                ];
+            })
+            ->values();
     }
 
     /**
