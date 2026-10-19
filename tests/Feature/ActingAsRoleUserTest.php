@@ -167,6 +167,12 @@ it('records GM Assistant\'s Submit as the GM Assistant person Admin picks', func
         'id="gmAssistantSubmitForm"', '</form>'
     ))->toContain('id="gm-assistant-acting-as"')->toContain('Submitted by');
 
+    // Started as them too — the picker's beside Start.
+    test()->actingAs($people['admin'])
+        ->patch(route('admin.rfqs.start-gm-assistant', $rfq), ['part' => 1, 'acting_user_id' => $people['assistant']->id])
+        ->assertSessionHas('status');
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_started_by)->toBe($people['assistant']->id);
+
     test()->actingAs($people['admin'])
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1, 'acting_user_id' => $people['assistant']->id])
         ->assertSessionHasNoErrors();

@@ -3,6 +3,7 @@ paths:
   - app/Http/Controllers/Admin/UserController.php
   - app/Http/Controllers/Admin/SettingsController.php
   - app/Http/Controllers/Admin/DashboardController.php
+  - app/Http/Controllers/Admin/RfqController.php
 ---
 
 # Admin
@@ -21,3 +22,6 @@ Since 2026-10-18, the General Manager, the Head of Business Development and GM A
 
 ## HR Executive has a dashboard of their own (hrOverview)
 Since 2026-10-19, HR Executive (and not Admin) gets admin/dashboard/hr-executive instead of the generic one. The branch comes just before the fallback, so a workflow role's dashboard still wins for someone who holds both. hrOverview() covers today's sheet from AttendanceSheet::people(), using marks whether approved or not. Its attendance over the period counts each person's own working days (Setting::weekOn()) from attendanceSince, by the approved sheets only (Attendance::book()); a day not yet approved is "Not counted yet", and a half day counts as half towards the rate. hrNotifications() raises sheets awaiting approval, today's sheet not in, earlier days without a sheet, returned sheets and who's on leave. It shows nothing about RFQs, since HR Executive has no rfqs.view.
+
+## RFQ lists show 20 a page (RfqController::PER_PAGE)
+Since 2026-10-20, at the user's request, every RFQ list paginates by RfqController::PER_PAGE (20): All RFQs, every role's queue, and the tabs that page on their own (sourcing_page, completed_page, with_data_entry_page, finalized_page, assigned_page, review_page). Use the constant for any new RFQ list; never a literal number. Tests that cross onto page 2 should create PER_PAGE + 1 RFQs.

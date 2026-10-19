@@ -76,11 +76,18 @@ it('goes to GM Assistant as its own row as soon as the Head approves a part, and
         ->assertSee('by '.e($chain['head']->name), false)
         ->getContent();
 
-    // Adding details is for this part alone.
-    expect($html)->toContain(route('admin.rfqs.gm-assistant-details', $rfq))
-        ->toContain('data-part="1"')
-        ->toContain('data-label="RFQ1001-P1 of P2"')
-        ->not->toContain('data-part="2"');
+    // Starting it is for this part alone; Submit comes once it's started.
+    expect($html)->toContain(route('admin.rfqs.start-gm-assistant', $rfq))
+        ->toContain('<input type="hidden" name="part" value="1">')
+        ->not->toContain('<input type="hidden" name="part" value="2">')
+        ->not->toContain('js-gm-assistant-submit');
+
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
+
+    expect(test()->actingAs($chain['assistant'])->get(gmPageUrl())->getContent())
+        ->toContain(route('admin.rfqs.gm-assistant-details', $rfq))
+        ->toMatch('/js-gm-assistant-submit"[^>]*data-part="1"/')
+        ->not->toMatch('/js-gm-assistant-submit"[^>]*data-part="2"/');
 });
 
 it('has nothing for GM Assistant until the Head has approved a part', function () {
@@ -102,6 +109,7 @@ it('has nothing for GM Assistant until the Head has approved a part', function (
 
 it('submits a part on its own, and the RFQ goes on to the General Manager once every part is submitted', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
 
     // Submit, with an optional comment — no client details or payment terms to give.
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
@@ -140,6 +148,8 @@ it('submits a part on its own, and the RFQ goes on to the General Manager once e
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
         ->assertSee('RFQ1001-P2 of P2')
         ->assertDontSee('RFQ1001-P1 of P2');
+
+    startGmAssistantOn($rfq, 2, $chain['assistant']);
 
     test()->actingAs($chain['assistant'])->from(gmPageUrl())
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 2])
@@ -206,6 +216,12 @@ it('sends the whole RFQ on from GM Assistant, completing the parts not yet compl
     $rfq->approveHeadOfBdPart(2, $chain['head']);
     $rfq->refresh()->recordGmAssistantPart(1, $chain['assistant']);
 
+    // Not till the part still waiting has been started.
+    test()->actingAs($chain['assistant'])
+        ->patch(route('admin.rfqs.gm-assistant-details', $rfq->refresh()))
+        ->assertSessionHas('error', 'Start on RFQ1001-P2 of P2 first — Submit comes after.');
+    startGmAssistantOn($rfq, 2, $chain['assistant']);
+
     test()->actingAs($chain['assistant'])
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq->refresh()))
         ->assertSessionHas('status', 'Submitted — forwarded to General Manager.');
@@ -249,8 +265,9 @@ it('takes an RFQ kept whole through GM Assistant and the General Manager as one 
     // Its plain RFQ number, not a part's.
     test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()
         ->assertSee('<td class="text-nowrap">'.$rfq->rfq_number.'</td>', false)
-        ->assertSee('data-part="1"', false);
+        ->assertSee('<input type="hidden" name="part" value="1">', false);
 
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
     test()->actingAs($chain['assistant'])
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
 
@@ -287,6 +304,7 @@ it('lets Admin work both pages', function () {
 
     test()->actingAs($admin)->get(gmPageUrl(['role' => 'gm-assistant']))->assertOk()->assertSee('RFQ1001-P1 of P2');
 
+    test()->actingAs($admin)->patch(route('admin.rfqs.start-gm-assistant', $rfq), ['part' => 1])->assertSessionHas('status');
     test()->actingAs($admin)->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_by)->toBe($admin->id);
@@ -312,9 +330,13 @@ it('refuses a Submit that isn\'t GM Assistant\'s to make', function () {
     // Nor the whole RFQ, until it has reached them.
     $submit($chain['assistant'], [])->assertStatus(422);
 
+    // Nor before it's been started.
+    $submit($chain['assistant'], ['part' => 1])->assertSessionHas('error', 'Start on RFQ1001-P1 of P2 first — Submit comes after.');
+
     expect($rfq->refresh()->assigneeForPart(1)->pivot->gm_assistant_completed_at)->toBeNull();
 
     // A part already submitted can't be submitted again.
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
     $submit($chain['assistant'], ['part' => 1])->assertSessionHas('status');
     $submit($chain['assistant'], ['part' => 1])->assertStatus(422);
 });
@@ -430,8 +452,9 @@ it('counts each approval waiting — a row on each page — and shows it as a re
     $assistantPage = test()->actingAs($chain['assistant'])->get(gmPageUrl())->assertOk()->getContent();
     $gmPage = test()->actingAs($chain['gm'])->get(gmPageUrl())->assertOk()->getContent();
 
-    // Three rows on each page, three on each badge.
-    expect(substr_count($assistantPage, 'js-gm-assistant-submit"'))->toBe(3)
+    // Three rows on each page, three on each badge — two parts still to
+    // start, and the RFQ with no part to start, to submit.
+    expect(substr_count($assistantPage, '/start-gm-assistant"') + substr_count($assistantPage, 'js-gm-assistant-submit"'))->toBe(3)
         ->and($assistantPage)->toContain($badge(3, 'awaiting your submit'))
         ->and(substr_count($gmPage, 'data-confirm="Approve '))->toBe(3)
         ->and($gmPage)->toContain($badge(3, 'awaiting your approval'));
@@ -503,6 +526,7 @@ it('sends the parts of RFQs that got this far before it was part by part through
 
 it('takes a comment with GM Assistant\'s Submit — and photos or files — onto the thread for the General Manager', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
     Storage::fake(RfqCommentAttachment::DISK);
 
     test()->actingAs($chain['assistant'])->from(gmPageUrl())
@@ -531,6 +555,7 @@ it('takes a comment with GM Assistant\'s Submit — and photos or files — onto
 
 it('submits without a comment, posting nothing — and refuses one that\'s too long', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
+    startGmAssistantOn($rfq, 1, $chain['assistant']);
     $comments = $rfq->comments()->count();
 
     test()->actingAs($chain['assistant'])->from(gmPageUrl())

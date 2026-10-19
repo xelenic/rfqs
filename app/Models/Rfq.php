@@ -772,7 +772,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1575,7 +1575,7 @@ class Rfq extends Model
             'gm_approved_by' => null,
             'bd_closed_at' => null,
             'bd_closed_by' => null,
-        ]);
+        ] + self::GM_ASSISTANT_START_COLUMNS);
         $this->load('assignees');
 
         if ($this->isWithDataEntry()) {
@@ -2089,6 +2089,19 @@ class Rfq extends Model
         'data_entry_paused_at' => null, 'data_entry_pause_reason' => null, 'data_entry_pause_reference' => null,
     ];
 
+    /**
+     * A part's GM Assistant start (startGmAssistantPart()) and pause,
+     * cleared — kept on the part only (rfq_user). Cleared whenever the part
+     * is sent back to GM Assistant's step or before it, so it's started
+     * afresh when it comes back to them.
+     *
+     * @var array<string, null>
+     */
+    private const GM_ASSISTANT_START_COLUMNS = [
+        'gm_assistant_started_at' => null, 'gm_assistant_started_by' => null,
+        'gm_assistant_paused_at' => null, 'gm_assistant_pause_reason' => null, 'gm_assistant_pause_reference' => null,
+    ];
+
     private const REJECT_MARKER_COLUMNS = [
         // Redoing Data Entry means finalizing it again too.
         'data_entry' => ['data_entry_completed_at', 'data_entry_completed_by', 'finalized_at', 'finalized_by'],
@@ -2097,6 +2110,22 @@ class Rfq extends Model
         'gm_assistant' => ['gm_assistant_completed_at', 'gm_assistant_completed_by'],
         'gm_review' => ['gm_approved_at', 'gm_approved_by'],
     ];
+
+    /**
+     * The rfq_user start columns a reject to $targetStage clears, as well as
+     * its markers: Data Entry's start when it's sent back to Data Entry
+     * (DATA_ENTRY_START_COLUMNS), and GM Assistant's when it's sent back to
+     * their step or before it (GM_ASSISTANT_START_COLUMNS).
+     *
+     * @return array<string, null>
+     */
+    private static function startColumnsClearedBy(string $targetStage): array
+    {
+        $order = array_flip(self::REJECT_STAGE_ORDER);
+
+        return ($targetStage === 'data_entry' ? self::DATA_ENTRY_START_COLUMNS : [])
+            + (($order[$targetStage] ?? PHP_INT_MAX) <= $order['gm_assistant'] ? self::GM_ASSISTANT_START_COLUMNS : []);
+    }
 
     /**
      * The columns (rfqs-table mirror, and identically-named rfq_user pivot
@@ -2194,7 +2223,7 @@ class Rfq extends Model
             ->where('rfq_id', $this->id)
             ->whereNull('bd_closed_at')
             ->where(fn ($parts) => $parts->whereNull('status')->orWhere('status', '<>', self::CANCELLED))
-            ->update($columns + ($targetStage === 'data_entry' ? self::DATA_ENTRY_START_COLUMNS : []));
+            ->update($columns + self::startColumnsClearedBy($targetStage));
         $this->load('assignees');
 
         $this->update($columns + [
@@ -2291,7 +2320,7 @@ class Rfq extends Model
 
             $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot(
                 $assignee->id,
-                array_fill_keys(self::markerColumnsFrom($targetStage), null) + ($targetStage === 'data_entry' ? self::DATA_ENTRY_START_COLUMNS : [])
+                array_fill_keys(self::markerColumnsFrom($targetStage), null) + self::startColumnsClearedBy($targetStage)
             );
             $this->load('assignees');
         }
@@ -2574,6 +2603,7 @@ class Rfq extends Model
                     'assignee_id' => $assignee->id,
                     'step' => $this->timedStepFor($assignee->pivot),
                     'started_by' => $assignee->pivot->data_entry_started_by,
+                    'gm_started_by' => $assignee->pivot->gm_assistant_started_by,
                 ]])
                 ->filter(fn (array $now) => $now['step'] !== null)
             : collect();
@@ -2611,11 +2641,12 @@ class Rfq extends Model
                 'part_number' => $part,
                 'assignee_id' => $now['assignee_id'],
                 // Sourcing's own time is the part's member's from the start,
-                // Data Entry's whoever started it (startDataEntryPart());
-                // GM Assistant's is whoever finishes it.
+                // Data Entry's whoever started it (startDataEntryPart()), and
+                // GM Assistant's likewise (startGmAssistantPart()).
                 'worked_by' => match ($now['step']) {
                     'sourcing', 'finalize' => $now['assignee_id'],
                     'data_entry' => $now['started_by'],
+                    'gm_assistant' => $now['gm_started_by'],
                     default => null,
                 },
                 'step' => $now['step'],
@@ -2729,7 +2760,9 @@ class Rfq extends Model
      * not while the RFQ's held on another stage's Returns page, when GM
      * Assistant can't act on it. Nor while it's stopped on its own
      * (changePartStatus()) — nor with Data Entry until they've started on it
-     * (startDataEntryPart()), or while they've paused it (pauseDataEntryPart()).
+     * (startDataEntryPart()), or while they've paused it (pauseDataEntryPart()),
+     * and the same with GM Assistant (startGmAssistantPart(),
+     * pauseGmAssistantPart()).
      */
     private function timedStepFor(RfqAssignment $part): ?string
     {
@@ -2740,7 +2773,9 @@ class Rfq extends Model
             // and not while they've paused it.
             $part->data_entry_completed_at === null => $part->isDataEntryRunning() ? 'data_entry' : null,
             $part->finalized_at === null => 'finalize',
-            $part->isAwaitingGmAssistant() && ! $this->isHeldOnAnotherReturnsPage('gm_assistant') => 'gm_assistant',
+            // With GM Assistant, likewise only once they've started on it,
+            // and not while they've paused it.
+            $part->isAwaitingGmAssistant() && ! $this->isHeldOnAnotherReturnsPage('gm_assistant') => $part->isGmAssistantRunning() ? 'gm_assistant' : null,
             default => null,
         };
     }
@@ -2889,6 +2924,21 @@ class Rfq extends Model
             (int) $assignment->line_items_to_add > 0 => ['count' => (int) $assignment->line_items_to_add, 'source' => 'to_add'],
             default => null,
         };
+    }
+
+    /**
+     * Where $part's GM Assistant countdown stood when they paused it — what's
+     * left carries on from there once it's resumed. Null unless it's paused.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function pausedGmAssistantCountdown(int $part): ?array
+    {
+        if ($this->activePart($part)?->isGmAssistantPaused() !== true) {
+            return null;
+        }
+
+        return $this->countdownAt('gm_assistant', $part, $this->gmAssistantTargetSeconds($part), null, stillOpen: false);
     }
 
     /**
@@ -3250,6 +3300,99 @@ class Rfq extends Model
             && in_array($this->stage, [null, 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'], true)
             && ! $this->isHeldOnAnotherReturnsPage('gm_assistant')
             && $this->activePart($part)?->isAwaitingGmAssistant() === true;
+    }
+
+    /**
+     * The parts GM Assistant's Submit of the whole RFQ (recordGmAssistantDetails())
+     * submits: approved by the Head of Business Development, not yet
+     * submitted, and not stopped on their own.
+     *
+     * @return Collection<int, User>
+     */
+    public function partsAwaitingGmAssistant(): Collection
+    {
+        return $this->assignees
+            ->filter(fn (User $assignee) => $assignee->pivot->head_of_bd_approved_at !== null
+                && $assignee->pivot->gm_assistant_completed_at === null
+                && $assignee->pivot->status === null)
+            ->sortBy('pivot.part_number')
+            ->values();
+    }
+
+    /**
+     * Whether $part is waiting on GM Assistant to start on it: with them
+     * (partAwaitsGmAssistant()), not started yet.
+     */
+    public function partAwaitsGmAssistantStart(int $part): bool
+    {
+        return $this->partAwaitsGmAssistant($part) && $this->activePart($part)?->hasGmAssistantStarted() === false;
+    }
+
+    /**
+     * GM Assistant starts on one part with them: from now, their time on it
+     * counts (syncSteps() — see timedStepFor()), credited to $startedBy.
+     * Idempotent — a part that isn't waiting to be started is left alone.
+     */
+    public function startGmAssistantPart(int $part, User $startedBy): void
+    {
+        if (! $this->partAwaitsGmAssistantStart($part)) {
+            return;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'gm_assistant_started_at' => now(),
+            'gm_assistant_started_by' => $startedBy->id,
+        ]);
+        $this->load('assignees');
+
+        $this->syncSteps();
+    }
+
+    /**
+     * GM Assistant pauses $part, which they'd started — saying why ($reason),
+     * and the document it's waiting on ($reference), if any: its time stops —
+     * the countdown keeps what's left — and with nothing running they can
+     * start another (RfqStep::runningGmAssistantOf()). The reason goes on the
+     * part while it's paused, and to the RFQ's thread as $pausedBy's.
+     * Idempotent: a part that isn't running is left alone.
+     */
+    public function pauseGmAssistantPart(int $part, User $pausedBy, string $reason, ?string $reference = null): void
+    {
+        if ($this->activePart($part)?->isGmAssistantRunning() !== true || ! $this->partAwaitsGmAssistant($part)) {
+            return;
+        }
+
+        $reference = filled($reference) ? trim($reference) : null;
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'gm_assistant_paused_at' => now(),
+            'gm_assistant_pause_reason' => trim($reason),
+            'gm_assistant_pause_reference' => $reference,
+        ]);
+
+        $this->postActionComment($pausedBy, 'gm_assistant_paused', $reason, $this->partContext($part) + ($reference !== null ? ['reference' => $reference] : []));
+        $this->syncSteps();
+    }
+
+    /**
+     * GM Assistant resumes $part, which they'd paused: its time counts
+     * again, carrying on the same round — the countdown goes on from where it
+     * stopped. Idempotent: a part that isn't paused is left alone. The caller
+     * checks they've nothing else running.
+     */
+    public function resumeGmAssistantPart(int $part): void
+    {
+        if ($this->activePart($part)?->isGmAssistantPaused() !== true) {
+            return;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
+            'gm_assistant_paused_at' => null,
+            'gm_assistant_pause_reason' => null,
+            'gm_assistant_pause_reference' => null,
+        ]);
+
+        $this->syncSteps(resuming: true);
     }
 
     /**

@@ -135,6 +135,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('rfqs/{rfq}/pause-data-entry', [RfqController::class, 'pauseDataEntry'])->name('rfqs.pause-data-entry');
     Route::patch('rfqs/{rfq}/resume-data-entry', [RfqController::class, 'resumeDataEntry'])->name('rfqs.resume-data-entry');
     Route::patch('rfqs/{rfq}/start-data-entry', [RfqController::class, 'startDataEntry'])->name('rfqs.start-data-entry');
+    Route::patch('rfqs/{rfq}/start-gm-assistant', [RfqController::class, 'startGmAssistant'])->name('rfqs.start-gm-assistant');
+    Route::patch('rfqs/{rfq}/pause-gm-assistant', [RfqController::class, 'pauseGmAssistant'])->name('rfqs.pause-gm-assistant');
+    Route::patch('rfqs/{rfq}/resume-gm-assistant', [RfqController::class, 'resumeGmAssistant'])->name('rfqs.resume-gm-assistant');
     Route::patch('rfqs/{rfq}/close', [RfqController::class, 'close'])->name('rfqs.close');
     Route::patch('rfqs/{rfq}/close-part', [RfqController::class, 'closePart'])->name('rfqs.close-part');
     // Before the resource, so "suggest" isn't taken for an RFQ.

@@ -579,7 +579,18 @@
                 </button>
             @endif
             @if ($canSubmitGmAssistantDetails)
-                @include('admin.rfqs._gm_assistant_submit', ['rfq' => $rfq, 'part' => null])
+                {{-- Part by part: Start, then Pause or Submit (_gm_assistant_actions);
+                     the whole RFQ's Submit only with no part to start. --}}
+                @forelse ($rfq->partsAwaitingGmAssistant() as $gmaPart)
+                    <span class="d-inline-flex align-items-center gap-1">
+                        @if ($rfq->isSplit())
+                            <span class="small text-muted-soft">P{{ $gmaPart->pivot->part_number }}</span>
+                        @endif
+                        @include('admin.rfqs._gm_assistant_actions', ['rfq' => $rfq, 'part' => $gmaPart->pivot->part_number, 'myRunningGmAssistant' => $myRunningGmAssistant])
+                    </span>
+                @empty
+                    @include('admin.rfqs._gm_assistant_submit', ['rfq' => $rfq, 'part' => null])
+                @endforelse
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-gm-assistant', $rfq) }}"
@@ -1457,7 +1468,7 @@
     @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty() || $finalizableParts->isNotEmpty())
         @include('admin.rfqs._complete_modal')
     @endif
-    @if (auth()->user()->hasAnyRole(['Data Entry', 'Admin']))
+    @if (auth()->user()->hasAnyRole(['Data Entry', 'GM Assistant', 'Admin']))
         @include('admin.rfqs._pause_data_entry_modal')
     @endif
     @if ($rejectFromStage)

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\RfqController;
 use App\Models\Rfq;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -237,7 +238,7 @@ it('keeps where you are, and clears only the search and the dates', function () 
 });
 
 it('pages within the dates', function () {
-    foreach (range(1, 11) as $number) {
+    foreach (range(1, RfqController::PER_PAGE + 1) as $number) {
         listFilterRfq("Job {$number}", 1);
     }
 
@@ -295,17 +296,17 @@ it('groups by WC number — the same however it was typed — each group with it
 
 it('counts a whole group, though the page shows only some of it', function () {
     listFilterRfq('A lone one', 0, ['wc_number' => 'WC100']);
-    foreach (range(1, 12) as $number) {
+    foreach (range(1, 22) as $number) {
         listFilterRfq("Busy site {$number}", 0, ['wc_number' => 'WC300']);
     }
 
     $response = groupedList(['group' => 'wc']);
 
-    expect($response->viewData('groupTotals')->all())->toBe(['WC100' => 1, 'WC300' => 12]);
-    $response->assertSeeInOrder(['WC100', '1 RFQ', 'WC300', '12 RFQs'], false);
+    expect($response->viewData('groupTotals')->all())->toBe(['WC100' => 1, 'WC300' => 22]);
+    $response->assertSeeInOrder(['WC100', '1 RFQ', 'WC300', '22 RFQs'], false);
 
     // The second page carries on with WC300, its heading again.
-    groupedList(['group' => 'wc', 'page' => 2])->assertSeeInOrder(['rfq-list-group', 'WC300', '12 RFQs'], false);
+    groupedList(['group' => 'wc', 'page' => 2])->assertSeeInOrder(['rfq-list-group', 'WC300', '22 RFQs'], false);
 });
 
 it('groups by priority, Urgent first', function () {
@@ -344,4 +345,17 @@ it('groups what the filters leave, and leaves an unknown grouping — or a role\
 
     groupedList(['group' => 'colour'])->assertDontSee('rfq-list-group', false);
     groupedList(['status' => 'Pending', 'group' => 'wc'], 'Senior Operations')->assertDontSee('rfq-list-group', false);
+});
+
+it('shows 20 RFQs a page', function () {
+    Rfq::factory()->count(21)->create();
+
+    $response = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index'))->assertOk();
+
+    expect(RfqController::PER_PAGE)->toBe(20)
+        ->and($response->viewData('rfqs')->count())->toBe(20)
+        ->and($response->viewData('rfqs')->total())->toBe(21);
+    $response->assertSee(e(route('admin.rfqs.index', ['page' => 2])), false);
+
+    expect(test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['page' => 2]))->viewData('rfqs')->count())->toBe(1);
 });

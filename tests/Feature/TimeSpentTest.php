@@ -101,8 +101,9 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     test()->travelTo(colombo('2026-10-06 11:00'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
+    startGmAssistantOn($rfq, 1);
 
-    // GM Assistant: 11:00–15:00 less lunch.
+    // GM Assistant: from their Start, 11:00–15:00 less lunch.
     test()->travelTo(colombo('2026-10-06 15:00'));
     $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
 
@@ -190,6 +191,7 @@ it('pauses GM Assistant\'s clock while the RFQ is held on the Head\'s Returns pa
         $rfq->refresh()->finalizePart($part);
         $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
+        startGmAssistantOn($rfq, $part, $assistant);
     }
     $rfq->refresh()->recordGmAssistantPart(1, $assistant);
 
@@ -200,7 +202,11 @@ it('pauses GM Assistant\'s clock while the RFQ is held on the Head\'s Returns pa
     $rfq->refresh()->rejectPartToStage(1, 'head_of_bd_review', 'Check P1', userWithRole('General Manager'), 'gm_review');
     expect($openGmAssistant())->toBe([]);
 
+    // Back with GM Assistant: P2 carries on; P1, sent back past them, is started afresh.
     $rfq->refresh()->approveHeadOfBdPart(1, $head);
+    expect($openGmAssistant())->toBe([2]);
+
+    startGmAssistantOn($rfq, 1, $assistant);
     expect($openGmAssistant())->toEqualCanonicalizing([1, 2]);
 });
 
@@ -421,6 +427,7 @@ it('doesn\'t flag a step ended at night by something else — the part freed, or
         $held->refresh()->finalizePart($part);
         $held->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
         $held->refresh()->approveHeadOfBdPart($part, $head);
+        startGmAssistantOn($held, $part);
     }
     $held->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
 

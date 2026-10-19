@@ -714,10 +714,36 @@
                                         @if ($scopedToGmAssistantReturns)
                                             @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
                                         @endif
+                                        {{-- Started, running or paused — with why — as Data Entry's are. --}}
+                                        @if ($assignee->pivot->hasGmAssistantStarted())
+                                            <div class="rfq-list-subnote">
+                                                @if ($assignee->pivot->isGmAssistantPaused())
+                                                    @php $gmaPausedAt = $assignee->pivot->gm_assistant_paused_at->toBusinessTimezone(); @endphp
+                                                    <span class="running-pill is-on-pause" title="Paused {{ $gmaPausedAt->format('M d, Y g:i A') }}">
+                                                        <i class="bi bi-pause-fill"></i>
+                                                        <span class="running-pill-label">Paused {{ $gmaPausedAt->format('M d, Y g:i A') }}</span>
+                                                    </span>
+                                                    <span class="d-block rfq-list-subnote-paused">
+                                                        <i class="bi bi-chat-left-quote"></i> {{ $assignee->pivot->gm_assistant_pause_reason }}
+                                                        @if ($assignee->pivot->gm_assistant_pause_reference)
+                                                            <span class="text-nowrap"><i class="bi bi-file-earmark-text"></i> {{ $assignee->pivot->gm_assistant_pause_reference }}</span>
+                                                        @endif
+                                                    </span>
+                                                @else
+                                                    <span class="running-pill">
+                                                        <span class="running-dot"></span>
+                                                        <span class="running-pill-label">Running</span>
+                                                    </span>
+                                                @endif
+                                                Started {{ $assignee->pivot->gm_assistant_started_at->toBusinessTimezone()->format('M d, Y g:i A') }}{{ $assignee->pivot->gmAssistantStartedBy ? ' by '.$assignee->pivot->gmAssistantStartedBy->name : '' }}
+                                            </div>
+                                        @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
                                     <td class="text-nowrap">
-                                        {{-- Counts down their target, ticking in admin.js — paused outside working hours. --}}
+                                        {{-- Counts down their target from their Start, ticking in admin.js —
+                                             paused outside working hours, and held where it stopped while
+                                             they've paused it; till they start, the whole target. --}}
                                         @php
                                             $gmaCountdown = $rfq->gmAssistantCountdown($assignee->pivot->part_number);
                                             $gmaBreakdown = $rfq->gmAssistantTargetBreakdown($assignee->pivot->part_number);
@@ -727,7 +753,16 @@
                                                 : "{$rfq->priority_level}'s GM Assistant target";
                                         @endphp
                                         @if ($gmaCountdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$gmaMadeUp}"])
+                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$gmaMadeUp}", 'workerId' => $assignee->pivot->gm_assistant_started_by])
+                                        @elseif ($gmaPaused = $rfq->pausedGmAssistantCountdown($assignee->pivot->part_number))
+                                            <span class="badge sourcing-countdown is-on-pause {{ \App\Models\Setting::countdownBadgeClass($gmaPaused['remaining'], $gmaPaused['target']) }}" title="Paused — it carries on from here when it's resumed · {{ $gmaMadeUp }}">
+                                                <i class="bi bi-pause-fill"></i>
+                                                <span class="sourcing-countdown-label">{{ \App\Models\Setting::countdownLabel($gmaPaused['remaining']) }}</span>
+                                            </span>
+                                        @elseif (! $assignee->pivot->hasGmAssistantStarted())
+                                            <span class="badge badge-soft-secondary de-target" title="Counts down from Start, in working hours · {{ $gmaMadeUp }}">
+                                                <i class="bi bi-stopwatch"></i> {{ \App\Models\Setting::durationLabel($rfq->gmAssistantTargetSeconds($assignee->pivot->part_number)) }}
+                                            </span>
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif
@@ -747,8 +782,9 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        {{-- Only this one part — see RfqController::submitGmAssistantDetails(). --}}
-                                        @include('admin.rfqs._gm_assistant_submit', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number])
+                                        {{-- Only this one part: Start, then Pause or Submit — see
+                                             RfqController::startGmAssistant() and submitGmAssistantDetails(). --}}
+                                        @include('admin.rfqs._gm_assistant_actions', ['rfq' => $rfq, 'part' => $assignee->pivot->part_number, 'myRunningGmAssistant' => $myRunningGmAssistant])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route($rejectRouteName, $rfq) }}"
@@ -1741,7 +1777,7 @@
     @if ($scopedToDataEntry || $scopedToMe || $scopedToReturns)
         @include('admin.rfqs._complete_modal')
     @endif
-    @if ($scopedToDataEntry)
+    @if ($scopedToDataEntry || $scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._pause_data_entry_modal')
     @endif
     @if ($rejectFromStage)

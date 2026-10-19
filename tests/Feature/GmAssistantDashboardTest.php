@@ -29,7 +29,7 @@ function gmaDashClock(string $time): void
 
 /**
  * RFQ $number at $priority, its one part through to GM Assistant — the Head
- * approving it now.
+ * approving it now, and GM Assistant starting on it then.
  */
 function atGmAssistant(string $number, string $priority = 'Medium'): Rfq
 {
@@ -42,7 +42,7 @@ function atGmAssistant(string $number, string $priority = 'Medium'): Rfq
     $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
 
-    return $rfq->refresh();
+    return startGmAssistantOn($rfq, 1);
 }
 
 function gmAssistantDashboard(User $assistant): TestResponse

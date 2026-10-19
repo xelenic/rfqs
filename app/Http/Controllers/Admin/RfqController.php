@@ -69,6 +69,12 @@ class RfqController extends Controller implements HasMiddleware
     public const SUGGEST_LIMIT = 8;
 
     /**
+     * How many RFQs a list shows a page — All RFQs, every role's queue, and
+     * each of their tabs.
+     */
+    public const PER_PAGE = 20;
+
+    /**
      * The most entries Data Entry can say they made on one part
      * (completeDataEntry()).
      */
@@ -96,7 +102,7 @@ class RfqController extends Controller implements HasMiddleware
         return [
             new Middleware('permission:rfqs.view', only: ['index', 'show', 'suggest']),
             new Middleware('permission:rfqs.create', only: ['store']),
-            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'startDataEntry', 'close', 'closePart', 'changeStatus']),
+            new Middleware('permission:rfqs.edit', only: ['update', 'assign', 'assignOperations', 'completeSourcing', 'returnSourcing', 'completeDataEntry', 'completeSeniorOpsReview', 'approveSeniorOpsPart', 'rejectSeniorOps', 'approveHeadOfBd', 'approveHeadOfBdPart', 'rejectHeadOfBd', 'submitGmAssistantDetails', 'approveGm', 'approveGmPart', 'rejectGm', 'rejectGmAssistant', 'rejectBd', 'returnSeniorOps', 'passBackToSourcing', 'reassignSourcing', 'startDataEntry', 'startGmAssistant', 'close', 'closePart', 'changeStatus']),
         ];
     }
 
@@ -385,7 +391,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->pluck('total', 'group_key')
             : collect();
 
-        $rfqs = $rfqsQuery->paginate(10)->withQueryString();
+        $rfqs = $rfqsQuery->paginate(self::PER_PAGE)->withQueryString();
 
         // Data Entry's "By Sourcing" tab shows each Sourcing assignee's
         // completed part as soon as *they* finish it — each by each —
@@ -412,7 +418,7 @@ class RfqController extends Controller implements HasMiddleware
                     ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $dataEntryFor)))
                 ->tap($applyCommonFilters)
                 ->latest()
-                ->paginate(10, ['*'], 'sourcing_page')
+                ->paginate(self::PER_PAGE, ['*'], 'sourcing_page')
                 ->withQueryString()
             : null;
 
@@ -432,7 +438,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->whereHas('assignees', $isDataEntryDone)
                 ->tap($applySearch)
                 ->orderByDesc(DB::table('rfq_user')->selectRaw('max(rfq_user.data_entry_completed_at)')->whereColumn('rfq_user.rfq_id', 'rfqs.id')->tap($isDataEntryDone))
-                ->paginate(10, ['*'], 'completed_page')
+                ->paginate(self::PER_PAGE, ['*'], 'completed_page')
                 ->withQueryString()
                 ->appends(['tab' => 'completed'])
             : null;
@@ -472,7 +478,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->whereHas('assignees', $isMineWithDataEntry)
                 ->tap($applyCommonFilters)
                 ->latest()
-                ->paginate(10, ['*'], 'with_data_entry_page')
+                ->paginate(self::PER_PAGE, ['*'], 'with_data_entry_page')
                 ->withQueryString()
                 ->appends(['tab' => 'with-data-entry'])
             : null;
@@ -487,7 +493,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->whereHas('assignees', $isMineFinalized)
                 ->tap($applyCommonFilters)
                 ->orderByDesc(DB::table('rfq_user')->selectRaw('max(rfq_user.finalized_at)')->whereColumn('rfq_user.rfq_id', 'rfqs.id')->where('rfq_user.user_id', $user->id))
-                ->paginate(10, ['*'], 'finalized_page')
+                ->paginate(self::PER_PAGE, ['*'], 'finalized_page')
                 ->withQueryString()
                 ->appends(['tab' => 'finalized'])
             : null;
@@ -521,7 +527,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters))
-                ->paginate(10, ['*'], 'assigned_page')
+                ->paginate(self::PER_PAGE, ['*'], 'assigned_page')
                 ->withQueryString()
             : null;
 
@@ -539,7 +545,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->notHeldOnAReturnsPage()
                 ->tap($applyCommonFilters)
                 ->latest()
-                ->paginate(10, ['*'], 'review_page')
+                ->paginate(self::PER_PAGE, ['*'], 'review_page')
                 ->withQueryString()
             : null;
 
@@ -608,6 +614,7 @@ class RfqController extends Controller implements HasMiddleware
             // lists, Data Entry's — tick against in the browser: the server's
             // clock, and the working periods of the next two weeks.
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($user),
+            'myRunningGmAssistant' => $this->runningGmAssistantOfViewer($user),
             // Their own Ready for Data Entry page counts down to Senior
             // Operations being told they haven't started.
             'myDataEntryIdle' => $scopedToDataEntry && $user->hasRole('Data Entry') && ! $user->hasRole('Admin')
@@ -827,6 +834,7 @@ class RfqController extends Controller implements HasMiddleware
             'jobCategories' => JobCategory::orderBy('name')->get(),
             'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),
+            'myRunningGmAssistant' => $this->runningGmAssistantOfViewer($request->user()),
         ]);
     }
 
@@ -838,6 +846,16 @@ class RfqController extends Controller implements HasMiddleware
     private function runningDataEntryOfViewer(User $user): ?RfqStep
     {
         return $user->hasRole('Data Entry') && ! $user->hasRole('Admin') ? RfqStep::runningDataEntryOf($user) : null;
+    }
+
+    /**
+     * The part a GM Assistant viewer has running (RfqStep::runningGmAssistantOf()),
+     * which keeps their Start off on every other part — not an Admin's, who
+     * starts on someone's behalf.
+     */
+    private function runningGmAssistantOfViewer(User $user): ?RfqStep
+    {
+        return $user->hasRole('GM Assistant') && ! $user->hasRole('Admin') ? RfqStep::runningGmAssistantOf($user) : null;
     }
 
     public function store(Request $request): RedirectResponse
@@ -2122,6 +2140,123 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
+     * GM Assistant's Start on a part with them (Rfq::startGmAssistantPart()),
+     * as Data Entry starts theirs (startDataEntry()): at any hour, their time
+     * on it counting in working hours. One part at a time — not while they've
+     * another running (RfqStep::runningGmAssistantOf()). Recorded as one of
+     * GM Assistant — Admin can, naming who (doneBy()).
+     */
+    public function startGmAssistant(Request $request, Rfq $rfq): RedirectResponse
+    {
+        abort_unless($request->user()->hasAnyRole(['GM Assistant', 'Admin']), 403, 'Only GM Assistant can start on a part.');
+
+        $part = (int) $request->validate(['part' => ['required', 'integer']])['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
+        abort_unless($rfq->partAwaitsGmAssistantStart($part), 422, 'This part isn\'t waiting to be started.');
+
+        $starter = $this->doneBy($request, 'GM Assistant');
+
+        if ($running = RfqStep::runningGmAssistantOf($starter)) {
+            return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' already on '
+                .$running->rfq->partNumberLabel($running->part_number).' — submit it, or pause it, before starting another.');
+        }
+
+        $rfq->startGmAssistantPart($part, $starter);
+
+        $offHours = Setting::offHoursReason(now(), $starter->id);
+
+        return back()->with('status', $offHours === null
+            ? "Started {$rfq->partNumberLabel($part)} — your time on it is counting."
+            : "Started {$rfq->partNumberLabel($part)} — outside working hours, so your time on it isn't counting yet. {$offHours}");
+    }
+
+    /**
+     * GM Assistant's Pause on the part they're on (Rfq::pauseGmAssistantPart()),
+     * with why and the document it's waiting on, if any: its countdown stops
+     * where it is, and they can start another. Only whoever started it —
+     * Admin can, for them. The same popup as Data Entry's
+     * (_pause_data_entry_modal), the same fields.
+     */
+    public function pauseGmAssistant(Request $request, Rfq $rfq): RedirectResponse
+    {
+        [$part, $assignee] = $this->gmAssistantPartOfStarter($request, $rfq);
+
+        if (! $assignee->pivot->isGmAssistantRunning() || ! $rfq->partAwaitsGmAssistant($part)) {
+            return back()->with('error', 'This part isn\'t running, so there\'s nothing to pause.');
+        }
+
+        $validator = Validator::make($request->all(), [
+            'pause_reason' => ['required', 'string', 'max:1000'],
+            'pause_reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'pause_reason.required' => 'Say why you\'re pausing it.',
+            'pause_reason.max' => 'Keep the reason under 1000 characters.',
+            'pause_reference.max' => 'Keep the document reference under 255 characters.',
+        ]);
+
+        if ($validator->fails()) {
+            return back()->with('error', $validator->errors()->first());
+        }
+
+        $rfq->pauseGmAssistantPart($part, $request->user(), $validator->validated()['pause_reason'], $validator->validated()['pause_reference'] ?? null);
+
+        return back()->with('status', "Paused {$rfq->partNumberLabel($part)} — its countdown has stopped. You can start another, and resume this one once you've nothing running.");
+    }
+
+    /**
+     * GM Assistant's Resume on a part they'd paused (Rfq::resumeGmAssistantPart()):
+     * its countdown goes on from where it stopped. One part at a time, as
+     * with Start.
+     */
+    public function resumeGmAssistant(Request $request, Rfq $rfq): RedirectResponse
+    {
+        [$part, $assignee] = $this->gmAssistantPartOfStarter($request, $rfq);
+
+        if (! $assignee->pivot->isGmAssistantPaused()) {
+            return back()->with('error', 'This part isn\'t paused.');
+        }
+
+        $starter = $assignee->pivot->gmAssistantStartedBy;
+
+        if ($starter && ($running = RfqStep::runningGmAssistantOf($starter))) {
+            return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' on '
+                .$running->rfq->partNumberLabel($running->part_number).' — submit it, or pause it, before resuming this one.');
+        }
+
+        $rfq->resumeGmAssistantPart($part);
+
+        return back()->with('status', "Resumed {$rfq->partNumberLabel($part)} — its countdown carries on from where it stopped.");
+    }
+
+    /**
+     * The part a GM Assistant Pause or Resume is for — [its number, its
+     * assignee] — refused unless it's whoever started it's, or Admin's.
+     *
+     * @return array{0: int, 1: User}
+     */
+    private function gmAssistantPartOfStarter(Request $request, Rfq $rfq): array
+    {
+        $user = $request->user();
+        abort_unless($user->hasAnyRole(['GM Assistant', 'Admin']), 403, 'Only GM Assistant can pause or resume a part.');
+
+        $part = (int) $request->validate(['part' => ['required', 'integer']])['part'];
+        $assignee = $rfq->assigneeForPart($part);
+
+        abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
+        $this->abortIfStopped($rfq, $assignee);
+        abort_unless(
+            $user->hasRole('Admin') || (int) $assignee->pivot->gm_assistant_started_by === $user->id,
+            403,
+            'Only whoever started this part can pause or resume it.'
+        );
+
+        return [$part, $assignee];
+    }
+
+    /**
      * GM Assistant's Submit: forwards it on to the General Manager, with a
      * comment and photos if they gave any — posted to the RFQ's
      * thread as theirs. With a part, just that one part goes on — see
@@ -2144,6 +2279,20 @@ class RfqController extends Controller implements HasMiddleware
         } else {
             abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
             abort_unless($rfq->partAwaitsGmAssistant($part), 422, 'This part is not waiting on GM Assistant.');
+        }
+
+        // Their time on it runs from their Start — there's none to submit
+        // before it, nor while it's paused (startGmAssistant()).
+        foreach ($part === null ? $rfq->partsAwaitingGmAssistant() : collect([$rfq->assigneeForPart($part)]) as $waiting) {
+            $label = $rfq->partNumberLabel($waiting->pivot->part_number);
+
+            if (! $waiting->pivot->hasGmAssistantStarted()) {
+                return back()->with('error', "Start on {$label} first — Submit comes after.");
+            }
+
+            if ($waiting->pivot->isGmAssistantPaused()) {
+                return back()->with('error', "Resume {$label} first — it's paused.");
+            }
         }
 
         $validator = Validator::make($request->all(), ['comment' => ['nullable', 'string', 'max:2000']], [

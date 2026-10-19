@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\RfqController;
 use App\Models\JobCategory;
 use App\Models\Rfq;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -222,7 +223,7 @@ it('stays on the tab it was on, and pages within it', function () {
         ->and($junk)->toContain('<div class="tab-pane fade show active" id="rfq-ops-unassigned"');
 
     // Page links keep the tab they belong to, whichever one is showing.
-    Rfq::factory()->count(12)->create(['priority_level' => 'Medium']);
+    Rfq::factory()->count(RfqController::PER_PAGE + 2)->create(['priority_level' => 'Medium']);
     [$unassigned] = operationsTabs(['tab' => 'assigned', 'priority' => ['Medium']]);
 
     expect($unassigned)->toContain('page=2')->toContain('tab=unassigned')->toContain('priority%5B0%5D=Medium');

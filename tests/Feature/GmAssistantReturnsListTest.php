@@ -69,10 +69,17 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
         ->assertSee('>RFQ5001', false)
         ->assertSee('Sent back by General Manager ('.$gm->name.'): Payment terms should be 45 days')
         ->assertSee('Returned At')
-        ->assertSee('data-action="'.route('admin.rfqs.gm-assistant-details', $rfq).'"', false)
-        ->assertSee('data-label="RFQ5001"', false)
+        // Started afresh, as Data Entry's are when they come back.
+        ->assertSee('action="'.route('admin.rfqs.start-gm-assistant', $rfq).'"', false)
         ->assertSee('id="gmAssistantSubmitModal"', false)
         ->assertSee('title="1 sent back by the General Manager"', false);
+
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->hasGmAssistantStarted())->toBeFalse();
+    startGmAssistantOn($rfq, 1, $assistant);
+
+    test()->actingAs($assistant)->get(gmAssistantReturnsUrl())->assertOk()
+        ->assertSee('data-action="'.route('admin.rfqs.gm-assistant-details', $rfq).'"', false)
+        ->assertSee('data-label="RFQ5001"', false);
 
     // Not on their own Review page.
     test()->actingAs($assistant)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
@@ -83,6 +90,7 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
 it('goes on to the General Manager once it\'s submitted again from Returns, and off the list', function () {
     ['assistant' => $assistant, 'gm' => $gm, 'rfq' => $rfq] = throughToGm();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'gm_assistant', 'reason' => 'Payment terms should be 45 days']);
+    startGmAssistantOn($rfq, 1, $assistant);
 
     test()->actingAs($assistant)
         ->from(gmAssistantReturnsUrl())
@@ -118,6 +126,7 @@ it('holds a split\'s other parts off the General Manager\'s page until GM Assist
         ->assertSee('RFQ5001-P1 of P2')
         ->assertDontSee('RFQ5001-P2 of P2');
 
+    startGmAssistantOn($rfq, 1, $assistant);
     test()->actingAs($assistant)
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1])
         ->assertSessionHasNoErrors();
@@ -146,6 +155,6 @@ it('shows Admin GM Assistant\'s Returns page, counted on the grouped sidebar', f
     test()->actingAs(userWithRole('Admin'))->get(gmAssistantReturnsUrl(['role' => 'gm-assistant']))->assertOk()
         ->assertSee('Returns · GM Assistant')
         ->assertSee('>RFQ5001', false)
-        ->assertSee('data-action="'.route('admin.rfqs.gm-assistant-details', $rfq).'"', false)
+        ->assertSee('action="'.route('admin.rfqs.start-gm-assistant', $rfq).'"', false)
         ->assertSee('title="1 sent back by the General Manager"', false);
 });

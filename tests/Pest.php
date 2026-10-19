@@ -114,3 +114,14 @@ function startDataEntryOn(Rfq $rfq, int $part, ?User $by = null): Rfq
 
     return $rfq->refresh();
 }
+
+/**
+ * GM Assistant ($by, or someone new in it) starts on $part of $rfq, as their
+ * Start does — their time on it counts from now, and Submit is on.
+ */
+function startGmAssistantOn(Rfq $rfq, int $part, ?User $by = null): Rfq
+{
+    $rfq->refresh()->startGmAssistantPart($part, $by ?? userWithRole('GM Assistant'));
+
+    return $rfq->refresh();
+}

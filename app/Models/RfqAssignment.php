@@ -59,6 +59,8 @@ class RfqAssignment extends Pivot
             'data_entry_returned_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
+            'gm_assistant_started_at' => 'datetime',
+            'gm_assistant_paused_at' => 'datetime',
             'gm_assistant_completed_at' => 'datetime',
             'gm_approved_at' => 'datetime',
             'bd_closed_at' => 'datetime',
@@ -304,6 +306,41 @@ class RfqAssignment extends Pivot
     {
         $query->whereNotNull('rfq_user.senior_ops_reviewed_at')
             ->whereNull('rfq_user.head_of_bd_approved_at');
+    }
+
+    /**
+     * Whether GM Assistant has started on this part — see
+     * Rfq::startGmAssistantPart().
+     */
+    public function hasGmAssistantStarted(): bool
+    {
+        return $this->gm_assistant_started_at !== null;
+    }
+
+    /**
+     * Whether GM Assistant paused it after starting it — its time stopped,
+     * till they resume it (Rfq::pauseGmAssistantPart()).
+     */
+    public function isGmAssistantPaused(): bool
+    {
+        return $this->gm_assistant_paused_at !== null && $this->gm_assistant_completed_at === null;
+    }
+
+    /**
+     * Whether GM Assistant is on it right now: started, not paused, not yet
+     * submitted to the General Manager.
+     */
+    public function isGmAssistantRunning(): bool
+    {
+        return $this->hasGmAssistantStarted() && ! $this->isGmAssistantPaused() && $this->gm_assistant_completed_at === null;
+    }
+
+    /**
+     * The GM Assistant (or Admin) user who started on this part.
+     */
+    public function gmAssistantStartedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'gm_assistant_started_by');
     }
 
     /**

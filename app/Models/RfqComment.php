@@ -33,6 +33,7 @@ class RfqComment extends Model
         'forwarded_back' => ['label' => 'Sent straight back', 'icon' => 'bi-skip-forward-fill', 'tone' => 'success'],
         'gm_assistant_submitted' => ['label' => 'Submitted to General Manager', 'icon' => 'bi-send-check', 'tone' => 'success'],
         'data_entry_paused' => ['label' => 'Paused', 'icon' => 'bi-pause-circle-fill', 'tone' => 'info'],
+        'gm_assistant_paused' => ['label' => 'Paused', 'icon' => 'bi-pause-circle-fill', 'tone' => 'info'],
     ];
 
     protected $fillable = [

@@ -26,9 +26,10 @@ function gmaClock(string $time): void
 
 /**
  * RFQ9301, High priority, its one part through to GM Assistant — the Head
- * of Business Development approving it at 10:00.
+ * of Business Development approving it at 10:00, and GM Assistant starting
+ * on it then too (unless ! $started).
  */
-function withGmAssistant(): Rfq
+function withGmAssistant(bool $started = true): Rfq
 {
     gmaClock('08:40');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9301', 'priority_level' => 'High']), [1 => userWithRole('Sourcing')]);
@@ -41,6 +42,10 @@ function withGmAssistant(): Rfq
 
     gmaClock('10:00');
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
+
+    if ($started) {
+        startGmAssistantOn($rfq, 1);
+    }
 
     return $rfq->refresh();
 }

@@ -230,6 +230,24 @@ class RfqStep extends Model
     }
 
     /**
+     * The part $user has running with GM Assistant — started, and not yet
+     * submitted to the General Manager, nor paused, sent back, stopped or
+     * closed: its open gm_assistant stretch, with its RFQ. Null if none. Like
+     * Data Entry, GM Assistant works one part at a time (see
+     * RfqController::startGmAssistant()).
+     */
+    public static function runningGmAssistantOf(User $user): ?self
+    {
+        return static::query()
+            ->with('rfq')
+            ->where('step', 'gm_assistant')
+            ->whereNull('ended_at')
+            ->where('worked_by', $user->id)
+            ->latest('started_at')
+            ->first();
+    }
+
+    /**
      * Who the stretch's time is credited to — see worked_by.
      */
     public function workedBy(): BelongsTo
