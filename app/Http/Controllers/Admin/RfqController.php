@@ -845,8 +845,8 @@ class RfqController extends Controller implements HasMiddleware
         // RFQ Number is auto-generated (WP0001, WP0002, ...), never taken
         // from user input — see Rfq::nextRfqNumber(). Nor is the status: a
         // new RFQ always starts Pending, whatever the request says.
-        [$input, $rules] = $this->wcNumberChecked($request->all(), Arr::except($this->rules(requireRfqNumber: false), 'status'));
-        $validator = Validator::make($input, $rules, $this->wcNumberMessages());
+        [$input, $rules] = $this->wcNumberChecked($request->all(), Arr::except($this->rules(requireRfqNumber: false), 'status'), digitsOnly: true);
+        $validator = Validator::make($input, $rules, $this->wcNumberMessages(digitsOnly: true));
 
         if ($validator->fails()) {
             return back()->withErrors($validator, 'create')->withInput();
@@ -2414,14 +2414,16 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * $input and $rules with the WC number checked, while Settings has it on
      * (Setting::wcFormatRequired()): in the WC0000 format, typed in any case
-     * and saved in capitals. Not when it's $unless — an RFQ's own WC number,
-     * kept as it was through an edit.
+     * and saved in capitals. With $digitsOnly — the Add RFQ form, whose field
+     * has WC fixed before it — the four digits alone are taken too, and saved
+     * with WC in front ("0123" is WC0123). Not when it's $unless — an RFQ's
+     * own WC number, kept as it was through an edit.
      *
      * @param  array<string, mixed>  $input
      * @param  array<string, array<int, mixed>>  $rules
      * @return array{0: array<string, mixed>, 1: array<string, array<int, mixed>>}
      */
-    protected function wcNumberChecked(array $input, array $rules, ?string $unless = null): array
+    protected function wcNumberChecked(array $input, array $rules, ?string $unless = null, bool $digitsOnly = false): array
     {
         $wcNumber = $input['wc_number'] ?? null;
 
@@ -2429,20 +2431,24 @@ class RfqController extends Controller implements HasMiddleware
             return [$input, $rules];
         }
 
-        $input['wc_number'] = strtoupper(trim($wcNumber));
+        $wcNumber = strtoupper(trim($wcNumber));
+        $input['wc_number'] = $digitsOnly && preg_match('/^\d{4}$/', $wcNumber) === 1 ? 'WC'.$wcNumber : $wcNumber;
         $rules['wc_number'][] = 'regex:'.Setting::WC_NUMBER_PATTERN;
 
         return [$input, $rules];
     }
 
     /**
-     * What to say when a WC number isn't in the WC0000 format.
+     * What to say when a WC number isn't in the WC0000 format — on the Add
+     * RFQ form ($digitsOnly), where only its digits are typed, in those terms.
      *
      * @return array<string, string>
      */
-    protected function wcNumberMessages(): array
+    protected function wcNumberMessages(bool $digitsOnly = false): array
     {
-        return ['wc_number.regex' => 'Use the WC0000 format — WC and four digits, like WC0123.'];
+        return ['wc_number.regex' => $digitsOnly
+            ? 'Type the WC number\'s four digits, like 0123 — WC is added for you.'
+            : 'Use the WC0000 format — WC and four digits, like WC0123.'];
     }
 
     protected function rules(bool $requireRfqNumber = true): array

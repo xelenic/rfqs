@@ -1606,6 +1606,22 @@ function rfqmsBoot() {
         });
     });
 
+    // Adding an RFQ with the WC0000 format on: WC is fixed before the field,
+    // so it takes the four digits alone — anything else typed or pasted
+    // ("WC0123", "wc 01-23") is left at its digits. From the document, so it
+    // holds however often the page is swapped.
+    if (!window.__rfqmsWcDigits) {
+        window.__rfqmsWcDigits = true;
+
+        document.addEventListener('input', function (event) {
+            var field = event.target;
+            if (!field.classList || !field.classList.contains('js-wc-digits')) return;
+
+            var digits = field.value.replace(/\D/g, '').slice(0, 4);
+            if (digits !== field.value) field.value = digits;
+        });
+    }
+
     // Senior Operations' Approve (_senior_ops_approve_modal): the popup lists
     // each part it approves with its line items — to add, added and the
     // difference, read only — and asks for the actual line items they

@@ -14,24 +14,37 @@
 
 <div class="row g-3">
     <div class="col-md-6">
-        {{-- In the WC0000 format while Settings has it on (Setting::wcFormatRequired()) —
-             the browser checks a new one as it's typed; an edit is checked
-             only if it's changed, so an older RFQ's number can stay. --}}
+        {{-- In the WC0000 format while Settings has it on (Setting::wcFormatRequired()).
+             Adding one, WC is fixed in front and only its four digits are typed
+             (digits alone, admin.js .js-wc-digits) — saved as WC0123
+             (RfqController::wcNumberChecked()). An edit has the whole number,
+             checked only if it's changed, so an older RFQ's number can stay. --}}
         @php $wcFormatRequired = \App\Models\Setting::wcFormatRequired(); @endphp
         <label for="{{ $idPrefix }}-wc_number" class="form-label">WC Number</label>
-        <input type="text" name="wc_number" id="{{ $idPrefix }}-wc_number" class="form-control @error('wc_number', $idPrefix) is-invalid @enderror"
-               value="{{ $showOld ? old('wc_number') : '' }}" required
-               @if ($wcFormatRequired)
-                   placeholder="WC0000" autocapitalize="characters"
-                   @if ($mode === 'create') pattern="[Ww][Cc][0-9]{4}" maxlength="6" title="WC and four digits, like WC0123" @endif
-               @endif>
-        @error('wc_number', $idPrefix)
-            <div class="invalid-feedback">{{ $message }}</div>
+        @if ($wcFormatRequired && $mode === 'create')
+            <div class="input-group has-validation">
+                <span class="input-group-text fw-semibold">WC</span>
+                <input type="text" name="wc_number" id="{{ $idPrefix }}-wc_number" class="form-control js-wc-digits @error('wc_number', $idPrefix) is-invalid @enderror"
+                       value="{{ $showOld ? preg_replace('/^\s*wc/i', '', (string) old('wc_number')) : '' }}" required
+                       placeholder="0000" inputmode="numeric" pattern="[0-9]{4}" autocomplete="off"
+                       title="The WC number's four digits, like 0123" aria-describedby="{{ $idPrefix }}-wc_number-hint">
+                @error('wc_number', $idPrefix)
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+            <div class="form-text" id="{{ $idPrefix }}-wc_number-hint">Type the four digits — it's saved as WC0123.</div>
         @else
-            @if ($wcFormatRequired)
-                <div class="form-text">WC and four digits, like WC0123.</div>
-            @endif
-        @enderror
+            <input type="text" name="wc_number" id="{{ $idPrefix }}-wc_number" class="form-control @error('wc_number', $idPrefix) is-invalid @enderror"
+                   value="{{ $showOld ? old('wc_number') : '' }}" required
+                   @if ($wcFormatRequired) placeholder="WC0000" autocapitalize="characters" @endif>
+            @error('wc_number', $idPrefix)
+                <div class="invalid-feedback">{{ $message }}</div>
+            @else
+                @if ($wcFormatRequired)
+                    <div class="form-text">WC and four digits, like WC0123.</div>
+                @endif
+            @enderror
+        @endif
     </div>
 
     <div class="col-md-6">
