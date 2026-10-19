@@ -1378,7 +1378,10 @@
         // which single reply box (among possibly many) should re-show the
         // old input and error, and stay expanded after the redirect.
         $failedReplyParentId = old('parent_id');
-        $commentCount = $rfq->comments->sum(fn ($comment) => 1 + $comment->replies->count());
+        // What they see of the timeline — Sourcing and Data Entry only their
+        // own part of it (Rfq::activityTimelineFor()) — and its comments.
+        $timeline = $rfq->activityTimelineFor(auth()->user());
+        $commentCount = collect($timeline)->where('type', 'comment')->count();
 
         // Data Entry/Admin can complete an assignee's finished split or send
         // it back to Sourcing right from here — the same actions as the
@@ -1405,7 +1408,7 @@
         <div class="{{ $restrictAssignment ? 'rfq-locked-panel' : '' }}">
             <div class="card-body {{ $restrictAssignment ? 'rfq-blurred' : '' }}">
                 <div class="rfq-timeline">
-                    @foreach ($rfq->activityTimeline() as $entry)
+                    @foreach ($timeline as $entry)
                         @include('admin.rfqs._timeline_entry', [
                             'entry' => $entry,
                             'rfq' => $rfq,

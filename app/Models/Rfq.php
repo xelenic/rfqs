@@ -251,6 +251,19 @@ class Rfq extends Model
     public const RETURNS_PAGE_STAGES = ['head_of_bd_review', 'gm_assistant'];
 
     /**
+     * activityTimeline() entry types that are Sourcing's and Data Entry's own
+     * — all a Sourcing or Data Entry viewer sees of the lifecycle
+     * (activityTimelineFor()): assigned to Sourcing, handed to Data Entry,
+     * sent to finalize, sent back between them, finalized.
+     *
+     * @var array<int, string>
+     */
+    public const SOURCING_AND_DATA_ENTRY_TIMELINE_TYPES = [
+        'sourcing_assigned', 'sourcing_completed', 'sourcing_returned', 'sourcing_handoff',
+        'data_entry_part_completed', 'data_entry_all_completed', 'sourcing_finalized',
+    ];
+
+    /**
      * activityTimeline() entry types belonging to the post-Data-Entry
      * approval chain (category through BD's close) — used to single out
      * these entries from the earlier Sourcing/Data-Entry ones and from
@@ -4014,6 +4027,33 @@ class Rfq extends Model
         usort($entries, fn (array $a, array $b) => $a['at'] <=> $b['at']);
 
         return $entries;
+    }
+
+    /**
+     * activityTimeline() as $viewer sees it: the whole of it, except for
+     * someone in Sourcing or Data Entry alone
+     * (User::seesOnlySourcingAndDataEntryTimeline()), who sees only Sourcing's
+     * and Data Entry's part in it — their lifecycle events
+     * (SOURCING_AND_DATA_ENTRY_TIMELINE_TYPES), the discussion and their own
+     * actions (RfqComment::isForSourcingAndDataEntry()), and the alerts that
+     * went to one of them — never another role's reviews, approvals,
+     * rejections, holds or alerts.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function activityTimelineFor(User $viewer): array
+    {
+        $timeline = $this->activityTimeline();
+
+        if (! $viewer->seesOnlySourcingAndDataEntryTimeline()) {
+            return $timeline;
+        }
+
+        return array_values(array_filter($timeline, fn (array $entry) => match ($entry['type']) {
+            'comment' => $entry['comment']->isForSourcingAndDataEntry(),
+            'notification' => $entry['recipients']->contains(fn (User $recipient) => $recipient->isSourcingOrDataEntry()),
+            default => in_array($entry['type'], self::SOURCING_AND_DATA_ENTRY_TIMELINE_TYPES, true),
+        }));
     }
 
     /**

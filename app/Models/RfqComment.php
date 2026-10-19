@@ -106,6 +106,18 @@ class RfqComment extends Model
     }
 
     /**
+     * Whether a Sourcing or Data Entry viewer sees it (Rfq::activityTimelineFor(),
+     * User::seesOnlySourcingAndDataEntryTimeline()): an ordinary comment or
+     * reply — the discussion is everyone's — or an action someone in Sourcing
+     * or Data Entry took. Not another role's action: a review, a rejection, a
+     * hold, a reassignment, GM Assistant's submit.
+     */
+    public function isForSourcingAndDataEntry(): bool
+    {
+        return $this->action === null || $this->author?->isSourcingOrDataEntry() === true;
+    }
+
+    /**
      * Whether this comment belongs on $part's thread of a split RFQ. One
      * recorded against a part — its completion, its return — is for that part
      * alone; an ordinary comment, or an action on the RFQ as a whole (a

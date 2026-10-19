@@ -217,11 +217,18 @@ it('keeps each part of a split to its own thread, with what concerns the whole R
         ->not->toContain('Supplier confirmed stock')
         ->not->toContain('Quote is missing prices');
 
-    // …while an ordinary comment and a rejection of the whole RFQ are on each.
+    // …while an ordinary comment is on each. The Head's rejection of the
+    // whole RFQ is another role's action: not for Data Entry.
     foreach ([$one, $two, $three] as $modal) {
         expect($modal)->toContain('Please be quick on this one')
-            ->toContain('<i class="bi bi-x-octagon-fill"></i> Rejected')
-            ->toContain('Please re-check every line');
+            ->not->toContain('<i class="bi bi-x-octagon-fill"></i> Rejected')
+            ->not->toContain('Please re-check every line');
+    }
+
+    // Admin, on Data Entry's page, sees it on each.
+    $admin = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'data-entry']))->assertOk()->getContent();
+    foreach ([1, 2, 3] as $part) {
+        expect(partModal($admin, $rfq, $part))->toContain('Please re-check every line');
     }
 });
 

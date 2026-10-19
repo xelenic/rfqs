@@ -40,7 +40,10 @@
     $otherAssigneeIds = $rfq->assignees->where('id', '!=', $assignee->id)->pluck('id');
     $visibleComments = $rfq->comments
         ->whereNotIn('user_id', $otherAssigneeIds)
-        ->filter(fn ($comment) => $comment->concernsPart($part));
+        ->filter(fn ($comment) => $comment->concernsPart($part))
+        // Sourcing and Data Entry: none of another role's actions, as on the
+        // RFQ's timeline (Rfq::activityTimelineFor()).
+        ->filter(fn ($comment) => ! auth()->user()->seesOnlySourcingAndDataEntryTimeline() || $comment->isForSourcingAndDataEntry());
 
     // Sourcing works entirely from this modal on "My Pending RFQs" — no
     // need for an escape hatch to the full RFQ page there. Data Entry/Admin

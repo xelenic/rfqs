@@ -253,6 +253,29 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this person's RFQ timeline is Sourcing's and Data Entry's alone
+     * (since 2026-10-20, Rfq::activityTimelineFor()): someone in Sourcing or
+     * Data Entry — or both — holding no other workflow role, nor Admin or HR
+     * Executive. Everyone else sees the whole timeline.
+     */
+    public function seesOnlySourcingAndDataEntryTimeline(): bool
+    {
+        $roles = $this->roles->pluck('name');
+
+        return $roles->intersect(['Sourcing', 'Data Entry'])->isNotEmpty()
+            && $roles->diff(['Sourcing', 'Data Entry'])->isEmpty();
+    }
+
+    /**
+     * Whether this person holds Sourcing or Data Entry — whose actions a
+     * Sourcing or Data Entry viewer's timeline shows (Rfq::activityTimelineFor()).
+     */
+    public function isSourcingOrDataEntry(): bool
+    {
+        return $this->roles->pluck('name')->intersect(['Sourcing', 'Data Entry'])->isNotEmpty();
+    }
+
+    /**
      * Whether this person sees every RFQ — not just their own
      * (seesOnlyOwnRfqs()) or what was given them (seesOnlyAssignedRfqs()).
      */
