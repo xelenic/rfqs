@@ -177,6 +177,20 @@ class DashboardController extends Controller
             ]);
         }
 
+        // HR Executive's is about people: today's attendance sheet, what's
+        // waiting on their approval, how attendance has gone over the period,
+        // and the team.
+        if ($user->hasRole('HR Executive') && ! $user->hasRole('Admin')) {
+            $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
+            $overview = $this->hrOverview($period);
+
+            return view('admin.dashboard.hr-executive', [
+                'period' => $period,
+                'overview' => $overview,
+                'notifications' => $this->hrNotifications($overview),
+            ]);
+        }
+
         return view('admin.dashboard', [
             'usersCount' => User::count(),
             'rolesCount' => Role::count(),
@@ -1207,6 +1221,189 @@ class DashboardController extends Controller
             })->all(),
             'latest' => $sentBy(null)->take(6),
         ];
+    }
+
+    /**
+     * What HR Executive's dashboard shows. Today: everyone who goes on the
+     * attendance sheet (AttendanceSheet::people()) with their mark on today's
+     * sheet — approved or not — and the hours they work today
+     * (Setting::weekOn()). Over $period: each person's working days present,
+     * on a half day, on leave and not yet counted, by the approved sheets
+     * (Attendance::book()), from the day attendance started. And the sheets
+     * — waiting on their approval, returned, the latest — the working days
+     * still without one, and the team: active people by role, who joined in
+     * the period, and how many accounts are deactivated.
+     *
+     * @param  array{from: string, to: string, start: CarbonImmutable, end: CarbonImmutable}  $period
+     * @return array<string, mixed>
+     */
+    protected function hrOverview(array $period): array
+    {
+        $today = Setting::today();
+        $weekday = strtolower(CarbonImmutable::parse($today)->format('l'));
+        $people = AttendanceSheet::people();
+        $trackedRoles = array_keys(RfqStep::ROLE_STEPS);
+        $todaySheet = AttendanceSheet::query()->whereDate('date', $today)->with(['attendances', 'approvedBy', 'returnedBy'])->first();
+        $marks = $todaySheet?->attendances->keyBy('user_id') ?? collect();
+
+        $todayRows = $people->map(function (User $person) use ($marks, $today, $weekday, $trackedRoles) {
+            $mark = $marks->get($person->id);
+            $hours = Setting::weekOn($today, $person->id)[$weekday] ?? ['working' => false];
+
+            return [
+                'user' => $person,
+                'roles' => $person->roles->pluck('name')->intersect($trackedRoles)->values(),
+                'status' => $mark?->status ?? Attendance::UNMARKED,
+                'timeOff' => $mark?->timeOffLabel(),
+                'note' => $mark?->note,
+                'hours' => $hours['working'] ? "{$hours['start']}–{$hours['end']}" : null,
+            ];
+        });
+
+        $since = Setting::attendanceSince();
+        $book = Attendance::book($people->pluck('id'));
+        $days = collect();
+
+        for ($day = CarbonImmutable::parse($period['from']); $day->toDateString() <= min($period['to'], $today); $day = $day->addDay()) {
+            if ($since !== null && $day->toDateString() >= $since) {
+                $days->push($day);
+            }
+        }
+
+        $attendance = $people->map(function (User $person) use ($days, $book) {
+            $counts = ['present' => 0, 'half' => 0, 'leave' => 0, 'unmarked' => 0];
+
+            foreach ($days as $day) {
+                if (! (Setting::weekOn($day->toDateString(), $person->id)[strtolower($day->format('l'))]['working'] ?? false)) {
+                    continue;
+                }
+
+                $status = Attendance::statusIn($book, $person->id, $day->toDateString());
+                $counts[match (true) {
+                    $status === Attendance::PRESENT => 'present',
+                    $status === Attendance::ABSENT => 'leave',
+                    $status === Attendance::UNMARKED => 'unmarked',
+                    default => 'half',
+                }]++;
+            }
+
+            $counted = $counts['present'] + $counts['half'] + $counts['leave'];
+
+            return ['user' => $person] + $counts + [
+                'rate' => $counted > 0 ? (int) round(($counts['present'] + $counts['half'] / 2) / $counted * 100) : null,
+            ];
+        });
+
+        $active = User::query()->active()->with('roles')->get();
+        $counted = $attendance->sum(fn (array $row) => $row['present'] + $row['half'] + $row['leave']);
+
+        return [
+            'today' => $today,
+            'todaySheet' => $todaySheet,
+            'isWorkingDay' => Setting::workingHours()[$weekday]['working'] ?? false,
+            'todayRows' => $todayRows,
+            'todayCounts' => [
+                'present' => $todayRows->where('status', Attendance::PRESENT)->count(),
+                'half' => $todayRows->where('status', Attendance::HALF_DAY)->count(),
+                'leave' => $todayRows->where('status', Attendance::ABSENT)->count(),
+                'unmarked' => $todayRows->where('status', Attendance::UNMARKED)->count(),
+            ],
+            'attendanceSince' => $since,
+            'attendance' => $attendance,
+            'attendanceRate' => $counted > 0 ? (int) round(($attendance->sum('present') + $attendance->sum('half') / 2) / $counted * 100) : null,
+            'awaitingApproval' => AttendanceSheet::awaitingApprovalCount(),
+            'returned' => AttendanceSheet::returnedCount(),
+            'missingDays' => AttendanceSheet::missingDays(),
+            'sheets' => AttendanceSheet::query()->with(['attendances', 'createdBy', 'approvedBy', 'returnedBy'])->latest('date')->limit(7)->get(),
+            'team' => Role::query()->orderBy('name')->get()
+                ->map(fn (Role $role) => ['role' => $role->name, 'count' => $active->filter(fn (User $member) => $member->roles->contains('name', $role->name))->count()])
+                ->filter(fn (array $row) => $row['count'] > 0)
+                ->values(),
+            'activePeople' => $active->count(),
+            'deactivated' => User::query()->whereNotNull('deactivated_at')->count(),
+            'joined' => User::query()->whereBetween('created_at', [$period['start'], $period['end']])->count(),
+        ];
+    }
+
+    /**
+     * HR Executive's alerts: sheets waiting on their approval, today's sheet
+     * not in yet, working days without one, sheets back with Senior
+     * Operations, who's on leave today — and attendance not being counted at
+     * all, when it isn't.
+     *
+     * @param  array<string, mixed>  $overview  hrOverview()
+     * @return array<int, array{type: string, icon: string, title: string, description: string, url: string}>
+     */
+    protected function hrNotifications(array $overview): array
+    {
+        $sheets = route('admin.attendance.index');
+        $notifications = [];
+
+        if ($overview['attendanceSince'] === null) {
+            return [[
+                'type' => 'info',
+                'icon' => 'bi-info-circle',
+                'title' => 'Attendance isn\'t counted yet',
+                'description' => 'An Admin chooses the day it starts, in Settings → Working Hours.',
+                'url' => $sheets,
+            ]];
+        }
+
+        if ($overview['awaitingApproval'] > 0) {
+            $notifications[] = [
+                'type' => 'warning',
+                'icon' => 'bi-hourglass-split',
+                'title' => trans_choice('1 attendance sheet awaits your approval|:count attendance sheets await your approval', $overview['awaitingApproval'], ['count' => $overview['awaitingApproval']]),
+                'description' => 'Nobody\'s time counts on those days until you approve them.',
+                'url' => $sheets,
+            ];
+        }
+
+        $earlierMissing = array_values(array_diff($overview['missingDays'], [$overview['today']]));
+
+        if (in_array($overview['today'], $overview['missingDays'], true)) {
+            $notifications[] = [
+                'type' => 'info',
+                'icon' => 'bi-clipboard',
+                'title' => 'Today\'s attendance sheet isn\'t in yet',
+                'description' => 'Senior Operations fills it in and sends it to you.',
+                'url' => $sheets,
+            ];
+        }
+
+        if ($earlierMissing !== []) {
+            $notifications[] = [
+                'type' => 'danger',
+                'icon' => 'bi-calendar-x',
+                'title' => trans_choice('1 earlier working day has no sheet|:count earlier working days have no sheet', count($earlierMissing), ['count' => count($earlierMissing)]),
+                'description' => 'Senior Operations still has to make '.(count($earlierMissing) === 1 ? 'it' : 'them').' — the oldest is '.CarbonImmutable::parse(end($earlierMissing))->format('M d, Y').'.',
+                'url' => $sheets,
+            ];
+        }
+
+        if ($overview['returned'] > 0) {
+            $notifications[] = [
+                'type' => 'info',
+                'icon' => 'bi-arrow-counterclockwise',
+                'title' => trans_choice('1 sheet is back with Senior Operations|:count sheets are back with Senior Operations', $overview['returned'], ['count' => $overview['returned']]),
+                'description' => 'You returned it to be corrected; it comes back to you.',
+                'url' => $sheets,
+            ];
+        }
+
+        $onLeave = $overview['todayRows']->where('status', Attendance::ABSENT);
+
+        if ($onLeave->isNotEmpty()) {
+            $notifications[] = [
+                'type' => 'info',
+                'icon' => 'bi-person-dash',
+                'title' => trans_choice('1 person is on leave today|:count people are on leave today', $onLeave->count(), ['count' => $onLeave->count()]),
+                'description' => $onLeave->map(fn (array $row) => $row['user']->name)->join(', ', ' and ').'.',
+                'url' => $sheets,
+            ];
+        }
+
+        return $notifications;
     }
 
     /**
