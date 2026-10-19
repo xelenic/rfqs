@@ -73,6 +73,16 @@ function reportData(string $report, array $query = []): mixed
 }
 
 /**
+ * What a report hands its page, as $user asks for it.
+ *
+ * @param  array<string, mixed>  $query
+ */
+function reportDataAs(User $user, string $report, array $query = []): mixed
+{
+    return test()->actingAs($user)->get(route("admin.reports.{$report}", $query))->assertOk()->viewData('report');
+}
+
+/**
  * A row's figures, without who and what's behind them.
  *
  * @param  array<string, mixed>  $row
@@ -263,13 +273,40 @@ it('sorts the tracking sheet', function () {
 
 // ---- Access ------------------------------------------------------------------------
 
-it('is Admin\'s alone', function (string $role) {
+it('is Admin\'s and HR Manager\'s alone', function (string $role) {
     $user = userWithRole($role);
 
     foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
         test()->actingAs($user)->get(route("admin.reports.{$report}"))->assertForbidden();
     }
+
+    // Nor are they in their sidebar.
+    expect(test()->actingAs($user)->get(route('admin.dashboard'))->assertOk()->getContent())
+        ->not->toContain('href="'.route('admin.reports.sourcing-daily').'"')
+        ->not->toContain('href="'.route('admin.reports.rfq-tracking').'"');
 })->with(['Senior Operations', 'Sourcing', 'General Manager']);
+
+it('lets HR Manager see every report, from Reports in their sidebar', function () {
+    mondaysWork();
+    $hr = User::factory()->create()->assignRole(Role::findOrCreate('HR Manager'));
+
+    foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
+        $html = test()->actingAs($hr)->get(route("admin.reports.{$report}"))->assertOk()->getContent();
+
+        expect(Str::after($html, '<div class="sidebar-section-title">Reports</div>'))
+            ->toContain('href="'.route('admin.reports.sourcing-daily').'"')
+            ->toContain('href="'.route('admin.reports.sourcing-monthly').'"')
+            ->toContain('href="'.route('admin.reports.data-entry-daily').'"')
+            ->toContain('href="'.route('admin.reports.rfq-tracking').'"');
+    }
+
+    expect(reportDataAs($hr, 'sourcing-daily', ['from' => '2026-10-05', 'to' => '2026-10-05'])['total'])->toMatchArray(['finalized' => 1, 'pending' => 1, 'customer' => 1]);
+
+    // They see the tracking sheet, not the RFQs themselves.
+    test()->actingAs($hr)->get(route('admin.reports.rfq-tracking'))->assertOk()
+        ->assertSee('RFQ8001')
+        ->assertDontSee('href="'.route('admin.rfqs.show', Rfq::query()->where('rfq_number', 'RFQ8001')->sole()).'"', false);
+});
 
 it('is in Admin\'s sidebar, under Reports', function () {
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.sourcing-daily'))->assertOk()->getContent();

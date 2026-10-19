@@ -105,7 +105,14 @@
                         @endphp
                         <tr>
                             <td class="text-nowrap">{{ $rfq->created_at->toBusinessTimezone()->format('d-m-Y') }}</td>
-                            <td class="fw-semibold text-nowrap"><a href="{{ route('admin.rfqs.show', $rfq) }}">{{ $rfq->rfq_number }}</a></td>
+                            <td class="fw-semibold text-nowrap">
+                                {{-- HR Manager sees the sheet, not the RFQs themselves. --}}
+                                @can('rfqs.view')
+                                    <a href="{{ route('admin.rfqs.show', $rfq) }}">{{ $rfq->rfq_number }}</a>
+                                @else
+                                    {{ $rfq->rfq_number }}
+                                @endcan
+                            </td>
                             <td class="text-nowrap">{{ $rfq->wc_number }}</td>
                             <td>{{ $rfq->subject }}</td>
                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>

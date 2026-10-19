@@ -121,6 +121,15 @@ class User extends Authenticatable
     public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Manager'];
 
     /**
+     * The roles that see the performance reports (Admin\PerformanceReportController):
+     * Sourcing's daily and monthly reports, Data Entry's daily report and the
+     * RFQ tracking sheet.
+     *
+     * @var array<int, string>
+     */
+    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HR Manager'];
+
+    /**
      * The roles that fill in and submit the daily attendance sheet.
      *
      * @var array<int, string>
@@ -276,6 +285,15 @@ class User extends Authenticatable
     public function canViewTimeSpentReport(): bool
     {
         return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
+    }
+
+    /**
+     * Whether this person sees the performance reports — see
+     * PERFORMANCE_REPORT_ROLES.
+     */
+    public function canViewPerformanceReports(): bool
+    {
+        return $this->hasAnyRole(self::PERFORMANCE_REPORT_ROLES);
     }
 
     /**

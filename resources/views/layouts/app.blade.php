@@ -91,6 +91,20 @@
                     <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
                         <i class="bi bi-stopwatch"></i> Time Spent
                     </a>
+                    {{-- The performance reports — HR Manager's here; Admin's under
+                         Reports in _sidebar_admin_groups. --}}
+                    @if (auth()->user()->canViewPerformanceReports())
+                        @foreach ([
+                            'admin.reports.sourcing-daily' => ['Sourcing Daily', 'bi-calendar-day'],
+                            'admin.reports.sourcing-monthly' => ['Sourcing Monthly', 'bi-calendar3'],
+                            'admin.reports.data-entry-daily' => ['Data Entry Daily', 'bi-keyboard'],
+                            'admin.reports.rfq-tracking' => ['RFQ Tracking Sheet', 'bi-table'],
+                        ] as $reportRoute => [$reportLabel, $reportIcon])
+                            <a href="{{ route($reportRoute) }}" class="nav-link {{ request()->routeIs($reportRoute) ? 'active' : '' }}">
+                                <i class="bi {{ $reportIcon }}"></i> {{ $reportLabel }}
+                            </a>
+                        @endforeach
+                    @endif
                 @endif
 
                 @canany(['users.view', 'roles.view', 'permissions.view'])

@@ -14,7 +14,8 @@ use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 /**
- * Admin's performance reports, as the business specified them: Sourcing's
+ * The performance reports, for Admin and HR Manager
+ * (User::PERFORMANCE_REPORT_ROLES), as the business specified them: Sourcing's
  * daily report (finalized, pending and waiting-for-customer RFQs, with their
  * items), Data Entry's daily report (RFQs completed, their items, the time
  * spent), Sourcing's monthly evaluation (RFQs received, quotations
@@ -181,11 +182,11 @@ class PerformanceReportController extends Controller
     }
 
     /**
-     * Only Admin sees these reports.
+     * Only Admin and HR Manager see these reports (User::canViewPerformanceReports()).
      */
     private function authorizeReports(Request $request): void
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only Admin can see the performance reports.');
+        abort_unless($request->user()->canViewPerformanceReports(), 403, 'Only Admin and HR Manager can see the performance reports.');
     }
 
     /**
