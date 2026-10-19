@@ -1250,7 +1250,9 @@
                                 ->filter(fn ($assignee) => filled($assignee->pivot->bd_reference_code))
                                 ->mapWithKeys(fn ($assignee) => [$rfq->partNumberLabel($assignee->pivot->part_number) => $assignee->pivot->bd_reference_code]);
                         @endphp
-                        @if ($rfq->bd_reference_code || $closingCodes->isNotEmpty())
+                        {{-- Sourcing and Data Entry don't see who made or closed a closed RFQ, nor when. --}}
+                        @php $hidesCreatedAndClosed = $rfq->isClosed() && auth()->user()->seesOnlySourcingAndDataEntryTimeline(); @endphp
+                        @if (($rfq->bd_reference_code || $closingCodes->isNotEmpty()) && ! $hidesCreatedAndClosed)
                             <div>
                                 <dt>Quotation number</dt>
                                 <dd>
@@ -1270,14 +1272,16 @@
                                 <dd>{{ $rfq->category }}</dd>
                             </div>
                         @endif
-                        <div>
-                            <dt>Created by</dt>
-                            <dd class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">{{ $rfq->creator?->name ?? '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt>Created</dt>
-                            <dd>{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y \a\t g:i A') }}</dd>
-                        </div>
+                        @unless ($hidesCreatedAndClosed)
+                            <div>
+                                <dt>Created by</dt>
+                                <dd class="{{ $restrictSourcingView ? 'rfq-blurred' : '' }}">{{ $rfq->creator?->name ?? '—' }}</dd>
+                            </div>
+                            <div>
+                                <dt>Created</dt>
+                                <dd>{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y \a\t g:i A') }}</dd>
+                            </div>
+                        @endunless
                         <div>
                             <dt>Last updated</dt>
                             <dd>{{ $rfq->updated_at->toBusinessTimezone()->format('M d, Y \a\t g:i A') }}</dd>

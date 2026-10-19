@@ -8,7 +8,8 @@
 
     Expects: $rfq (with its assignees), $bdClosedNames (user id => name).
     Optional: $onlyHeldBy — a Sourcing member's own Closed RFQs: only the
-    parts they hold.
+    parts they hold. $showCreatedAndClosed — false to leave out when it was
+    created and closed, and by whom (Sourcing and Data Entry).
 --}}
 @foreach ($rfq->assignees as $assignee)
     @continue(($onlyHeldBy ?? null) && $assignee->id !== $onlyHeldBy)
@@ -24,21 +25,23 @@
         <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
         <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
         <td>{{ $rfq->subject }}</td>
-        <td class="text-muted-soft">
-            {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
-            @if ($rfq->creator)
-                <div class="small">by {{ $rfq->creator->name }}</div>
-            @endif
-        </td>
-        <td class="text-muted-soft">
-            {{ $closedAt?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
-            @if ($closedByName)
-                <div class="small">by {{ $closedByName }}</div>
-            @endif
-            @if ($referenceCode)
-                <div class="small">Quotation: <span class="fw-semibold text-body">{{ $referenceCode }}</span></div>
-            @endif
-        </td>
+        @if ($showCreatedAndClosed ?? true)
+            <td class="text-muted-soft">
+                {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
+                @if ($rfq->creator)
+                    <div class="small">by {{ $rfq->creator->name }}</div>
+                @endif
+            </td>
+            <td class="text-muted-soft">
+                {{ $closedAt?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
+                @if ($closedByName)
+                    <div class="small">by {{ $closedByName }}</div>
+                @endif
+                @if ($referenceCode)
+                    <div class="small">Quotation: <span class="fw-semibold text-body">{{ $referenceCode }}</span></div>
+                @endif
+            </td>
+        @endif
         <td class="text-end">
             <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Completed" class="btn btn-sm btn-outline-secondary" title="View details">
                 <i class="bi bi-eye"></i>

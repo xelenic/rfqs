@@ -7,7 +7,8 @@
     Expects: $rfq, $statusFilter, $restrictAssignment,
     $canSeeAssignOperationsButton, $canSeeAssignButtons.
     Optional: $showClosed — the Closed RFQs list, which has a column for when
-    it was closed and by whom.
+    it was closed and by whom. $showCreated — false to leave out when it was
+    created and by whom (Sourcing and Data Entry on the Closed RFQs list).
     Optional: $groupedParts — this row heads a group whose parts follow it
     (see _rfq_parts.blade.php), so it gets the button that folds them away
     and a one-line summary of how far along they are.
@@ -88,12 +89,14 @@
             </div>
         @endif
     </td>
-    <td class="text-muted-soft">
-        {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
-        @if ($rfq->creator)
-            <div class="small">by {{ $rfq->creator->name }}</div>
-        @endif
-    </td>
+    @if ($showCreated ?? true)
+        <td class="text-muted-soft">
+            {{ $rfq->created_at->toBusinessTimezone()->format('M d, Y') }}
+            @if ($rfq->creator)
+                <div class="small">by {{ $rfq->creator->name }}</div>
+            @endif
+        </td>
+    @endif
     @if ($showClosed ?? false)
         <td class="text-muted-soft">
             {{ $rfq->bd_closed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}

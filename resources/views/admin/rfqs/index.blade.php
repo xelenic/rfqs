@@ -1683,8 +1683,12 @@
                                 <th>Status</th>
                             @endunless
                             <th>Subject</th>
-                            <th>Created</th>
-                            @if ($statusFilter === 'Completed')
+                            {{-- Sourcing and Data Entry don't see who made or closed a closed RFQ, nor when. --}}
+                            @php $hidesCreatedAndClosed = $statusFilter === 'Completed' && auth()->user()->seesOnlySourcingAndDataEntryTimeline(); @endphp
+                            @unless ($hidesCreatedAndClosed)
+                                <th>Created</th>
+                            @endunless
+                            @if ($statusFilter === 'Completed' && ! $hidesCreatedAndClosed)
                                 <th>Closed</th>
                             @endif
                             <th class="text-end">Actions</th>
@@ -1692,7 +1696,7 @@
                     </thead>
                     <tbody>
                         @php
-                            $listColumns = ($statusFilter ? 6 : 7) + ($statusFilter === 'Completed' ? 1 : 0);
+                            $listColumns = ($statusFilter ? 6 : 7) + ($statusFilter === 'Completed' ? 1 : 0) - ($hidesCreatedAndClosed ? 2 : 0);
                             $lastGroupKey = null;
                         @endphp
                         @forelse ($rfqs as $rfq)
@@ -1721,9 +1725,9 @@
                             @if ($statusFilter === 'Completed' && $rfq->isSplit() && $rfq->assignees->isNotEmpty())
                                 {{-- A split shows on the Closed list part by part — each as
                                      Business Development closes it (see Rfq::closePart()). --}}
-                                @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null])
+                                @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null, 'showCreatedAndClosed' => ! $hidesCreatedAndClosed])
                             @else
-                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed'])
+                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed])
                             @endif
                         @empty
                             <tr>
