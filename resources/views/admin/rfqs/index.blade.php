@@ -594,18 +594,9 @@
                                         @if ($scopedToHeadOfBdReturns && ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number)))
                                             @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $assignee->pivot->part_number])
                                         @endif
-                                        {{-- Only this one part — see
+                                        {{-- Only this one part, its line items finalized first — see
                                              RfqController::approveHeadOfBdPart() and rejectHeadOfBd(). --}}
-                                        <form action="{{ route('admin.rfqs.approve-head-of-bd-part', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Approve {{ $partLabel }}?{{ $rfq->isSplit() ? ' The RFQ moves on to GM Assistant once every part is approved.' : ' It moves on to GM Assistant.' }}">
-                                            @csrf
-                                            @method('PATCH')
-                                            <input type="hidden" name="part" value="{{ $assignee->pivot->part_number }}">
-                                            @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-check2-circle"></i> Approve
-                                            </button>
-                                        </form>
+                                        @include('admin.rfqs._head_of_bd_approve_button', ['rfq' => $rfq, 'approvePart' => $assignee->pivot->part_number])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
@@ -645,15 +636,7 @@
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <form action="{{ route('admin.rfqs.approve-head-of-bd', $rfq) }}" method="POST" class="d-inline"
-                                              data-confirm="Approve this RFQ? It moves on to GM Assistant.">
-                                            @csrf
-                                            @method('PATCH')
-                                            @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="bi bi-check2-circle"></i> Approve
-                                            </button>
-                                        </form>
+                                        @include('admin.rfqs._head_of_bd_approve_button', ['rfq' => $rfq, 'approvePart' => null])
                                         <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                                                 data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                                                 data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
@@ -779,6 +762,10 @@
                                             {{ $assignee->pivot->head_of_bd_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                             @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
                                                 <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
+                                            @endif
+                                            {{-- What they finalized approving it — GM Assistant's target goes by it. --}}
+                                            @if ($assignee->pivot->finalizedLineItems() !== null)
+                                                <div class="text-muted-soft small"><i class="bi bi-list-check"></i> {{ trans_choice('1 line item finalized|:count line items finalized', $assignee->pivot->finalizedLineItems(), ['count' => number_format($assignee->pivot->finalizedLineItems())]) }}</div>
                                             @endif
                                         @endif
                                     </td>
@@ -1794,6 +1781,9 @@
 
     @if ($seniorOpsReviewRfqs)
         @include('admin.rfqs._senior_ops_approve_modal')
+    @endif
+    @if ($scopedToHeadOfBdReview || $scopedToHeadOfBdReturns)
+        @include('admin.rfqs._head_of_bd_approve_modal')
     @endif
     @if ($scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._gm_assistant_submit_modal')

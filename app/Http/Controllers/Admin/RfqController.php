@@ -1876,29 +1876,55 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * The line items Senior Operations counted on each of $parts as they
      * approve them on to the Head of Business Development —
-     * actual_line_items[part number], a whole number from 0 to
-     * MAX_DATA_ENTRIES, for every one — or back, saying what's wrong. Asked
+     * actual_line_items[part number] — or back, saying what's wrong. Asked
      * in the approve popup (_senior_ops_approve_modal) beside what Sourcing
-     * gave to add and Data Entry added.
+     * gave to add and Data Entry added. See lineItemsGiven().
      *
      * @param  Collection<int, User>  $parts
      * @return array<int, int>|RedirectResponse part number => line items
      */
     private function verifiedLineItems(Request $request, Rfq $rfq, Collection $parts): array|RedirectResponse
     {
+        return $this->lineItemsGiven($request, $rfq, $parts, 'actual_line_items', 'Enter the actual line items you verified on :part.', 'actual line items');
+    }
+
+    /**
+     * The line items the Head of Business Development finalized on each of
+     * $parts as they approve them on to GM Assistant —
+     * finalized_line_items[part number] — or back, saying what's wrong. Asked
+     * in their approve popup (_head_of_bd_approve_modal). See lineItemsGiven().
+     *
+     * @param  Collection<int, User>  $parts
+     * @return array<int, int>|RedirectResponse part number => line items
+     */
+    private function finalizedLineItems(Request $request, Rfq $rfq, Collection $parts): array|RedirectResponse
+    {
+        return $this->lineItemsGiven($request, $rfq, $parts, 'finalized_line_items', 'Enter the finalized line items for :part.', 'finalized line items');
+    }
+
+    /**
+     * A count of line items for every one of $parts — $field[part number],
+     * a whole number from 0 to MAX_DATA_ENTRIES — or back, saying what's
+     * wrong: $missing (with :part for the part's number) when one's not
+     * given, and in terms of $what otherwise.
+     *
+     * @param  Collection<int, User>  $parts
+     * @return array<int, int>|RedirectResponse part number => line items
+     */
+    private function lineItemsGiven(Request $request, Rfq $rfq, Collection $parts, string $field, string $missing, string $what): array|RedirectResponse
+    {
         $rules = [];
         $messages = [];
 
         foreach ($parts as $assignee) {
-            $field = "actual_line_items.{$assignee->pivot->part_number}";
-            $label = $rfq->partNumberLabel($assignee->pivot->part_number);
+            $key = "{$field}.{$assignee->pivot->part_number}";
 
-            $rules[$field] = ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES];
+            $rules[$key] = ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES];
             $messages += [
-                "{$field}.required" => "Enter the actual line items you verified on {$label}.",
-                "{$field}.integer" => 'Give the actual line items as a whole number, like 12.',
-                "{$field}.min" => 'The actual line items can\'t be less than 0.',
-                "{$field}.max" => 'That\'s more line items than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
+                "{$key}.required" => str_replace(':part', $rfq->partNumberLabel($assignee->pivot->part_number), $missing),
+                "{$key}.integer" => 'Give the '.$what.' as a whole number, like 12.',
+                "{$key}.min" => 'The '.$what.' can\'t be less than 0.',
+                "{$key}.max" => 'That\'s more line items than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
             ];
         }
 
@@ -1909,7 +1935,7 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return $parts->mapWithKeys(fn (User $assignee) => [
-            $assignee->pivot->part_number => (int) $request->input("actual_line_items.{$assignee->pivot->part_number}"),
+            $assignee->pivot->part_number => (int) $request->input("{$field}.{$assignee->pivot->part_number}"),
         ])->all();
     }
 
@@ -1948,7 +1974,13 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->assigneeForPart($part), 404, 'That part is not assigned on this RFQ.');
         abort_unless($rfq->partAwaitsHeadOfBdReview($part), 422, 'This part is not awaiting Head of Business Development review.');
 
-        $rfq->approveHeadOfBdPart($part, $this->doneBy($request, 'Head of Business Development'));
+        $finalized = $this->finalizedLineItems($request, $rfq, collect([$rfq->assigneeForPart($part)]));
+
+        if ($finalized instanceof RedirectResponse) {
+            return $finalized;
+        }
+
+        $rfq->approveHeadOfBdPart($part, $this->doneBy($request, 'Head of Business Development'), $finalized[$part]);
 
         return redirect()->back()->with('status', $rfq->stage === 'gm_assistant'
             ? 'Approved — every part is through, escalated to GM Assistant.'
@@ -1970,7 +2002,13 @@ class RfqController extends Controller implements HasMiddleware
         abort_unless($rfq->stage === 'head_of_bd_review', 422, 'This RFQ is not awaiting Head of Business Development review.');
         $this->abortIfPartOnHold($rfq);
 
-        $rfq->approveByHeadOfBd($this->doneBy($request, 'Head of Business Development'));
+        $finalized = $this->finalizedLineItems($request, $rfq, $rfq->partsAwaitingHeadOfBdApproval());
+
+        if ($finalized instanceof RedirectResponse) {
+            return $finalized;
+        }
+
+        $rfq->approveByHeadOfBd($this->doneBy($request, 'Head of Business Development'), $finalized);
 
         return redirect()->back()->with('status', 'Approved — escalated to GM Assistant.');
     }

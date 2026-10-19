@@ -1622,70 +1622,78 @@ function rfqmsBoot() {
         });
     }
 
-    // Senior Operations' Approve (_senior_ops_approve_modal): the popup lists
-    // each part it approves with its line items — to add, added and the
-    // difference, read only — and asks for the actual line items they
-    // verified. Filled in from the button that opened it (data-parts), from
-    // a listener on the document, so it holds however often the page is
+    // The approve popups that count line items (.js-line-items-modal):
+    // Senior Operations' (_senior_ops_approve_modal) and the Head of Business
+    // Development's (_head_of_bd_approve_modal). Each lists the parts it
+    // approves, from the button that opened it (data-parts), with their line
+    // items so far, read only — each box naming what it shows (data-value) —
+    // and asks for that role's own count, sent as data-field[part]. From a
+    // listener on the document, so it holds however often the page is
     // swapped.
-    if (!window.__rfqmsSeniorOpsApprove) {
-        window.__rfqmsSeniorOpsApprove = true;
+    if (!window.__rfqmsLineItemsModals) {
+        window.__rfqmsLineItemsModals = true;
+
+        var lineItemsCount = function (value) { return value === null || value === undefined ? '—' : Number(value).toLocaleString(); };
 
         document.addEventListener('show.bs.modal', function (event) {
-            if (!event.target || event.target.id !== 'seniorOpsApproveModal') return;
+            var modal = event.target;
+            if (!modal || !modal.classList || !modal.classList.contains('js-line-items-modal')) return;
 
             var button = event.relatedTarget;
-            if (!button || !button.classList.contains('js-senior-ops-approve')) return;
+            if (!button || !button.dataset.parts) return;
 
-            var form = document.getElementById('seniorOpsApproveForm');
+            var form = modal.querySelector('form');
             var parts = JSON.parse(button.dataset.parts || '[]');
-            var list = document.getElementById('seniorOpsApproveParts');
-            var template = document.getElementById('seniorOpsApprovePart');
+            var list = modal.querySelector('.js-li-parts');
+            var template = modal.querySelector('template');
             var partInput = form.querySelector('[name="part"]');
-            var count = function (value) { return value === null || value === undefined ? '—' : Number(value).toLocaleString(); };
 
             form.action = button.dataset.action;
             partInput.value = button.dataset.part || '';
             partInput.disabled = !button.dataset.part;
-            document.getElementById('seniorOpsApproveTarget').textContent = button.dataset.label || '';
-            document.getElementById('seniorOpsApproveHint').textContent = button.dataset.hint || '';
-            document.getElementById('seniorOpsApproveNone').classList.toggle('d-none', parts.length > 0);
+            modal.querySelector('.js-li-target').textContent = button.dataset.label || '';
+            modal.querySelector('.js-li-hint').textContent = button.dataset.hint || '';
+            modal.querySelector('.js-li-none').classList.toggle('d-none', parts.length > 0);
 
             list.innerHTML = '';
             parts.forEach(function (part) {
                 var block = template.content.firstElementChild.cloneNode(true);
-                var difference = block.querySelector('.js-difference');
-                var note = block.querySelector('.js-difference-note');
-                var actual = block.querySelector('.js-actual');
-                var id = 'senior-ops-approve-' + part.part;
+                var id = modal.id + '-' + part.part;
 
                 block.querySelector('.line-items-check-title').textContent = part.label + (part.who ? ' · ' + part.who : '');
-                [['to-add', 'to_add'], ['added', 'added'], ['difference', 'difference']].forEach(function (field) {
-                    var input = block.querySelector('.js-' + field[0]);
-                    input.id = id + '-' + field[0];
-                    block.querySelector('.js-label-' + field[0]).setAttribute('for', input.id);
-                    if (field[0] !== 'difference') input.value = count(part[field[1]]);
+
+                block.querySelectorAll('[data-value]').forEach(function (input) {
+                    var key = input.dataset.value;
+                    input.id = id + '-' + key;
+                    block.querySelector('[data-label-for="' + key + '"]').setAttribute('for', input.id);
+
+                    if (key !== 'difference') {
+                        input.value = lineItemsCount(part[key]);
+                        return;
+                    }
+
+                    var note = block.querySelector('.js-difference-note');
+                    if (part.difference === null || part.difference === undefined) {
+                        input.value = '—';
+                        note.textContent = 'Not both recorded';
+                    } else {
+                        input.value = (part.difference > 0 ? '+' : (part.difference < 0 ? '−' : '')) + Math.abs(part.difference).toLocaleString();
+                        note.textContent = part.difference === 0 ? 'They match' : Math.abs(part.difference).toLocaleString() + (part.difference < 0 ? ' fewer than requested' : ' more than requested');
+                        input.classList.add(part.difference === 0 ? 'is-match' : 'is-off');
+                    }
                 });
 
-                if (part.difference === null || part.difference === undefined) {
-                    difference.value = '—';
-                    note.textContent = 'Not both recorded';
-                } else {
-                    difference.value = (part.difference > 0 ? '+' : (part.difference < 0 ? '−' : '')) + Math.abs(part.difference).toLocaleString();
-                    note.textContent = part.difference === 0 ? 'They match' : Math.abs(part.difference).toLocaleString() + (part.difference < 0 ? ' fewer than requested' : ' more than requested');
-                    difference.classList.add(part.difference === 0 ? 'is-match' : 'is-off');
-                }
-
-                actual.id = id + '-actual';
-                actual.name = 'actual_line_items[' + part.part + ']';
-                block.querySelector('.js-label-actual').setAttribute('for', actual.id);
+                var actual = block.querySelector('.js-actual');
+                actual.id = id + '-count';
+                actual.name = modal.dataset.field + '[' + part.part + ']';
+                block.querySelector('[data-label-for="count"]').setAttribute('for', actual.id);
                 list.appendChild(block);
             });
         });
 
         // The first box to fill gets the cursor.
         document.addEventListener('shown.bs.modal', function (event) {
-            if (!event.target || event.target.id !== 'seniorOpsApproveModal') return;
+            if (!event.target || !event.target.classList || !event.target.classList.contains('js-line-items-modal')) return;
             var first = event.target.querySelector('.js-actual');
             if (first) first.focus();
         });

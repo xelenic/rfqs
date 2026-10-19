@@ -55,12 +55,12 @@ it('lists a part as its own row once Senior Operations has approved it, and only
         ->assertSee('by '.e($ops->name), false)
         ->getContent();
 
-    expect($html)->toContain('<input type="hidden" name="part" value="1">')
+    expect($html)->toMatch('/js-head-of-bd-approve"[^>]*data-part="1"/')
         ->toContain(route('admin.rfqs.approve-head-of-bd-part', $rfq))
         // Reject sends just this part back, and says which.
         ->toContain('data-part="1"')
         ->toContain('data-label="RFQ1001-P1 of P2"')
-        ->not->toContain('<input type="hidden" name="part" value="2">')
+        ->not->toMatch('/js-head-of-bd-approve"[^>]*data-part="2"/')
         // Nothing for the RFQ as a whole yet.
         ->not->toContain('action="'.route('admin.rfqs.approve-head-of-bd', $rfq).'"');
 });
@@ -85,7 +85,7 @@ it('approves a part on its own, and the RFQ moves on once every part has been ap
     [$rfq, $ops, , $head] = splitWithPartOneApprovedBySeniorOps();
 
     test()->actingAs($head)->from(headReviewUrl())
-        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]])
         ->assertRedirect(headReviewUrl())
         ->assertSessionHas('status', 'Approved RFQ1001-P1 of P2 — waiting on the rest of the parts.');
 
@@ -111,7 +111,7 @@ it('approves a part on its own, and the RFQ moves on once every part has been ap
         ->assertDontSee('RFQ1001-P1 of P2');
 
     test()->actingAs($head)->from(headReviewUrl())
-        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 2])
+        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 2, 'finalized_line_items' => [2 => 12]])
         ->assertSessionHas('status', 'Approved — every part is through, escalated to GM Assistant.');
 
     $rfq->refresh();
@@ -129,7 +129,7 @@ it('approves the parts still waiting when the whole RFQ is approved', function (
     $rfq->refresh()->approveSeniorOpsPart(2, $ops);
 
     test()->actingAs($head)
-        ->patch(route('admin.rfqs.approve-head-of-bd', $rfq->refresh()))
+        ->patch(route('admin.rfqs.approve-head-of-bd', $rfq->refresh()), ['finalized_line_items' => [2 => 12]])
         ->assertSessionHas('status', 'Approved — escalated to GM Assistant.');
 
     $rfq->refresh();
@@ -150,9 +150,9 @@ it('lists an RFQ kept whole as one row, whose Approve moves it on', function () 
     $html = test()->actingAs($head)->get(headReviewUrl())->assertOk()->assertSee('One piece of work')->getContent();
 
     expect($html)->toContain('<td class="text-nowrap">'.$rfq->rfq_number.'</td>')
-        ->toContain('<input type="hidden" name="part" value="1">');
+        ->toMatch('/js-head-of-bd-approve"[^>]*data-part="1"/');
 
-    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1]);
+    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]]);
 
     expect($rfq->refresh()->stage)->toBe('gm_assistant');
 });
@@ -173,9 +173,9 @@ it('lets Admin work the Head\'s page', function () {
 
     test()->actingAs($admin)->get(headReviewUrl(['role' => 'head-of-business-development']))
         ->assertOk()
-        ->assertSee('<input type="hidden" name="part" value="1">', false);
+        ->assertSee('data-part="1"', false);
 
-    test()->actingAs($admin)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1]);
+    test()->actingAs($admin)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]]);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->head_of_bd_approved_by)->toBe($admin->id);
 });
@@ -194,8 +194,8 @@ it('refuses an approval that isn\'t the Head\'s to give', function () {
     $approve($head, [])->assertSessionHasErrors('part');
 
     // And a part already approved.
-    $approve($head, ['part' => 1])->assertSessionHas('status');
-    $approve($head, ['part' => 1])->assertStatus(422);
+    $approve($head, ['part' => 1, 'finalized_line_items' => [1 => 12]])->assertSessionHas('status');
+    $approve($head, ['part' => 1, 'finalized_line_items' => [1 => 12]])->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(2)->pivot->head_of_bd_approved_at)->toBeNull();
 });
@@ -374,7 +374,7 @@ it('counts each approval waiting — a row on the Review page — and shows it a
 
     // Five rows on the page, five on the badge.
     $html = $page();
-    expect(substr_count($html, 'data-confirm="Approve '))->toBe(5)
+    expect(substr_count($html, 'js-head-of-bd-approve"'))->toBe(5)
         ->and($html)->toContain($badge(5));
 
     $split->refresh()->approveHeadOfBdPart(1, $head);

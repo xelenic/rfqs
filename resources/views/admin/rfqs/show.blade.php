@@ -562,15 +562,8 @@
                 </button>
             @endif
             @if ($canDecideHeadOfBdReview)
-                <form action="{{ route('admin.rfqs.approve-head-of-bd', $rfq) }}" method="POST"
-                      data-confirm="Approve this RFQ? It moves on to GM Assistant.">
-                    @csrf
-                    @method('PATCH')
-                    @include('admin.rfqs._acting_as', ['role' => 'Head of Business Development'])
-                    <button type="submit" class="btn btn-sm btn-success">
-                        <i class="bi bi-check2-circle"></i> Approve
-                    </button>
-                </form>
+                {{-- Its line items finalized first (_head_of_bd_approve_modal). --}}
+                @include('admin.rfqs._head_of_bd_approve_button', ['rfq' => $rfq, 'approvePart' => null])
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
@@ -1071,8 +1064,10 @@
                 @isset($stepTabs['head_of_bd'])
                 <div class="tab-pane fade {{ $activeStep === 'head_of_bd' ? 'show active' : '' }}" id="step-pane-head_of_bd" role="tabpanel" aria-labelledby="step-tab-head_of_bd">
                     @if ($rfq->isSplit())
-                        @include('admin.rfqs._step_parts', ['doneColumn' => 'head_of_bd_approved_at', 'byRelation' => 'headOfBdApprovedBy', 'reachedColumn' => 'senior_ops_reviewed_at', 'awaiting' => 'Awaiting review'])
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'head_of_bd_approved_at', 'byRelation' => 'headOfBdApprovedBy', 'reachedColumn' => 'senior_ops_reviewed_at', 'awaiting' => 'Awaiting review',
+                            'doneNote' => fn ($pivot) => $pivot->finalizedLineItems() !== null ? trans_choice('1 line item finalized|:count line items finalized', $pivot->finalizedLineItems(), ['count' => number_format($pivot->finalizedLineItems())]) : null])
                     @elseif ($rfq->head_of_bd_approved_at)
+                        @php $finalizedLineItems = $rfq->assigneeForPart(1)?->pivot->finalizedLineItems(); @endphp
                         <dl class="rfq-detail-grid mb-0">
                             <div>
                                 <dt>Approved by</dt>
@@ -1082,6 +1077,12 @@
                                 <dt>Approved at</dt>
                                 <dd>{{ $rfq->head_of_bd_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}</dd>
                             </div>
+                            @if ($finalizedLineItems !== null)
+                                <div>
+                                    <dt>Finalized line items</dt>
+                                    <dd>{{ number_format($finalizedLineItems) }}</dd>
+                                </div>
+                            @endif
                         </dl>
                     @endif
                     @if ($rfq->reject_from_stage === 'head_of_bd_review' && $rfq->rejected_at && ! $rfq->head_of_bd_approved_at)
@@ -1485,6 +1486,9 @@
 
     @if ($canApproveSeniorOpsReview)
         @include('admin.rfqs._senior_ops_approve_modal')
+    @endif
+    @if ($canDecideHeadOfBdReview)
+        @include('admin.rfqs._head_of_bd_approve_modal')
     @endif
     @if ($canCloseRfq)
         @include('admin.rfqs._close_modal')

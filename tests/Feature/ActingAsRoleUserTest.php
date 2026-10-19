@@ -131,7 +131,7 @@ it('records each approval, and the closing, as the person Admin picks for that s
     $rfq = actingRfqAt($stage, $people);
 
     test()->actingAs($people['admin'])
-        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id, 'reference_code' => 'PO-1001', 'actual_line_items' => [1 => 12]])
+        ->patch(route($route, $rfq), ['part' => 1, 'acting_user_id' => $people[$person]->id, 'reference_code' => 'PO-1001', 'actual_line_items' => [1 => 12], 'finalized_line_items' => [1 => 12]])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->{$column})->toBe($people[$person]->id, "recorded as the {$role}");
@@ -276,7 +276,8 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
 })->with([
     // Approving verifies the line items in a popup — the picker's there.
     'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops', 'id="senior-ops-approve-acting-as"'],
-    'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head', 'aria-label="Done by (Head of Business Development)"'],
+    // Approving finalizes the line items in a popup — the picker's there.
+    'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head', 'id="head-of-bd-approve-acting-as"'],
     'the General Manager\'s Review' => [['role' => 'general-manager'], 'assistant_done', 'General Manager', 'gm', 'aria-label="Done by (General Manager)"'],
     // Closing asks for the reference code in a popup — the picker's there.
     'Ready to Close' => [['role' => 'business-development', 'view' => 'closing'], 'gm_approved', 'Business Development', 'bd', 'id="close-acting-as"'],

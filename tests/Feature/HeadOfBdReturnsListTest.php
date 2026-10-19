@@ -62,7 +62,7 @@ it('lists what the General Manager sent back to their review, with who and why, 
         ->assertSee('RFQ2001')
         ->assertSee('Sent back by General Manager ('.$gm->name.'): Margin is too thin')
         ->assertSee('Returned At')
-        ->assertSee('action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
+        ->assertSee('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
         ->assertSee('data-action="'.route('admin.rfqs.reject-head-of-bd', $rfq).'"', false)
         ->assertSee('id="rejectRfqModal"', false)
         ->assertSee('title="1 sent back by the General Manager"', false);
@@ -100,7 +100,7 @@ it('moves on to GM Assistant when approved from Returns, and off the list', func
 
     test()->actingAs($head)
         ->from(headOfBdReturnsUrl())
-        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1])
+        ->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]])
         ->assertSessionHasNoErrors()
         ->assertRedirect(headOfBdReturnsUrl());
 
@@ -142,7 +142,7 @@ it('shows Admin the Head\'s Returns page, linked from the grouped sidebar', func
         ->assertSee('Returns · Head of Business Development')
         ->assertSee('RFQ2001')
         ->assertSee('Margin is too thin')
-        ->assertSee('action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
+        ->assertSee('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
         // Admin's "Rejected by" picker on the shared modal.
         ->assertSee('id="reject-acting-as"', false);
 });
@@ -209,7 +209,7 @@ it('keeps an RFQ returned to the Head off every other role\'s review page, other
         ->assertSee('Check P1 margin');
 
     // Once the Head approves it, both parts are back where they belong.
-    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1])->assertSessionHasNoErrors();
+    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]])->assertSessionHasNoErrors();
 
     expect(Rfq::headOfBdReturnsCount())->toBe(0)
         ->and(Rfq::gmAssistantReviewCount())->toBe(1)
@@ -239,7 +239,7 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
         ->assertSessionHasNoErrors();
     expect($rfq->refresh()->isHeldOnAnotherReturnsPage())->toBeTrue();
 
-    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1])->assertSessionHasNoErrors();
+    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]])->assertSessionHasNoErrors();
 
     // Nothing of it left for the Head, so it's no longer held — P2 can carry
     // on to Senior Operations' review as normal.

@@ -786,7 +786,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1974,6 +1974,23 @@ class Rfq extends Model
     }
 
     /**
+     * The parts the Head of Business Development's approval of the whole RFQ
+     * (approveByHeadOfBd()) approves: approved by Senior Operations, not yet
+     * by them, and not stopped on their own.
+     *
+     * @return Collection<int, User>
+     */
+    public function partsAwaitingHeadOfBdApproval(): Collection
+    {
+        return $this->assignees
+            ->filter(fn (User $assignee) => $assignee->pivot->senior_ops_reviewed_at !== null
+                && $assignee->pivot->head_of_bd_approved_at === null
+                && $assignee->pivot->status === null)
+            ->sortBy('pivot.part_number')
+            ->values();
+    }
+
+    /**
      * The parts Senior Operations' approval of the whole RFQ
      * (completeSeniorOpsReview()) approves: finalized, not yet approved, and
      * not stopped on their own.
@@ -2024,7 +2041,7 @@ class Rfq extends Model
      *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function approveHeadOfBdPart(int $part, User $approver): void
+    public function approveHeadOfBdPart(int $part, User $approver, ?int $finalizedLineItems = null): void
     {
         if (! $this->partAwaitsHeadOfBdReview($part)) {
             return;
@@ -2033,6 +2050,7 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, [
             'head_of_bd_approved_at' => now(),
             'head_of_bd_approved_by' => $approver->id,
+            'finalized_line_items' => $finalizedLineItems,
         ]);
         $this->load('assignees');
 
@@ -2047,27 +2065,33 @@ class Rfq extends Model
 
     /**
      * Head of Business Development approves the whole RFQ — approving any
-     * part not yet approved on its own — and escalates it on to GM
-     * Assistant. Idempotent. Retires any prior rejection record, since an
-     * approval supersedes it.
+     * part not yet approved on its own (partsAwaitingHeadOfBdApproval()),
+     * each with the line items they finalized on it ($finalizedLineItems, by
+     * part number) — and escalates it on to GM Assistant. Idempotent.
+     * Retires any prior rejection record, since an approval supersedes it.
      *
      * Caller is responsible for verifying stage === 'head_of_bd_review'.
+     *
+     * @param  array<int, int>  $finalizedLineItems
      */
-    public function approveByHeadOfBd(User $approver): void
+    public function approveByHeadOfBd(User $approver, array $finalizedLineItems = []): void
     {
         if ($this->head_of_bd_approved_at !== null) {
             return;
         }
 
-        DB::table('rfq_user')
-            ->where('rfq_id', $this->id)
-            ->whereNotNull('senior_ops_reviewed_at')
-            ->whereNull('head_of_bd_approved_at')
-            ->whereNull('status')
-            ->update([
-                'head_of_bd_approved_at' => now(),
-                'head_of_bd_approved_by' => $approver->id,
-            ]);
+        $this->load('assignees');
+
+        foreach ($this->partsAwaitingHeadOfBdApproval() as $assignee) {
+            DB::table('rfq_user')
+                ->where('rfq_id', $this->id)
+                ->where('part_number', $assignee->pivot->part_number)
+                ->update([
+                    'head_of_bd_approved_at' => now(),
+                    'head_of_bd_approved_by' => $approver->id,
+                    'finalized_line_items' => $finalizedLineItems[$assignee->pivot->part_number] ?? null,
+                ]);
+        }
         $this->load('assignees');
 
         $this->update($this->clearedRejectRecord() + [
@@ -2912,9 +2936,10 @@ class Rfq extends Model
 
     /**
      * The working time GM Assistant has to submit $part to the General
-     * Manager: its line items times the time a line item takes while that's
-     * on (gmAssistantTargetBreakdown()), else by its priority — see
-     * Setting::gmAssistantTargets(). In seconds.
+     * Manager: its line items times the time a line item takes — always once
+     * the Head of Business Development has finalized them, otherwise while
+     * per line item is on (gmAssistantTargetBreakdown()) — else by its
+     * priority — see Setting::gmAssistantTargets(). In seconds.
      */
     public function gmAssistantTargetSeconds(?int $part = null): int
     {
@@ -2924,10 +2949,12 @@ class Rfq extends Model
 
     /**
      * How GM Assistant's target for $part comes about while it's worked out
-     * per line item (Setting::gmAssistantPerItem()): its line items
-     * (gmAssistantLineItemsFor()), the working seconds a line item takes, and
-     * the two multiplied. Null by priority — per line item being off, or the
-     * part having no line items to go by.
+     * per line item: its line items (gmAssistantLineItemsFor()), the working
+     * seconds a line item takes (Setting::gmAssistantPerItem()), and the two
+     * multiplied — always for the Head of Business Development's finalized
+     * line items (source 'finalized'), and for the others while per line item
+     * is on. Null by priority — per line item off without finalized line
+     * items, or the part having no line items to go by.
      *
      * @return array{items: int, perItem: int, seconds: int, source: string}|null
      */
@@ -2936,7 +2963,9 @@ class Rfq extends Model
         $perItem = Setting::gmAssistantPerItem();
         $lineItems = $part !== null ? $this->gmAssistantLineItemsFor($part) : null;
 
-        if (! $perItem['enabled'] || $lineItems === null) {
+        // The Head of Business Development's finalized line items always go by
+        // the line item, as Sourcing's line items to add do for Data Entry.
+        if ($lineItems === null || (! $perItem['enabled'] && $lineItems['source'] !== 'finalized')) {
             return null;
         }
 
@@ -2944,10 +2973,12 @@ class Rfq extends Model
     }
 
     /**
-     * The line items GM Assistant has on $part: those Data Entry said they
+     * The line items GM Assistant has on $part: those the Head of Business
+     * Development finalized as they approved it on to them
+     * (RfqAssignment::finalizedLineItems()), else those Data Entry said they
      * added (rfq_user.data_entry_entries) — what's actually there — else
-     * those Sourcing said to add (line_items_to_add). Null with neither (or
-     * none of either).
+     * those Sourcing said to add (line_items_to_add). Null with none (or none
+     * of any).
      *
      * @return array{count: int, source: string}|null
      */
@@ -2957,6 +2988,7 @@ class Rfq extends Model
 
         return match (true) {
             $assignment === null => null,
+            (int) $assignment->finalizedLineItems() > 0 => ['count' => (int) $assignment->finalizedLineItems(), 'source' => 'finalized'],
             (int) $assignment->data_entry_entries > 0 => ['count' => (int) $assignment->data_entry_entries, 'source' => 'added'],
             (int) $assignment->line_items_to_add > 0 => ['count' => (int) $assignment->line_items_to_add, 'source' => 'to_add'],
             default => null,

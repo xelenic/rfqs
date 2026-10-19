@@ -53,6 +53,7 @@ class RfqAssignment extends Pivot
             'data_entry_assigned_to' => 'integer',
             'line_items_to_add' => 'integer',
             'verified_line_items' => 'integer',
+            'finalized_line_items' => 'integer',
             'data_entry_started_at' => 'datetime',
             'data_entry_paused_at' => 'datetime',
             'finalized_at' => 'datetime',
@@ -574,6 +575,16 @@ class RfqAssignment extends Pivot
     public function verifiedLineItems(): ?int
     {
         return $this->isSeniorOpsApproved() ? $this->verified_line_items : null;
+    }
+
+    /**
+     * The line items the Head of Business Development finalized on the part
+     * as they approved it on to GM Assistant (Rfq::approveHeadOfBdPart()) —
+     * null until they have, or since it was sent back past their review.
+     */
+    public function finalizedLineItems(): ?int
+    {
+        return $this->isHeadOfBdApproved() ? $this->finalized_line_items : null;
     }
 
     /**
