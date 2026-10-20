@@ -64,6 +64,31 @@ class RfqController extends Controller implements HasMiddleware
     public const LIST_GROUPS = ['wc' => 'WC number', 'priority' => 'Priority', 'status' => 'Status'];
 
     /**
+     * What All RFQs — the list with no status or role asked for
+     * (User::canListAllRfqs()) — can be narrowed to (?show=, the filter bar):
+     * where the General Manager's dashboard cards lead
+     * (dashboard/_approver), each listing the RFQs its card counted. The
+     * decisions and the closed ones over the card's dates (?show_from,
+     * ?show_to). See allRfqsView(), applyAllRfqsView().
+     *
+     * @var array<string, string>
+     */
+    public const ALL_RFQS_VIEWS = [
+        'open' => 'Open RFQs',
+        'awaiting_gm' => 'Awaiting the General Manager',
+        'gm_approved' => 'Approved by the General Manager',
+        'gm_returned' => 'Sent back by the General Manager',
+        'closed' => 'Closed RFQs',
+    ];
+
+    /**
+     * The views in ALL_RFQS_VIEWS that are over dates — the rest are as of now.
+     *
+     * @var array<int, string>
+     */
+    public const DATED_ALL_RFQS_VIEWS = ['gm_approved', 'gm_returned', 'closed'];
+
+    /**
      * How many RFQs the dashboard's WC number search suggests at most.
      */
     public const SUGGEST_LIMIT = 8;
@@ -284,6 +309,11 @@ class RfqController extends Controller implements HasMiddleware
             || $scopedToBdClosing || $scopedToMe || $scopedToUnassigned);
         $groupBy = $canGroup && array_key_exists((string) $request->query('group'), self::LIST_GROUPS) ? (string) $request->query('group') : null;
 
+        // All RFQs, narrowed to what a General Manager's dashboard card
+        // counted (ALL_RFQS_VIEWS) — on that page alone.
+        $isAllRfqsPage = $status === null && $lensRole === null && $user->canListAllRfqs();
+        $allRfqsView = $isAllRfqsPage ? $this->allRfqsView($request, $user) : null;
+
         $applySearch = function ($query) use ($search, $listRange, $listPriority) {
             $query->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -379,6 +409,7 @@ class RfqController extends Controller implements HasMiddleware
                     ->where('rfqs.status', 'Completed')
                     ->whereHas('assignees', fn ($parts) => $parts->whereKey($user->id)))
                 ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
+            ->when($allRfqsView, fn ($query, array $view) => $this->applyAllRfqsView($query, $view))
             ->when($groupBy, fn ($query, string $group) => $query->orderByRaw($this->listGroupOrder($group)))
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters));
@@ -593,6 +624,8 @@ class RfqController extends Controller implements HasMiddleware
             'canGroup' => $canGroup,
             'groupBy' => $groupBy,
             'groupTotals' => $groupTotals,
+            'allRfqsViews' => $isAllRfqsPage ? $this->allRfqsViewLabels($user) : null,
+            'allRfqsView' => $allRfqsView,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
@@ -689,6 +722,100 @@ class RfqController extends Controller implements HasMiddleware
             'tab' => $request->query('tab') === 'assigned' ? 'assigned' : 'unassigned',
             'count' => (int) ($range !== 'all') + (int) ($priority !== []) + (int) ($category !== null) + (int) ($member !== null) + (int) ($partStatus !== null),
         ];
+    }
+
+    /**
+     * What All RFQs calls each of ALL_RFQS_VIEWS for $user: the General
+     * Manager's own decisions read as theirs ("Approved by you").
+     *
+     * @return array<string, string>
+     */
+    protected function allRfqsViewLabels(User $user): array
+    {
+        return $user->hasRole('General Manager')
+            ? array_merge(self::ALL_RFQS_VIEWS, [
+                'awaiting_gm' => 'Awaiting your approval',
+                'gm_approved' => 'Approved by you',
+                'gm_returned' => 'Sent back by you',
+            ])
+            : self::ALL_RFQS_VIEWS;
+    }
+
+    /**
+     * The All RFQs view asked for (?show=, ALL_RFQS_VIEWS), or null: which,
+     * how it reads, its dates (?show_from, ?show_to, "Y-m-d" in the business
+     * time zone — either may be left out) for one over dates, and whose
+     * decisions count — the General Manager's own, as their dashboard
+     * counted them, else everyone's in the role.
+     *
+     * @return array{show: string, label: string, from: ?string, to: ?string, start: ?CarbonImmutable, end: ?CarbonImmutable, deciders: array<int, int>}|null
+     */
+    protected function allRfqsView(Request $request, User $user): ?array
+    {
+        $show = (string) $request->query('show');
+
+        if (! array_key_exists($show, self::ALL_RFQS_VIEWS)) {
+            return null;
+        }
+
+        $dated = in_array($show, self::DATED_ALL_RFQS_VIEWS, true);
+        $date = function (string $key) use ($request, $dated): ?CarbonImmutable {
+            $value = (string) $request->query($key);
+
+            return $dated && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+                ? CarbonImmutable::createFromFormat('Y-m-d', $value, Setting::timezone())->startOfDay()
+                : null;
+        };
+        $from = $date('show_from');
+        $to = $date('show_to');
+
+        if ($from !== null && $to !== null && $to->lt($from)) {
+            [$from, $to] = [$to, $from];
+        }
+
+        return [
+            'show' => $show,
+            'label' => $this->allRfqsViewLabels($user)[$show],
+            'from' => $from?->toDateString(),
+            'to' => $to?->toDateString(),
+            'start' => $from?->setTimezone(config('app.timezone')),
+            'end' => $to?->endOfDay()->setTimezone(config('app.timezone')),
+            'deciders' => $user->hasRole('General Manager')
+                ? [$user->id]
+                : User::role('General Manager')->pluck('id')->all(),
+        ];
+    }
+
+    /**
+     * Narrows All RFQs to $view (allRfqsView()), as the General Manager's
+     * dashboard counts each (DashboardController::approverOverview()): every
+     * open RFQ; those with a part waiting on their approval; those with a
+     * part they approved, or that they sent back (the reject's comment),
+     * between its dates; and those Business Development closed between them.
+     *
+     * @param  Builder<Rfq>  $query
+     * @param  array{show: string, start: ?CarbonImmutable, end: ?CarbonImmutable, deciders: array<int, int>}  $view
+     */
+    protected function applyAllRfqsView(Builder $query, array $view): void
+    {
+        $between = function ($query, string $column) use ($view) {
+            $query->when($view['start'], fn ($q, CarbonImmutable $start) => $q->where($column, '>=', $start))
+                ->when($view['end'], fn ($q, CarbonImmutable $end) => $q->where($column, '<=', $end));
+        };
+
+        match ($view['show']) {
+            'open' => $query->where('rfqs.status', 'Pending'),
+            'awaiting_gm' => $query->where('rfqs.status', 'Pending')->awaitingGmApproval(),
+            'gm_approved' => $query->whereHas('assignees', fn ($parts) => $parts
+                ->whereIn('rfq_user.gm_approved_by', $view['deciders'])
+                ->tap(fn ($parts) => $between($parts, 'rfq_user.gm_approved_at'))),
+            'gm_returned' => $query->whereIn('rfqs.id', RfqComment::query()
+                ->select('rfq_id')
+                ->where('action', 'rejected')
+                ->whereIn('user_id', $view['deciders'])
+                ->tap(fn ($comments) => $between($comments, 'created_at'))),
+            'closed' => $query->whereNotNull('rfqs.bd_closed_at')->tap(fn ($closed) => $between($closed, 'rfqs.bd_closed_at')),
+        };
     }
 
     /**

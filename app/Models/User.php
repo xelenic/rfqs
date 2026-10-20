@@ -132,6 +132,15 @@ class User extends Authenticatable
     public const PERFORMANCE_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
 
     /**
+     * The roles with "All RFQs" in their sidebar — the RFQ list with no
+     * status or role asked for: every RFQ, whatever its status or where it
+     * is. The General Manager's since 2026-10-21, beside their Review queue.
+     *
+     * @var array<int, string>
+     */
+    public const ALL_RFQS_ROLES = ['Admin', 'General Manager'];
+
+    /**
      * The roles that fill in and submit the daily attendance sheet.
      *
      * @var array<int, string>
@@ -319,6 +328,15 @@ class User extends Authenticatable
     public function canViewPerformanceReports(): bool
     {
         return $this->hasAnyRole(self::PERFORMANCE_REPORT_ROLES);
+    }
+
+    /**
+     * Whether this person has "All RFQs" in their sidebar — see
+     * ALL_RFQS_ROLES. They open RFQs as anyone does (rfqs.view).
+     */
+    public function canListAllRfqs(): bool
+    {
+        return $this->hasAnyRole(self::ALL_RFQS_ROLES) && $this->can('rfqs.view');
     }
 
     /**

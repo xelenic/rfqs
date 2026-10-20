@@ -95,6 +95,26 @@
             @endcan
         </div>
 
+        {{-- All RFQs narrowed to what a dashboard card counted (?show=,
+             RfqController::ALL_RFQS_VIEWS): what, over which dates, how many. --}}
+        @if ($allRfqsView)
+            @php
+                $viewDay = fn (string $date) => \Carbon\CarbonImmutable::parse($date)->format('M j, Y');
+                $viewDates = match (true) {
+                    $allRfqsView['from'] !== null && $allRfqsView['from'] === $allRfqsView['to'] => ' on '.$viewDay($allRfqsView['from']),
+                    $allRfqsView['from'] !== null && $allRfqsView['to'] !== null => ' from '.$viewDay($allRfqsView['from']).' to '.$viewDay($allRfqsView['to']),
+                    $allRfqsView['from'] !== null => ' since '.$viewDay($allRfqsView['from']),
+                    $allRfqsView['to'] !== null => ' up to '.$viewDay($allRfqsView['to']),
+                    default => '',
+                };
+            @endphp
+            <div class="list-view-note" data-all-rfqs-view="{{ $allRfqsView['show'] }}">
+                <i class="bi bi-funnel-fill" aria-hidden="true"></i>
+                <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }} — {{ $rfqs->total() }} {{ $rfqs->total() === 1 ? 'RFQ' : 'RFQs' }}.</span>
+                <a href="{{ request()->fullUrlWithoutQuery(['show', 'show_from', 'show_to', 'page']) }}" class="ms-auto">Show all RFQs</a>
+            </div>
+        @endif
+
         @if ($sourcingOverview && ($scopedToMe || $scopedToReturns))
             {{-- Admin looking at Sourcing's queues: every member's open
                  parts rather than one person's own. --}}

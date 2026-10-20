@@ -1035,6 +1035,23 @@ h6, .h6 { font-size: 0.85rem; }
   width: auto;
 }
 
+/* All RFQs narrowed by a dashboard card (?show=): what's shown, and the way back to everything. */
+.list-view-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--rfq-border);
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-text);
+  font-size: 0.85rem;
+}
+
+.list-view-note .bi {
+  color: var(--rfq-primary);
+}
+
 /* A grouped list's heading where each group starts. */
 .rfq-list-group td {
   padding: 0.55rem 0.75rem;

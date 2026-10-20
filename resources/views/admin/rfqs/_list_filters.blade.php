@@ -10,17 +10,20 @@
     where you are — the list, a role's second view, Admin's role page, Data
     Entry's tab, Senior Operations' filters — so filtering keeps you there.
     On Senior Operations' Unassigned page, whose own filters have the dates
-    and priority, it's the search alone.
+    and priority, it's the search alone. On All RFQs, what to show
+    (?show=, RfqController::ALL_RFQS_VIEWS) — where the General Manager's
+    dashboard cards lead — keeping the card's dates (?show_from, ?show_to).
 
     Expects: $statusFilter, $lensRole, $opsFilters, $listRange, $listPriority,
-    $search, $scopedToDataEntry, $dataEntryTab, $canGroup, $groupBy.
+    $search, $scopedToDataEntry, $dataEntryTab, $canGroup, $groupBy,
+    $allRfqsViews and $allRfqsView (null but on All RFQs).
 --}}
 @php
     $filterToday = now(\App\Models\Setting::timezone())->toDateString();
     $isCustomRange = $listRange && $listRange['range'] === 'custom';
     $rangeLabels = ['all' => 'All time'] + \App\Http\Controllers\Admin\RfqController::LIST_RANGES + ['custom' => 'Custom'];
     // Senior Operations' own filters have their Clear, which keeps the search.
-    $isFiltered = $listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== []);
+    $isFiltered = ($listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== [])) || ($allRfqsView ?? null) !== null;
 @endphp
 <form method="GET" action="{{ route('admin.rfqs.index') }}" id="rfqListFilterForm" class="list-filter js-period-filter"
       data-period-field="range" data-period-default="all" data-today="{{ $filterToday }}">
@@ -81,6 +84,25 @@
         </div>
     @endif
 
+    {{-- All RFQs: what to show, and the dates a dashboard card gave it. --}}
+    @if ($allRfqsViews ?? null)
+        <label class="list-filter-group" title="What to show">
+            <i class="bi bi-funnel" aria-hidden="true"></i>
+            <select name="show" class="form-select form-select-sm" aria-label="Show">
+                <option value="">Show: All RFQs</option>
+                @foreach ($allRfqsViews as $value => $label)
+                    <option value="{{ $value }}" @selected(($allRfqsView['show'] ?? null) === $value)>Show: {{ $label }}</option>
+                @endforeach
+            </select>
+        </label>
+        @if ($allRfqsView['from'] ?? null)
+            <input type="hidden" name="show_from" value="{{ $allRfqsView['from'] }}">
+        @endif
+        @if ($allRfqsView['to'] ?? null)
+            <input type="hidden" name="show_to" value="{{ $allRfqsView['to'] }}">
+        @endif
+    @endif
+
     @if ($canGroup)
         <label class="list-filter-group" title="Group the list">
             <i class="bi bi-collection" aria-hidden="true"></i>
@@ -94,7 +116,7 @@
     @endif
 
     @if ($isFiltered)
-        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
+        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'show', 'show_from', 'show_to', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
             <i class="bi bi-x-circle"></i> Clear
         </a>
     @endif

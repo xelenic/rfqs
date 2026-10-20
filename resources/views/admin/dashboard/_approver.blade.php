@@ -15,6 +15,11 @@
     The period filter scopes their decisions, the closed count and the
     charts; what waits and what's open is always as of now.
 
+    The General Manager's headline figures, and the open RFQs by priority,
+    each open All RFQs narrowed to what they count — over the period's
+    dates, where it has them (RfqController::ALL_RFQS_VIEWS). The others'
+    lead to their place on this page.
+
     Expects: $stage, $period, $overview, $rfqActivity, $notifications.
 --}}
     @php
@@ -28,16 +33,22 @@
         $words = $stage['words'];
         $returnedToMe = $overview['returnedToMe'];
         $hasCountdown = $stage['countdown'] !== null;
+        // All RFQs, narrowed (?show=) — the General Manager's way from a figure to its RFQs.
+        $toAllRfqs = $stage['role'] === 'General Manager' && auth()->user()->canListAllRfqs()
+            ? fn (string $show, array $more = []) => route('admin.rfqs.index', ['show' => $show]
+                + (in_array($show, \App\Http\Controllers\Admin\RfqController::DATED_ALL_RFQS_VIEWS, true) ? ['show_from' => $period['from'], 'show_to' => $period['to']] : [])
+                + $more)
+            : null;
         $kpis = [
-            ['label' => $words['awaiting'], 'value' => $waitingTotal, 'caption' => collect([$overview['waitingOverdue'] > 0 ? $overview['waitingOverdue'].' overdue' : null, $overview['waitingUrgent'] > 0 ? $overview['waitingUrgent'].' urgent' : null])->filter()->join(' · ') ?: 'Sent on by '.$stage['from'], 'icon' => 'bi-patch-question', 'tone' => 'warning', 'alert' => $overview['waitingUrgent'] > 0 || $overview['waitingOverdue'] > 0, 'url' => "#{$a}-waiting"],
-            ['label' => $period['isToday'] ? $words['doneToday'] : $words['done'], 'value' => $overview['approved'], 'caption' => trans_choice($words['fullyDone'], $overview['approvedRfqs'], ['count' => $overview['approvedRfqs']]), 'icon' => 'bi-patch-check', 'tone' => 'success', 'alert' => false, 'url' => "#{$a}-decisions"],
-            ['label' => 'Sent back', 'value' => $overview['returned'], 'caption' => $overview['returned'] > 0 ? 'Most to '.array_key_first($overview['returnedTo']) : 'Nothing sent back', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'alert' => false, 'url' => "#{$a}-decisions"],
-            ['label' => $words['average'], 'value' => $overview['average'] !== null ? \App\Models\Setting::durationLabel($overview['average']) : '—', 'caption' => 'Working time from '.$stage['from'], 'icon' => 'bi-stopwatch', 'tone' => 'teal', 'alert' => false, 'url' => "#{$a}-decisions"],
-            ['label' => 'Open RFQs', 'value' => $overview['open'], 'caption' => $overview['openUrgent'].' urgent', 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => $overview['openUrgent'] > 0, 'url' => "#{$a}-pipeline"],
+            ['label' => $words['awaiting'], 'value' => $waitingTotal, 'caption' => collect([$overview['waitingOverdue'] > 0 ? $overview['waitingOverdue'].' overdue' : null, $overview['waitingUrgent'] > 0 ? $overview['waitingUrgent'].' urgent' : null])->filter()->join(' · ') ?: 'Sent on by '.$stage['from'], 'icon' => 'bi-patch-question', 'tone' => 'warning', 'alert' => $overview['waitingUrgent'] > 0 || $overview['waitingOverdue'] > 0, 'url' => $toAllRfqs ? $toAllRfqs('awaiting_gm') : "#{$a}-waiting"],
+            ['label' => $period['isToday'] ? $words['doneToday'] : $words['done'], 'value' => $overview['approved'], 'caption' => trans_choice($words['fullyDone'], $overview['approvedRfqs'], ['count' => $overview['approvedRfqs']]), 'icon' => 'bi-patch-check', 'tone' => 'success', 'alert' => false, 'url' => $toAllRfqs ? $toAllRfqs('gm_approved') : "#{$a}-decisions"],
+            ['label' => 'Sent back', 'value' => $overview['returned'], 'caption' => $overview['returned'] > 0 ? 'Most to '.array_key_first($overview['returnedTo']) : 'Nothing sent back', 'icon' => 'bi-arrow-counterclockwise', 'tone' => 'danger', 'alert' => false, 'url' => $toAllRfqs ? $toAllRfqs('gm_returned') : "#{$a}-decisions"],
+            ['label' => $words['average'], 'value' => $overview['average'] !== null ? \App\Models\Setting::durationLabel($overview['average']) : '—', 'caption' => 'Working time from '.$stage['from'], 'icon' => 'bi-stopwatch', 'tone' => 'teal', 'alert' => false, 'url' => $toAllRfqs ? $toAllRfqs('gm_approved') : "#{$a}-decisions"],
+            ['label' => 'Open RFQs', 'value' => $overview['open'], 'caption' => $overview['openUrgent'].' urgent', 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => $overview['openUrgent'] > 0, 'url' => $toAllRfqs ? $toAllRfqs('open') : "#{$a}-pipeline"],
             // The Head's sixth is what the General Manager sent back to them; the General Manager's, what's closed.
             $stage['returns'] !== null
                 ? ['label' => 'Sent back to you', 'value' => $returnedToMe->count(), 'caption' => 'By the General Manager', 'icon' => 'bi-reply', 'tone' => 'danger', 'alert' => $returnedToMe->isNotEmpty(), 'url' => "#{$a}-returns"]
-                : ['label' => $period['isToday'] ? 'Closed today' : 'Closed', 'value' => $overview['closed'], 'caption' => 'By Business Development', 'icon' => 'bi-flag-fill', 'tone' => 'violet', 'alert' => false, 'url' => "#{$a}-activity"],
+                : ['label' => $period['isToday'] ? 'Closed today' : 'Closed', 'value' => $overview['closed'], 'caption' => 'By Business Development', 'icon' => 'bi-flag-fill', 'tone' => 'violet', 'alert' => false, 'url' => $toAllRfqs ? $toAllRfqs('closed') : "#{$a}-activity"],
         ];
     @endphp
 
@@ -189,7 +200,11 @@
                             @foreach ($overview['priorities'] as $priority => $count)
                                 <li class="priority-chip-{{ strtolower($priority) }}">
                                     <span class="priority-chip-dot"></span>
-                                    <span class="flex-grow-1">{{ $priority }}</span>
+                                    @if ($toAllRfqs)
+                                        <a href="{{ $toAllRfqs('open', ['priority' => [$priority]]) }}" class="flex-grow-1 text-reset">{{ $priority }}</a>
+                                    @else
+                                        <span class="flex-grow-1">{{ $priority }}</span>
+                                    @endif
                                     <span class="fw-semibold">{{ $count }}</span>
                                     <span class="text-muted-soft small">{{ round($count / $openTotal * 100) }}%</span>
                                 </li>

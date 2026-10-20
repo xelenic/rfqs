@@ -388,7 +388,44 @@ it('gives Admin an All RFQs link, to every RFQ whatever its status', function ()
     test()->actingAs($admin)->get(indexUrl(['status' => 'Pending', 'role' => 'sourcing']))->assertOk()
         ->assertSee($link.' "', false);
 
-    // It's Admin's alone.
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
-        ->assertDontSee('All RFQs');
+    // Admin's and the General Manager's (below) alone.
+    foreach (['Senior Operations', 'Sourcing', 'Data Entry', 'Business Development', 'Head of Business Development', 'GM Assistant'] as $role) {
+        test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()
+            ->assertDontSee('All RFQs');
+    }
+});
+
+it('gives the General Manager an All RFQs link too, to every RFQ whatever its status or stage', function () {
+    $gm = userWithRole('General Manager');
+    Rfq::factory()->create(['rfq_number' => 'RFQ17101']);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17102', 'status' => 'Completed', 'stage' => 'closed']);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17103', 'status' => Rfq::ON_HOLD]);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17104', 'status' => Rfq::CANCELLED]);
+    Rfq::factory()->create(['rfq_number' => 'RFQ17105', 'stage' => 'senior_ops_review']);
+
+    $link = 'href="'.route('admin.rfqs.index').'" class="nav-link';
+
+    test()->actingAs($gm)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee($link.' "', false)
+        ->assertSee('All RFQs');
+
+    $page = test()->actingAs($gm)->get(route('admin.rfqs.index'))->assertOk()
+        ->assertSee($link.' active"', false)
+        ->assertSee('<title>All RFQs', false);
+
+    expect(pageMain($page))->toContain('RFQ17101')
+        ->toContain('RFQ17102')
+        ->toContain('RFQ17103')
+        ->toContain('RFQ17104')
+        ->toContain('RFQ17105');
+
+    // Each opens for them.
+    foreach (Rfq::query()->get() as $rfq) {
+        test()->actingAs($gm)->get(route('admin.rfqs.show', $rfq))->assertOk();
+    }
+
+    // Their own Review queue stays as it was.
+    test()->actingAs($gm)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('<title>Review', false)
+        ->assertSee($link.' "', false);
 });
