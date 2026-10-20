@@ -6518,6 +6518,70 @@ a.critical-row:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Attendance: a row that opens its sheet (admin.js, [data-row-href]) ---- */
+
+.is-clickable-row {
+  cursor: pointer;
+}
+
+/* One person off, on the list: name, leave type, hours — wrapping as a whole. */
+.attendance-leave-line + .attendance-leave-line {
+  margin-top: 0.3rem;
+}
+
+/* ---- Attendance: a person's time off, on hovering their name (attendance/_time_off_card) ---- */
+
+/* Their name: underlined, to say there's more on hover. */
+.time-off-name {
+  text-decoration: underline dotted var(--rfq-text-muted);
+  text-underline-offset: 3px;
+}
+
+[data-hover-card] {
+  cursor: help;
+}
+
+a[data-hover-card] {
+  cursor: pointer;
+}
+
+.time-off-tally {
+  width: 100%;
+  border-bottom: 1px solid var(--rfq-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.time-off-tally th,
+.time-off-tally td {
+  padding: 0.35rem 0.75rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.time-off-tally th:first-child {
+  padding-left: 0.9rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.time-off-tally td:last-child,
+.time-off-tally th:last-child {
+  padding-right: 0.9rem;
+}
+
+.time-off-tally thead th {
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.time-off-tally tbody tr + tr {
+  border-top: 1px solid var(--rfq-border);
+}
+
 :root[data-theme="dark"] .tb-tag-live,
 :root[data-theme="dark"] .tb-ooh {
   color: #f0a64a;

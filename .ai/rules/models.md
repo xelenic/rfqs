@@ -1,6 +1,7 @@
 ---
 paths:
   - 'app/Models/**'
+  - app/Models/Attendance.php
 ---
 
 # Models
@@ -59,3 +60,6 @@ Since 2026-10-19, the Put on hold popup (_status_modal) has a "Waiting for custo
 
 ## GM Assistant starts and pauses a part, as Data Entry does
 Since 2026-10-20, a part with GM Assistant is timed only from their Start (Rfq::startGmAssistantPart(): rfq_user.gm_assistant_started_at and gm_assistant_started_by). timedStepFor() returns 'gm_assistant' only while isGmAssistantRunning(), and the stretch's worked_by is the starter. Pause (pauseGmAssistantPart()) needs a reason, takes an optional reference, posts a 'gm_assistant_paused' comment and closes the stretch; pausedGmAssistantCountdown() then holds the countdown. Resume (resumeGmAssistantPart()) uses syncSteps(resuming: true). One part at a time: RfqStep::runningGmAssistantOf(). RfqController::submitGmAssistantDetails() refuses a part that isn't started, or is paused, including every part for a whole-RFQ Submit (partsAwaitingGmAssistant()). Being sent back to GM Assistant's step or earlier clears the start (GM_ASSISTANT_START_COLUMNS via startColumnsClearedBy(), and returnSourcingPart()), so it's started afresh. The views use _gm_assistant_actions and _start_gm_assistant_button, and reuse Data Entry's pause popup.
+
+## Count leaves and half days with Attendance::timeOffTally()
+Since 2026-10-21, a person's time off (leaves, half days, days off where a half day counts as half) is counted by Attendance::timeOffTally(): per month, year and in all, from approved sheets only. Lines on unapproved or returned sheets are kept apart as 'pending' and never counted. The user page (UserController::timeOffOf()) and the hover card on attendance names (attendance/_time_off_card, via [data-hover-card] in admin.js) both read it, so don't count attendances anywhere else. The hover card's counts are a <table>, so the shared popover in admin.js extends Bootstrap's sanitizer allowList with table tags. Keep that if you change it.

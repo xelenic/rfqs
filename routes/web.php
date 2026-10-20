@@ -77,6 +77,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
 
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('attendance', [AttendanceController::class, 'store'])->name('attendance.store');
+    Route::get('attendance/{sheet}', [AttendanceController::class, 'show'])->name('attendance.show');
     Route::put('attendance/{sheet}', [AttendanceController::class, 'update'])->name('attendance.update');
     Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');

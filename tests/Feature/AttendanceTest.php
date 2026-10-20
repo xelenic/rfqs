@@ -166,8 +166,9 @@ it('lists each day\'s submitted sheet, with who was on leave, and an Edit that o
 
     // Newest first.
     expect(strpos($html, 'data-attendance-sheet="2026-10-06"'))->toBeLessThan(strpos($html, 'data-attendance-sheet="2026-10-05"'))
-        ->and($monday)->toContain('1 present')
-        ->toContain(e($dataEntry->name))
+        ->and($monday)->toContain(e($dataEntry->name))
+        ->toContain('Full-Day Leave')
+        ->toContain('08:30–17:00 · 7h 30m')
         ->toContain('Casual leave')
         ->toContain(e($ops->name))
         ->toContain('data-action="'.route('admin.attendance.update', $sheet).'"')

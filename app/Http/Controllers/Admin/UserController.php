@@ -89,6 +89,7 @@ class UserController extends Controller implements HasMiddleware
             'partsInHand' => $this->partsInHand($user),
             'activity' => $this->activityOf($user),
             'attendance' => $isTracked ? $this->recentAttendanceOf($user) : null,
+            'timeOff' => $isTracked ? $this->timeOffOf($user) : null,
             ...$this->hoursOf($user),
             // Whom in Data Entry a Sourcing member's parts go to, to begin
             // with — for an Admin to set.
@@ -286,6 +287,26 @@ class UserController extends Controller implements HasMiddleware
             ->map(fn (CarbonImmutable $day) => ['date' => $day, 'status' => Attendance::statusIn($book, $user->id, $day->toDateString())])
             ->values()
             ->all();
+    }
+
+    /**
+     * The time off they've taken — leaves and half days this month, this
+     * year and in all (Attendance::timeOffTally()) — and each of this year's,
+     * latest first; null while attendance isn't kept
+     * (Setting::attendanceSince()).
+     *
+     * @return array{tally: array{month: array{leaves: int, half_days: int}, year: array{leaves: int, half_days: int}, all: array{leaves: int, half_days: int}, pending: array{leaves: int, half_days: int}, last_leave: ?string, last_half_day: ?string}, days: Collection<int, Attendance>}|null
+     */
+    private function timeOffOf(User $user): ?array
+    {
+        if (Setting::attendanceSince() === null) {
+            return null;
+        }
+
+        return [
+            'tally' => Attendance::timeOffTally([$user->id])[$user->id],
+            'days' => Attendance::timeOffSince($user->id, substr(Setting::today(), 0, 4).'-01-01'),
+        ];
     }
 
     /**

@@ -2423,6 +2423,25 @@ function rfqmsBoot() {
         });
     }
 
+    // A row that opens a page ([data-row-href] — the attendance list's
+    // sheets): a click anywhere on it but its own links, buttons and fields
+    // goes there — in a new tab with Ctrl/Cmd — unless it was selecting text.
+    if (!window.__rfqmsRowLinks) {
+        window.__rfqmsRowLinks = true;
+        document.addEventListener('click', function (event) {
+            var row = event.target.closest('[data-row-href]');
+            if (!row || event.button !== 0 || event.defaultPrevented) return;
+            if (event.target.closest('a, button, input, select, textarea, label, form')) return;
+            if (window.getSelection && String(window.getSelection()).trim() !== '') return;
+
+            if (event.ctrlKey || event.metaKey) {
+                window.open(row.dataset.rowHref, '_blank');
+            } else {
+                window.location.href = row.dataset.rowHref;
+            }
+        });
+    }
+
     // HR Executive's Return on a submitted sheet: the popup asks what needs
     // correcting, pointed at the sheet whose button opened it.
     var attendanceReturnModal = document.getElementById('attendanceReturnModal');
@@ -2959,14 +2978,16 @@ window.renderRfqProgressChart = function () {
 // came about — reports/_time_breakdown.blade.php, kept in a <template> — as
 // a popover that stays while the pointer is on it, so a long one can be
 // read; Escape closes it. A live update swaps the table, so any open one is
-// cleared and the new figures bound again.
+// cleared and the new figures bound again. A person's name on the
+// attendance sheets ([data-hover-card], attendance/_time_off_card) shows
+// their time off the same way.
 (function () {
     var HIDE_DELAY = 200;
     var open = [];
 
     function attach(trigger) {
         if (trigger.dataset.breakdownBound || !window.bootstrap || !bootstrap.Popover) return;
-        var template = document.getElementById(trigger.dataset.timeBreakdown);
+        var template = document.getElementById(trigger.dataset.timeBreakdown || trigger.dataset.hoverCard);
         if (!template) return;
         trigger.dataset.breakdownBound = '1';
 
@@ -2976,6 +2997,8 @@ window.renderRfqProgressChart = function () {
             placement: 'auto',
             container: 'body',
             customClass: 'time-breakdown-popover',
+            // The time-off card's counts are a table, which Bootstrap's sanitizer drops by default.
+            allowList: Object.assign({}, bootstrap.Popover.Default.allowList, { table: [], thead: [], tbody: [], tr: [], th: [], td: [] }),
             content: function () { return template.innerHTML; },
         });
         var hideTimer = null;
@@ -3017,7 +3040,7 @@ window.renderRfqProgressChart = function () {
         document.querySelectorAll('.time-breakdown-popover').forEach(function (tip) {
             if (!open.some(function (popover) { return popover.tip === tip; })) tip.remove();
         });
-        document.querySelectorAll('[data-time-breakdown]').forEach(attach);
+        document.querySelectorAll('[data-time-breakdown], [data-hover-card]').forEach(attach);
     }
 
     document.addEventListener('DOMContentLoaded', init);

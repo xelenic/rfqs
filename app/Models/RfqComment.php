@@ -322,25 +322,21 @@ class RfqComment extends Model
     }
 
     /**
-     * On a closed RFQ — where nobody's work brings them back to its thread —
-     * sends everyone this comment @mentions a private message from its
+     * Sends everyone this comment @mentions a private message from its
      * author, so it's in their Messages (and bell): what was said, and which
-     * RFQ it's on. Not to the author themselves. Returns who was sent one;
-     * nobody on an RFQ that's still open.
+     * RFQ it's on — whatever stage the RFQ is at, open, on hold, cancelled or
+     * closed (since 2026-10-21; before, only closed ones). Not to the author
+     * themselves. Returns who was sent one.
      *
      * @return Collection<int, User>
      */
     public function messageMentionedUsers(): Collection
     {
-        if (! $this->rfq->isClosed()) {
-            return collect();
-        }
-
         $mentioned = $this->mentionedUsers(self::mentionableUsers())
             ->reject(fn (User $user) => $user->id === $this->user_id)
             ->values();
 
-        $where = ($this->parent_id !== null ? 'in a reply ' : '')."on closed {$this->rfq->rfq_number} — {$this->rfq->subject}";
+        $where = ($this->parent_id !== null ? 'in a reply ' : '').'on '.($this->rfq->isClosed() ? 'closed ' : '')."{$this->rfq->rfq_number} — {$this->rfq->subject}";
 
         foreach ($mentioned as $user) {
             PrivateMessage::query()->create([

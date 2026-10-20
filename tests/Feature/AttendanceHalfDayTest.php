@@ -81,8 +81,8 @@ it('saves a half day — which half off, and a note — and lists it', function 
         ->assertSee('Which half…')
         ->getContent();
     expect(Str::betweenFirst($html, 'data-attendance-sheet="2026-10-05"', '</tr>'))
-        ->toContain('1 half day')
-        ->toContain('Half day · Morning off')
+        ->toContain('Half-Day Leave – First Half')
+        ->toContain('08:30–12:30 · 4h')
         ->toContain('Doctor&#039;s appointment');
 });
 
@@ -228,7 +228,8 @@ it('offers a custom time on a half day, and saves and lists it', function () {
 
     $html = test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()->getContent();
     expect(Str::betweenFirst($html, 'data-attendance-sheet="2026-10-05"', '</tr>'))
-        ->toContain('Half day · Off 10:00–14:00')
+        ->toContain('Half-Day Leave – Custom Time')
+        ->toContain('10:00–14:00 · 3h')
         ->toContain(e(json_encode([$riley->id => ['status' => 'half_day', 'half_off' => 'custom', 'note' => 'Bank', 'half_off_start' => '10:00', 'half_off_end' => '14:00']])));
 });
 

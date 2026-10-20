@@ -24,13 +24,20 @@
         </div>
 
         <div class="card-body message-thread-body" id="messageThread" data-live-scroll="message-thread">
+            @php
+                // Whether you can open an RFQ (rfqs.view, and it's one you see — Rfq::isVisibleTo()), each asked once.
+                $canOpen = [];
+                $canOpenRfq = function (\App\Models\Rfq $rfq) use (&$canOpen): bool {
+                    return $canOpen[$rfq->id] ??= auth()->user()->can('rfqs.view') && $rfq->isVisibleTo(auth()->user());
+                };
+            @endphp
             @forelse ($messages as $message)
                 @php $mine = $message->sender_id === auth()->id(); @endphp
                 <div class="message-bubble-row {{ $mine ? 'is-mine' : '' }}">
                     <div class="message-bubble">
                         <p class="mb-1" style="white-space: pre-line;">{{ $message->body }}</p>
-                        {{-- Sent for an @mention on a closed RFQ: the way back to it. --}}
-                        @if ($message->rfqComment?->rfq)
+                        {{-- Sent for an @mention on an RFQ: the way back to it, for whoever can open it. --}}
+                        @if ($message->rfqComment?->rfq && $canOpenRfq($message->rfqComment->rfq))
                             <a href="{{ route('admin.rfqs.show', $message->rfqComment->rfq) }}" class="message-rfq-link">
                                 <i class="bi bi-box-arrow-up-right"></i> Open {{ $message->rfqComment->rfq->rfq_number }}
                             </a>

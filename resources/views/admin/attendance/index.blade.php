@@ -1,7 +1,9 @@
 {{--
     The attendance page (see AttendanceController): every day's submitted sheet,
-    newest first — who was present, who was on leave and why, who submitted it —
-    and the working days still without one. A new sheet, or a correction to
+    newest first — who was off, each with their leave's type (Full-Day Leave,
+    Half-Day Leave – First Half, Second Half or Custom Time), hours and
+    working time (_leave_type), and who submitted it — and the working days
+    still without one. A new sheet, or a correction to
     one, is filled in the popup below (#attendanceModal): every Sourcing, Data
     Entry and GM Assistant person, Present, Half day (the morning or the
     afternoon off, or a custom time of up to 4 working hours —
@@ -15,13 +17,21 @@
     fill sheets in (User::canManageAttendance()); HR Executive and Admin review
     them (User::canApproveAttendance()).
 
+    Each row — anywhere on it but its buttons — opens the sheet's own page
+    (show.blade.php), everyone on it one by one; so do its day and View.
+
     One sheet a day: New attendance sheet opens on the newest day still without
     one ($newSheetDate), and is off once every day has one; the popup turns a
     day that already has one away before it's submitted ($sheetDates, see
     admin.js).
 
+    Hovering (or focusing) the name of anyone off shows their time off —
+    leaves and half days this month, this year and in all
+    (_time_off_card).
+
     Expects: $sheets (paginated, with attendances.user, createdBy, updatedBy,
-    approvedBy, returnedBy),
+    approvedBy, returnedBy), $timeOff (Attendance::timeOffTally() for
+    everyone off on them, and everyone in the sheet popup),
     $people (AttendanceSheet::people()), $missingDays, $sheetDates,
     $newSheetDate, $today, $since (Setting::attendanceSince()).
 --}}
@@ -33,11 +43,6 @@
     @php
         $dayLabel = fn (string $date) => $date === $today ? 'Today' : \Carbon\CarbonImmutable::parse($date)->format('D, M j, Y');
         $canKeep = auth()->user()->canManageAttendance();
-        // "Morning off (08:30–12:30)" — the time each half day off takes (Settings → Half Day).
-        $halfDayOff = \App\Models\Setting::halfDayOff();
-        $halfLabel = fn (?string $half) => isset(\App\Models\Attendance::HALVES[$half])
-            ? \App\Models\Attendance::HALVES[$half].' ('.$halfDayOff[$half]['start'].'–'.$halfDayOff[$half]['end'].')'
-            : 'Half off';
         $canApprove = auth()->user()->canApproveAttendance();
     @endphp
 
@@ -54,7 +59,7 @@
     @endif
 
     <div class="row g-3">
-        <div class="col-lg-9">
+        <div class="col-xxl-9">
             <div class="card">
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span>Attendance sheets</span>
@@ -77,11 +82,10 @@
                 </div>
 
                 <div class="table-responsive">
-                    <table class="table align-middle mb-0">
+                    <table class="table table-hover align-middle mb-0">
                         <thead>
                             <tr>
                                 <th>Day</th>
-                                <th>Present</th>
                                 <th>Leave</th>
                                 <th>Submitted by</th>
                                 <th>HR approval</th>
@@ -93,26 +97,23 @@
                                 @php
                                     $date = $sheet->date->toDateString();
                                     $absentees = $sheet->attendances->whereIn('status', [\App\Models\Attendance::ABSENT, \App\Models\Attendance::HALF_DAY])->sortBy(fn ($line) => $line->user?->name);
-                                    $presentCount = $sheet->attendances->where('status', \App\Models\Attendance::PRESENT)->count();
-                                    $halfDayCount = $sheet->attendances->where('status', \App\Models\Attendance::HALF_DAY)->count();
                                     $marks = $sheet->attendances->mapWithKeys(fn ($line) => [$line->user_id => ['status' => $line->status, 'half_off' => $line->half_off, 'note' => $line->note]
                                         + ($line->half_off === \App\Models\Attendance::CUSTOM_HALF ? ['half_off_start' => $line->half_off_start, 'half_off_end' => $line->half_off_end] : [])]);
                                 @endphp
-                                <tr data-attendance-sheet="{{ $date }}" @class(['table-warning' => $canApprove && $sheet->isAwaitingApproval()])>
-                                    <td class="fw-semibold text-nowrap">{{ $dayLabel($date) }}</td>
-                                    <td>
-                                        <span class="badge badge-soft-success">{{ $presentCount }} present</span>
-                                        @if ($halfDayCount > 0)
-                                            <span class="badge badge-soft-orange">{{ $halfDayCount }} half day</span>
-                                        @endif
+                                {{-- The whole row opens the sheet's page (admin.js, [data-row-href]). --}}
+                                <tr data-attendance-sheet="{{ $date }}" data-row-href="{{ route('admin.attendance.show', $sheet) }}" @class(['is-clickable-row', 'table-warning' => $canApprove && $sheet->isAwaitingApproval()])>
+                                    <td class="fw-semibold text-nowrap">
+                                        <a href="{{ route('admin.attendance.show', $sheet) }}" class="text-reset">{{ $dayLabel($date) }}</a>
                                     </td>
                                     <td>
                                         @forelse ($absentees as $line)
-                                            <div class="small">
-                                                <span class="fw-semibold">{{ $line->user?->name ?? 'Unknown' }}</span>
-                                                @if ($line->status === \App\Models\Attendance::HALF_DAY)
-                                                    <span class="badge badge-soft-orange"><i class="bi bi-circle-half"></i> Half day · {{ $line->timeOffLabel() }}</span>
+                                            <div class="small attendance-leave-line">
+                                                @if ($line->user && isset($timeOff[$line->user_id]))
+                                                    <span class="fw-semibold time-off-name" tabindex="0" role="button" data-hover-card="time-off-{{ $line->user_id }}">{{ $line->user->name }}</span>
+                                                @else
+                                                    <span class="fw-semibold">{{ $line->user?->name ?? 'Unknown' }}</span>
                                                 @endif
+                                                @include('admin.attendance._leave_type', ['line' => $line, 'date' => $date])
                                                 {{-- Only on an older sheet: why's no longer asked. --}}
                                                 @if ($line->reason)
                                                     <span class="badge badge-soft-danger">{{ $line->reason }}</span>
@@ -122,10 +123,10 @@
                                                 @endif
                                             </div>
                                         @empty
-                                            <span class="text-muted-soft small">Nobody</span>
+                                            <span class="text-muted-soft small">No leave — everyone was present</span>
                                         @endforelse
                                     </td>
-                                    <td class="text-muted-soft small text-nowrap">
+                                    <td class="text-muted-soft small">
                                         {{ $sheet->createdBy?->name ?? 'Unknown' }}
                                         <div>{{ $sheet->created_at->toBusinessTimezone()->format('M d, g:i A') }}</div>
                                         @if ($sheet->updatedBy && $sheet->updated_at->gt($sheet->created_at))
@@ -135,7 +136,7 @@
                                     <td class="small">
                                         @if ($sheet->isApproved())
                                             <span class="badge badge-soft-success"><i class="bi bi-check2-circle"></i> Approved</span>
-                                            <div class="text-muted-soft text-nowrap">
+                                            <div class="text-muted-soft">
                                                 {{ $sheet->approvedBy ? 'by '.$sheet->approvedBy->name.' · ' : '' }}{{ $sheet->approved_at->toBusinessTimezone()->format('M d, g:i A') }}
                                             </div>
                                         @elseif ($sheet->isReturned())
@@ -148,39 +149,45 @@
                                             <div class="text-muted-soft">Doesn't count until it's approved.</div>
                                         @endif
                                     </td>
-                                    <td class="text-end text-nowrap">
-                                        @if ($canApprove && $sheet->isAwaitingApproval())
-                                            <form action="{{ route('admin.attendance.approve', $sheet) }}" method="POST" class="d-inline"
-                                                  data-confirm="Approve attendance for {{ $dayLabel($date) }}? From now, present people's time that day counts and nobody's on leave does.">
-                                                @csrf
-                                                @method('PATCH')
-                                                <button type="submit" class="btn btn-sm btn-success">
-                                                    <i class="bi bi-check2-circle"></i> Approve
+                                    <td>
+                                        {{-- One above another, so they stay in view beside a long Leave list. --}}
+                                        <div class="d-flex flex-column align-items-stretch gap-1 text-nowrap">
+                                            <a href="{{ route('admin.attendance.show', $sheet) }}" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-eye"></i> View
+                                            </a>
+                                            @if ($canApprove && $sheet->isAwaitingApproval())
+                                                <form action="{{ route('admin.attendance.approve', $sheet) }}" method="POST" class="d-inline"
+                                                      data-confirm="Approve attendance for {{ $dayLabel($date) }}? From now, present people's time that day counts and nobody's on leave does.">
+                                                    @csrf
+                                                    @method('PATCH')
+                                                    <button type="submit" class="btn btn-sm btn-success w-100">
+                                                        <i class="bi bi-check2-circle"></i> Approve
+                                                    </button>
+                                                </form>
+                                                <button type="button" class="btn btn-sm btn-outline-danger js-attendance-return"
+                                                        data-bs-toggle="modal" data-bs-target="#attendanceReturnModal"
+                                                        data-action="{{ route('admin.attendance.return', $sheet) }}"
+                                                        data-sheet-id="{{ $sheet->id }}"
+                                                        data-date-label="{{ $dayLabel($date) }}">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> Return
                                                 </button>
-                                            </form>
-                                            <button type="button" class="btn btn-sm btn-outline-danger js-attendance-return"
-                                                    data-bs-toggle="modal" data-bs-target="#attendanceReturnModal"
-                                                    data-action="{{ route('admin.attendance.return', $sheet) }}"
-                                                    data-sheet-id="{{ $sheet->id }}"
-                                                    data-date-label="{{ $dayLabel($date) }}">
-                                                <i class="bi bi-arrow-counterclockwise"></i> Return
-                                            </button>
-                                        @endif
-                                        @if ($canKeep)
-                                            <button type="button" class="btn btn-sm btn-outline-secondary js-attendance-open"
-                                                    data-bs-toggle="modal" data-bs-target="#attendanceModal"
-                                                    data-action="{{ route('admin.attendance.update', $sheet) }}"
-                                                    data-sheet-id="{{ $sheet->id }}" data-date="{{ $date }}"
-                                                    data-date-label="{{ $dayLabel($date) }}"
-                                                    data-marks="{{ $marks->toJson() }}">
-                                                <i class="bi bi-pencil"></i> {{ $sheet->isReturned() ? 'Correct' : 'Edit' }}
-                                            </button>
-                                        @endif
+                                            @endif
+                                            @if ($canKeep)
+                                                <button type="button" class="btn btn-sm btn-outline-secondary js-attendance-open"
+                                                        data-bs-toggle="modal" data-bs-target="#attendanceModal"
+                                                        data-action="{{ route('admin.attendance.update', $sheet) }}"
+                                                        data-sheet-id="{{ $sheet->id }}" data-date="{{ $date }}"
+                                                        data-date-label="{{ $dayLabel($date) }}"
+                                                        data-marks="{{ $marks->toJson() }}">
+                                                    <i class="bi bi-pencil"></i> {{ $sheet->isReturned() ? 'Correct' : 'Edit' }}
+                                                </button>
+                                            @endif
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted-soft py-4">No attendance submitted yet{{ $canKeep ? ' — start with today\'s' : '' }}.</td>
+                                    <td colspan="5" class="text-center text-muted-soft py-4">No attendance submitted yet{{ $canKeep ? ' — start with today\'s' : '' }}.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -195,7 +202,7 @@
             </div>
         </div>
 
-        <div class="col-lg-3">
+        <div class="col-xxl-3">
             <div class="card">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <span>No sheet yet</span>
@@ -225,190 +232,15 @@
         </div>
     </div>
 
-    {{-- The sheet popup — a new day's, or a submitted one to correct. The
-         buttons that open it say which (data-action, data-sheet-id,
-         data-marks); admin.js fills it in. After a refused submission it
-         comes back filled with what was sent. Only for those who keep the
-         sheets. --}}
+    {{-- Each named person's time off, drawn on hovering their name. --}}
+    @include('admin.attendance._time_off_cards', ['hoverPeople' => $sheets->getCollection()->flatMap->attendances->pluck('user')->merge($canKeep ? $people : [])])
+
+    {{-- The sheet popup, and HR Executive's Return (_sheet_modal, _return_modal). --}}
     @if ($canKeep)
-    @php
-        $failed = $errors->attendance->any();
-        $failedSheet = $failed && old('sheet_id') ? \App\Models\AttendanceSheet::query()->find(old('sheet_id')) : null;
-    @endphp
-    <div class="modal fade" id="attendanceModal" tabindex="-1" aria-labelledby="attendanceModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <form method="POST" id="attendanceForm" novalidate class="modal-content"
-                  action="{{ $failedSheet ? route('admin.attendance.update', $failedSheet) : route('admin.attendance.store') }}"
-                  data-sheet-dates="{{ json_encode($sheetDates) }}">
-                @csrf
-                <input type="hidden" name="_method" value="PUT" @disabled(! $failedSheet)>
-                <input type="hidden" name="sheet_id" value="{{ $failedSheet?->id }}">
-
-                <div class="modal-header">
-                    <h5 class="modal-title" id="attendanceModalLabel">{{ $failedSheet ? 'Edit attendance' : 'New attendance sheet' }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-
-                <div class="modal-body">
-                    <div class="d-flex align-items-end flex-wrap gap-3 mb-3">
-                        <div>
-                            <label for="attendance-date" class="form-label">Day</label>
-                            <input type="date" name="date" id="attendance-date"
-                                   class="form-control @error('date', 'attendance') is-invalid @enderror"
-                                   value="{{ $failed ? old('date') : $today }}" data-today="{{ $today }}"
-                                   @if ($since) min="{{ $since }}" @endif max="{{ $today }}" @readonly($failedSheet)>
-                            @error('date', 'attendance')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            <div class="invalid-feedback" id="attendance-date-taken">There's already a sheet for this day — only one per day. Edit it from the list.</div>
-                        </div>
-                        <p class="text-muted-soft small mb-2">Everyone starts present — mark anyone who was off as Leave, or Half day with the half they were off (or a custom time, up to 4 working hours). It goes to HR Executive for approval; once approved, nobody's time counts while they were off.</p>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table align-middle mb-0 attendance-table">
-                            <thead>
-                                <tr>
-                                    <th>Person</th>
-                                    <th>Role</th>
-                                    <th>Attendance</th>
-                                    <th>If off</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @forelse ($people as $person)
-                                    @php
-                                        $field = fn (string $name) => "attendance.{$person->id}.{$name}";
-                                        $status = $failed ? old($field('status'), 'present') : 'present';
-                                    @endphp
-                                    <tr data-attendance-user="{{ $person->id }}" @class(['is-absent' => $status === 'absent', 'is-half-day' => $status === 'half_day'])>
-                                        <td class="fw-semibold">{{ $person->name }}</td>
-                                        <td>
-                                            @foreach ($person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) as $roleName)
-                                                <span class="badge badge-soft-secondary">{{ $roleName }}</span>
-                                            @endforeach
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm" role="group" aria-label="{{ $person->name }}'s attendance">
-                                                @foreach (['present' => ['Present', 'btn-outline-success', 'bi-check2'], 'half_day' => ['Half day', 'btn-outline-orange', 'bi-circle-half'], 'absent' => ['Leave', 'btn-outline-danger', 'bi-x-lg']] as $value => [$label, $class, $icon])
-                                                    <input type="radio" class="btn-check js-attendance-status" name="attendance[{{ $person->id }}][status]"
-                                                           id="attendance-{{ $person->id }}-{{ $value }}" value="{{ $value }}" autocomplete="off" @checked($status === $value)>
-                                                    <label class="btn {{ $class }}" for="attendance-{{ $person->id }}-{{ $value }}"><i class="bi {{ $icon }}"></i> {{ $label }}</label>
-                                                @endforeach
-                                            </div>
-                                        </td>
-                                        <td>
-                                            @php $customOff = $status === 'half_day' && $failed && old($field('half_off')) === \App\Models\Attendance::CUSTOM_HALF; @endphp
-                                            <div class="d-flex flex-wrap gap-2 attendance-absence">
-                                                <select name="attendance[{{ $person->id }}][half_off]" class="form-select form-select-sm w-auto attendance-half @error($field('half_off'), 'attendance') is-invalid @enderror @if ($status !== 'half_day') d-none @endif"
-                                                        aria-label="Which half {{ $person->name }} was off">
-                                                    <option value="">Which half…</option>
-                                                    @foreach (array_keys(\App\Models\Attendance::HALVES) as $half)
-                                                        <option value="{{ $half }}" @selected($failed && old($field('half_off')) === $half)>{{ $halfLabel($half) }}</option>
-                                                    @endforeach
-                                                    <option value="{{ \App\Models\Attendance::CUSTOM_HALF }}" @selected($failed && old($field('half_off')) === \App\Models\Attendance::CUSTOM_HALF)>Custom time (up to 4 hours)…</option>
-                                                </select>
-                                                {{-- A custom time off: the end fills in 4 hours after the start (admin.js). --}}
-                                                <div class="d-flex align-items-center gap-1 attendance-custom-off @unless ($customOff) d-none @endunless">
-                                                    <input type="time" name="attendance[{{ $person->id }}][half_off_start]" class="form-control form-control-sm attendance-off-start"
-                                                           value="{{ $failed ? old($field('half_off_start')) : '' }}" aria-label="When {{ $person->name }}'s time off starts">
-                                                    <span class="text-muted-soft small">to</span>
-                                                    <input type="time" name="attendance[{{ $person->id }}][half_off_end]" class="form-control form-control-sm attendance-off-end"
-                                                           value="{{ $failed ? old($field('half_off_end')) : '' }}" aria-label="When {{ $person->name }}'s time off ends">
-                                                </div>
-                                                <input type="text" name="attendance[{{ $person->id }}][note]" class="form-control form-control-sm attendance-note"
-                                                       value="{{ $failed ? old($field('note')) : '' }}" maxlength="500" placeholder="Note (optional)" aria-label="Note on {{ $person->name }}'s leave">
-                                            </div>
-                                            @error($field('half_off'), 'attendance')
-                                                <div class="text-danger small attendance-error">{{ $message }}</div>
-                                            @enderror
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted-soft py-4">Nobody holds the Sourcing, Data Entry or GM Assistant role yet.</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="attendance-submit" @disabled($people->isEmpty())>
-                        <i class="bi bi-check2"></i> <span>{{ $failedSheet ? 'Save attendance' : 'Submit attendance' }}</span>
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    {{-- A refused submission — back in the popup, as it was sent. --}}
-    @if ($failed)
-        @push('scripts')
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('attendanceModal')).show();
-                });
-            </script>
-        @endpush
-    @endif
+        @include('admin.attendance._sheet_modal')
     @endif
 
-    {{-- HR Executive's Return — what needs correcting — pointed at a sheet by
-         the Return button that opens it (admin.js, .js-attendance-return);
-         back open against the same sheet if it's sent without a reason. --}}
     @if ($canApprove)
-        @php
-            $failedReturn = $errors->attendance_return->any();
-            $failedReturnSheet = $failedReturn && old('return_sheet_id') ? \App\Models\AttendanceSheet::query()->find(old('return_sheet_id')) : null;
-        @endphp
-        <div class="modal fade" id="attendanceReturnModal" tabindex="-1" aria-labelledby="attendanceReturnModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <form method="POST" id="attendanceReturnForm" class="modal-content" novalidate
-                      action="{{ $failedReturnSheet ? route('admin.attendance.return', $failedReturnSheet) : '#' }}">
-                    @csrf
-                    @method('PATCH')
-                    <input type="hidden" name="return_sheet_id" value="{{ $failedReturnSheet?->id }}">
-
-                    <div class="modal-header">
-                        <div>
-                            <h5 class="modal-title" id="attendanceReturnModalLabel">Return to Senior Operations</h5>
-                            <div class="text-muted-soft small" id="attendanceReturnDay">{{ $failedReturnSheet ? $dayLabel($failedReturnSheet->date->toDateString()) : '' }}</div>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <label for="attendance-return-reason" class="form-label">What needs correcting</label>
-                        <textarea name="reason" id="attendance-return-reason" rows="3" maxlength="1000"
-                                  class="form-control @error('reason', 'attendance_return') is-invalid @enderror">{{ $failedReturn ? old('reason') : '' }}</textarea>
-                        @error('reason', 'attendance_return')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @else
-                            <div class="form-text">Senior Operations sees this with the sheet. It doesn't count until it's corrected and approved.</div>
-                        @enderror
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-danger">
-                            <i class="bi bi-arrow-counterclockwise"></i> Return
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        @if ($failedReturnSheet)
-            @push('scripts')
-                <script>
-                    document.addEventListener('DOMContentLoaded', function () {
-                        bootstrap.Modal.getOrCreateInstance(document.getElementById('attendanceReturnModal')).show();
-                    });
-                </script>
-            @endpush
-        @endif
+        @include('admin.attendance._return_modal')
     @endif
 @endsection

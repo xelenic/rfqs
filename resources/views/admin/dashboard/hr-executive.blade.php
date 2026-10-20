@@ -4,7 +4,8 @@
     today's attendance sheet, everyone who goes on it with their mark and the
     hours they work today; the alerts (hrNotifications()) and the way to their
     pages; each person's attendance over the period, by the approved sheets;
-    the latest sheets and where each stands; and the team by role. Live: it
+    the latest sheets and where each stands, each opening its own page; and
+    the team by role. Live: it
     follows changes as they happen (live.js).
 
     The period filter scopes attendance over the period and who joined; today's
@@ -125,7 +126,7 @@
                                         @endforeach
                                     </td>
                                     <td>
-                                        <span class="badge {{ $markBadge }}"><i class="bi {{ $markIcon }}"></i> {{ $markLabel }}{{ $row['timeOff'] ? ' · '.$row['timeOff'] : '' }}</span>
+                                        <span class="badge {{ $markBadge }}"><i class="bi {{ $markIcon }}"></i> {{ $row['leaveType'] ?? $markLabel }}{{ $row['hoursOff'] ? ' · '.$row['hoursOff']['start'].'–'.$row['hoursOff']['end'] : '' }}</span>
                                         @if ($row['note'])
                                             <div class="small text-muted-soft">{{ $row['note'] }}</div>
                                         @endif
@@ -230,7 +231,9 @@
                                     $half = $sheet->attendances->where('status', \App\Models\Attendance::HALF_DAY)->count();
                                 @endphp
                                 <tr>
-                                    <td class="fw-semibold text-nowrap">{{ $sheet->date->format('D, M d, Y') }}</td>
+                                    <td class="fw-semibold text-nowrap">
+                                        <a href="{{ route('admin.attendance.show', $sheet) }}" class="text-reset">{{ $sheet->date->format('D, M d, Y') }}</a>
+                                    </td>
                                     <td class="small">
                                         {{ $sheet->attendances->count() - $off - $half }} present{{ $half > 0 ? ' · '.$half.' half day' : '' }}{{ $off > 0 ? ' · '.$off.' on leave' : '' }}
                                     </td>
@@ -241,7 +244,7 @@
                                         @elseif ($sheet->isReturned())
                                             <span class="badge badge-soft-danger"><i class="bi bi-arrow-counterclockwise"></i> Returned</span>
                                         @else
-                                            <a href="{{ $sheetsUrl }}" class="badge badge-soft-warning text-decoration-none"><i class="bi bi-hourglass-split"></i> Awaiting your approval</a>
+                                            <a href="{{ route('admin.attendance.show', $sheet) }}" class="badge badge-soft-warning text-decoration-none"><i class="bi bi-hourglass-split"></i> Awaiting your approval</a>
                                         @endif
                                     </td>
                                 </tr>

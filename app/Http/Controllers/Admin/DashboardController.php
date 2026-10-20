@@ -1254,7 +1254,9 @@ class DashboardController extends Controller
                 'user' => $person,
                 'roles' => $person->roles->pluck('name')->intersect($trackedRoles)->values(),
                 'status' => $mark?->status ?? Attendance::UNMARKED,
-                'timeOff' => $mark?->timeOffLabel(),
+                // As HR Executive reads it: "Full-Day Leave", "Half-Day Leave – First Half"…, and the hours off.
+                'leaveType' => $mark?->leaveTypeLabel(),
+                'hoursOff' => $mark?->hoursOff($today),
                 'note' => $mark?->note,
                 'hours' => $hours['working'] ? "{$hours['start']}–{$hours['end']}" : null,
             ];

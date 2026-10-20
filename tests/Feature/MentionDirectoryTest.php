@@ -76,7 +76,7 @@ it('highlights on the RFQ\'s thread, and says anyone can be mentioned', function
 
     test()->actingAs($viewer)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('<span class="mention-highlight">@Quinn Alder</span> please see', false)
-        ->assertSee('Write a comment... (@ to mention someone)');
+        ->assertSee('Write a comment... (@ to mention someone — they\'ll get it in Messages)', false);
 });
 
 it('keeps the names safe in the page', function () {

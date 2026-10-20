@@ -5,13 +5,15 @@
     hours and extra hours, on those tabs — each coming back here; then a tab
     each for their RFQ work in numbers and details
     (Overview), the parts in their hands now, what they've done lately, the
-    week their time counts in, and, for the people whose time is tracked, the
-    last two weeks' attendance and their extra hours. An RFQ links to its
-    page only for those who can open RFQs (HR Executive can't).
+    week their time counts in, and, for the people whose time is tracked, their
+    attendance — the leaves and half days they've taken (also at a glance under
+    their name) and the last two weeks — and their extra hours. An RFQ links to
+    its page only for those who can open RFQs (HR Executive can't).
 
     Expects: $user (with roles, and extraWorkingHours — the current ones),
     $isTracked, $canManage, $roles, $work, $partsInHand, $activity,
-    $attendance (null while attendance isn't kept, or not tracked),
+    $attendance and $timeOff (UserController::timeOffOf()) (each null while
+    attendance isn't kept, or not tracked),
     $workingWeek and $weekSource (the week their time counts in today, and
     where it's from), $ownHours (their own WorkingSchedule, or null),
     $fallbackHours (what they'd work without it, in words), $dataEntryPeople
@@ -73,6 +75,14 @@
                 <div class="user-profile-details">
                     <span><i class="bi bi-envelope"></i> <a href="mailto:{{ $user->email }}">{{ $user->email }}</a></span>
                     <span><i class="bi bi-calendar3"></i> Joined {{ $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</span>
+                    {{-- Their time off this year, at a glance — the rest on the Attendance tab. --}}
+                    @if ($timeOff)
+                        <a href="{{ route('admin.users.show', ['user' => $user, 'tab' => 'attendance']) }}" class="text-reset" data-time-off-summary>
+                            <i class="bi bi-calendar-x"></i>
+                            This year: {{ $timeOff['tally']['year']['leaves'] }} {{ \Illuminate\Support\Str::plural('leave', $timeOff['tally']['year']['leaves']) }}
+                            · {{ $timeOff['tally']['year']['half_days'] }} {{ \Illuminate\Support\Str::plural('half day', $timeOff['tally']['year']['half_days']) }}
+                        </a>
+                    @endif
                 </div>
                 <div class="d-flex flex-wrap gap-1 mt-2">
                     @forelse ($user->roles as $role)
@@ -445,8 +455,107 @@
         </div>
 
         @if ($isTracked)
-            {{-- Their attendance over the last two weeks. --}}
+            {{-- Their time off — leaves and half days, in numbers and this
+                 year's one by one — then their attendance over the last two weeks. --}}
             <div class="tab-pane fade {{ $activeTab === 'attendance' ? 'show active' : '' }}" id="user-pane-attendance" role="tabpanel" aria-labelledby="user-tab-attendance" tabindex="0">
+                @if ($timeOff)
+                    @php
+                        $tally = $timeOff['tally'];
+                        $countLabel = fn (array $counts) => $counts['leaves'].' '.\Illuminate\Support\Str::plural('leave', $counts['leaves']).' · '.$counts['half_days'].' '.\Illuminate\Support\Str::plural('half day', $counts['half_days']);
+                        $dayLabel = fn (?string $date) => $date ? \Carbon\CarbonImmutable::parse($date)->format('D, M j, Y') : 'None yet';
+                        $canOpenSheets = auth()->user()->canViewAttendance();
+                        $timeOffStats = [
+                            ['label' => 'Leaves this year', 'value' => $tally['year']['leaves'], 'caption' => 'This month: '.$tally['month']['leaves'].' · In all: '.$tally['all']['leaves'], 'icon' => 'bi-person-dash', 'tone' => 'danger'],
+                            ['label' => 'Half days this year', 'value' => $tally['year']['half_days'], 'caption' => 'This month: '.$tally['month']['half_days'].' · In all: '.$tally['all']['half_days'], 'icon' => 'bi-circle-half', 'tone' => 'warning'],
+                            ['label' => 'Days off this year', 'value' => \App\Models\Attendance::daysOffLabel($tally['year']), 'caption' => 'A half day counts as half · In all: '.\App\Models\Attendance::daysOffLabel($tally['all']), 'icon' => 'bi-calendar-x', 'tone' => 'violet'],
+                            ['label' => 'Last time off', 'value' => $dayLabel(collect([$tally['last_leave'], $tally['last_half_day']])->filter()->max()), 'caption' => 'Last leave: '.$dayLabel($tally['last_leave']).' · Last half day: '.$dayLabel($tally['last_half_day']), 'icon' => 'bi-clock-history', 'tone' => ''],
+                        ];
+                        // What's on sheets not yet approved: "1 leave and 2 half days".
+                        $pendingLabel = collect([
+                            $tally['pending']['leaves'] > 0 ? $tally['pending']['leaves'].' '.\Illuminate\Support\Str::plural('leave', $tally['pending']['leaves']) : null,
+                            $tally['pending']['half_days'] > 0 ? $tally['pending']['half_days'].' '.\Illuminate\Support\Str::plural('half day', $tally['pending']['half_days']) : null,
+                        ])->filter()->join(' and ');
+                    @endphp
+
+                    <div class="row g-3 mb-3" data-time-off-stats>
+                        @foreach ($timeOffStats as $stat)
+                            <div class="col-6 col-xl-3">
+                                <div class="stat-card kpi-card">
+                                    <div class="kpi-card-head">
+                                        <span class="stat-label">{{ $stat['label'] }}</span>
+                                        <span class="stat-icon {{ $stat['tone'] ? 'stat-icon-'.$stat['tone'] : '' }}"><i class="bi {{ $stat['icon'] }}"></i></span>
+                                    </div>
+                                    <div class="stat-value">{{ $stat['value'] }}</div>
+                                    <div class="stat-caption">{{ $stat['caption'] }}</div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                    @if ($pendingLabel !== '')
+                        <p class="text-muted-soft small mb-3">
+                            <i class="bi bi-hourglass-split"></i>
+                            Not counted yet: {{ $pendingLabel }} on sheets HR Executive hasn't approved yet.
+                        </p>
+                    @endif
+
+                    <div class="card mb-4">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <span>Leaves and half days this year</span>
+                            <span class="text-muted-soft small fw-normal">{{ $countLabel($tally['year']) }}</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Day</th>
+                                        <th>Leave</th>
+                                        <th>Note</th>
+                                        <th>HR approval</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse ($timeOff['days'] as $line)
+                                        <tr data-time-off-day="{{ $line->sheet->date->toDateString() }}">
+                                            <td class="fw-semibold text-nowrap">
+                                                @if ($canOpenSheets)
+                                                    <a href="{{ route('admin.attendance.show', $line->sheet) }}" class="text-reset">{{ $line->sheet->date->format('D, M j, Y') }}</a>
+                                                @else
+                                                    {{ $line->sheet->date->format('D, M j, Y') }}
+                                                @endif
+                                            </td>
+                                            <td class="small">
+                                                @include('admin.attendance._leave_type', ['line' => $line, 'date' => $line->sheet->date->toDateString()])
+                                            </td>
+                                            <td class="small">
+                                                @if ($line->reason)
+                                                    <span class="badge badge-soft-danger">{{ $line->reason }}</span>
+                                                @endif
+                                                {{ $line->note }}
+                                                @if (! $line->reason && ! $line->note)
+                                                    <span class="text-muted-soft">—</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if ($line->sheet->isApproved())
+                                                    <span class="badge badge-soft-success"><i class="bi bi-check2-circle"></i> Approved</span>
+                                                @elseif ($line->sheet->isReturned())
+                                                    <span class="badge badge-soft-danger"><i class="bi bi-arrow-counterclockwise"></i> Returned — not counted yet</span>
+                                                @else
+                                                    <span class="badge badge-soft-warning"><i class="bi bi-hourglass-split"></i> Awaiting approval — not counted yet</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted-soft py-4">No leaves or half days this year.</td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endif
+
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <span>Last two weeks</span>

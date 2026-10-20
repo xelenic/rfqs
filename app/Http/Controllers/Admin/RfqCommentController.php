@@ -66,7 +66,7 @@ class RfqCommentController extends Controller implements HasMiddleware
         ]);
         $comment->storeAttachments($files);
 
-        // On a closed RFQ, whoever it @mentions gets it in their Messages.
+        // Whoever it @mentions gets it in their Messages.
         $messaged = $comment->setRelation('rfq', $rfq)->messageMentionedUsers();
 
         // Comments can now be posted from more than one place — the RFQ's

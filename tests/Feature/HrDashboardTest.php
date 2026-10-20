@@ -86,8 +86,8 @@ it('lists today\'s sheet — each person\'s mark and today\'s hours', function (
     $today = Str::betweenFirst($html, 'id="hr-today"', '</table>');
 
     expect($today)->toContain('Awaiting your approval')
-        ->and(Str::betweenFirst($today, 'Casey Brooks', '</tr>'))->toContain('On leave')->toContain('Family event')->toContain('08:30–17:00')
-        ->and(Str::betweenFirst($today, 'Morgan Ito', '</tr>'))->toContain('Half day · Off 10:00–14:00')
+        ->and(Str::betweenFirst($today, 'Casey Brooks', '</tr>'))->toContain('Full-Day Leave · 08:30–17:00')->toContain('Family event')->toContain('08:30–17:00')
+        ->and(Str::betweenFirst($today, 'Morgan Ito', '</tr>'))->toContain('Half-Day Leave – Custom Time · 10:00–14:00')
         ->and(Str::betweenFirst($today, 'Riley Chen', '</tr>'))->toContain('Present');
 });
 

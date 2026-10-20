@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Database\Factories\AttendanceFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -136,6 +138,93 @@ class Attendance extends Model
     }
 
     /**
+     * How much time off each of $userIds has taken — leaves (a whole day
+     * off) and half days — this month, this year and since attendance
+     * started, on the sheets HR Executive has approved, with the last day
+     * of each; and how many more are on a sheet still awaiting approval (or
+     * returned), which don't count yet. As user id => tally — everyone
+     * given, with nothing taken if so. What a person's page and the hover
+     * on the attendance sheets show.
+     *
+     * @param  iterable<int|null>  $userIds
+     * @return array<int, array{month: array{leaves: int, half_days: int}, year: array{leaves: int, half_days: int}, all: array{leaves: int, half_days: int}, pending: array{leaves: int, half_days: int}, last_leave: ?string, last_half_day: ?string}>
+     */
+    public static function timeOffTally(iterable $userIds): array
+    {
+        $ids = collect($userIds)->filter()->unique()->values()->all();
+        $none = ['leaves' => 0, 'half_days' => 0];
+        $tally = array_fill_keys($ids, ['month' => $none, 'year' => $none, 'all' => $none, 'pending' => $none, 'last_leave' => null, 'last_half_day' => null]);
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $today = Setting::today();
+
+        static::query()
+            ->join('attendance_sheets', 'attendance_sheets.id', '=', 'attendances.attendance_sheet_id')
+            ->whereIn('attendances.user_id', $ids)
+            ->whereIn('attendances.status', [self::ABSENT, self::HALF_DAY])
+            ->orderBy('attendance_sheets.date')
+            ->get(['attendances.user_id', 'attendances.status', 'attendance_sheets.date', 'attendance_sheets.approved_at'])
+            ->each(function (Attendance $line) use (&$tally, $today) {
+                $date = substr((string) $line->date, 0, 10);
+                $kind = $line->status === self::ABSENT ? 'leaves' : 'half_days';
+
+                if ($line->approved_at === null) {
+                    $tally[$line->user_id]['pending'][$kind]++;
+
+                    return;
+                }
+
+                $tally[$line->user_id]['all'][$kind]++;
+                $tally[$line->user_id][$kind === 'leaves' ? 'last_leave' : 'last_half_day'] = $date;
+
+                if (substr($date, 0, 4) === substr($today, 0, 4)) {
+                    $tally[$line->user_id]['year'][$kind]++;
+                }
+
+                if (substr($date, 0, 7) === substr($today, 0, 7)) {
+                    $tally[$line->user_id]['month'][$kind]++;
+                }
+            });
+
+        return $tally;
+    }
+
+    /**
+     * The days off a tally's counts come to — a leave a day, a half day
+     * half of one: "3", "4.5".
+     *
+     * @param  array{leaves: int, half_days: int}  $counts
+     */
+    public static function daysOffLabel(array $counts): string
+    {
+        $days = $counts['leaves'] + $counts['half_days'] / 2;
+
+        return fmod($days, 1.0) === 0.0 ? (string) (int) $days : number_format($days, 1);
+    }
+
+    /**
+     * $userId's leaves and half days on the sheets from $from ("Y-m-d") on,
+     * latest first, approved or not — each with its sheet (sheet).
+     *
+     * @return Collection<int, Attendance>
+     */
+    public static function timeOffSince(int $userId, string $from): Collection
+    {
+        return static::query()
+            ->select('attendances.*')
+            ->join('attendance_sheets', 'attendance_sheets.id', '=', 'attendances.attendance_sheet_id')
+            ->where('attendances.user_id', $userId)
+            ->whereIn('attendances.status', [self::ABSENT, self::HALF_DAY])
+            ->whereDate('attendance_sheets.date', '>=', $from)
+            ->orderByDesc('attendance_sheets.date')
+            ->with('sheet')
+            ->get();
+    }
+
+    /**
      * $userId's line on $date's sheet ("Y-m-d"), approved or not — what
      * Senior Operations has marked so far, which is enough to know who's on
      * leave today (User::dataEntryIdleness()). Null if there's none.
@@ -229,6 +318,60 @@ class Attendance extends Model
         }
 
         return self::HALVES[$this->half_off] ?? 'Half off';
+    }
+
+    /**
+     * What kind of leave this line is, as HR Executive reads it before
+     * approving: "Full-Day Leave", "Half-Day Leave – First Half" (the
+     * morning off), "Half-Day Leave – Second Half" (the afternoon) or
+     * "Half-Day Leave – Custom Time" — null for someone present.
+     */
+    public function leaveTypeLabel(): ?string
+    {
+        return match (true) {
+            $this->status === self::ABSENT => 'Full-Day Leave',
+            $this->status !== self::HALF_DAY => null,
+            $this->half_off === 'morning' => 'Half-Day Leave – First Half',
+            $this->half_off === 'afternoon' => 'Half-Day Leave – Second Half',
+            default => 'Half-Day Leave – Custom Time',
+        };
+    }
+
+    /**
+     * The hours this line has them off on $date ("Y-m-d", its sheet's day):
+     * their whole working day on a leave (Setting::weekOn(), their own
+     * week), the half or the custom time on a half day — null for someone
+     * present, or a leave on a day they don't work.
+     *
+     * @return array{start: string, end: string}|null
+     */
+    public function hoursOff(string $date): ?array
+    {
+        if ($this->status !== self::ABSENT) {
+            return $this->timeOff();
+        }
+
+        $day = Setting::weekOn($date, $this->user_id)[strtolower(CarbonImmutable::parse($date)->format('l'))] ?? ['working' => false];
+
+        return $day['working'] ? ['start' => $day['start'], 'end' => $day['end']] : null;
+    }
+
+    /**
+     * How much of their working time this line has them off on $date
+     * ("Y-m-d", its sheet's day), in their own hours with lunch left out:
+     * the whole working day on a leave, the half's (or custom time's)
+     * working part on a half day — 0 for someone present.
+     */
+    public function workingSecondsOff(string $date): int
+    {
+        $dayStart = CarbonImmutable::parse($date, Setting::timezone())->startOfDay();
+        $dayEnd = $dayStart->addDay();
+
+        return match (true) {
+            $this->status === self::ABSENT => Setting::workingSecondsBetween($dayStart, $dayEnd, $this->user_id),
+            ($off = $this->timeOff()) !== null => Setting::workingSecondsInTimeOff($dayStart, $dayEnd, $date, $off, $this->user_id),
+            default => 0,
+        };
     }
 
     /**

@@ -24,7 +24,7 @@ use Illuminate\View\View;
  * Admin and Senior Operations (User::canManageAttendance()); each submitted
  * one goes to HR Executive, who approves it or returns it to be corrected
  * (User::canApproveAttendance()). A person's time only counts on a day whose
- * approved sheet has them present.
+ * approved sheet has them present. Each sheet has its own page too (show()).
  */
 class AttendanceController extends Controller
 {
@@ -48,19 +48,57 @@ class AttendanceController extends Controller
         // One sheet a day: every day that has one, so the popup can turn a
         // second away before it's filled in.
         $sheetDates = AttendanceSheet::query()->pluck('date')->map(fn ($date) => $date->toDateString())->all();
+        $sheets = AttendanceSheet::query()
+            ->with(['attendances.user', 'createdBy', 'updatedBy', 'approvedBy', 'returnedBy'])
+            ->latest('date')
+            ->paginate(self::PER_PAGE);
+        $people = AttendanceSheet::people();
 
         return view('admin.attendance.index', [
-            'sheets' => AttendanceSheet::query()
-                ->with(['attendances.user', 'createdBy', 'updatedBy', 'approvedBy', 'returnedBy'])
-                ->latest('date')
-                ->paginate(self::PER_PAGE),
-            'people' => AttendanceSheet::people(),
+            'sheets' => $sheets,
+            // The time off of everyone off on these sheets, and of everyone
+            // in the sheet popup, for the hover on their name.
+            'timeOff' => Attendance::timeOffTally($sheets->getCollection()->flatMap->attendances
+                ->whereIn('status', [Attendance::ABSENT, Attendance::HALF_DAY])
+                ->pluck('user_id')
+                ->merge($people->pluck('id'))),
+            'people' => $people,
             'missingDays' => $missingDays,
             'sheetDates' => $sheetDates,
             // What New attendance sheet opens on: the newest working day still
             // without one, else today if it hasn't one — none once it has.
             'newSheetDate' => $missingDays[0] ?? (in_array($today, $sheetDates, true) ? null : $today),
             'today' => $today,
+            'since' => Setting::attendanceSince(),
+        ]);
+    }
+
+    /**
+     * One sheet's own page: everyone on it — their role, their mark and any
+     * note — who submitted it and last edited it, and where HR Executive's
+     * review stands, with the sheets either side of it. Approve, Return and
+     * Edit from here come back here.
+     */
+    public function show(Request $request, AttendanceSheet $sheet): View
+    {
+        abort_unless($request->user()->canViewAttendance(), 403, 'Only Admin, Senior Operations and HR Executive see the attendance sheets.');
+
+        $sheet->load(['attendances.user.roles', 'createdBy', 'updatedBy', 'approvedBy', 'returnedBy']);
+        $date = $sheet->date->toDateString();
+        $people = AttendanceSheet::people();
+
+        return view('admin.attendance.show', [
+            'sheet' => $sheet,
+            'lines' => $sheet->attendances->sortBy(fn (Attendance $line) => $line->user?->name)->values(),
+            // Everyone's time off — on the sheet, and in the Edit popup — for
+            // the hover on their name.
+            'timeOff' => Attendance::timeOffTally($sheet->attendances->pluck('user_id')->merge($people->pluck('id'))),
+            'previousSheet' => AttendanceSheet::query()->whereDate('date', '<', $date)->latest('date')->first(['id', 'date']),
+            'nextSheet' => AttendanceSheet::query()->whereDate('date', '>', $date)->oldest('date')->first(['id', 'date']),
+            // For the Edit popup.
+            'people' => $people,
+            'sheetDates' => AttendanceSheet::query()->pluck('date')->map(fn ($day) => $day->toDateString())->all(),
+            'today' => Setting::today(),
             'since' => Setting::attendanceSince(),
         ]);
     }
@@ -107,7 +145,7 @@ class AttendanceController extends Controller
             return back()->withInput()->withErrors(['date' => self::ONE_A_DAY], 'attendance');
         }
 
-        return $this->backToList($sheet, $validated['attendance']);
+        return $this->backToList($request, $sheet, $validated['attendance']);
     }
 
     /**
@@ -129,7 +167,7 @@ class AttendanceController extends Controller
             $this->saveMarks($sheet, $validated['attendance']);
         });
 
-        return $this->backToList($sheet, $validated['attendance']);
+        return $this->backToList($request, $sheet, $validated['attendance']);
     }
 
     /**
@@ -143,7 +181,7 @@ class AttendanceController extends Controller
 
         $sheet->approve($request->user());
 
-        return redirect()->route('admin.attendance.index')
+        return $this->backFrom($request, $sheet)
             ->with('status', "Attendance for {$this->dayLabel($sheet)} approved — it counts now.");
     }
 
@@ -164,7 +202,7 @@ class AttendanceController extends Controller
 
         $sheet->sendBack($request->user(), $validated['reason']);
 
-        return redirect()->route('admin.attendance.index')
+        return $this->backFrom($request, $sheet)
             ->with('status', "Attendance for {$this->dayLabel($sheet)} returned to Senior Operations.");
     }
 
@@ -291,19 +329,31 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Back to the list, with how the day came out.
+     * Back to where the sheet was saved from (backFrom()), with how the day
+     * came out.
      *
      * @param  array<int|string, array{status: string}>  $marks
      */
-    private function backToList(AttendanceSheet $sheet, array $marks): RedirectResponse
+    private function backToList(Request $request, AttendanceSheet $sheet, array $marks): RedirectResponse
     {
         $absent = collect($marks)->where('status', Attendance::ABSENT)->count();
         $halfDays = collect($marks)->where('status', Attendance::HALF_DAY)->count();
         $present = count($marks) - $absent - $halfDays;
         $halfDayNote = $halfDays > 0 ? " {$halfDays} on a half day," : '';
 
-        return redirect()->route('admin.attendance.index')
+        return $this->backFrom($request, $sheet)
             ->with('status', "Attendance saved for {$this->dayLabel($sheet)} — {$present} present,{$halfDayNote} {$absent} on leave. Sent to HR Executive for approval.");
+    }
+
+    /**
+     * Back to where something was done to $sheet from: its own page
+     * (return_to "show"), or the list.
+     */
+    private function backFrom(Request $request, AttendanceSheet $sheet): RedirectResponse
+    {
+        return $request->input('return_to') === 'show'
+            ? redirect()->route('admin.attendance.show', $sheet)
+            : redirect()->route('admin.attendance.index');
     }
 
     /**
