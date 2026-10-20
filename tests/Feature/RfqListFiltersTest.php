@@ -161,11 +161,10 @@ it('narrows both of Data Entry\'s tabs, and what they count', function () {
 
     $response = test()->actingAs($dataEntry)
         ->get(route('admin.rfqs.index', ['status' => 'Pending', 'range' => 'today']))
-        ->assertOk()
-        ->assertSee('Fresh handover')
-        ->assertDontSee('Old handover');
+        ->assertOk();
 
-    expect($response->viewData('dataEntryCounts'))->toBe(['ready' => 1, 'completed' => 0]);
+    expect(pageMain($response))->toContain('Fresh handover')->not->toContain('Old handover')
+        ->and($response->viewData('dataEntryCounts'))->toBe(['ready' => 1, 'completed' => 0]);
 });
 
 // ---- priority --------------------------------------------------------------

@@ -21,6 +21,15 @@ use Illuminate\Support\Facades\Storage;
 final class RfqDataEraser
 {
     /**
+     * Messages aren't RFQ data even with an rfq_id (a task message's link,
+     * App\TaskMessages): only those about an RFQ go — see clear() — never
+     * what people wrote each other.
+     *
+     * @var array<int, string>
+     */
+    private const KEPT_TABLES = ['private_messages'];
+
+    /**
      * Every table holding RFQ data — the ones linked by rfq_id first, the
      * rfqs table itself last.
      *
@@ -29,7 +38,7 @@ final class RfqDataEraser
     public static function tables(): array
     {
         $linked = collect(BackupManager::databaseTables())
-            ->reject(fn (string $table): bool => $table === 'rfqs')
+            ->reject(fn (string $table): bool => $table === 'rfqs' || in_array($table, self::KEPT_TABLES, true))
             ->filter(fn (string $table): bool => Schema::hasColumn($table, 'rfq_id'))
             ->sort()
             ->values()
@@ -68,7 +77,7 @@ final class RfqDataEraser
 
         Storage::disk(RfqCommentAttachment::DISK)->deleteDirectory('rfq-attachments');
         DB::table('notifications')->whereIn('type', [DataEntryAssigned::class, DataEntryPaused::class, LineItemsDiscrepancy::class])->delete();
-        DB::table('private_messages')->whereNotNull('rfq_comment_id')->delete();
+        DB::table('private_messages')->where(fn ($messages) => $messages->whereNotNull('rfq_comment_id')->orWhereNotNull('rfq_id'))->delete();
         LiveVersion::bump();
 
         return $counts;

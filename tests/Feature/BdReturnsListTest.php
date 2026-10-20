@@ -48,14 +48,14 @@ it('shows the empty state until a reviewer sends something back, then lists it w
 
     // Not on Business Development's own Pending or Ready to Close lists —
     // Returns is its own lens, same as Sourcing's.
-    test()->actingAs($people['bd'])
+    expect(pageMain(test()->actingAs($people['bd'])
         ->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'closing']))
-        ->assertOk()->assertDontSee('RFQ2001');
+        ->assertOk()))->not->toContain('RFQ2001');
 
     // Sourcing has nothing to do with it any more — it's unassigned again.
-    test()->actingAs($people['sourcing'])
+    expect(pageMain(test()->actingAs($people['sourcing'])
         ->get(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->assertOk()->assertDontSee('RFQ2001');
+        ->assertOk()))->not->toContain('RFQ2001');
 });
 
 it('counts Business Development\'s Returns badge, on their own sidebar and Admin\'s grouped one', function () {

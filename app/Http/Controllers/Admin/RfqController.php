@@ -1061,7 +1061,7 @@ class RfqController extends Controller implements HasMiddleware
                 $rfq->planSplit($totalParts);
             }
 
-            $rfq->assignSourcingParts($assignments->all());
+            $rfq->assignSourcingParts($assignments->all(), $user);
 
             if (! $rfq->operations_assigned_by) {
                 $rfq->update([
@@ -1304,7 +1304,7 @@ class RfqController extends Controller implements HasMiddleware
         $user = $this->doneBy($request, 'Senior Operations');
 
         DB::transaction(function () use ($rfq, $holders, $user) {
-            $rfq->assignSourcingParts(array_map(fn (User $holder) => $holder->id, $holders));
+            $rfq->assignSourcingParts(array_map(fn (User $holder) => $holder->id, $holders), $user);
 
             if (! $rfq->operations_assigned_by) {
                 $rfq->update([

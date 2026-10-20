@@ -68,3 +68,14 @@ Change a definition here, not in a view, so all four reports stay consistent.
 
 ## Roles are looked up by name: HR Manager is now HR Executive
 Since 2026-10-19, the HR role is "HR Executive" (formerly HR Manager). The migration rename_hr_manager_role_to_hr_executive renames the role, or folds HR Manager into an existing HR Executive, and older migrations still say HR Manager as history. Access is checked by role name (hasRole, hasAnyRole, User::*_ROLES constants, Rfq::WORKFLOW_ROLES), so renaming a role on the Roles page silently removes its access everywhere. That happened here: the role was renamed in the UI before the code was. A role rename needs a code change and a migration, not only the Roles page.
+
+## Work given to someone by name also goes to their Messages (App\TaskMessages)
+Since 2026-10-21, at the client's request, every task that reaches a specific person is also sent as a PrivateMessage from whoever did it, with private_messages.rfq_id linking back to the RFQ. The message appears in their Messages, in their bell, and as a pop-up. The Rfq workflow methods send it themselves:
+- assignSourcingParts($parts, $by): the controller must pass $by, or nobody is told.
+- completeSourcingPart: to the named Data Entry person, or to all of Data Entry when it's left to anyone.
+- completeDataEntryPart: to the Sourcing member, to finalize.
+- returnSourcingPart and returnToDataEntry.
+- rejectToStage and rejectPartToStage, through peopleAtStage(). A target of sourcing is told once, via returnSourcingPart.
+- replaceSourcingPart: to both the new and the old member.
+- forwardBack.
+A new path that hands work to a person should call TaskMessages::send(). It is never sent to the actor or to deactivated users. Because private_messages now has an rfq_id, RfqDataEraser::KEPT_TABLES excludes it from truncation. Only RFQ-linked messages are deleted, so never drop that exclusion, or Clear RFQ data would wipe everyone's personal messages.

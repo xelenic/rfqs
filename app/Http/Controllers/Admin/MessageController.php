@@ -69,7 +69,7 @@ class MessageController extends Controller
 
         return view('admin.messages.show', [
             'other' => $user,
-            'messages' => PrivateMessage::query()->between($me, $user)->with('rfqComment.rfq')->oldest('id')->get(),
+            'messages' => PrivateMessage::query()->between($me, $user)->with(['rfq', 'rfqComment.rfq'])->oldest('id')->get(),
         ]);
     }
 

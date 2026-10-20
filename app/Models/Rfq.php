@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\TaskMessages;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
@@ -1402,10 +1403,11 @@ class Rfq extends Model
      *
      * @param  array<int|string, int|string|null>  $userIdsByPart
      */
-    public function assignSourcingParts(array $userIdsByPart): void
+    public function assignSourcingParts(array $userIdsByPart, ?User $by = null): void
     {
         $heldParts = $this->assignees->pluck('pivot.part_number');
         $total = $this->splitTotal();
+        $given = [];
 
         foreach ($userIdsByPart as $part => $userId) {
             $part = (int) $part;
@@ -1416,11 +1418,18 @@ class Rfq extends Model
 
             $this->assignees()->attach($userId, ['part_number' => $part]);
             $heldParts->push($part);
+            $given[(int) $userId][] = $part;
         }
 
         $this->load('assignees');
 
         $this->syncSteps();
+
+        // Each member hears of the parts that are newly theirs, from whoever assigned them.
+        foreach ($given as $userId => $parts) {
+            TaskMessages::send($this, $by, [$this->assignees->firstWhere('id', $userId)],
+                "Assigned you {$this->partsLabel($parts)} in Sourcing".($this->priority_level ? " ({$this->priority_level} priority)" : ''));
+        }
     }
 
     /**
@@ -1477,9 +1486,12 @@ class Rfq extends Model
         $this->load('assignees');
         $this->unsetRelation('returns');
 
-        $this->postActionComment($by, 'reassigned', trim("Sourcing replaced: from {$from->name} to {$to->name}. ".($reason ?? '')), $this->partContext($part));
+        $comment = $this->postActionComment($by, 'reassigned', trim("Sourcing replaced: from {$from->name} to {$to->name}. ".($reason ?? '')), $this->partContext($part));
 
         $this->syncSteps();
+
+        TaskMessages::send($this, $by, [$to], "Gave you {$this->partNumberLabel($part)} in Sourcing — it was {$from->name}'s", $reason, $comment);
+        TaskMessages::send($this, $by, [$from], "Gave {$this->partNumberLabel($part)} to {$to->name} — it's no longer yours", $reason, $comment);
     }
 
     /**
@@ -1517,11 +1529,11 @@ class Rfq extends Model
         // assignee's own, so Data Entry reads it with everything else —
         // marked as a completion, naming the part on a split, since a thread
         // covers the whole RFQ, and whom in Data Entry it went to.
-        if (filled($comment)) {
-            $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part)
+        $posted = filled($comment)
+            ? $this->postActionComment($assignee, 'sourcing_completed', $comment, $this->partContext($part)
                 + ($dataEntry ? ['assigned_to' => $dataEntry->name] : [])
-                + ($lineItems !== null ? ['line_items' => $lineItems] : []));
-        }
+                + ($lineItems !== null ? ['line_items' => $lineItems] : []))
+            : null;
 
         if ($this->allSourcingPartsCompleted() && ! $this->isWithDataEntry()) {
             $this->update([
@@ -1531,6 +1543,14 @@ class Rfq extends Model
         }
 
         $this->syncSteps();
+
+        // Whom in Data Entry it's for hears of it — everyone there, when it's anyone's.
+        $toAdd = $lineItems !== null ? " ({$lineItems} line items to add)" : '';
+        TaskMessages::send($this, $assignee, $dataEntry !== null ? [$dataEntry] : User::query()->holdingRole('Data Entry')->get(),
+            $dataEntry !== null
+                ? "Assigned you {$this->partNumberLabel($part)} for Data Entry{$toAdd}"
+                : "Assigned {$this->partNumberLabel($part)} to Data Entry — anyone there can start it{$toAdd}",
+            $comment, $posted);
     }
 
     /**
@@ -1619,9 +1639,11 @@ class Rfq extends Model
             ]);
         }
 
-        $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]);
+        $comment = $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]);
 
         $this->syncSteps();
+
+        TaskMessages::send($this, $returnedBy, [$assignee], "Returned {$this->partNumberLabel($part)} to you in Sourcing", $reason, $comment);
     }
 
     /**
@@ -1758,10 +1780,12 @@ class Rfq extends Model
         // split — which, since a thread covers the whole RFQ. The line items
         // Sourcing gave them to add go with it when the count differs, so the
         // thread keeps the discrepancy (RfqAssignment::lineItemsDiscrepancy()).
+        $posted = null;
+
         if (filled($comment)) {
             $toAdd = RfqAssignment::lineItemsDiscrepancyBetween($entries, $assignee->pivot->line_items_to_add) !== null ? ['to_add' => $assignee->pivot->line_items_to_add] : [];
 
-            $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name] + ($entries !== null ? ['entries' => $entries] + $toAdd : []));
+            $posted = $this->postActionComment($completedBy, 'data_entry_completed', $comment, $this->partContext($part) + ['who' => $assignee->name] + ($entries !== null ? ['entries' => $entries] + $toAdd : []));
         }
 
         if ($this->allDataEntryPartsCompleted()) {
@@ -1772,6 +1796,10 @@ class Rfq extends Model
         }
 
         $this->syncSteps();
+
+        // Back with its Sourcing member, to finalize.
+        TaskMessages::send($this, $completedBy, [$assignee],
+            "Sent {$this->partNumberLabel($part)} to you to finalize".($entries !== null ? " ({$entries} line items added)" : ''), $comment, $posted);
     }
 
     /**
@@ -1840,6 +1868,8 @@ class Rfq extends Model
         }
 
         $assignee = $this->assigneeForPart($part);
+        // Whoever did its Data Entry — it's back with them.
+        $dataEntry = $this->dataEntryPeopleOf(collect([$assignee]));
 
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
             'data_entry_completed_at' => null,
@@ -1861,9 +1891,11 @@ class Rfq extends Model
             ]);
         }
 
-        $this->postActionComment($assignee, 'returned_to_data_entry', $reason, $this->partContext($part));
+        $comment = $this->postActionComment($assignee, 'returned_to_data_entry', $reason, $this->partContext($part));
 
         $this->syncSteps();
+
+        TaskMessages::send($this, $assignee, $dataEntry, "Returned {$this->partNumberLabel($part)} to you in Data Entry", $reason, $comment);
     }
 
     /**
@@ -2253,6 +2285,10 @@ class Rfq extends Model
      */
     public function rejectToStage(string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
     {
+        // Who it's going back to, as they are before it goes — Sourcing hear
+        // of it part by part (returnSourcingPart()).
+        $tell = $targetStage === 'sourcing' ? collect() : $this->peopleAtStage($targetStage);
+
         $this->recordReturn($fromStage, $targetStage, $rejectedBy);
 
         $columns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
@@ -2299,9 +2335,11 @@ class Rfq extends Model
             }
         }
 
-        $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
+        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
 
         $this->syncSteps();
+
+        TaskMessages::send($this, $rejectedBy, $tell, "Sent {$this->rfq_number} back to you — ".self::stageLabel($targetStage), $reason, $comment);
     }
 
     /**
@@ -2326,6 +2364,10 @@ class Rfq extends Model
      */
     public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
     {
+        // Who it's going back to, as they are before it goes — Sourcing hear
+        // of it from returnSourcingPart().
+        $tell = $targetStage === 'sourcing' ? collect() : $this->peopleAtStage($targetStage, $part);
+
         if ($this->assigneeForPart($part)) {
             $this->recordReturn($fromStage, $targetStage, $rejectedBy, $part);
         }
@@ -2384,9 +2426,11 @@ class Rfq extends Model
             'stage' => $this->stageEveryPartHasReached(),
         ]);
 
-        $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
+        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
 
         $this->syncSteps();
+
+        TaskMessages::send($this, $rejectedBy, $tell, "Sent {$this->partNumberLabel($part)} back to you — ".self::stageLabel($targetStage), $reason, $comment);
     }
 
     /**
@@ -2565,10 +2609,15 @@ class Rfq extends Model
         $skipped = collect($first->skippedStages())->map(fn (string $stage) => self::stageLabel($stage))->join(', ', ' and ');
         $context = $returns->count() === 1 && $this->isSplit() ? $this->partContext($first->part_number) : [];
 
-        $this->postActionComment($by, 'forwarded_back', 'Sent straight back to '.self::stageLabel($first->from_stage)." — skipping {$skipped}.", ['stage' => self::stageLabel($first->from_stage)] + $context);
+        $comment = $this->postActionComment($by, 'forwarded_back', 'Sent straight back to '.self::stageLabel($first->from_stage)." — skipping {$skipped}.", ['stage' => self::stageLabel($first->from_stage)] + $context);
 
         $this->unsetRelation('returns');
         $this->syncSteps();
+
+        // Back with whoever sent it back.
+        $part = $returns->count() === 1 ? $first->part_number : null;
+        TaskMessages::send($this, $by, $this->peopleAtStage($first->from_stage, $part),
+            'Sent '.($part !== null ? $this->partNumberLabel($part) : $this->rfq_number).' straight back to you — '.self::stageLabel($first->from_stage), "Skipped {$skipped}.", $comment);
     }
 
     /**
@@ -3336,15 +3385,69 @@ class Rfq extends Model
      *
      * @param  array<string, mixed>  $meta
      */
-    private function postActionComment(User $author, string $action, string $text, array $meta = []): void
+    private function postActionComment(User $author, string $action, string $text, array $meta = []): RfqComment
     {
-        $this->comments()->create([
+        $comment = $this->comments()->create([
             'user_id' => $author->id,
             'action' => $action,
             'body' => trim($text),
             'meta' => $meta === [] ? null : $meta,
         ]);
         $this->load(['comments.author', 'comments.replies.author']);
+
+        return $comment;
+    }
+
+    /**
+     * Who works $stage on this RFQ — for $part, or every part still open —
+     * and so whom something sent there is for (App\TaskMessages): its
+     * creator for Business Development; whoever's routing it for Senior
+     * Operations, else all of them; the part's member for Sourcing; whoever
+     * did (or is doing, or was given) its Data Entry, else all of Data
+     * Entry; and everyone in the role for the Head of Business Development,
+     * GM Assistant and the General Manager. Active people only.
+     *
+     * @return Collection<int, User>
+     */
+    public function peopleAtStage(string $stage, ?int $part = null): Collection
+    {
+        $parts = $this->assignees->filter(fn (User $assignee) => $part !== null
+            ? $assignee->pivot->part_number === $part
+            : ! $assignee->pivot->isBdClosed() && ! $assignee->pivot->isCancelled());
+
+        $people = match ($stage) {
+            'business_development', 'bd_closing' => collect([$this->creator]),
+            'operations', 'senior_ops_review' => $this->operationsAssignee !== null
+                ? collect([$this->operationsAssignee])
+                : User::query()->holdingRole('Senior Operations')->get(),
+            'sourcing', 'finalize' => $parts,
+            'data_entry' => $this->dataEntryPeopleOf($parts),
+            default => isset(self::RETURN_TARGET_ROLES[$stage])
+                ? User::query()->holdingRole(self::RETURN_TARGET_ROLES[$stage])->get()
+                : collect(),
+        };
+
+        return collect($people)->filter(fn (?User $person) => $person !== null && ! $person->isDeactivated())->unique('id')->values();
+    }
+
+    /**
+     * Whoever did, is doing, or was given the Data Entry of $parts — else
+     * everyone in Data Entry.
+     *
+     * @param  Collection<int, User>  $parts
+     * @return Collection<int, User>
+     */
+    private function dataEntryPeopleOf(Collection $parts): Collection
+    {
+        $ids = $parts->map(fn (User $assignee) => $assignee->pivot->data_entry_completed_by
+            ?? $assignee->pivot->data_entry_started_by
+            ?? $assignee->pivot->data_entry_assigned_to)
+            ->filter()
+            ->unique();
+
+        return $ids->isNotEmpty()
+            ? User::query()->whereKey($ids->all())->get()
+            : User::query()->holdingRole('Data Entry')->get();
     }
 
     /**

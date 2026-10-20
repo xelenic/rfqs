@@ -10,10 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A private message from one user to another — sent from the "Message"
- * button on a person's hover card (see layouts/_user_card.blade.php), or
- * for them by a comment @mentioning them on a closed RFQ (rfq_comment_id,
- * RfqComment::messageMentionedUsers()) — and read in Messages. Only its
- * sender and recipient can see it.
+ * button on a person's hover card (see layouts/_user_card.blade.php), for
+ * them by a comment @mentioning them on an RFQ (rfq_comment_id,
+ * RfqComment::messageMentionedUsers()), or about a task given to them —
+ * a part assigned to them, sent back to them (rfq_id, App\TaskMessages) —
+ * and read in Messages. Only its sender and recipient can see it.
  */
 class PrivateMessage extends Model
 {
@@ -29,6 +30,7 @@ class PrivateMessage extends Model
         'sender_id',
         'recipient_id',
         'rfq_comment_id',
+        'rfq_id',
         'body',
     ];
 
@@ -53,12 +55,29 @@ class PrivateMessage extends Model
     }
 
     /**
-     * The comment on a closed RFQ that @mentioned the recipient, when that's
-     * what this message was sent for (RfqComment::messageMentionedUsers()).
+     * The comment that @mentioned the recipient, or that went with the task
+     * the message is about, when there was one.
      */
     public function rfqComment(): BelongsTo
     {
         return $this->belongsTo(RfqComment::class);
+    }
+
+    /**
+     * The RFQ a task message is about (App\TaskMessages).
+     */
+    public function rfq(): BelongsTo
+    {
+        return $this->belongsTo(Rfq::class);
+    }
+
+    /**
+     * The RFQ this message leads back to: the one its task is about, or the
+     * one its comment is on — null for a message written in Messages.
+     */
+    public function linkedRfq(): ?Rfq
+    {
+        return $this->rfq ?? $this->rfqComment?->rfq;
     }
 
     /**

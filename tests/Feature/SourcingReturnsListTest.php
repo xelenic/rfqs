@@ -55,7 +55,7 @@ function rileysWork(): array
 it('leaves the parts Data Entry sent back off My Pending RFQs — and those assigned to Data Entry', function () {
     ['riley' => $riley] = rileysWork();
 
-    $html = test()->actingAs($riley)->get(myPendingUrl())->assertOk()->getContent();
+    $html = pageMain(test()->actingAs($riley)->get(myPendingUrl())->assertOk());
     $todo = Str::betweenFirst($html, 'id="rfq-sourcing-todo"', 'id="rfq-sourcing-with-de"');
 
     // To do: only the part still in progress — the one assigned to Data

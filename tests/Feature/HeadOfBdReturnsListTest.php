@@ -83,11 +83,10 @@ it('lists it only on Returns — not on their Review page, or in its count', fun
     expect(Rfq::headOfBdReviewCount())->toBe(1)
         ->and(Rfq::queueCounts()['head_of_bd'])->toBe(1);
 
-    test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    $review = test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('<title>Review', false)
-        ->assertSee('RFQ3001')
-        ->assertDontSee('RFQ2001')
         ->assertSee('title="1 awaiting your review"', false);
+    expect(pageMain($review))->toContain('RFQ3001')->not->toContain('RFQ2001');
 
     test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()
         ->assertSee('RFQ2001')
@@ -105,8 +104,8 @@ it('moves on to GM Assistant when approved from Returns, and off the list', func
         ->assertRedirect(headOfBdReturnsUrl());
 
     expect($rfq->refresh()->stage)->toBe('gm_assistant')
-        ->and(Rfq::headOfBdReturnsCount())->toBe(0);
-    test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()->assertDontSee('RFQ2001');
+        ->and(Rfq::headOfBdReturnsCount())->toBe(0)
+        ->and(pageMain(test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()))->not->toContain('RFQ2001');
 });
 
 it('leaves out what the General Manager sends back to anyone else', function (string $target) {

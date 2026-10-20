@@ -68,8 +68,8 @@ it('lists an RFQ sent back to their assignment step with who, why, and Assign So
         ->patch(route('admin.rfqs.assign', $rfq), ['assignments' => [1 => $riley->id]])
         ->assertSessionHasNoErrors();
 
-    expect(Rfq::seniorOpsReturnsCount())->toBe(0);
-    test()->actingAs($ops)->get(opsReturnsUrl())->assertOk()->assertDontSee('RFQ2001');
+    expect(Rfq::seniorOpsReturnsCount())->toBe(0)
+        ->and(pageMain(test()->actingAs($ops)->get(opsReturnsUrl())->assertOk()))->not->toContain('RFQ2001');
 });
 
 it('lists an RFQ sent back to their second review with a link to Review — until they approve it again', function () {
@@ -87,8 +87,8 @@ it('lists an RFQ sent back to their second review with a link to Review — unti
 
     $rfq->refresh()->completeSeniorOpsReview($ops);
 
-    expect(Rfq::seniorOpsReturnsCount())->toBe(0);
-    test()->actingAs($ops)->get(opsReturnsUrl())->assertOk()->assertDontSee('RFQ2001');
+    expect(Rfq::seniorOpsReturnsCount())->toBe(0)
+        ->and(pageMain(test()->actingAs($ops)->get(opsReturnsUrl())->assertOk()))->not->toContain('RFQ2001');
 });
 
 it('leaves out what\'s sent back to anyone else', function (string $target) {

@@ -3,6 +3,8 @@
 use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -124,4 +126,14 @@ function startGmAssistantOn(Rfq $rfq, int $part, ?User $by = null): Rfq
     $rfq->refresh()->startGmAssistantPart($part, $by ?? userWithRole('GM Assistant'));
 
     return $rfq->refresh();
+}
+
+/**
+ * A page's own content — its <main> — without the sidebar or the top bar,
+ * whose bell carries the viewer's messages: a task message names its RFQ
+ * (App\TaskMessages), so "not on this list" is asked of the list itself.
+ */
+function pageMain(TestResponse $response): string
+{
+    return Str::between($response->getContent(), 'id="live-main"', '</main>');
 }

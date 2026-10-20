@@ -9,7 +9,9 @@
 //   - the sidebar's counts, and the top bar's bell (alerts), always — and
 //     anything new in the bell pops up as a toast, counts in the tab's title,
 //     and (if they've let it) shows as a desktop notification while the tab's
-//     in the background, which keeps checking too, if less often;
+//     in the background, which keeps checking too, if less often. Whatever's
+//     unread that hasn't popped up yet in this browser pops up as a page
+//     opens, too — once — so nothing that arrived between pages is missed;
 //   - the page body (<main>), unless someone's in the middle of something in
 //     it (a dialog open, something typed, text selected), in which case the
 //     update waits — for the dialog to close, or for a click on the notice —
@@ -263,6 +265,7 @@
         showUnreadInTitle();
         syncDesktopAlertsButton();
         if (grew) arrived.slice(0, 3).forEach(announce);
+        remember(arrived.map(itemKey));
     }
 
     // A bell line, told apart by where it leads and what it says.
@@ -281,17 +284,66 @@
         document.title = unread > 0 ? '(' + unread + ') ' + baseTitle : baseTitle;
     }
 
+    // What's popped up already, in this browser, for whoever's signed in —
+    // so what's unread and not yet shown pops up as a page opens, and nothing
+    // twice. Without storage, only what arrives while a page is open does.
+    var bellEl = document.getElementById('notificationBell');
+    var announcedKey = bellEl && bellEl.dataset.user ? 'rfqms.announced.' + bellEl.dataset.user : null;
+
+    function announcedKeys() {
+        if (!announcedKey) return null;
+        try {
+            var keys = JSON.parse(window.localStorage.getItem(announcedKey) || '[]');
+            return Array.isArray(keys) ? keys : [];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function remember(keys) {
+        var known = announcedKeys();
+        if (known === null || !keys.length) return;
+        try {
+            window.localStorage.setItem(announcedKey, JSON.stringify(known.concat(keys).slice(-200)));
+        } catch (e) {
+            // Storage full or blocked — it may pop up again; nothing worse.
+        }
+    }
+
+    function announceUnseen() {
+        var known = announcedKeys();
+        if (known === null) return;
+
+        var unseen = Array.prototype.filter.call(document.querySelectorAll('#notificationBell .notification-item.is-unread'), function (item) {
+            return known.indexOf(itemKey(item)) === -1;
+        });
+        if (!unseen.length) return;
+
+        unseen.slice(0, 3).forEach(function (item) { showToast.apply(null, toastFor(item)); });
+        if (unseen.length > 3) {
+            showToast('And ' + (unseen.length - 3) + ' more unread', 'Open the bell at the top to see them all.', null, false);
+        }
+        remember(unseen.map(itemKey));
+    }
+
+    // A bell line as a toast: its heading, text, where it leads, and whether it's a message.
+    function toastFor(item) {
+        var textEl = item.querySelector('.notification-item-text');
+        var isMessage = item.classList.contains('is-message');
+
+        return [isMessage ? 'New message' : 'New alert', textEl ? textEl.textContent.trim() : 'Something new', item.getAttribute('href'), isMessage];
+    }
+
     // Something new in the bell — a message, an alert: a toast on the page,
     // and a desktop notification too while the tab's in the background (if
     // they've allowed them — the bell's "Desktop alerts").
     function announce(item) {
-        var textEl = item.querySelector('.notification-item-text');
-        var text = textEl ? textEl.textContent.trim() : 'Something new';
-        var isMessage = item.classList.contains('is-message');
-        var heading = isMessage ? 'New message' : 'New alert';
-        var url = item.getAttribute('href');
+        var toast = toastFor(item);
+        var heading = toast[0];
+        var text = toast[1];
+        var url = toast[2];
 
-        showToast(heading, text, url, isMessage);
+        showToast.apply(null, toast);
 
         if (document.hidden && window.Notification && Notification.permission === 'granted') {
             try {
@@ -327,7 +379,11 @@
         toast.querySelector('.bi').classList.add(isMessage ? 'bi-chat-dots-fill' : 'bi-bell-fill');
         toast.querySelector('strong').textContent = heading;
         toast.querySelector('.live-toast-text').textContent = text;
-        toast.querySelector('.live-toast-open').href = url;
+        if (url) {
+            toast.querySelector('.live-toast-open').href = url;
+        } else {
+            toast.querySelector('.live-toast-open').remove();
+        }
 
         var close = function () {
             toast.classList.add('is-leaving');
@@ -336,8 +392,8 @@
         toast.querySelector('.live-toast-close').addEventListener('click', close);
         holder.appendChild(toast);
 
-        // Long enough to read; kept while the pointer's on it.
-        var timer = setTimeout(close, 9000);
+        // Long enough to read — a message longer; kept while the pointer's on it.
+        var timer = setTimeout(close, isMessage ? 15000 : 12000);
         toast.addEventListener('mouseenter', function () { clearTimeout(timer); });
         toast.addEventListener('mouseleave', function () { timer = setTimeout(close, 4000); });
     }
@@ -616,5 +672,6 @@
 
     showUnreadInTitle();
     syncDesktopAlertsButton();
+    announceUnseen();
     schedule(INTERVAL);
 })();

@@ -239,11 +239,12 @@ it('rings the bell for Senior Operations — not for Data Entry, whose bell stay
         ->assertSee('<span class="notification-bell-count" title="1 unread">1</span>', false)
         ->assertSee('Morgan (Data Entry) hasn&#039;t started anything for 10m — 1 part is waiting.', false);
 
-    // Everyone has a bell, for their messages — Morgan's has no alert in it.
+    // Everyone has a bell, for their messages — Morgan's has no alert in it
+    // (only the hand-over's task message, App\TaskMessages).
     test()->actingAs($morgan)->get(route('admin.dashboard'))->assertOk()
         ->assertSee('id="notificationBell"', false)
-        ->assertDontSee('notification-bell-count', false)
         ->assertDontSee('hasn&#039;t started anything', false);
+    expect($morgan->notifications()->count())->toBe(0);
 
     $alert = $seniorOps->notifications()->sole();
     test()->actingAs($seniorOps)->get(route('admin.notifications.open', $alert->id))

@@ -7,11 +7,13 @@
     reads it. live.js keeps the count and the list up to date — popping up
     what's new as a toast, the count in the tab's title, and (once allowed,
     "Desktop alerts") a desktop notification while the tab's in the background.
+    Whatever's unread that they haven't been shown yet pops up as the page
+    opens too, once (data-user keys what this browser has shown them).
 --}}
 @php
     ['items' => $bellItems, 'unread' => $unreadCount] = auth()->user()->bellItems();
 @endphp
-<div class="dropdown notification-bell" id="notificationBell">
+<div class="dropdown notification-bell" id="notificationBell" data-user="{{ auth()->id() }}">
     <button type="button" class="notification-bell-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Alerts">
         <i class="bi {{ $unreadCount ? 'bi-bell-fill' : 'bi-bell' }}" aria-hidden="true"></i>
         <span class="visually-hidden">Alerts</span>

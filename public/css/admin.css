@@ -6718,15 +6718,16 @@ tr.is-deactivated > td:not(:last-child) {
 
 /* New messages and alerts as they arrive (live.js announce()): toasts in the
    bottom corner, newest last. */
+/* Top right, just under the top bar — where the bell is — so a new message or alert is seen. */
 .live-toasts {
   position: fixed;
+  top: 4.5rem;
   right: 1.25rem;
-  bottom: 1.25rem;
   z-index: 1090;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  width: min(380px, calc(100vw - 2rem));
+  width: min(420px, calc(100vw - 2rem));
 }
 
 .live-toast {
@@ -6767,11 +6768,15 @@ tr.is-deactivated > td:not(:last-child) {
   font-size: 0.85rem;
 }
 
+/* The whole of it, up to three lines. */
 .live-toast-text {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--rfq-text-muted);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .live-toast-open {
@@ -6786,7 +6791,7 @@ tr.is-deactivated > td:not(:last-child) {
 @keyframes live-toast-in {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateX(24px);
   }
 
   to {

@@ -36,10 +36,11 @@
                 <div class="message-bubble-row {{ $mine ? 'is-mine' : '' }}">
                     <div class="message-bubble">
                         <p class="mb-1" style="white-space: pre-line;">{{ $message->body }}</p>
-                        {{-- Sent for an @mention on an RFQ: the way back to it, for whoever can open it. --}}
-                        @if ($message->rfqComment?->rfq && $canOpenRfq($message->rfqComment->rfq))
-                            <a href="{{ route('admin.rfqs.show', $message->rfqComment->rfq) }}" class="message-rfq-link">
-                                <i class="bi bi-box-arrow-up-right"></i> Open {{ $message->rfqComment->rfq->rfq_number }}
+                        {{-- Sent for an @mention or a task on an RFQ: the way back to it, for whoever can open it. --}}
+                        @php $linkedRfq = $message->linkedRfq(); @endphp
+                        @if ($linkedRfq && $canOpenRfq($linkedRfq))
+                            <a href="{{ route('admin.rfqs.show', $linkedRfq) }}" class="message-rfq-link">
+                                <i class="bi bi-box-arrow-up-right"></i> Open {{ $linkedRfq->rfq_number }}
                             </a>
                         @endif
                         <div class="message-time">{{ $message->created_at->toBusinessTimezone()->format('M d, g:i A') }}</div>
