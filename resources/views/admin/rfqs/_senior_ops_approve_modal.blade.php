@@ -57,6 +57,7 @@
                                 <div class="form-text">Verified by you</div>
                             </div>
                         </div>
+                        @include('admin.rfqs._line_items_history')
                     </div>
                 </template>
 

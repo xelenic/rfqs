@@ -15,6 +15,8 @@
         'part' => $assignee->pivot->part_number,
         'label' => $rfq->partNumberLabel($assignee->pivot->part_number),
         'who' => $assignee->name,
+        // How the line items came about — shown under the counts (_line_items_history).
+        'history' => $rfq->lineItemsHistory($assignee->pivot->part_number),
     ] + $assignee->pivot->lineItemsCheck())->values();
     $approveLabel = isset($approvePart) ? $rfq->partNumberLabel((int) $approvePart) : $rfq->rfq_number;
 @endphp

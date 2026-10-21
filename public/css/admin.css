@@ -6996,6 +6996,127 @@ tr.is-deactivated > td:not(:last-child) {
 }
 
 /* ---------- Senior Operations' Approve: verify the line items (_senior_ops_approve_modal) ---------- */
+/* A part's line items as they've gone (_line_items_history): a line down
+   the side, a mark for each — Sourcing's in its blue, Data Entry's in its
+   orange, Senior Operations' green — who, when and what changed under each. */
+.line-items-history {
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--rfq-border);
+}
+
+.line-items-history > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--rfq-text-muted);
+}
+
+.line-items-history-count {
+  font-weight: 600;
+}
+
+.line-items-history-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0.6rem 0 0;
+  padding: 0 0.25rem 0 1.4rem;
+  list-style: none;
+}
+
+/* Each item's mark, and the line on from it to the next — inside the list,
+   so its scrolling doesn't clip them. */
+.line-items-history-item {
+  position: relative;
+  padding: 0 0 0.6rem;
+  font-size: 0.78rem;
+}
+
+.line-items-history-item::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 0.3rem;
+  left: -1.2rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--mark, var(--rfq-text-muted));
+  box-shadow: 0 0 0 2px var(--rfq-surface);
+}
+
+.line-items-history-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 0.6rem;
+  bottom: -0.3rem;
+  left: calc(-1.2rem + 0.3rem - 1px);
+  width: 2px;
+  background: var(--rfq-border);
+}
+
+.line-items-history-item.is-sourcing-completed,
+.line-items-history-item.is-returned-to-data-entry {
+  --mark: var(--rfq-role-sourcing);
+}
+
+.line-items-history-item.is-data-entry-completed,
+.line-items-history-item.is-returned-to-sourcing {
+  --mark: var(--rfq-role-data-entry);
+}
+
+.line-items-history-item.is-verified {
+  --mark: var(--rfq-success);
+}
+
+/* A stretch of work: hollow, and quieter. */
+.line-items-history-item.is-worked::before {
+  background: var(--rfq-surface);
+  box-shadow: inset 0 0 0 2px var(--rfq-text-muted);
+}
+
+.line-items-history-item.is-worked .line-items-history-title {
+  font-weight: 500;
+  color: var(--rfq-text-muted);
+}
+
+.line-items-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.line-items-history-title {
+  font-weight: 600;
+}
+
+.line-items-history-figure {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.line-items-history-meta {
+  color: var(--rfq-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.line-items-history-change {
+  font-weight: 600;
+  color: var(--rfq-decision-returned);
+}
+
+.line-items-history-change.is-ok {
+  color: var(--rfq-success);
+}
+
+.line-items-history-note {
+  color: var(--rfq-text-muted);
+  font-style: italic;
+}
+
 .line-items-check + .line-items-check {
   margin-top: 1rem;
   padding-top: 1rem;

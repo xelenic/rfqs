@@ -3541,6 +3541,160 @@ class Rfq extends Model
     }
 
     /**
+     * The actions whose comments carry, or bear on, a part's line items —
+     * what lineItemsHistory() reads: Sourcing's Assign to Data Entry (the
+     * line items to add), Data Entry's Send to Finalize (the line items
+     * added) and Return to Sourcing (added so far), and Sourcing's Return to
+     * Data Entry.
+     *
+     * @var array<int, string>
+     */
+    private const LINE_ITEMS_ACTIONS = ['sourcing_completed', 'data_entry_completed', 'returned_to_sourcing', 'returned_to_data_entry'];
+
+    /**
+     * $part's line items as they've gone, oldest first — for Senior
+     * Operations to see how the count came about as they verify it, and the
+     * Head of Business Development as they finalize it: each time Sourcing
+     * set the line items to add, each stretch Sourcing and Data Entry worked
+     * on it — sourcing it, entering it, checking it to finalize — (from when
+     * to when, and the working time), each time Data Entry
+     * sent it to finalize with the line items added — against what was
+     * asked, and what they'd sent before — or sent it back to Sourcing with
+     * those added so far, each time Sourcing returned it to Data Entry, and
+     * Senior Operations' verified count once there is one. Each with who,
+     * in which role, and any note, ready for the popup (admin.js).
+     *
+     * "tone" says whether a change is a difference ("off") or a match ("ok").
+     *
+     * @return array<int, array{kind: string, at: string, until: ?string, duration: ?string, who: string, role: string, title: string, count: ?int, change: ?string, tone: ?string, note: ?string}>
+     */
+    public function lineItemsHistory(int $part, ?CarbonInterface $now = null): array
+    {
+        $now ??= now();
+        $stamp = fn (?CarbonInterface $at) => $at?->toBusinessTimezone()->format('M d, Y g:i A');
+        $ofPart = fn (RfqComment $comment) => (int) ($comment->meta['part'] ?? 1) === $part;
+        $entries = [];
+
+        $comments = RfqComment::query()
+            ->where('rfq_id', $this->id)
+            ->whereNull('parent_id')
+            ->whereIn('action', self::LINE_ITEMS_ACTIONS)
+            ->with('author')
+            ->oldest()
+            ->oldest('id')
+            ->get()
+            ->filter($ofPart);
+
+        $stretches = RfqStep::query()
+            ->where('rfq_id', $this->id)
+            ->where('part_number', $part)
+            ->whereIn('step', ['sourcing', 'data_entry', 'finalize'])
+            ->oldest('started_at')
+            ->get();
+        $workers = User::query()->whereIn('id', $stretches->map(fn (RfqStep $stretch) => $stretch->workerId())->filter()->unique())->pluck('name', 'id');
+
+        foreach ($stretches as $stretch) {
+            $entries[] = ['sort' => $stretch->started_at, 'row' => [
+                'kind' => 'worked',
+                'at' => $stamp($stretch->started_at),
+                'until' => $stretch->ended_at !== null ? $stamp($stretch->ended_at) : 'now',
+                'duration' => Setting::durationLabel($stretch->workingSeconds($now)).' working time',
+                'who' => $workers[$stretch->workerId()] ?? ($stretch->step === 'data_entry' ? 'Data Entry' : 'Sourcing'),
+                'role' => $stretch->step === 'data_entry' ? 'Data Entry' : 'Sourcing',
+                'title' => match ($stretch->step) {
+                    'data_entry' => 'Worked on the data entry',
+                    'finalize' => 'Checked it to finalize',
+                    default => 'Worked on sourcing',
+                }.($stretch->resumed ? ' (after a stop)' : ''),
+                'count' => null,
+                'change' => null,
+                'tone' => null,
+                'note' => null,
+            ]];
+        }
+
+        $toAdd = null;
+        $added = null;
+        $count = fn (int $n) => number_format($n);
+
+        foreach ($comments as $comment) {
+            $meta = $comment->meta ?? [];
+            $row = [
+                'kind' => $comment->action,
+                'at' => $stamp($comment->created_at),
+                'until' => null,
+                'duration' => null,
+                'who' => $comment->author?->name ?? 'Someone',
+                'role' => in_array($comment->action, ['sourcing_completed', 'returned_to_data_entry'], true) ? 'Sourcing' : 'Data Entry',
+                'count' => null,
+                'change' => null,
+                'tone' => null,
+                'note' => filled($comment->body) ? Str::limit((string) $comment->body, 160) : null,
+            ];
+
+            switch ($comment->action) {
+                case 'sourcing_completed':
+                    $given = isset($meta['line_items']) ? (int) $meta['line_items'] : null;
+                    $row['title'] = 'Line items to add'.(isset($meta['assigned_to']) ? " — assigned to {$meta['assigned_to']}" : ' — assigned to Data Entry');
+                    $row['count'] = $given;
+                    $row['change'] = $given !== null && $toAdd !== null && $given !== $toAdd
+                        ? 'Was '.$count($toAdd).' — '.($given > $toAdd ? '+' : '−').$count(abs($given - $toAdd))
+                        : null;
+                    $row['tone'] = $row['change'] !== null ? 'off' : null;
+                    $toAdd = $given ?? $toAdd;
+                    break;
+
+                case 'data_entry_completed':
+                case 'returned_to_sourcing':
+                    $n = isset($meta['entries']) ? (int) $meta['entries'] : null;
+                    $sentBack = $comment->action === 'returned_to_sourcing';
+                    $row['title'] = $sentBack ? 'Line items added so far — returned to Sourcing' : 'Line items added — sent to finalize';
+                    $row['count'] = $n;
+                    $row['change'] = $n === null ? null : (collect([
+                        $toAdd !== null ? (RfqAssignment::lineItemsDiscrepancyText($n, $toAdd) ?? 'Matches the '.$count($toAdd).' requested') : null,
+                        $added !== null && $added !== $n ? 'was '.$count($added).' — '.($n > $added ? '+' : '−').$count(abs($n - $added)) : null,
+                    ])->filter()->map(fn (string $line) => Str::ucfirst($line))->join(' · ') ?: null);
+                    $row['tone'] = $n === null ? null
+                        : (($toAdd !== null && $n !== $toAdd) || ($added !== null && $n !== $added) ? 'off' : 'ok');
+                    $added = $n ?? $added;
+                    break;
+
+                default:
+                    $row['title'] = 'Returned to Data Entry';
+            }
+
+            $entries[] = ['sort' => $comment->created_at, 'row' => $row];
+        }
+
+        // Senior Operations' own count, once they've verified it.
+        $holder = $this->assigneeForPart($part)?->pivot;
+        if ($holder?->senior_ops_reviewed_at !== null && $holder->verified_line_items !== null) {
+            $entries[] = ['sort' => $holder->senior_ops_reviewed_at, 'row' => [
+                'kind' => 'verified',
+                'at' => $stamp($holder->senior_ops_reviewed_at),
+                'until' => null,
+                'duration' => null,
+                'who' => $holder->seniorOpsReviewedBy?->name ?? 'Senior Operations',
+                'role' => 'Senior Operations',
+                'title' => 'Actual line items — verified',
+                'count' => (int) $holder->verified_line_items,
+                'change' => $added !== null && $added !== (int) $holder->verified_line_items
+                    ? $count(abs((int) $holder->verified_line_items - $added)).((int) $holder->verified_line_items < $added ? ' fewer' : ' more').' than Data Entry added'
+                    : ($added !== null ? 'Matches what Data Entry added' : null),
+                'tone' => $added === null ? null : ($added !== (int) $holder->verified_line_items ? 'off' : 'ok'),
+                'note' => null,
+            ]];
+        }
+
+        // By when; an action before the stretch it set going, at the same moment.
+        return collect($entries)
+            ->sortBy(fn (array $entry) => [$entry['sort']->getTimestamp(), $entry['row']['kind'] === 'worked' ? 1 : 0])
+            ->pluck('row')
+            ->values()
+            ->all();
+    }
+
+    /**
      * Which part an action was about, for its comment's context — nothing
      * on an RFQ kept whole, where there's only the one.
      *

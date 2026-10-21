@@ -47,9 +47,10 @@ it('asks for the finalized line items when the Head approves — with the counts
         ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Actual Line Items', 'Finalized Line Items'])
         ->getContent();
 
-    expect(Str::betweenFirst($html, 'js-head-of-bd-approve"', '</button>'))
+    $button = Str::betweenFirst($html, 'js-head-of-bd-approve"', '</button>');
+    expect($button)
         ->toContain('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"')
-        ->toContain(e(json_encode([['part' => 1, 'label' => 'RFQ8801', 'who' => 'Riley Chen', 'verified' => 23, 'to_add' => 24, 'added' => 22, 'difference' => -2]])));
+        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8801', 'who' => 'Riley Chen', 'verified' => 23, 'to_add' => 24, 'added' => 22, 'difference' => -2]]);
 
     $part = Str::between($html, '<template id="headOfBdApprovePart">', '</template>');
     expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(3)

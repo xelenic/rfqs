@@ -1638,6 +1638,59 @@ function rfqmsBoot() {
 
         var lineItemsCount = function (value) { return value === null || value === undefined ? '—' : Number(value).toLocaleString(); };
 
+        // A part's line items as they've gone (_line_items_history,
+        // Rfq::lineItemsHistory()): each count, stretch of work and return —
+        // who, in which role, when (and till when), what changed, and why.
+        var fillLineItemsHistory = function (block, history) {
+            var list = block.querySelector('.js-li-history');
+            if (!list) return;
+
+            block.querySelector('.js-li-history-count').textContent = history.length ? '(' + history.length + ')' : '';
+            block.querySelector('.js-li-history-empty').classList.toggle('d-none', history.length > 0);
+
+            history.forEach(function (entry) {
+                var item = document.createElement('li');
+                item.className = 'line-items-history-item is-' + entry.kind.replace(/_/g, '-');
+
+                var head = document.createElement('div');
+                head.className = 'line-items-history-head';
+                var title = document.createElement('span');
+                title.className = 'line-items-history-title';
+                title.textContent = entry.title;
+                head.appendChild(title);
+                if (entry.count !== null && entry.count !== undefined) {
+                    var count = document.createElement('span');
+                    count.className = 'line-items-history-figure';
+                    count.textContent = Number(entry.count).toLocaleString() + (entry.count === 1 ? ' line item' : ' line items');
+                    head.appendChild(count);
+                }
+                item.appendChild(head);
+
+                var meta = document.createElement('div');
+                meta.className = 'line-items-history-meta';
+                meta.textContent = entry.who + ' · ' + entry.role + ' · ' + entry.at
+                    + (entry.until ? ' → ' + entry.until : '')
+                    + (entry.duration ? ' · ' + entry.duration : '');
+                item.appendChild(meta);
+
+                if (entry.change) {
+                    var change = document.createElement('div');
+                    change.className = 'line-items-history-change' + (entry.tone === 'ok' ? ' is-ok' : '');
+                    change.textContent = entry.change;
+                    item.appendChild(change);
+                }
+
+                if (entry.note) {
+                    var note = document.createElement('div');
+                    note.className = 'line-items-history-note';
+                    note.textContent = '\u201c' + entry.note + '\u201d';
+                    item.appendChild(note);
+                }
+
+                list.appendChild(item);
+            });
+        };
+
         document.addEventListener('show.bs.modal', function (event) {
             var modal = event.target;
             if (!modal || !modal.classList || !modal.classList.contains('js-line-items-modal')) return;
@@ -1690,6 +1743,7 @@ function rfqmsBoot() {
                 actual.id = id + '-count';
                 actual.name = modal.dataset.field + '[' + part.part + ']';
                 block.querySelector('[data-label-for="count"]').setAttribute('for', actual.id);
+                fillLineItemsHistory(block, part.history || []);
                 list.appendChild(block);
             });
         });

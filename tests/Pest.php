@@ -137,3 +137,20 @@ function pageMain(TestResponse $response): string
 {
     return Str::between($response->getContent(), 'id="live-main"', '</main>');
 }
+
+/**
+ * The parts a line items popup's button hands it (data-parts:
+ * _senior_ops_approve_button, _head_of_bd_approve_button) — the counts,
+ * without each part's history (Rfq::lineItemsHistory(), tested on its own).
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function popupParts(string $button): array
+{
+    preg_match('/data-parts="([^"]*)"/', $button, $match);
+
+    return array_map(
+        fn (array $part) => array_diff_key($part, ['history' => true]),
+        json_decode(html_entity_decode($match[1] ?? '[]', ENT_QUOTES), true) ?? [],
+    );
+}

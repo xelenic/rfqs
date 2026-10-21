@@ -58,6 +58,7 @@
                                 <div class="form-text">Finalized by you</div>
                             </div>
                         </div>
+                        @include('admin.rfqs._line_items_history')
                     </div>
                 </template>
 

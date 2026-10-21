@@ -49,7 +49,7 @@ it('opens a check of the line items from Approve, on the review list', function 
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.approve-senior-ops-part', $rfq).'"')
         ->toContain('data-part="1"')
-        ->toContain(e(json_encode([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2]])));
+        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2]]);
 
     // Only Actual Line Items is for them to fill in; the rest are read only, and not sent.
     $part = Str::between($html, '<template id="seniorOpsApprovePart">', '</template>');
@@ -108,12 +108,13 @@ it('asks for every part\'s count when approving the whole RFQ, from its page', f
     $html = test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('id="seniorOpsApproveModal"', false)
         ->getContent();
-    expect(Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>'))
+    $button = Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>');
+    expect($button)
         ->toContain('data-action="'.route('admin.rfqs.complete-senior-ops-review', $rfq).'"')
-        ->toContain(e(json_encode([
+        ->and(popupParts($button))->toBe([
             ['part' => 1, 'label' => 'RFQ8401-P1 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 10, 'difference' => 0],
             ['part' => 2, 'label' => 'RFQ8401-P2 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 11, 'difference' => 1],
-        ])));
+        ]);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.complete-senior-ops-review', $rfq), ['actual_line_items' => [1 => 10]])
         ->assertSessionHas('error', 'Enter the actual line items you verified on RFQ8401-P2 of P2.');

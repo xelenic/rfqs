@@ -85,3 +85,10 @@ Since 2026-10-21 Rfq::PRIORITIES holds seven levels, least pressing first: Trivi
 - Sort with orderByRaw(Rfq::priorityOrderSql($column)).
 - "Urgent" on the dashboards means URGENT_PRIORITIES (Critical + Urgent), via isUrgent(). The Critical monitor lists Critical, Urgent and High.
 - Each Setting::DEFAULT_*_TARGETS has all seven keys. Setting::targets() fills levels missing from older saved settings with their defaults, and the Settings target forms post all seven.
+
+## Rfq::lineItemsHistory() is built from action comments and step stretches
+Since 2026-10-21, Senior Operations' Verify line items popup and the Head of BD's Finalize popup show each part's line items history. The data is Rfq::lineItemsHistory($part), passed in the approve buttons' data-parts as `history`, drawn by _line_items_history and fillLineItemsHistory() in admin.js. It is assembled, not stored, from:
+- action comments: sourcing_completed (meta line_items), data_entry_completed and returned_to_sourcing (meta entries), returned_to_data_entry;
+- sourcing, data_entry and finalize rfq_steps stretches, with working time;
+- the part's verified_line_items.
+A part is matched by meta part, or 1 on a whole RFQ. When times tie, actions sort before the stretch they start. Each row carries a change against what was requested and the previous count, and tone (off/ok). A new action that sets or changes a line-item count must put it in its comment's meta, or the history won't show it. Tests compare the counts with popupParts(), which drops the history.
