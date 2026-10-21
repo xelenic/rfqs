@@ -23,7 +23,7 @@ class LineItemsDiscrepancy extends Notification
     /**
      * How it reads on the RFQ's timeline (Rfq::sentAlerts()), and its tone.
      */
-    public const TIMELINE_TITLE = 'Line items differ — alert sent';
+    public const TIMELINE_TITLE = 'Line item count mismatch — alert sent';
 
     public const TIMELINE_TONE = 'danger';
 
@@ -51,6 +51,39 @@ class LineItemsDiscrepancy extends Notification
     }
 
     /**
+     * How it reads: "RFQ1686 — Life Jackets: Visal Fernando added 3 line
+     * items, but Sourcing asked for 1 (2 more than requested)." — the part,
+     * the subject, who added how many, and how that differs from what
+     * Sourcing gave them to add.
+     */
+    public static function messageFor(string $part, string $subject, string $addedBy, int $added, int $toAdd): string
+    {
+        $addedItems = trans_choice('1 line item|:count line items', $added, ['count' => number_format($added)]);
+        $difference = number_format(abs($added - $toAdd)).($added < $toAdd ? ' fewer' : ' more').' than requested';
+
+        return "{$part} — {$subject}: {$addedBy} added {$addedItems}, but Sourcing asked for ".number_format($toAdd)." ({$difference}).";
+    }
+
+    /**
+     * What the RFQ's timeline says of it (Rfq::sentAlerts()): messageFor(),
+     * from the counts it was sent with — so one sent before its wording
+     * changed reads the same — or, without them, the message it was sent
+     * with.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function timelineDetail(array $data, string $recipients, ?Rfq $rfq = null): string
+    {
+        if ($rfq === null || ! isset($data['part'], $data['added'], $data['to_add'])) {
+            return (string) ($data['message'] ?? '');
+        }
+
+        $addedBy = isset($data['added_by']) ? User::query()->whereKey($data['added_by'])->value('name') : null;
+
+        return self::messageFor($rfq->partNumberLabel((int) $data['part']), $rfq->subject, $addedBy ?? 'Data Entry', (int) $data['added'], (int) $data['to_add']);
+    }
+
+    /**
      * Get the notification's delivery channels.
      *
      * @return array<int, string>
@@ -67,8 +100,6 @@ class LineItemsDiscrepancy extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        $added = trans_choice('1 line item|:count line items', $this->added, ['count' => number_format($this->added)]);
-
         return [
             'rfq_id' => $this->rfq->id,
             'part' => $this->part,
@@ -76,10 +107,10 @@ class LineItemsDiscrepancy extends Notification
             'to_add' => $this->toAdd,
             'discrepancy' => $this->added - $this->toAdd,
             'added_by' => $this->addedBy->id,
-            'message' => "{$this->rfq->partNumberLabel($this->part)}: {$this->addedBy->name} added {$added}, ".RfqAssignment::lineItemsDiscrepancyText($this->added, $this->toAdd)." — {$this->rfq->subject}",
+            'message' => self::messageFor($this->rfq->partNumberLabel($this->part), $this->rfq->subject, $this->addedBy->name, $this->added, $this->toAdd),
             'url' => route('admin.rfqs.show', $this->rfq),
             'icon' => 'bi-exclamation-diamond',
-            'note' => 'line items differ',
+            'note' => 'line item count mismatch',
         ];
     }
 }

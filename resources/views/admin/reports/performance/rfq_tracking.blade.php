@@ -4,11 +4,14 @@
     Sourcing finalized it, and whether it's open or closed (on hold, cancelled
     or waiting for the customer's clarification noted beside Open). Filtered by
     the dates it came in, RFQ number, WC number, priority, Sourcing member (who
-    holds or finalized a part) and status; sorted by date, RFQ number, WC
-    number or priority; with how many it lists, and their items, at the bottom.
+    holds or finalized a part), status and whether Sourcing has finalized it
+    (PerformanceReportController::TRACKING_FINALIZED); sorted by date, RFQ
+    number, WC number or priority; with how many it lists — open, closed, not
+    finalized — and their items, at the bottom. A split RFQ's column says how
+    many of its parts are finalized while some aren't.
 
     Expects: $rfqs (paginated, with assignees), $finalizers (id => name),
-    $waitingOnCustomer (RFQ id => bool), $summary (rfqs, closed, items),
+    $waitingOnCustomer (RFQ id => bool), $summary (rfqs, closed, not_finalized, items),
     $filters, $sourcing, $sort, $descending.
 --}}
 @extends('layouts.app')
@@ -24,7 +27,7 @@
             <input type="hidden" name="dir" value="{{ $descending ? 'desc' : 'asc' }}">
             <div class="ops-filters-head">
                 <span class="ops-filters-title"><i class="bi bi-funnel"></i> Daily tracking sheet</span>
-                @if (request()->hasAny(['from', 'to', 'rfq', 'wc', 'priority', 'person', 'status']))
+                @if (request()->hasAny(['from', 'to', 'rfq', 'wc', 'priority', 'person', 'status', 'finalized']))
                     <a href="{{ route('admin.reports.rfq-tracking') }}" class="ops-filters-clear"><i class="bi bi-x-circle"></i> Clear filters</a>
                 @endif
             </div>
@@ -77,6 +80,14 @@
                         @endforeach
                     </select>
                 </label>
+                <label class="ops-select">
+                    <span>Finalized by Sourcing</span>
+                    <select name="finalized" class="form-select form-select-sm">
+                        @foreach (\App\Http\Controllers\Admin\PerformanceReportController::TRACKING_FINALIZED as $value => $label)
+                            <option value="{{ $value }}" @selected($filters['finalized'] === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
             </div>
 
             <button type="submit" class="btn btn-sm btn-primary mt-2"><i class="bi bi-arrow-repeat"></i> Show sheet</button>
@@ -100,7 +111,10 @@
                 <tbody>
                     @forelse ($rfqs as $rfq)
                         @php
-                            $finalizedBy = $rfq->assignees->pluck('pivot.finalized_by')->filter()->unique()->map(fn ($id) => $finalizers[$id] ?? null)->filter();
+                            // Its parts still going, and those Sourcing has finalized.
+                            $liveParts = $rfq->assignees->reject(fn ($assignee) => $assignee->pivot->isCancelled());
+                            $finalizedParts = $liveParts->filter(fn ($assignee) => $assignee->pivot->finalized_at !== null);
+                            $finalizedBy = $finalizedParts->map(fn ($assignee) => $finalizers[$assignee->pivot->finalized_by ?? $assignee->id] ?? null)->filter()->unique();
                             $isClosed = $rfq->isClosed();
                         @endphp
                         <tr>
@@ -116,7 +130,16 @@
                             <td class="text-nowrap">{{ $rfq->wc_number }}</td>
                             <td>{{ $rfq->subject }}</td>
                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
-                            <td>{{ $finalizedBy->isNotEmpty() ? $finalizedBy->join(', ') : '—' }}</td>
+                            <td data-finalized="{{ $finalizedParts->count() }}/{{ $liveParts->count() }}">
+                                @if ($finalizedParts->isEmpty())
+                                    <span class="text-muted-soft">Not finalized yet</span>
+                                @else
+                                    {{ $finalizedBy->join(', ') }}
+                                    @if ($finalizedParts->count() < $liveParts->count())
+                                        <span class="badge badge-soft-orange">{{ $finalizedParts->count() }} of {{ $liveParts->count() }} parts</span>
+                                    @endif
+                                @endif
+                            </td>
                             <td class="text-nowrap">
                                 <span class="badge {{ $isClosed ? 'badge-soft-success' : 'badge-soft-primary' }}">{{ $isClosed ? 'Closed' : 'Open' }}</span>
                                 @if ($waitingOnCustomer[$rfq->id] ?? false)
@@ -139,6 +162,7 @@
                                 number_format($summary['rfqs']).($summary['rfqs'] === 1 ? ' RFQ' : ' RFQs'),
                                 number_format($summary['rfqs'] - $summary['closed']).' open',
                                 number_format($summary['closed']).' closed',
+                                number_format($summary['not_finalized']).' not finalized',
                                 number_format($summary['items']).' '.\Illuminate\Support\Str::plural('item', $summary['items']),
                             ];
                         @endphp
@@ -153,7 +177,8 @@
     </div>
 
     @include('admin.reports.performance._how_counted', ['points' => [
-        'Date: when the RFQ was received (registered). Finalized by Sourcing: whoever finalized its parts, or — while nobody has yet.',
+        'Date: when the RFQ was received (registered). Finalized by Sourcing: whoever finalized its parts — on a split RFQ with some still to finalize, how many of its parts are — or "Not finalized yet".',
+        'Not finalized yet: a part still to finalize — cancelled parts aside — or no part assigned yet. Finalized: every part still going is. With a Sourcing member chosen, it\'s their own parts.',
         'Open: not closed yet, whether it\'s in progress, on hold, cancelled or waiting for the customer\'s clarification. Closed: Business Development closed it.',
         'Sourcing member: RFQs with a part they hold, or finalized.',
     ]])

@@ -1585,7 +1585,12 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment, $dataEntry, (int) $lineItems->validated()['line_items']));
+        $completed = RfqComment::attachingFiles($rfq, $files, fn () => $rfq->completeSourcingPart((int) $validated['part'], $comment, $dataEntry, (int) $lineItems->validated()['line_items']));
+
+        // Sent twice — a double click, a retry: it's done already, and they've been told.
+        if (! $completed) {
+            return $this->redirectAfterSave($request, $rfq)->with('status', 'This part is already assigned to Data Entry.');
+        }
 
         // They're told, in their bell.
         $dataEntry?->notify(new DataEntryAssigned($rfq->refresh(), (int) $validated['part'], $assignee));
@@ -1625,6 +1630,11 @@ class RfqController extends Controller implements HasMiddleware
 
         abort_unless($assignee, 404, 'That part is not assigned on this RFQ.');
         $this->abortIfStopped($rfq, $assignee);
+
+        // Already back with Sourcing — the same Return sent twice (a double click, a retry).
+        if ($assignee->pivot->completed_at === null) {
+            return redirect()->back()->with('status', "{$assignee->name}'s part is already back with Sourcing.");
+        }
 
         $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back.', 1000);
 

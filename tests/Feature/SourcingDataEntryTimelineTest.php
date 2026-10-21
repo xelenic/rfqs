@@ -72,7 +72,7 @@ it('shows Sourcing only Sourcing\'s and Data Entry\'s part of the timeline — a
         ->not->toContain('Head of Business Development')
         ->not->toContain('Client paused the order')
         ->not->toContain('Put on hold')
-        ->not->toContain('Line items differ — alert sent');
+        ->not->toContain('Line item count mismatch — alert sent');
 });
 
 it('shows Data Entry the same — with the alert that went to them', function () {
@@ -85,7 +85,7 @@ it('shows Data Entry the same — with the alert that went to them', function ()
         ->not->toContain('Head of Business Development')
         ->not->toContain('Approved by Senior Operations')
         ->not->toContain('Client paused the order')
-        ->not->toContain('Line items differ — alert sent');
+        ->not->toContain('Line item count mismatch — alert sent');
 });
 
 it('counts only the comments they see', function () {
@@ -104,7 +104,7 @@ it('shows everyone else the whole timeline — Admin, other roles, and someone i
         ->toContain('Approved by Senior Operations')
         ->toContain('Head of Business Development')
         ->toContain('Client paused the order')
-        ->toContain('Line items differ — alert sent');
+        ->toContain('Line item count mismatch — alert sent');
 })->with([
     'Admin' => [fn () => userWithRole('Admin')],
     'Senior Operations' => [fn () => userWithRole('Senior Operations')],

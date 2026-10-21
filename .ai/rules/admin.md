@@ -4,6 +4,7 @@ paths:
   - app/Http/Controllers/Admin/SettingsController.php
   - app/Http/Controllers/Admin/DashboardController.php
   - app/Http/Controllers/Admin/RfqController.php
+  - app/Http/Controllers/Admin/PerformanceReportController.php
 ---
 
 # Admin
@@ -25,3 +26,10 @@ Since 2026-10-19, HR Executive (and not Admin) gets admin/dashboard/hr-executive
 
 ## RFQ lists show 20 a page (RfqController::PER_PAGE)
 Since 2026-10-20, at the user's request, every RFQ list paginates by RfqController::PER_PAGE (20): All RFQs, every role's queue, and the tabs that page on their own (sourcing_page, completed_page, with_data_entry_page, finalized_page, assigned_page, review_page). Use the constant for any new RFQ list; never a literal number. Tests that cross onto page 2 should create PER_PAGE + 1 RFQs.
+
+## Tracking sheet's "Finalized by Sourcing" works per part, cancelled parts aside
+Since 2026-10-21 the RFQ tracking sheet filters on ?finalized= (TRACKING_FINALIZED: all, not_finalized, finalized). Finalization is judged on the parts (rfq_user.finalized_at), not on rfqs.finalized_at:
+- not_finalized: some part that isn't cancelled is still to finalize, or no part is assigned yet.
+- finalized: at least one part is finalized and none that isn't cancelled is left.
+- With a Sourcing member chosen (?person=), only that member's own parts are considered.
+The column follows the same rule: "Not finalized yet", or the finalizers' names with an "N of M parts" badge while a split is only partly finalized. The footer counts "not finalized" the same way. A part's finalizer is finalized_by, falling back to its holder.

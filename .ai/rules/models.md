@@ -63,3 +63,10 @@ Since 2026-10-20, a part with GM Assistant is timed only from their Start (Rfq::
 
 ## Count leaves and half days with Attendance::timeOffTally()
 Since 2026-10-21, a person's time off (leaves, half days, days off where a half day counts as half) is counted by Attendance::timeOffTally(): per month, year and in all, from approved sheets only. Lines on unapproved or returned sheets are kept apart as 'pending' and never counted. The user page (UserController::timeOffOf()) and the hover card on attendance names (attendance/_time_off_card, via [data-hover-card] in admin.js) both read it, so don't count attendances anywhere else. The hover card's counts are a <table>, so the shared popover in admin.js extends Bootstrap's sanitizer allowList with table tags. Keep that if you change it.
+
+## Workflow actions must be safe to submit twice
+On 2026-10-21 production showed "Assigned in Data Entry — they were told" twice on an RFQ's timeline. A repeated Assign to Data Entry request (double click or retry) found the part already completed, but the controller still sent DataEntryAssigned again.
+- Rfq::completeSourcingPart() now completes only while rfq_user.completed_at is null (wherePivotNull) and returns whether it did. RfqController::completeSourcing() sends the alert only when it did.
+- returnSourcing() ignores a part already back with Sourcing.
+- Any action that sends an alert or a task message must send it only when this request actually changed something, not after a no-op.
+- Rfq::sentAlerts() also merges the same alert (same type, part and message) sent again within ALERT_REPEAT_SECONDS (120) into one timeline entry, so duplicates already stored show once.

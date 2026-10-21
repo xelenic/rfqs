@@ -199,6 +199,12 @@ class Rfq extends Model
     ];
 
     /**
+     * How close together the same alert, sent again, still reads as the one
+     * send on the timeline (sentAlerts()) — the same action submitted twice.
+     */
+    private const ALERT_REPEAT_SECONDS = 120;
+
+    /**
      * Which role works each stage something can be sent back to — who gets
      * to send it straight back (forwardBack()).
      *
@@ -1503,19 +1509,24 @@ class Rfq extends Model
      * assigned and completed, the RFQ itself is marked handed off to Data
      * Entry, recording this part's assignee as the closing completion. A
      * $comment, if given, is posted to the RFQ's thread as the assignee's.
+     * Returns whether it was completed now — false when it already had been,
+     * so the same Assign to Data Entry sent twice (a double click, a retry)
+     * is done, and told of, once.
      *
      * Caller is responsible for verifying the user completing it is the
      * part's assignee, and that $dataEntry holds Data Entry.
      */
-    public function completeSourcingPart(int $part, ?string $comment = null, ?User $dataEntry = null, ?int $lineItems = null): void
+    public function completeSourcingPart(int $part, ?string $comment = null, ?User $dataEntry = null, ?int $lineItems = null): bool
     {
         $assignee = $this->assigneeForPart($part);
 
         if (! $assignee || $assignee->pivot->completed_at !== null || $assignee->pivot->isStopped()) {
-            return;
+            return false;
         }
 
-        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+        // Only while it's still not completed — a second request at the same
+        // moment finds it done, and leaves it be.
+        $completed = $this->assignees()->wherePivot('part_number', $part)->wherePivotNull('completed_at')->updateExistingPivot($assignee->id, [
             'completed_at' => now(),
             'returned_at' => null,
             'return_reason' => null,
@@ -1524,6 +1535,10 @@ class Rfq extends Model
             'line_items_to_add' => $lineItems,
         ]);
         $this->load('assignees');
+
+        if ($completed === 0) {
+            return false;
+        }
 
         // The completion comment goes into the RFQ's thread as the
         // assignee's own, so Data Entry reads it with everything else —
@@ -1551,6 +1566,8 @@ class Rfq extends Model
                 ? "Assigned you {$this->partNumberLabel($part)} for Data Entry{$toAdd}"
                 : "Assigned {$this->partNumberLabel($part)} to Data Entry — anyone there can start it{$toAdd}",
             $comment, $posted);
+
+        return true;
     }
 
     /**
@@ -4197,18 +4214,33 @@ class Rfq extends Model
      * and any like them), oldest first. One alert to several people is one
      * send: its title and tone on the timeline (the class's TIMELINE_TITLE and
      * TIMELINE_TONE), what it said (its message — or the class's
-     * timelineDetail()), its icon, and who it went to.
+     * timelineDetail()), its icon, and who it went to. The same alert sent
+     * again within ALERT_REPEAT_SECONDS — the same action sent twice, a
+     * double click or a retry — is the one send, too.
      *
      * @return Collection<int, array{at: Carbon, title: string, tone: string, icon: string, detail: string, recipients: Collection<int, User>}>
      */
     public function sentAlerts(): Collection
     {
-        return DatabaseNotification::query()
-            ->where('data->rfq_id', $this->id)
-            ->with('notifiable')
-            ->oldest()
-            ->get()
-            ->groupBy(fn (DatabaseNotification $alert) => $alert->type.'|'.$alert->created_at->timestamp.'|'.($alert->data['part'] ?? ''))
+        // Each alert joins the send the same alert last went into, if that
+        // was moments ago — one alert to several people is sent in the one
+        // moment — else starts a send of its own.
+        $sends = [];
+        $latest = [];
+
+        foreach (DatabaseNotification::query()->where('data->rfq_id', $this->id)->with('notifiable')->oldest()->get() as $alert) {
+            $same = $alert->type.'|'.($alert->data['part'] ?? '').'|'.($alert->data['message'] ?? '');
+            $previous = $latest[$same] ?? null;
+            $index = $previous !== null && $alert->created_at->diffInSeconds($previous['at'], true) <= self::ALERT_REPEAT_SECONDS
+                ? $previous['index']
+                : count($sends);
+
+            $sends[$index][] = $alert;
+            $latest[$same] = ['index' => $index, 'at' => $alert->created_at];
+        }
+
+        return collect($sends)
+            ->map(fn (array $alerts) => collect($alerts))
             ->map(function (Collection $sent) {
                 $first = $sent->first();
                 $type = $first->type;
@@ -4220,7 +4252,7 @@ class Rfq extends Model
                     'title' => defined("{$type}::TIMELINE_TITLE") ? $type::TIMELINE_TITLE : 'Alert sent',
                     'tone' => defined("{$type}::TIMELINE_TONE") ? $type::TIMELINE_TONE : 'info',
                     'icon' => $first->data['icon'] ?? 'bi-bell',
-                    'detail' => method_exists($type, 'timelineDetail') ? $type::timelineDetail($first->data, $names) : (string) ($first->data['message'] ?? ''),
+                    'detail' => method_exists($type, 'timelineDetail') ? $type::timelineDetail($first->data, $names, $this) : (string) ($first->data['message'] ?? ''),
                     'recipients' => $recipients,
                 ];
             })

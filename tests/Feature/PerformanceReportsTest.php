@@ -238,7 +238,7 @@ it('lists every RFQ with who in Sourcing finalized it and whether it\'s open', f
 
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.rfq-tracking'))->assertOk()
         ->assertSeeInOrder(['Date', 'RFQ Number', 'WC Number', 'Subject', 'Priority', 'Finalized by Sourcing', 'RFQ Status'])
-        ->assertSee('3 RFQs · 3 open · 0 closed · 23 items')
+        ->assertSee('3 RFQs · 3 open · 0 closed · 2 not finalized · 23 items')
         ->getContent();
 
     $row = Str::betweenFirst($html, '>RFQ8001</a>', '</tr>');
@@ -247,8 +247,12 @@ it('lists every RFQ with who in Sourcing finalized it and whether it\'s open', f
 });
 
 it('filters the tracking sheet', function (array $query, array $listed) {
-    ['sam' => $sam] = mondaysWork();
-    $query = array_map(fn ($value) => $value === 'sam' ? $sam->id : $value, $query);
+    ['sam' => $sam, 'riley' => $riley] = mondaysWork();
+    $query = array_map(fn ($value) => match ($value) {
+        'sam' => $sam->id,
+        'riley' => $riley->id,
+        default => $value,
+    }, $query);
 
     $rfqs = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.rfq-tracking', $query))->assertOk()->viewData('rfqs');
 
@@ -261,7 +265,42 @@ it('filters the tracking sheet', function (array $query, array $listed) {
     'closed' => [['status' => 'closed'], []],
     'open' => [['status' => 'open'], ['RFQ8001', 'RFQ8002', 'RFQ8003']],
     'dates' => [['from' => '2026-10-06'], []],
+    'not finalized by Sourcing' => [['finalized' => 'not_finalized'], ['RFQ8002', 'RFQ8003']],
+    'finalized by Sourcing' => [['finalized' => 'finalized'], ['RFQ8001']],
+    'a member\'s own, not finalized' => [['finalized' => 'not_finalized', 'person' => 'riley'], ['RFQ8002', 'RFQ8003']],
+    'a member\'s own, finalized' => [['finalized' => 'finalized', 'person' => 'riley'], ['RFQ8001']],
+    'open and not finalized' => [['finalized' => 'not_finalized', 'status' => 'open', 'priority' => ['Urgent']], ['RFQ8003']],
 ]);
+
+it('tells a split RFQ\'s finalized parts apart — finalized only once every part still going is, each member asked of their own', function () {
+    ['riley' => $riley, 'sam' => $sam, 'morgan' => $morgan, 'ops' => $ops, 'shared' => $shared] = mondaysWork();
+    $listed = fn (array $query) => test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.rfq-tracking', $query))->assertOk()
+        ->viewData('rfqs')->getCollection()->pluck('rfq_number')->sort()->values()->all();
+    // And one nobody's been assigned yet.
+    Rfq::factory()->create(['rfq_number' => 'RFQ8004']);
+
+    // Riley finalizes their part of RFQ8003; Sam hasn't.
+    $shared->refresh()->completeSourcingPart(1);
+    $shared->refresh()->completeDataEntryPart(1, $morgan, 'Entered', 4);
+    $shared->refresh()->finalizePart(1);
+
+    $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.rfq-tracking'))->assertOk()->getContent();
+    expect(Str::betweenFirst($html, '>RFQ8003</a>', '</tr>'))->toContain('data-finalized="1/2"')->toContain('Riley Chen')->toContain('1 of 2 parts')
+        ->and(Str::betweenFirst($html, '>RFQ8004</a>', '</tr>'))->toContain('Not finalized yet')
+        ->and($listed(['finalized' => 'not_finalized']))->toBe(['RFQ8002', 'RFQ8003', 'RFQ8004'])
+        ->and($listed(['finalized' => 'not_finalized', 'person' => $riley->id]))->toBe(['RFQ8002'])
+        ->and($listed(['finalized' => 'not_finalized', 'person' => $sam->id]))->toBe(['RFQ8003'])
+        ->and($listed(['finalized' => 'finalized', 'person' => $riley->id]))->toBe(['RFQ8001', 'RFQ8003']);
+
+    // Sam's part cancelled: what's still going is finalized.
+    $shared->refresh()->changePartStatus(2, Rfq::CANCELLED, $ops, 'Not needed');
+
+    expect($listed(['finalized' => 'finalized']))->toBe(['RFQ8001', 'RFQ8003'])
+        ->and($listed(['finalized' => 'not_finalized']))->toBe(['RFQ8002', 'RFQ8004']);
+    test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.rfq-tracking', ['finalized' => 'not_finalized']))->assertOk()
+        ->assertSee('<option value="not_finalized" selected>Not finalized yet</option>', false)
+        ->assertSee('2 RFQs · 2 open · 0 closed · 2 not finalized');
+});
 
 it('sorts the tracking sheet', function () {
     mondaysWork();

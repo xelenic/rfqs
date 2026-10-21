@@ -600,8 +600,9 @@ class RfqAssignment extends Pivot
     }
 
     /**
-     * "2 fewer than the 24 to add" or "3 more than the 24 to add" — null
-     * when they match or either is missing.
+     * "2 fewer than the 24 requested" or "3 more than the 24 requested" —
+     * what Data Entry added against what Sourcing asked for — null when they
+     * match or either is missing.
      */
     public static function lineItemsDiscrepancyText(?int $added, ?int $toAdd): ?string
     {
@@ -611,7 +612,7 @@ class RfqAssignment extends Pivot
             return null;
         }
 
-        return number_format(abs($discrepancy)).($discrepancy < 0 ? ' fewer' : ' more').' than the '.number_format($toAdd).' to add';
+        return number_format(abs($discrepancy)).($discrepancy < 0 ? ' fewer' : ' more').' than the '.number_format($toAdd).' requested';
     }
 
     /**

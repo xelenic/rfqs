@@ -39,6 +39,14 @@ class PerformanceReportController extends Controller
     public const TRACKING_SORTS = ['date' => 'Date', 'rfq' => 'RFQ number', 'wc' => 'WC number', 'priority' => 'Priority'];
 
     /**
+     * Whether Sourcing has finalized the RFQs the tracking sheet lists
+     * (?finalized=) — each part, as the sheet's column shows it.
+     *
+     * @var array<string, string>
+     */
+    public const TRACKING_FINALIZED = ['all' => 'Finalized or not', 'not_finalized' => 'Not finalized yet', 'finalized' => 'Finalized'];
+
+    /**
      * Sourcing's daily (and weekly) report — the Procurement Daily Report.
      */
     public function sourcingDaily(Request $request): View
@@ -119,7 +127,11 @@ class PerformanceReportController extends Controller
     /**
      * The RFQ tracking sheet: every RFQ, by when it came in, with who in
      * Sourcing finalized it and whether it's open or closed — filtered by
-     * date, RFQ number, WC number, priority, Sourcing member and status.
+     * date, RFQ number, WC number, priority, Sourcing member, status, and
+     * whether Sourcing has finalized it (TRACKING_FINALIZED): not yet — a
+     * part not cancelled still to finalize, or none assigned — or every part
+     * still going finalized. With a Sourcing member, it's their parts that
+     * are asked about.
      */
     public function rfqTracking(Request $request): View
     {
@@ -135,7 +147,20 @@ class PerformanceReportController extends Controller
             'priority' => array_values(array_intersect((array) $request->query('priority', []), Rfq::PRIORITIES)),
             'person' => $request->integer('person') ?: null,
             'status' => in_array($request->query('status'), ['open', 'closed'], true) ? $request->query('status') : 'all',
+            'finalized' => array_key_exists((string) $request->query('finalized'), self::TRACKING_FINALIZED) ? (string) $request->query('finalized') : 'all',
         ];
+
+        // A part still to finalize: not finalized, not cancelled — the chosen member's, if one is.
+        $partToFinalize = fn ($parts) => $parts->whereNull('rfq_user.finalized_at')
+            ->where(fn ($live) => $live->whereNull('rfq_user.status')->orWhere('rfq_user.status', '!=', Rfq::CANCELLED))
+            ->when($filters['person'], fn ($mine, int $person) => $mine->where('rfq_user.user_id', $person));
+        $notFinalized = fn (Builder $query) => $query->where(fn (Builder $rfqs) => $rfqs
+            ->whereHas('assignees', $partToFinalize)
+            ->when(! $filters['person'], fn (Builder $unassigned) => $unassigned->orWhereDoesntHave('assignees')));
+        $finalized = fn (Builder $query) => $query
+            ->whereHas('assignees', fn ($parts) => $parts->whereNotNull('rfq_user.finalized_at')
+                ->when($filters['person'], fn ($theirs, int $person) => $theirs->where(fn ($by) => $by->where('rfq_user.finalized_by', $person)->orWhere('rfq_user.user_id', $person))))
+            ->whereDoesntHave('assignees', $partToFinalize);
         [$sort, $descending] = $this->sorting($request, self::TRACKING_SORTS, 'date', true);
 
         $query = Rfq::query()
@@ -148,11 +173,14 @@ class PerformanceReportController extends Controller
             ->when($filters['person'], fn (Builder $query, int $person) => $query->whereHas('assignees', fn (Builder $parts) => $parts
                 ->where(fn (Builder $held) => $held->where('rfq_user.user_id', $person)->orWhere('rfq_user.finalized_by', $person))))
             ->when($filters['status'] === 'closed', fn (Builder $query) => $query->where('rfqs.status', 'Completed'))
-            ->when($filters['status'] === 'open', fn (Builder $query) => $query->where('rfqs.status', '!=', 'Completed'));
+            ->when($filters['status'] === 'open', fn (Builder $query) => $query->where('rfqs.status', '!=', 'Completed'))
+            ->when($filters['finalized'] === 'not_finalized', $notFinalized)
+            ->when($filters['finalized'] === 'finalized', $finalized);
 
         $summary = [
             'rfqs' => (clone $query)->count(),
             'closed' => (clone $query)->where('rfqs.status', 'Completed')->count(),
+            'not_finalized' => (clone $query)->tap($notFinalized)->count(),
             'items' => (int) (clone $query)->sum('rfqs.number_of_items'),
         ];
 
@@ -166,7 +194,9 @@ class PerformanceReportController extends Controller
 
         $rfqs = $query->orderBy('rfqs.id', $direction)->with('assignees')->paginate(self::PER_PAGE)->withQueryString();
         $finalizers = User::query()
-            ->whereIn('id', $rfqs->getCollection()->flatMap(fn (Rfq $rfq) => $rfq->assignees->map(fn ($assignee) => $assignee->pivot->finalized_by))->filter()->unique())
+            ->whereIn('id', $rfqs->getCollection()->flatMap(fn (Rfq $rfq) => $rfq->assignees
+                ->filter(fn ($assignee) => $assignee->pivot->finalized_at !== null)
+                ->map(fn ($assignee) => $assignee->pivot->finalized_by ?? $assignee->id))->unique())
             ->pluck('name', 'id');
 
         return view('admin.reports.performance.rfq_tracking', [

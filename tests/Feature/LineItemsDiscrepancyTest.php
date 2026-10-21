@@ -47,9 +47,9 @@ it('works out the discrepancy as added minus to add, and how it reads', function
     expect(RfqAssignment::lineItemsDiscrepancyBetween($added, $toAdd))->toBe($discrepancy)
         ->and(RfqAssignment::lineItemsDiscrepancyText($added, $toAdd))->toBe($label);
 })->with([
-    'fewer' => [22, 24, -2, '2 fewer than the 24 to add'],
-    'more' => [27, 24, 3, '3 more than the 24 to add'],
-    'none added' => [0, 1500, -1500, '1,500 fewer than the 1,500 to add'],
+    'fewer' => [22, 24, -2, '2 fewer than the 24 requested'],
+    'more' => [27, 24, 3, '3 more than the 24 requested'],
+    'none added' => [0, 1500, -1500, '1,500 fewer than the 1,500 requested'],
     'the same' => [24, 24, null, null],
     'nothing to add given' => [24, null, null, null],
     'nothing added given' => [null, 24, null, null],
@@ -64,7 +64,7 @@ it('tells Senior Operations and the General Manager when the line items added di
 
     $part = $rfq->refresh()->assigneeForPart(1)->pivot;
     expect($part->lineItemsDiscrepancy())->toBe(-2)
-        ->and($part->lineItemsDiscrepancyLabel())->toBe('2 fewer than the 24 to add');
+        ->and($part->lineItemsDiscrepancyLabel())->toBe('2 fewer than the 24 requested');
 
     foreach ([$operations, $generalManager] as $person) {
         $alert = $person->notifications()->sole();
@@ -77,8 +77,8 @@ it('tells Senior Operations and the General Manager when the line items added di
                 'to_add' => 24,
                 'discrepancy' => -2,
                 'added_by' => $morgan->id,
-                'message' => "RFQ8101: {$morgan->name} added 22 line items, 2 fewer than the 24 to add — Valves",
-                'note' => 'line items differ',
+                'message' => "RFQ8101 — Valves: {$morgan->name} added 22 line items, but Sourcing asked for 24 (2 fewer than requested).",
+                'note' => 'line item count mismatch',
             ]);
     }
 });
@@ -131,7 +131,7 @@ it('keeps the discrepancy on the thread, and only when there is one', function (
 
     $comment = RfqComment::query()->where('action', 'data_entry_completed')->sole();
     expect($comment->meta)->toMatchArray(['entries' => 27, 'to_add' => 24])
-        ->and($comment->actionContext())->toEndWith('27 line items added · 3 more than the 24 to add');
+        ->and($comment->actionContext())->toEndWith('27 line items added · 3 more than the 24 requested');
 
     ['rfq' => $matching, 'morgan' => $sam] = startedWithLineItems(24);
     sendLineItemsAdded($sam, $matching, 24);
@@ -146,8 +146,8 @@ it('is in their bell, and opens the RFQ', function () {
     sendLineItemsAdded($morgan, $rfq, 22);
 
     test()->actingAs($generalManager)->get(route('admin.dashboard'))->assertOk()
-        ->assertSee("RFQ8101: {$morgan->name} added 22 line items, 2 fewer than the 24 to add")
-        ->assertSee('line items differ');
+        ->assertSee("RFQ8101 — Valves: {$morgan->name} added 22 line items, but Sourcing asked for 24 (2 fewer than requested).")
+        ->assertSee('line item count mismatch');
 
     test()->actingAs($generalManager)->get(route('admin.notifications.open', $generalManager->notifications()->sole()->id))
         ->assertRedirect(route('admin.rfqs.show', $rfq));
@@ -158,18 +158,18 @@ it('shows the discrepancy to Data Entry, Sourcing, Senior Operations and on the 
     sendLineItemsAdded($morgan, $rfq, 22);
 
     test()->actingAs($morgan)->get(route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'completed']))->assertOk()
-        ->assertSeeInOrder(['RFQ8101', '22', '2 fewer than the 24 to add']);
+        ->assertSeeInOrder(['RFQ8101', '22', '2 fewer than the 24 requested']);
 
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSeeInOrder(['Sent to finalize by Data Entry', '22 line items added, 2 fewer than the 24 to add']);
+        ->assertSeeInOrder(['Sent to finalize by Data Entry', '22 line items added, 2 fewer than the 24 requested']);
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertSee('2 fewer than the 24 to add');
+        ->assertSee('2 fewer than the 24 requested');
 
     $rfq->refresh()->finalizePart(1);
 
     test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
-        ->assertSeeInOrder(['22 line items added', '2 fewer than the 24 to add']);
+        ->assertSeeInOrder(['22 line items added', '2 fewer than the 24 requested']);
 });
 
 it('shows nothing extra when the line items added match', function () {
@@ -178,8 +178,8 @@ it('shows nothing extra when the line items added match', function () {
 
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('Sent to finalize by Data Entry')
-        ->assertDontSee('than the 24 to add');
+        ->assertDontSee('than the 24 requested');
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()
-        ->assertDontSee('than the 24 to add');
+        ->assertDontSee('than the 24 requested');
 });
