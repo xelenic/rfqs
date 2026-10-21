@@ -1,7 +1,9 @@
 {{--
     A Sourcing member's dashboard — their own parts of open RFQs: what's on
     their plate, what's with Data Entry, what came back, and what they were
-    given most recently. See DashboardController::sourcingOverview().
+    given most recently — each on their clock with its time against its
+    target, sourcing it or finalizing it (_time_vs_target), as Admin's
+    ongoing tasks have it. See DashboardController::sourcingOverview().
 
     Expects: $overview, $notifications.
 --}}
@@ -23,8 +25,11 @@
             [
                 'label' => 'Pending', 'value' => $overview['pending'], 'icon' => 'bi-hourglass-split', 'iconClass' => 'stat-icon-warning',
                 'url' => route('admin.rfqs.index', ['status' => 'Pending']),
-                'caption' => $overview['urgent'] > 0 ? $overview['urgent'].' urgent' : 'None urgent',
-                'alert' => $overview['urgent'] > 0,
+                'caption' => collect([
+                    $overview['overdue'] > 0 ? $overview['overdue'].' overdue' : null,
+                    $overview['urgent'] > 0 ? $overview['urgent'].' urgent' : null,
+                ])->filter()->join(' · ') ?: 'None urgent or overdue',
+                'alert' => $overview['urgent'] > 0 || $overview['overdue'] > 0,
             ],
             [
                 'label' => 'In Review', 'value' => $overview['inReview'], 'icon' => 'bi-clipboard2-check', 'iconClass' => 'stat-icon-violet',
@@ -55,7 +60,7 @@
     </div>
 
     <div class="row g-3">
-        <div class="col-lg-8">
+        <div class="col-xxl-9">
             <div class="card mb-4">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <span>Recently assigned</span>
@@ -71,6 +76,7 @@
                                     <th>Priority</th>
                                     <th>Assigned</th>
                                     <th>Status</th>
+                                    <th>Time vs target</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
@@ -86,20 +92,35 @@
                                             <div class="text-muted-soft small">{{ $rfq->subject }}</div>
                                         </td>
                                         <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
-                                        <td class="text-muted-soft">
-                                            {{ $assignment->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
-                                            <div class="small">{{ $assignment->created_at?->toBusinessTimezone()->format('M d, g:i A') }}</div>
+                                        <td class="text-muted-soft text-nowrap">
+                                            {{ $assignment->created_at?->toBusinessTimezone()->format('M d, Y') ?? '—' }}
+                                            <div class="small">{{ $assignment->created_at?->toBusinessTimezone()->format('g:i A') }}</div>
                                         </td>
                                         <td><span class="badge {{ $assignment->progressBadgeClass() }}">{{ $assignment->progressLabel() }}</span></td>
-                                        <td class="text-end text-nowrap">
-                                            <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
-                                                <i class="bi bi-eye"></i>
-                                            </a>
-                                            @if ($assignment->completed_at === null)
-                                                @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
-                                            @elseif ($assignment->isAwaitingFinalize())
-                                                @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
+                                        {{-- On their clock — sourcing it, or finalizing it — against its target; else whose it is now. --}}
+                                        <td data-time-vs-target="{{ $part['label'] }}">
+                                            @if ($part['timing'])
+                                                @include('admin.dashboard._time_vs_target', ['timing' => $part['timing'], 'for' => $part['timing']['for']])
+                                            @else
+                                                <span class="text-muted-soft small">{{ match ($part['state']) {
+                                                    'with_data_entry' => 'With Data Entry',
+                                                    'finalized' => 'Finalized',
+                                                    default => '—',
+                                                } }}</span>
                                             @endif
+                                        </td>
+                                        {{-- Wrapping when the card's narrow, so they stay in view. --}}
+                                        <td class="text-end">
+                                            <div class="d-flex flex-wrap justify-content-end align-items-center gap-1 text-nowrap">
+                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                    <i class="bi bi-eye"></i>
+                                                </a>
+                                                @if ($assignment->completed_at === null)
+                                                    @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
+                                                @elseif ($assignment->isAwaitingFinalize())
+                                                    @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part['part'], 'returnTo' => 'dashboard'])
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                 @endforeach
@@ -154,7 +175,7 @@
             </div>
         </div>
 
-        <div class="col-lg-4">
+        <div class="col-xxl-3">
             <div class="card mb-4">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <span>Review items</span>

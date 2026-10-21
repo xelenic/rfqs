@@ -109,16 +109,7 @@
                                         <td class="text-nowrap text-muted-soft">{{ $task['updated_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</td>
                                         <td>
                                             @if ($task['target'])
-                                                <div class="task-progress {{ $stateTone }}">
-                                                    <span class="task-progress-track"><span class="task-progress-bar" style="width: {{ min(100, round($task['seconds'] / max(1, $task['target']) * 100, 1)) }}%"></span></span>
-                                                    <span class="task-progress-text">
-                                                        @if ($task['remaining'] < 0)
-                                                            {{ \App\Models\Setting::durationLabel(-$task['remaining']) }} over {{ \App\Models\Setting::durationLabel($task['target']) }}
-                                                        @else
-                                                            {{ \App\Models\Setting::durationLabel($task['seconds']) }} of {{ \App\Models\Setting::durationLabel($task['target']) }}
-                                                        @endif
-                                                    </span>
-                                                </div>
+                                                @include('admin.dashboard._time_vs_target', ['timing' => $task])
                                             @else
                                                 <span class="task-progress-text">{{ \App\Models\Setting::durationLabel($task['seconds']) }} so far · no target</span>
                                             @endif

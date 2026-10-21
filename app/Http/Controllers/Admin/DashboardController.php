@@ -422,6 +422,8 @@ class DashboardController extends Controller
                     default => null,
                 };
 
+                $timing = $countdown !== null ? $this->timeAgainstTarget($countdown) : null;
+
                 return [
                     'rfq' => $rfq,
                     'label' => $step->part_number !== null && $rfq->isSplit() ? $rfq->partNumberLabel($step->part_number) : $rfq->rfq_number,
@@ -430,19 +432,38 @@ class DashboardController extends Controller
                     'worker' => $workers->get($step->workerId()),
                     'started_at' => $step->started_at,
                     'updated_at' => max($step->started_at, $rfq->assignees->first(fn (User $assignee) => $assignee->pivot->part_number === $step->part_number)?->pivot->updated_at ?? $step->started_at),
-                    'seconds' => max(0, $countdown !== null ? $countdown['target'] - $countdown['remaining'] : $step->workingSeconds($now)),
-                    'target' => $countdown['target'] ?? null,
-                    'remaining' => $countdown['remaining'] ?? null,
-                    'state' => match (true) {
-                        $countdown === null => 'running',
-                        $countdown['remaining'] < 0 => 'overdue',
-                        $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
-                        default => 'on_track',
-                    },
+                    'seconds' => $timing['seconds'] ?? max(0, $step->workingSeconds($now)),
+                    'target' => $timing['target'] ?? null,
+                    'remaining' => $timing['remaining'] ?? null,
+                    'state' => $timing['state'] ?? 'running',
                 ];
             })
             ->sortBy(fn (array $task) => [array_search($task['state'], $states, true), $task['remaining'] ?? -$task['seconds']])
             ->values();
+    }
+
+    /**
+     * Where a countdown (Rfq::sourcingCountdown() and the like) stands, as
+     * the dashboards' "Time vs target" shows it (dashboard/_time_vs_target):
+     * the working time spent, the target, what's left (below 0 once past
+     * it), and so whether it's overdue, due soon — under a quarter of the
+     * target left — or on track.
+     *
+     * @param  array{target: int, remaining: int}  $countdown
+     * @return array{seconds: int, target: int, remaining: int, state: string}
+     */
+    protected function timeAgainstTarget(array $countdown): array
+    {
+        return [
+            'seconds' => max(0, $countdown['target'] - $countdown['remaining']),
+            'target' => $countdown['target'],
+            'remaining' => $countdown['remaining'],
+            'state' => match (true) {
+                $countdown['remaining'] < 0 => 'overdue',
+                $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
+                default => 'on_track',
+            },
+        ];
     }
 
     /**
@@ -957,29 +978,50 @@ class DashboardController extends Controller
      * what Data Entry sent back (that's "Returned", and their Returns list) —
      * the same count as the badge on their sidebar link.
      *
+     * Each part on their clock — sourcing it, or finalizing it — has its
+     * time against its target (timeAgainstTarget(), "for" Sourcing or
+     * Finalize), as Admin's ongoing tasks do; how many are overdue.
+     *
      * @return array{
-     *     assigned: int, pending: int, urgent: int, returned: int, inReview: int, toFinalize: int, done: int, inProgress: int,
-     *     recent: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>,
-     *     returnedParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>,
-     *     inReviewParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string}>
+     *     assigned: int, pending: int, urgent: int, overdue: int, returned: int, inReview: int, toFinalize: int, done: int, inProgress: int,
+     *     recent: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array{for: string, seconds: int, target: int, remaining: int, state: string}}>,
+     *     returnedParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array<string, mixed>}>,
+     *     inReviewParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array<string, mixed>}>
      * }
      */
     protected function sourcingOverview(User $user): array
     {
+        $now = CarbonImmutable::now();
+
         $parts = Rfq::query()
-            ->with('assignees')
+            // Every Sourcing stretch of a part counts against its target (Rfq::sourcingTimeOf()).
+            ->with(['assignees', 'steps' => fn ($steps) => $steps->whereIn('step', ['sourcing', 'finalize'])])
             ->where('status', 'Pending')
             ->whereHas('assignees', fn ($assignees) => $assignees->whereKey($user->id))
             ->get()
             ->flatMap(fn (Rfq $rfq) => $rfq->assignees
                 ->where('id', $user->id)
-                ->map(fn (User $assignee) => [
-                    'rfq' => $rfq,
-                    'part' => $assignee->pivot->part_number,
-                    'label' => $rfq->partNumberLabel($assignee->pivot->part_number),
-                    'assignment' => $assignee->pivot,
-                    'state' => $assignee->pivot->progressState(),
-                ])
+                ->map(function (User $assignee) use ($rfq, $now) {
+                    $part = $assignee->pivot->part_number;
+                    $state = $assignee->pivot->progressState();
+                    // On their clock: sourcing it (a return for rework included), or finalizing what Data Entry sent back.
+                    $countdown = match ($state) {
+                        'in_progress', 'returned' => $rfq->sourcingCountdown($part, $now),
+                        'data_entry_done' => $rfq->finalizeCountdown($part, $now),
+                        default => null,
+                    };
+
+                    return [
+                        'rfq' => $rfq,
+                        'part' => $part,
+                        'label' => $rfq->partNumberLabel($part),
+                        'assignment' => $assignee->pivot,
+                        'state' => $state,
+                        'timing' => $countdown !== null
+                            ? ['for' => $state === 'data_entry_done' ? 'Finalize' : 'Sourcing'] + $this->timeAgainstTarget($countdown)
+                            : null,
+                    ];
+                })
                 ->values())
             ->values();
 
@@ -994,6 +1036,7 @@ class DashboardController extends Controller
             'assigned' => $parts->count(),
             'pending' => $stillTheirs->count(),
             'urgent' => $stillTheirs->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
+            'overdue' => $parts->filter(fn (array $part) => ($part['timing']['state'] ?? null) === 'overdue')->count(),
             'returned' => $inState('returned')->count(),
             'inReview' => $inState('with_data_entry')->count(),
             'toFinalize' => $inState('data_entry_done')->count(),

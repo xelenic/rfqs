@@ -1338,6 +1338,18 @@ a.dash-person:hover {
   white-space: nowrap;
 }
 
+/* Whose target it is, and where it stands, under the bar (dashboard/_time_vs_target). */
+.task-progress-for {
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--rfq-text-muted);
+}
+
+.task-progress-state {
+  font-weight: 600;
+  color: var(--tone, var(--rfq-text-muted));
+}
+
 .task-legend {
   display: inline-flex;
   flex-wrap: wrap;
