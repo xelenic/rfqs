@@ -70,3 +70,18 @@ On 2026-10-21 production showed "Assigned in Data Entry — they were told" twic
 - returnSourcing() ignores a part already back with Sourcing.
 - Any action that sends an alert or a task message must send it only when this request actually changed something, not after a no-op.
 - Rfq::sentAlerts() also merges the same alert (same type, part and message) sent again within ALERT_REPEAT_SECONDS (120) into one timeline entry, so duplicates already stored show once.
+
+## Return to Sourcing records the line items Data Entry had added (rfq_user.return_line_items)
+Since 2026-10-21, Data Entry's Return to Sourcing popup (_complete_modal, kind "return") requires "Line items added", sent as `entries` (0 to MAX_DATA_ENTRIES). RfqController::returnSourcing() validates it the same way as Send to Finalize. Rfq::returnSourcingPart($part, $reason, $by, $lineItemsAdded) does three things with it:
+- stores it in rfq_user.return_line_items next to return_reason;
+- adds it to the returned_to_sourcing comment as meta entries, so the thread shows "N line items added";
+- includes it in Sourcing's task message.
+completeSourcingPart() clears it along with the return. A reviewer's send-back to Sourcing passes none, so it stays null. Show it with RfqAssignment::returnLineItemsLabel(). It is not data_entry_entries (the Send to Finalize count), so never write one into the other: the discrepancy check and the reports read data_entry_entries.
+
+## Seven priority levels, P1 Critical to P7 Trivial — read them through Rfq's helpers
+Since 2026-10-21 Rfq::PRIORITIES holds seven levels, least pressing first: Trivial, Minimal, Low, Medium, High, Urgent, Critical. rfqs.priority_level stores the name, so older RFQs kept Urgent, High, Medium and Low. Never hard-code the level names or their order:
+- Show a level with priorityLabel() or priorityLabelOf(), which gives "P2 – Urgent" from PRIORITY_CODES.
+- Colour it with priorityBadgeClass(), which returns `badge-priority priority-chip-{level}`. The colours are the business's 🟣🔴🟠🔵🟢🟡⚪ (Rfq::PRIORITY_SYMBOLS), set once per level in admin.css as --dot, --dot-soft, --dot-text and, for white, --dot-fill; chips, badges and meters all read those variables, so never colour a level anywhere else. The Add/Edit RFQ picker shows the emoji, because an <option> can't be coloured.
+- Sort with orderByRaw(Rfq::priorityOrderSql($column)).
+- "Urgent" on the dashboards means URGENT_PRIORITIES (Critical + Urgent), via isUrgent(). The Critical monitor lists Critical, Urgent and High.
+- Each Setting::DEFAULT_*_TARGETS has all seven keys. Setting::targets() fills levels missing from older saved settings with their defaults, and the Settings target forms post all seven.

@@ -3,7 +3,7 @@
     public/js/critical-monitor.js (DashboardController::critical()): the
     headline counts (counted up as they appear), three charts — the share of
     timed tasks on time, the most overdue, Data Entry's idle time against
-    the alert — and the lists behind them: overdue tasks, Urgent and High
+    the alert — and the lists behind them: overdue tasks, Critical, Urgent and High
     RFQs still open, what's been sent back, and the viewer's unread alerts
     and messages. data-critical-count carries the count for the top bar's
     button.
@@ -18,8 +18,8 @@
             'caption' => $overdue->isNotEmpty() ? 'Longest '.$duration(-$overdue->first()['remaining']).' over' : 'None past target'],
         ['label' => 'Due soon', 'value' => $dueSoon, 'tone' => 'warning', 'icon' => 'bi-hourglass-split',
             'caption' => 'Under a quarter of their time left'],
-        ['label' => 'Urgent & High open', 'value' => $urgentCounts['Urgent'] + $urgentCounts['High'], 'tone' => $urgentCounts['Urgent'] > 0 ? 'danger' : 'warning', 'icon' => 'bi-exclamation-triangle',
-            'caption' => $urgentCounts['Urgent'].' urgent · '.$urgentCounts['High'].' high'],
+        ['label' => 'P1–P3 open', 'value' => array_sum($urgentCounts), 'tone' => $urgentCounts['Critical'] + $urgentCounts['Urgent'] > 0 ? 'danger' : 'warning', 'icon' => 'bi-exclamation-triangle',
+            'caption' => $urgentCounts['Critical'].' critical · '.$urgentCounts['Urgent'].' urgent · '.$urgentCounts['High'].' high'],
         ['label' => 'Data Entry idle', 'value' => $idle->count(), 'tone' => 'warning', 'icon' => 'bi-hourglass-bottom',
             'caption' => $floor['idleSeconds'] > 0 ? $duration($floor['idleSeconds']).' idle · '.$floor['waiting'].' waiting' : $floor['waiting'].' parts waiting'],
         ['label' => 'Sent back, waiting', 'value' => $returnsTotal, 'tone' => 'violet', 'icon' => 'bi-arrow-counterclockwise',
@@ -108,7 +108,7 @@
                             <strong>{{ $task['label'] }}</strong> · {{ $task['task'] }}
                             <span class="critical-row-sub">{{ $task['worker']?->name ?? $task['role'].' team' }} · {{ $task['rfq']->subject }}</span>
                         </span>
-                        <span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priority_level }}</span>
+                        <span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priorityLabel() }}</span>
                         <span class="critical-row-figure text-danger">{{ $duration(-$task['remaining']) }} over</span>
                     </a>
                 @empty
@@ -117,24 +117,24 @@
             </div>
         </div>
 
-        {{-- The Urgent and High RFQs still open, longest-waiting first. --}}
+        {{-- The P1 Critical, P2 Urgent and P3 High RFQs still open, the most pressing first, then longest-waiting. --}}
         <div class="col-lg-5">
             <div class="critical-panel h-100">
                 <div class="critical-panel-title">
-                    Urgent &amp; high priority <span class="badge badge-soft-warning ms-1">{{ $urgentCounts['Urgent'] + $urgentCounts['High'] }}</span>
+                    Critical, urgent &amp; high priority <span class="badge badge-soft-warning ms-1">{{ array_sum($urgentCounts) }}</span>
                 </div>
                 @forelse ($urgent as $item)
                     <a href="{{ route('admin.rfqs.show', $item['rfq']) }}?status=Pending" class="critical-row">
-                        <span class="critical-row-mark {{ $item['rfq']->priority_level === 'Urgent' ? 'tone-danger' : 'tone-warning' }}"><i class="bi bi-exclamation-triangle"></i></span>
+                        <span class="critical-row-mark {{ $item['rfq']->isUrgent() ? 'tone-danger' : 'tone-warning' }}"><i class="bi bi-exclamation-triangle"></i></span>
                         <span class="critical-row-main">
                             <strong>{{ $item['rfq']->rfq_number }}</strong> · {{ $item['where'] }}
                             <span class="critical-row-sub">{{ $item['rfq']->subject }}</span>
                         </span>
-                        <span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priority_level }}</span>
+                        <span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priorityLabel() }}</span>
                         <span class="critical-row-figure">{{ $item['rfq']->created_at->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</span>
                     </a>
                 @empty
-                    <p class="critical-empty"><i class="bi bi-check2-circle"></i> No Urgent or High RFQ is open.</p>
+                    <p class="critical-empty"><i class="bi bi-check2-circle"></i> No Critical, Urgent or High RFQ is open.</p>
                 @endforelse
             </div>
         </div>

@@ -23,7 +23,7 @@
     <tr>
         <td class="fw-semibold">{{ $rfq->wc_number }}</td>
         <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
-        <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+        <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
         <td>{{ $rfq->subject }}</td>
         @if ($showCreatedAndClosed ?? true)
             <td class="text-muted-soft">

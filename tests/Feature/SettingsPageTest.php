@@ -337,7 +337,7 @@ it('comes back to the tab a form was saved from', function () {
     $admin = userWithRole('Admin');
 
     test()->actingAs($admin)
-        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Low' => 24, 'Medium' => 16, 'High' => 8, 'Urgent' => 4]])
+        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Trivial' => 48, 'Minimal' => 36, 'Low' => 24, 'Medium' => 16, 'High' => 8, 'Urgent' => 4, 'Critical' => 2]])
         ->assertRedirect(route('admin.settings.edit'))
         ->assertSessionHas('settings_tab', 'sourcing-targets');
 

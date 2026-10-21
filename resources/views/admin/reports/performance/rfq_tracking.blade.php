@@ -48,7 +48,7 @@
                         <label class="priority-chip priority-chip-{{ strtolower($priority) }}">
                             <input type="checkbox" name="priority[]" value="{{ $priority }}" @checked(in_array($priority, $filters['priority'], true))>
                             <span class="priority-chip-dot"></span>
-                            <span>{{ $priority }}</span>
+                            <span>{{ \App\Models\Rfq::priorityLabelOf($priority) }}</span>
                         </label>
                     @endforeach
                 </div>
@@ -129,7 +129,7 @@
                             </td>
                             <td class="text-nowrap">{{ $rfq->wc_number }}</td>
                             <td>{{ $rfq->subject }}</td>
-                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                             <td data-finalized="{{ $finalizedParts->count() }}/{{ $liveParts->count() }}">
                                 @if ($finalizedParts->isEmpty())
                                     <span class="text-muted-soft">Not finalized yet</span>

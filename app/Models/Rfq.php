@@ -25,11 +25,38 @@ class Rfq extends Model
     use HasFactory;
 
     /**
-     * The selectable priority levels, in ascending order of urgency.
+     * The selectable priority levels, in ascending order of urgency — what
+     * rfqs.priority_level holds. Since 2026-10-21 seven, P7 Trivial to P1
+     * Critical (PRIORITY_CODES); Urgent, High, Medium and Low as they were.
      *
      * @var array<int, string>
      */
-    public const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
+    public const PRIORITIES = ['Trivial', 'Minimal', 'Low', 'Medium', 'High', 'Urgent', 'Critical'];
+
+    /**
+     * Each priority level's code, P1 the most pressing — shown with its name
+     * ("P2 – Urgent", priorityLabel()).
+     *
+     * @var array<string, string>
+     */
+    public const PRIORITY_CODES = ['Critical' => 'P1', 'Urgent' => 'P2', 'High' => 'P3', 'Medium' => 'P4', 'Low' => 'P5', 'Minimal' => 'P6', 'Trivial' => 'P7'];
+
+    /**
+     * Each priority level's colour, as the business gave it — what the
+     * priority picker shows, where a colour can't be drawn; everywhere else
+     * it's the level's priority-chip-{level} colours (admin.css).
+     *
+     * @var array<string, string>
+     */
+    public const PRIORITY_SYMBOLS = ['Critical' => '🟣', 'Urgent' => '🔴', 'High' => '🟠', 'Medium' => '🔵', 'Low' => '🟢', 'Minimal' => '🟡', 'Trivial' => '⚪'];
+
+    /**
+     * The levels the dashboards count, and lead with, as urgent: P1 Critical
+     * and P2 Urgent.
+     *
+     * @var array<int, string>
+     */
+    public const URGENT_PRIORITIES = ['Critical', 'Urgent'];
 
     /**
      * The selectable statuses. An RFQ starts Pending and is marked
@@ -519,16 +546,54 @@ class Rfq extends Model
     }
 
     /**
-     * The badge class to pair with this RFQ's priority level.
+     * The badge classes to pair with this RFQ's priority level: its colour —
+     * 🟣 P1, 🔴 P2, 🟠 P3, 🔵 P4, 🟢 P5, 🟡 P6, ⚪ P7 (PRIORITY_SYMBOLS) — as a
+     * tint led by a dot of it (.badge-priority, priority-chip-{level} in
+     * admin.css).
      */
     public function priorityBadgeClass(): string
     {
-        return match ($this->priority_level) {
-            'Urgent' => 'badge-soft-danger',
-            'High' => 'badge-soft-warning',
-            'Low' => 'badge-soft-secondary',
-            default => 'badge-soft-primary',
-        };
+        return in_array($this->priority_level, self::PRIORITIES, true)
+            ? 'badge-priority priority-chip-'.strtolower($this->priority_level)
+            : 'badge-soft-primary';
+    }
+
+    /**
+     * This RFQ's priority with its code — "P2 – Urgent" (priorityLabelOf()).
+     */
+    public function priorityLabel(): string
+    {
+        return self::priorityLabelOf($this->priority_level);
+    }
+
+    /**
+     * A priority level with its code — "P2 – Urgent" — or the level as it is,
+     * if it isn't one of PRIORITY_CODES.
+     */
+    public static function priorityLabelOf(?string $priority): string
+    {
+        return isset(self::PRIORITY_CODES[$priority]) ? self::PRIORITY_CODES[$priority].' – '.$priority : (string) $priority;
+    }
+
+    /**
+     * Whether this RFQ is one the dashboards count as urgent — P1 Critical or
+     * P2 Urgent (URGENT_PRIORITIES).
+     */
+    public function isUrgent(): bool
+    {
+        return in_array($this->priority_level, self::URGENT_PRIORITIES, true);
+    }
+
+    /**
+     * An SQL expression ordering $column's priority levels most pressing
+     * first — P1 Critical 0 down to P7 Trivial 6, anything else last — for
+     * orderByRaw().
+     */
+    public static function priorityOrderSql(string $column = 'priority_level'): string
+    {
+        $cases = collect(array_reverse(self::PRIORITIES))->map(fn (string $priority, int $rank) => "when '{$priority}' then {$rank}")->implode(' ');
+
+        return "case {$column} {$cases} else ".count(self::PRIORITIES).' end';
     }
 
     /**
@@ -793,7 +858,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1434,7 +1499,7 @@ class Rfq extends Model
         // Each member hears of the parts that are newly theirs, from whoever assigned them.
         foreach ($given as $userId => $parts) {
             TaskMessages::send($this, $by, [$this->assignees->firstWhere('id', $userId)],
-                "Assigned you {$this->partsLabel($parts)} in Sourcing".($this->priority_level ? " ({$this->priority_level} priority)" : ''));
+                "Assigned you {$this->partsLabel($parts)} in Sourcing".($this->priority_level ? " ({$this->priorityLabel()} priority)" : ''));
         }
     }
 
@@ -1530,6 +1595,7 @@ class Rfq extends Model
             'completed_at' => now(),
             'returned_at' => null,
             'return_reason' => null,
+            'return_line_items' => null,
             'returned_by' => null,
             'data_entry_assigned_to' => $dataEntry?->id,
             'line_items_to_add' => $lineItems,
@@ -1590,9 +1656,13 @@ class Rfq extends Model
      * Sourcing" activity-timeline entry — not just that entry's own
      * one-line reason text.
      *
+     * $lineItemsAdded — how many line items Data Entry had added when they
+     * sent it back (asked in their Return to Sourcing popup) — is kept with
+     * the return, and with the comment; a reviewer's send-back has none.
+     *
      * Caller is responsible for verifying the part is actually assigned.
      */
-    public function returnSourcingPart(int $part, string $reason, User $returnedBy): void
+    public function returnSourcingPart(int $part, string $reason, User $returnedBy, ?int $lineItemsAdded = null): void
     {
         $assignee = $this->assigneeForPart($part);
 
@@ -1604,6 +1674,7 @@ class Rfq extends Model
             'completed_at' => null,
             'returned_at' => now(),
             'return_reason' => $reason,
+            'return_line_items' => $lineItemsAdded,
             'returned_by' => $returnedBy->id,
             'data_entry_completed_at' => null,
             'data_entry_completed_by' => null,
@@ -1656,11 +1727,13 @@ class Rfq extends Model
             ]);
         }
 
-        $comment = $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]);
+        $comment = $this->postActionComment($returnedBy, 'returned_to_sourcing', $reason, $this->partContext($part) + ['who' => $assignee->name]
+            + ($lineItemsAdded !== null ? ['entries' => $lineItemsAdded] : []));
 
         $this->syncSteps();
 
-        TaskMessages::send($this, $returnedBy, [$assignee], "Returned {$this->partNumberLabel($part)} to you in Sourcing", $reason, $comment);
+        TaskMessages::send($this, $returnedBy, [$assignee], "Returned {$this->partNumberLabel($part)} to you in Sourcing"
+            .($lineItemsAdded !== null ? ' ('.trans_choice('1 line item added|:count line items added', $lineItemsAdded, ['count' => number_format($lineItemsAdded)]).' so far)' : ''), $reason, $comment);
     }
 
     /**

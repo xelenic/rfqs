@@ -51,7 +51,7 @@ function withGmAssistant(bool $started = true): Rfq
 }
 
 it('starts with a GM Assistant target per priority, in working minutes', function () {
-    expect(Setting::gmAssistantTargets())->toBe(['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30]);
+    expect(Setting::gmAssistantTargets())->toBe(['Trivial' => 480, 'Minimal' => 360, 'Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30, 'Critical' => 15]);
 });
 
 it('counts a part down to GM Assistant\'s target on their list', function () {
@@ -88,17 +88,17 @@ it('keeps GM Assistant\'s per-priority targets off the page — their tab is GM 
         ->assertDontSee('action="'.route('admin.settings.gm-assistant-targets').'"', false)
         ->assertDontSee('id="gma-target-urgent"', false);
 
-    test()->actingAs($admin)->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Low' => '6', 'Medium' => '3', 'High' => '1.5', 'Urgent' => '0.5']])
+    test()->actingAs($admin)->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '6', 'Medium' => '3', 'High' => '1.5', 'Urgent' => '0.5', 'Critical' => '0.25']])
         ->assertSessionHas('status', 'GM Assistant targets saved.')
         ->assertSessionHas('settings_tab', 'gm-assistant-targets');
 
-    expect(Setting::gmAssistantTargets())->toBe(['Low' => 360, 'Medium' => 180, 'High' => 90, 'Urgent' => 30]);
+    expect(Setting::gmAssistantTargets())->toBe(['Trivial' => 480, 'Minimal' => 360, 'Low' => 360, 'Medium' => 180, 'High' => 90, 'Urgent' => 30, 'Critical' => 15]);
 
     test()->actingAs($admin)->from(route('admin.settings.edit'))
-        ->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Low' => '6', 'Medium' => 'soon', 'High' => '1', 'Urgent' => '0.1']])
+        ->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '6', 'Medium' => 'soon', 'High' => '1', 'Urgent' => '0.1', 'Critical' => '0.25']])
         ->assertSessionHasErrorsIn('gm_assistant_targets', ['targets.Medium', 'targets.Urgent']);
 
-    test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1']])
+    test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1', 'Critical' => '0.25']])
         ->assertForbidden();
 });
 

@@ -680,6 +680,9 @@
             <div>
                 <div class="fw-bold">Data Entry sent {{ $rfq->isSplit() ? $rfq->partNumberLabel($returnedPart->pivot->part_number) : 'your part' }} back for rework</div>
                 <div>{{ $returnedPart->pivot->return_reason }}</div>
+                @if ($returnedPart->pivot->returnLineItemsLabel())
+                    <div class="small" data-return-line-items>{{ \Illuminate\Support\Str::ucfirst($returnedPart->pivot->returnLineItemsLabel()) }} before it was sent back.</div>
+                @endif
             </div>
         </div>
     @endforeach
@@ -1226,7 +1229,7 @@
                     <span>{{ $rfq->subject }}</span>
                     <div class="d-flex gap-2">
                         <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
-                        <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }} priority</span>
+                        <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }} priority</span>
                     </div>
                 </div>
                 <div class="card-body">

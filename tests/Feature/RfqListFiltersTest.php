@@ -179,8 +179,8 @@ it('narrows a list to one priority or several', function (array $priorities, arr
     'one' => [['Urgent'], ['Urgent job']],
     'several' => [['High', 'Low'], ['High job', 'Low job']],
     'none' => [[], ['Urgent job', 'High job', 'Medium job', 'Low job']],
-    'something that isn\'t one' => [['Critical'], ['Urgent job', 'High job', 'Medium job', 'Low job']],
-    'one, and something that isn\'t' => [['Medium', 'Critical'], ['Medium job']],
+    'something that isn\'t one' => [['Extreme'], ['Urgent job', 'High job', 'Medium job', 'Low job']],
+    'one, and something that isn\'t' => [['Medium', 'Extreme'], ['Medium job']],
 ]);
 
 it('narrows by priority together with the dates and the search, and shows what\'s chosen', function () {

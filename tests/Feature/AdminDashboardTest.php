@@ -167,7 +167,7 @@ it('counts what\'s waiting at each stage, each leading to Admin\'s view of that 
     expect($awaiting)->toMatchArray(['count' => 3, 'url' => route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations'])])
         ->and(adminKpi($overview, 'Pending tasks')['value'])->toBe(collect($overview['pipeline'])->sum('count'))
         ->and(adminKpi($overview, 'Open RFQs'))->toMatchArray(['value' => 3, 'caption' => '2 urgent', 'alert' => true])
-        ->and($overview['priorities'])->toBe(['Urgent' => 2, 'High' => 0, 'Medium' => 0, 'Low' => 1]);
+        ->and($overview['priorities'])->toBe(['Critical' => 0, 'Urgent' => 2, 'High' => 0, 'Medium' => 0, 'Low' => 1, 'Minimal' => 0, 'Trivial' => 0]);
 
     adminDashboard()->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations'])).'" class="pipeline-label"', false);
 });

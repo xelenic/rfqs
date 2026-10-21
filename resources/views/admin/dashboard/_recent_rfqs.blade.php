@@ -23,7 +23,7 @@
                         <tr>
                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                             <td>{{ $rfq->subject }}</td>
-                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                             <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
                             <td class="text-muted-soft text-nowrap">{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                             <td class="text-end">

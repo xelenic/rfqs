@@ -304,7 +304,7 @@ it('has Data Entry process and return parts one at a time, even ones held by the
         ->and($rfq->assigneeForPart(2)->pivot->data_entry_completed_at)->toBeNull();
 
     // Sending part 2 back reopens just that part.
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 2, 'reason' => 'Prices are missing'])->assertSessionHas('status');
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 2, 'entries' => 0, 'reason' => 'Prices are missing'])->assertSessionHas('status');
     $rfq->refresh();
     expect($rfq->assigneeForPart(2)->pivot->completed_at)->toBeNull()
         ->and($rfq->assigneeForPart(2)->pivot->return_reason)->toBe('Prices are missing')

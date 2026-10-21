@@ -249,5 +249,5 @@ it('shows each RFQ\'s priority on Ready for Data Entry', function () {
         ->getContent();
 
     expect(Str::betweenFirst($html, '<td class="text-nowrap">RFQ1001</td>', '</tr>'))
-        ->toContain('>Urgent</span>');
+        ->toContain('>P2 – Urgent</span>');
 });

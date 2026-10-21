@@ -59,7 +59,7 @@
             <div class="rfq-group-caption">{{ $sourcingDone }} of {{ $partsTotal }} {{ $partsTotal === 1 ? 'task' : 'parts' }} done by Sourcing</div>
         @endif
     </td>
-    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
     @unless ($statusFilter)
         <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
     @endunless

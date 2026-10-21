@@ -78,7 +78,7 @@ it('lists the parts waiting to be started — Urgent first, then longest-waiting
     expect($waiting)->toContain('RFQ5002')->not->toContain('RFQ5004')
         ->and(strpos($waiting, 'RFQ5002'))->toBeLessThan(strpos($waiting, 'RFQ5003'))
         ->and(strpos($waiting, 'RFQ5003'))->toBeLessThan(strpos($waiting, 'RFQ5001'))
-        ->and($response->viewData('overview')['waitingByPriority'])->toBe(['Urgent' => 1, 'High' => 0, 'Medium' => 1, 'Low' => 1]);
+        ->and($response->viewData('overview')['waitingByPriority'])->toBe(['Critical' => 0, 'Urgent' => 1, 'High' => 0, 'Medium' => 1, 'Low' => 1, 'Minimal' => 0, 'Trivial' => 0]);
 
     $response->assertSeeInOrder(['Waiting to start', '3', '1 urgent']);
 });
@@ -139,9 +139,10 @@ it('counts what they sent to finalize — parts, entries, and time against targe
 
     expect($charts[0])->toMatchArray(['type' => 'metric'])
         ->and($charts[0]['series'][1]['key'])->toBe('entries')
-        ->and($charts[1])->toMatchArray(['type' => 'share', 'total' => 2, 'labels' => ['Urgent', 'High', 'Medium', 'Low']])
-        ->and($charts[1]['series'][0]['values'])->toBe([100, 0, 0, 0])
-        ->and($charts[1]['display'][0])->toBe('100% · 1 of 1');
+        ->and($charts[1])->toMatchArray(['type' => 'share', 'total' => 2, 'labels' => ['P1 – Critical', 'P2 – Urgent', 'P3 – High', 'P4 – Medium', 'P5 – Low', 'P6 – Minimal', 'P7 – Trivial']])
+        // P2 Urgent, after P1 Critical.
+        ->and($charts[1]['series'][0]['values'])->toBe([0, 100, 0, 0, 0, 0, 0])
+        ->and($charts[1]['display'][1])->toBe('100% · 1 of 1');
 
     // Yesterday has none of it; the latest list still does.
     $yesterday = test()->actingAs($morgan)->get(route('admin.dashboard', ['period' => 'custom', 'from' => '2026-10-04', 'to' => '2026-10-04']))->assertOk();

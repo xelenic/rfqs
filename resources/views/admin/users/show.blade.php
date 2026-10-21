@@ -331,7 +331,7 @@
                                                 @endif
                                             </td>
                                             <td>{{ $item['rfq']->subject }}</td>
-                                            <td><span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priority_level }}</span></td>
+                                            <td><span class="badge {{ $item['rfq']->priorityBadgeClass() }}">{{ $item['rfq']->priorityLabel() }}</span></td>
                                             <td><span class="badge {{ $item['badge'] }}">{{ $item['state'] }}</span></td>
                                             <td class="text-muted-soft text-nowrap">{{ $item['since']?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                         </tr>

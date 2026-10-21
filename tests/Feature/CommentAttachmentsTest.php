@@ -95,6 +95,7 @@ it('keeps files sent with a reason on the comment that reason is posted as', fun
 
     test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), [
         'part' => 1,
+        'entries' => 0,
         'reason' => 'The quote in the photo is for the wrong model',
         'attachments' => [UploadedFile::fake()->image('quote.png')],
     ])->assertSessionHasNoErrors();

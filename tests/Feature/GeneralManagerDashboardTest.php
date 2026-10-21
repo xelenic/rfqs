@@ -128,7 +128,7 @@ it('shows where the open RFQs are, and how many', function () {
     $overview = gmDashboard(userWithRole('General Manager'))->viewData('overview');
 
     expect($overview)->toMatchArray(['open' => 2, 'openUrgent' => 1])
-        ->and($overview['priorities'])->toBe(['Urgent' => 1, 'High' => 0, 'Medium' => 0, 'Low' => 1])
+        ->and($overview['priorities'])->toBe(['Critical' => 0, 'Urgent' => 1, 'High' => 0, 'Medium' => 0, 'Low' => 1, 'Minimal' => 0, 'Trivial' => 0])
         ->and(collect($overview['pipeline'])->firstWhere('label', 'General Manager')['count'])->toBe(1)
         ->and(collect($overview['pipeline'])->firstWhere('label', 'With Sourcing')['count'])->toBe(1);
 });

@@ -30,7 +30,8 @@
             'running' => ['In progress', 'badge-soft-info', 'tone-info'],
         ];
         $waitingTotal = $overview['waiting']->count();
-        $urgentWaiting = $overview['waitingByPriority']['Urgent'] ?? 0;
+        // Urgent: P1 Critical and P2 Urgent (Rfq::URGENT_PRIORITIES).
+        $urgentWaiting = (int) collect(\App\Models\Rfq::URGENT_PRIORITIES)->sum(fn (string $priority) => $overview['waitingByPriority'][$priority] ?? 0);
         $onTimeTone = fn (?int $percent) => match (true) {
             $percent === null => '',
             $percent >= 80 => 'success',
@@ -98,7 +99,7 @@
                             <div class="de-now-main">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
                                     <a href="{{ route('admin.rfqs.show', $current['rfq']) }}?status=Pending" class="fw-semibold">{{ $current['label'] }}</a>
-                                    <span class="badge {{ $current['rfq']->priorityBadgeClass() }}">{{ $current['rfq']->priority_level }}</span>
+                                    <span class="badge {{ $current['rfq']->priorityBadgeClass() }}">{{ $current['rfq']->priorityLabel() }}</span>
                                     <span class="badge {{ $stateBadge }}">{{ $stateLabel }}</span>
                                 </div>
                                 <div class="small text-muted-soft text-truncate">{{ $current['rfq']->subject }} · started {{ $current['started_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</div>
@@ -194,7 +195,7 @@
                                             @endif
                                         </td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
-                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priority_level }}</span></td>
+                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priorityLabel() }}</span></td>
                                         <td class="text-nowrap text-muted-soft">{{ $part['since']?->copy()->setTimezone($timezone)->format('M d, Y g:i A') ?? '—' }}</td>
                                     </tr>
                                 @endforeach
@@ -232,7 +233,7 @@
                             @foreach ($overview['waitingByPriority'] as $priority => $count)
                                 <li class="priority-chip-{{ strtolower($priority) }}">
                                     <span class="priority-chip-dot"></span>
-                                    <span class="flex-grow-1">{{ $priority }}</span>
+                                    <span class="flex-grow-1">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</span>
                                     <span class="fw-semibold">{{ $count }}</span>
                                     <span class="text-muted-soft small">{{ round($count / $waitingTotal * 100) }}%</span>
                                 </li>
@@ -320,7 +321,7 @@
                              'type' => 'share',
                              'empty' => 'Nothing timed was sent in this period.',
                              'total' => $overview['timedCount'],
-                             'labels' => $byPriority->pluck('priority')->all(),
+                             'labels' => $byPriority->pluck('priority')->map(fn (string $priority) => \App\Models\Rfq::priorityLabelOf($priority))->all(),
                              'series' => [
                                  ['key' => 'on-time', 'label' => 'Within target', 'values' => $byPriority->map(fn (array $row) => $row['timed'] > 0 ? (int) round($row['onTime'] / $row['timed'] * 100) : 0)->all()],
                              ],
@@ -341,7 +342,7 @@
                             <tbody>
                                 @foreach ($byPriority as $row)
                                     <tr>
-                                        <td>{{ $row['priority'] }}</td>
+                                        <td>{{ \App\Models\Rfq::priorityLabelOf($row['priority']) }}</td>
                                         <td class="text-end">{{ $row['sent'] }}</td>
                                         <td class="text-end">{{ $duration($row['average']) }}</td>
                                         <td class="text-end">{{ $duration($row['target']) }}</td>
@@ -384,7 +385,7 @@
                                     <tr>
                                         <td class="text-nowrap"><a href="{{ route('admin.rfqs.show', $part['rfq']) }}" class="fw-semibold">{{ $part['label'] }}</a></td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
-                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['priority'] }}</span></td>
+                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ \App\Models\Rfq::priorityLabelOf($part['priority']) }}</span></td>
                                         <td class="text-end team-figure">{{ $part['entries'] ?? '—' }}</td>
                                         <td class="text-end team-figure text-nowrap">{{ $duration($part['seconds']) }}</td>
                                         <td>

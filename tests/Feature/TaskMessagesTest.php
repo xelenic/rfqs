@@ -62,12 +62,12 @@ it('tells a Sourcing member in their Messages when a part is assigned to them, f
         ->sender_id->toBe($ops->id)
         ->recipient_id->toBe($riley->id)
         ->rfq_id->toBe($rfq->id)
-        ->body->toBe('Assigned you RFQ7001 in Sourcing (High priority) — Valves.');
+        ->body->toBe('Assigned you RFQ7001 in Sourcing (P3 – High priority) — Valves.');
 
     // In their Messages and bell, leading back to the RFQ.
     test()->actingAs($riley)->get(route('admin.messages.index'))->assertOk()
         ->assertSee('Olivia Ops')
-        ->assertSee('Assigned you RFQ7001 in Sourcing (High priority)');
+        ->assertSee('Assigned you RFQ7001 in Sourcing (P3 – High priority)');
     test()->actingAs($riley)->get(route('admin.dashboard'))->assertOk()
         ->assertSee('Olivia Ops: Assigned you RFQ7001 in Sourcing');
     test()->actingAs($riley)->get(route('admin.messages.show', $ops))->assertOk()
@@ -123,12 +123,12 @@ it('tells the Sourcing member when Data Entry sends their part to finalize, or b
         ->body->toBe("Returned RFQ7001 to you in Data Entry — Valves:\nTwo prices are wrong");
 
     // And Data Entry returns it to Sourcing.
-    test()->actingAs($dana)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'reason' => 'The supplier list is missing'])
+    test()->actingAs($dana)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'entries' => 12, 'reason' => 'The supplier list is missing'])
         ->assertSessionHasNoErrors();
 
     expect(lastMessageTo($riley))
         ->sender_id->toBe($dana->id)
-        ->body->toBe("Returned RFQ7001 to you in Sourcing — Valves:\nThe supplier list is missing");
+        ->body->toBe("Returned RFQ7001 to you in Sourcing (12 line items added so far) — Valves:\nThe supplier list is missing");
 });
 
 it('tells whoever a reviewer sends it back to, once each, with the reason', function (string $target, string $who) {

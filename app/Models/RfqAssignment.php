@@ -52,6 +52,7 @@ class RfqAssignment extends Pivot
             'data_entry_entries' => 'integer',
             'data_entry_assigned_to' => 'integer',
             'line_items_to_add' => 'integer',
+            'return_line_items' => 'integer',
             'verified_line_items' => 'integer',
             'finalized_line_items' => 'integer',
             'data_entry_started_at' => 'datetime',
@@ -538,8 +539,21 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * How many line items Data Entry had added when they sent this part back
+     * to Sourcing (rfq_user.return_line_items), as it reads beside the
+     * return's reason — "12 line items added" — or null when they didn't say
+     * (a reviewer's send-back, or one from before it was asked).
+     */
+    public function returnLineItemsLabel(): ?string
+    {
+        return $this->return_line_items === null
+            ? null
+            : trans_choice('1 line item added|:count line items added', $this->return_line_items, ['count' => number_format($this->return_line_items)]);
+    }
+
+    /**
      * The discrepancy as it reads beside the line items added ("2 fewer than
-     * the 24 to add"), or null when there's none — see lineItemsDiscrepancy().
+     * the 24 requested"), or null when there's none — see lineItemsDiscrepancy().
      */
     public function lineItemsDiscrepancyLabel(): ?string
     {

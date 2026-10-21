@@ -46,7 +46,7 @@
             route('admin.rfqs.return-sourcing', $rfq),
             $who ?? 'the Sourcing member',
             'Tell '.$name.' what needs to change',
-            'Sent back to '.($who ?? 'Sourcing').' for rework. Your reason is posted to the RFQ\'s comments and shown with the part on their Returns list.',
+            'Sent back to '.($who ?? 'Sourcing').' for rework. Your reason, and how many line items you\'d added, are posted to the RFQ\'s comments and shown with the part on their Returns list.',
             'What\'s wrong or missing, so '.$name.' can put it right?',
             'Return to Sourcing',
             'btn btn-sm btn-outline-danger',
@@ -111,7 +111,7 @@
         data-subject="{{ $rfq->subject }}"
         data-items="{{ $kind === 'data_entry' ? $rfq->number_of_items : '' }}"
         data-de-assignee="{{ $kind === 'sourcing' ? $deAssignee : '' }}"
-        data-line-items="{{ in_array($kind, ['sourcing', 'data_entry'], true) ? $rfq->assigneeForPart((int) $part)?->pivot->line_items_to_add : '' }}"
+        data-line-items="{{ in_array($kind, ['sourcing', 'data_entry', 'return'], true) ? $rfq->assigneeForPart((int) $part)?->pivot->line_items_to_add : '' }}"
         data-who="{{ $who ?? $forAssignee?->name ?? '' }}"
         data-audience="{{ $audience }}"
         data-heading="{{ $heading }}"

@@ -91,7 +91,7 @@
                                             <div class="fw-semibold text-nowrap">{{ $part['label'] }}</div>
                                             <div class="text-muted-soft small">{{ $rfq->subject }}</div>
                                         </td>
-                                        <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                        <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                         <td class="text-muted-soft text-nowrap">
                                             {{ $assignment->created_at?->toBusinessTimezone()->format('M d, Y') ?? '—' }}
                                             <div class="small">{{ $assignment->created_at?->toBusinessTimezone()->format('g:i A') }}</div>
@@ -194,6 +194,9 @@
                                 @if ($part['assignment']->return_reason)
                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                         <i class="bi bi-arrow-counterclockwise"></i> {{ $part['assignment']->return_reason }}
+                                        @if ($part['assignment']->returnLineItemsLabel())
+                                            <span class="text-nowrap" data-return-line-items>· {{ $part['assignment']->returnLineItemsLabel() }}</span>
+                                        @endif
                                     </div>
                                 @endif
                                 <div class="text-muted-soft small">Returned {{ $part['assignment']->returned_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '' }}</div>

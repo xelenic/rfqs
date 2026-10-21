@@ -45,7 +45,7 @@ function handedBackToFinalize(User $riley): Rfq
 }
 
 it('starts with a Finalize target per priority, in working minutes', function () {
-    expect(Setting::finalizeTargets())->toBe(['Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15]);
+    expect(Setting::finalizeTargets())->toBe(['Trivial' => 240, 'Minimal' => 180, 'Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15, 'Critical' => 15]);
 });
 
 it('counts a part Data Entry sent back down to its Finalize target, on Sourcing\'s list', function () {
@@ -82,16 +82,16 @@ it('lets an Admin set the Finalize targets on their own tab', function () {
         ->assertSee('action="'.route('admin.settings.finalize-targets').'"', false)
         ->assertSee('id="fin-target-urgent"', false);
 
-    test()->actingAs($admin)->patch(route('admin.settings.finalize-targets'), ['targets' => ['Low' => '3', 'Medium' => '1.5', 'High' => '0.75', 'Urgent' => '0.25']])
+    test()->actingAs($admin)->patch(route('admin.settings.finalize-targets'), ['targets' => ['Trivial' => '4', 'Minimal' => '3.5', 'Low' => '3', 'Medium' => '1.5', 'High' => '0.75', 'Urgent' => '0.25', 'Critical' => '0.25']])
         ->assertSessionHas('status', 'Finalize targets saved.')
         ->assertSessionHas('settings_tab', 'finalize-targets');
 
-    expect(Setting::finalizeTargets())->toBe(['Low' => 180, 'Medium' => 90, 'High' => 45, 'Urgent' => 15]);
+    expect(Setting::finalizeTargets())->toBe(['Trivial' => 240, 'Minimal' => 210, 'Low' => 180, 'Medium' => 90, 'High' => 45, 'Urgent' => 15, 'Critical' => 15]);
 
     test()->actingAs($admin)->from(route('admin.settings.edit'))
-        ->patch(route('admin.settings.finalize-targets'), ['targets' => ['Low' => '3', 'Medium' => 'soon', 'High' => '1', 'Urgent' => '0.1']])
+        ->patch(route('admin.settings.finalize-targets'), ['targets' => ['Trivial' => '4', 'Minimal' => '3.5', 'Low' => '3', 'Medium' => 'soon', 'High' => '1', 'Urgent' => '0.1', 'Critical' => '0.25']])
         ->assertSessionHasErrorsIn('finalize_targets', ['targets.Medium', 'targets.Urgent']);
 
-    test()->actingAs(userWithRole('Sourcing'))->patch(route('admin.settings.finalize-targets'), ['targets' => ['Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1']])
+    test()->actingAs(userWithRole('Sourcing'))->patch(route('admin.settings.finalize-targets'), ['targets' => ['Trivial' => '4', 'Minimal' => '3.5', 'Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1', 'Critical' => '0.25']])
         ->assertForbidden();
 });

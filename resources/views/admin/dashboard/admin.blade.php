@@ -105,7 +105,7 @@
                                                 </span>
                                             @endif
                                         </td>
-                                        <td><span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priority_level }}</span></td>
+                                        <td><span class="badge {{ $task['rfq']->priorityBadgeClass() }}">{{ $task['rfq']->priorityLabel() }}</span></td>
                                         <td class="text-nowrap text-muted-soft">{{ $task['updated_at']->copy()->setTimezone($timezone)->format('M d, Y g:i A') }}</td>
                                         <td>
                                             @if ($task['target'])
@@ -283,7 +283,7 @@
                             @foreach ($overview['priorities'] as $priority => $count)
                                 <li class="priority-chip-{{ strtolower($priority) }}">
                                     <span class="priority-chip-dot"></span>
-                                    <span class="flex-grow-1">{{ $priority }}</span>
+                                    <span class="flex-grow-1">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</span>
                                     <span class="fw-semibold">{{ $count }}</span>
                                     <span class="text-muted-soft small">{{ round($count / $openTotal * 100) }}%</span>
                                 </li>

@@ -60,7 +60,7 @@
                 <label class="priority-chip priority-chip-{{ strtolower($priority) }}">
                     <input type="checkbox" name="priority[]" value="{{ $priority }}" @checked(in_array($priority, $opsFilters['priority'], true))>
                     <span class="priority-chip-dot"></span>
-                    <span>{{ $priority }}</span>
+                    <span>{{ \App\Models\Rfq::priorityLabelOf($priority) }}</span>
                 </label>
             @endforeach
         </div>

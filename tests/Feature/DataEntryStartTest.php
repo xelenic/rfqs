@@ -162,7 +162,7 @@ it('won\'t send a part to finalize before Data Entry has started on it', functio
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_completed_at)->toBeNull();
 
     // Returning it to Sourcing doesn't need a Start.
-    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'reason' => 'Wrong supplier'])
+    test()->actingAs($dataEntry)->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'entries' => 0, 'reason' => 'Wrong supplier'])
         ->assertSessionHasNoErrors();
 });
 

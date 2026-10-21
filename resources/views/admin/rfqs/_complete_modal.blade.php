@@ -6,8 +6,9 @@
     _complete_button.blade.php). It asks for a comment for whoever's next in
     line, posted to the RFQ's thread along with the action — there's no
     separate comment box in the quick-detail modal — and, for Data Entry's
-    Send to Finalize, how many line items they added; for Assign to Data Entry, whom
-    there it's for. Admin also gets a "Done by"
+    Send to Finalize and Return to Sourcing, how many line items they added
+    (so far, when sending it back); for Assign to Data Entry, whom there it's
+    for. Admin also gets a "Done by"
     here — Data Entry's members for Data Entry's actions, the part's assigned
     member for a Sourcing Mark Complete. See RfqController::completeSourcing(),
     completeDataEntry() and returnSourcing().
@@ -40,8 +41,9 @@
                     </div>
                 </div>
 
-                {{-- Data Entry's Send to Finalize asks how many line items they added too
-                     (RfqController::completeDataEntry()); hidden, and not sent, for the rest. --}}
+                {{-- Data Entry's Send to Finalize and Return to Sourcing ask how many line
+                     items they added too (RfqController::completeDataEntry(),
+                     returnSourcing()); hidden, and not sent, for the rest. --}}
                 <div class="mb-3 d-none" id="complete-entries">
                     <label class="form-label" for="complete-entries-input">Line items added</label>
                     <div class="input-group complete-entries-group">

@@ -57,7 +57,7 @@ function dataEntryListRow(): array
 // ---- The targets -----------------------------------------------------------------
 
 it('starts with a Data Entry target per priority, in working minutes', function () {
-    expect(Setting::dataEntryTargets())->toBe(['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30]);
+    expect(Setting::dataEntryTargets())->toBe(['Trivial' => 480, 'Minimal' => 360, 'Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30, 'Critical' => 15]);
 });
 
 it('keeps Data Entry\'s per-priority targets off the page — their tab is Data Entry Time, its time per item — but takes them still', function () {
@@ -68,21 +68,21 @@ it('keeps Data Entry\'s per-priority targets off the page — their tab is Data 
         ->assertDontSee('Save Data Entry targets');
 
     test()->actingAs(userWithRole('Admin'))
-        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Low' => 5, 'Medium' => 3, 'High' => 1.5, 'Urgent' => 0.75]])
+        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Trivial' => 8, 'Minimal' => 6, 'Low' => 5, 'Medium' => 3, 'High' => 1.5, 'Urgent' => 0.75, 'Critical' => 0.25]])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status', 'Data Entry targets saved.');
 
-    expect(Setting::dataEntryTargets())->toBe(['Low' => 300, 'Medium' => 180, 'High' => 90, 'Urgent' => 45])
+    expect(Setting::dataEntryTargets())->toBe(['Trivial' => 480, 'Minimal' => 360, 'Low' => 300, 'Medium' => 180, 'High' => 90, 'Urgent' => 45, 'Critical' => 15])
         ->and(Setting::sourcingTargets())->toBe(Setting::DEFAULT_SOURCING_TARGETS);
 });
 
 it('refuses a Data Entry target that isn\'t sensible, and keeps them to an Admin', function () {
     test()->actingAs(userWithRole('Admin'))
-        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Low' => 4, 'Medium' => 2, 'High' => 1, 'Urgent' => 1.1]])
+        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Trivial' => 8, 'Minimal' => 6, 'Low' => 4, 'Medium' => 2, 'High' => 1, 'Urgent' => 1.1, 'Critical' => 0.25]])
         ->assertSessionHasErrorsIn('data_entry_targets', ['targets.Urgent' => 'Give the Urgent target to the quarter hour, like 1.25.']);
 
     test()->actingAs(userWithRole('Data Entry'))
-        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Low' => 1, 'Medium' => 1, 'High' => 1, 'Urgent' => 1]])
+        ->patch(route('admin.settings.data-entry-targets'), ['targets' => ['Trivial' => 8, 'Minimal' => 6, 'Low' => 1, 'Medium' => 1, 'High' => 1, 'Urgent' => 1, 'Critical' => 0.25]])
         ->assertForbidden();
 
     expect(Setting::dataEntryTargets())->toBe(Setting::DEFAULT_DATA_ENTRY_TARGETS);

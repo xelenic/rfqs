@@ -1726,7 +1726,8 @@ a.pipeline-label:hover {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 50%;
-  background: var(--dot);
+  background: var(--dot-fill, var(--dot));
+  box-shadow: inset 0 0 0 1px var(--dot);
 }
 
 .priority-chip:hover {
@@ -1736,7 +1737,7 @@ a.pipeline-label:hover {
 .priority-chip:has(input:checked) {
   border-color: var(--dot);
   background: var(--dot-soft);
-  color: var(--dot);
+  color: var(--dot-text, var(--dot));
 }
 
 .priority-chip:has(input:focus-visible) {
@@ -1744,24 +1745,82 @@ a.pipeline-label:hover {
   outline-offset: 2px;
 }
 
+/* The priority levels' colours — as the business gave them: 🟣 P1 Critical,
+   🔴 P2 Urgent, 🟠 P3 High, 🔵 P4 Medium, 🟢 P5 Low, 🟡 P6 Minimal, ⚪ P7
+   Trivial (Rfq::PRIORITY_CODES, PRIORITY_SYMBOLS). Each level sets --dot
+   (its colour), --dot-soft (its tint), --dot-text (its colour, deep enough
+   to read on the tint) and, for white, --dot-fill; the filter chips, the
+   badges (.badge-priority, Rfq::priorityBadgeClass()) and the dashboards'
+   priority meters all read them. */
+.priority-chip-critical {
+  --dot: #9333ea;
+  --dot-soft: #f3e8ff;
+  --dot-text: #7e22ce;
+}
+
 .priority-chip-urgent {
-  --dot: #c81e1e;
-  --dot-soft: #fde8e8;
+  --dot: #dc2626;
+  --dot-soft: #fee2e2;
+  --dot-text: #b91c1c;
 }
 
 .priority-chip-high {
-  --dot: #b45309;
-  --dot-soft: #fef3e2;
+  --dot: #f97316;
+  --dot-soft: #ffedd5;
+  --dot-text: #c2410c;
 }
 
 .priority-chip-medium {
-  --dot: #3b53d1;
-  --dot-soft: #eef1fe;
+  --dot: #2563eb;
+  --dot-soft: #dbeafe;
+  --dot-text: #1d4ed8;
 }
 
 .priority-chip-low {
-  --dot: #6b7280;
-  --dot-soft: #f1f2f6;
+  --dot: #16a34a;
+  --dot-soft: #dcfce7;
+  --dot-text: #15803d;
+}
+
+.priority-chip-minimal {
+  --dot: #eab308;
+  --dot-soft: #fef9c3;
+  --dot-text: #a16207;
+}
+
+/* White — with a grey rim, so it's seen. */
+.priority-chip-trivial {
+  --dot: #9ca3af;
+  --dot-fill: #ffffff;
+  --dot-soft: #f9fafb;
+  --dot-text: #4b5563;
+}
+
+.priority-meter-part.priority-chip-trivial {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #9ca3af;
+}
+
+/* A priority badge: its level's tint and colour, led by its dot. */
+.badge-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  background: var(--dot-soft);
+  color: var(--dot-text, var(--dot));
+  font-weight: 600;
+  padding: 0.3em 0.6em;
+  font-size: 0.72rem;
+}
+
+.badge-priority::before {
+  content: '';
+  flex: none;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--dot-fill, var(--dot));
+  box-shadow: inset 0 0 0 1px var(--dot);
 }
 
 .ops-filter-selects {
@@ -5872,6 +5931,15 @@ a.pipeline-label:hover {
 [data-theme="dark"] .role-pick-inactive { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
 
 [data-theme="dark"] .badge-soft-orange { background: rgba(249, 115, 22, 0.18); color: #fb923c; }
+
+/* The priority levels on the dark theme: deep tints, light text — the dots as they are. */
+[data-theme="dark"] .priority-chip-critical { --dot-soft: rgba(147, 51, 234, 0.2); --dot-text: #d8b4fe; }
+[data-theme="dark"] .priority-chip-urgent { --dot-soft: rgba(220, 38, 38, 0.2); --dot-text: #fca5a5; }
+[data-theme="dark"] .priority-chip-high { --dot-soft: rgba(249, 115, 22, 0.2); --dot-text: #fdba74; }
+[data-theme="dark"] .priority-chip-medium { --dot-soft: rgba(37, 99, 235, 0.22); --dot-text: #93c5fd; }
+[data-theme="dark"] .priority-chip-low { --dot-soft: rgba(22, 163, 74, 0.2); --dot-text: #86efac; }
+[data-theme="dark"] .priority-chip-minimal { --dot-soft: rgba(234, 179, 8, 0.18); --dot-text: #fde047; }
+[data-theme="dark"] .priority-chip-trivial { --dot-soft: rgba(255, 255, 255, 0.08); --dot-text: #e5e7eb; }
 
 [data-theme="dark"] .badge-soft-success,
 [data-theme="dark"] .stat-card .stat-icon.stat-icon-success,

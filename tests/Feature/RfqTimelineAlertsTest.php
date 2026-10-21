@@ -164,7 +164,7 @@ it('sends a part back to Sourcing once, however often it\'s sent', function () {
     ['rfq' => $rfq, 'riley' => $riley, 'morgan' => $morgan] = timelineCast();
     $rfq->completeSourcingPart(1, 'Prices in', $morgan, 3);
     $return = fn () => test()->actingAs($morgan)->from(route('admin.rfqs.show', $rfq))
-        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'reason' => 'The link is broken']);
+        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'entries' => 2, 'reason' => 'The link is broken']);
 
     $return()->assertSessionHas('status', 'Sent Riley Chen\'s part back to Sourcing.');
     $return()->assertSessionHas('status', 'Riley Chen\'s part is already back with Sourcing.');

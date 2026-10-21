@@ -117,7 +117,7 @@ it('records Data Entry\'s completion and its return as the Data Entry person Adm
         ->patch(route('admin.rfqs.complete-data-entry', $rfq), ['entries' => 5, 'part' => 1, 'comment' => 'Entered', 'acting_user_id' => $people['dataEntry']->id])
         ->assertSessionHasNoErrors();
     test()->actingAs($people['admin'])
-        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 2, 'reason' => 'Prices are missing', 'acting_user_id' => $people['dataEntry']->id])
+        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 2, 'entries' => 0, 'reason' => 'Prices are missing', 'acting_user_id' => $people['dataEntry']->id])
         ->assertSessionHasNoErrors();
 
     $rfq->refresh();

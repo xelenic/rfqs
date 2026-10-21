@@ -232,7 +232,7 @@
                                                     </div>
                                                 @endif
                                             </td>
-                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                             <td class="text-nowrap">
                                                 {{-- Its target — per item times its items, or its
                                                      priority's (Rfq::dataEntryTargetSeconds()) — counting
@@ -313,7 +313,7 @@
                                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                             <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
                                             <td>{{ $rfq->subject }}</td>
-                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                             <td>{{ $assignee->name }}</td>
                                             @if ($dataEntryCompletedBy === null)
                                                 <td>{{ $dataEntryNames->get($assignee->pivot->data_entry_completed_by) ?? '—' }}</td>
@@ -388,10 +388,13 @@
                                             <div class="rfq-list-subnote rfq-list-subnote-returned">
                                                 <i class="bi bi-arrow-counterclockwise"></i>
                                                 {{ $myAssignment->pivot->return_reason }}
+                                                @if ($myAssignment->pivot->returnLineItemsLabel())
+                                                    <span class="text-nowrap" data-return-line-items>· {{ $myAssignment->pivot->returnLineItemsLabel() }}</span>
+                                                @endif
                                             </div>
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-nowrap">
                                         @php $countdown = $rfq->sourcingCountdown($myAssignment->pivot->part_number); @endphp
                                         @if ($countdown)
@@ -469,7 +472,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($assignee->pivot->part_number) }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">{{ $assignee->pivot->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                     <td class="text-muted-soft">
@@ -511,7 +514,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
@@ -591,7 +594,7 @@
                                             @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToHeadOfBdReturns)
@@ -640,7 +643,7 @@
                                             @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
                                         @if ($scopedToHeadOfBdReturns)
@@ -746,7 +749,7 @@
                                             </div>
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-nowrap">
                                         {{-- Counts down their target from their Start, ticking in admin.js —
                                              paused outside working hours, and held where it stopped while
@@ -819,7 +822,7 @@
                                             @include('admin.rfqs._sent_back_note', ['rfq' => $rfq])
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
@@ -897,7 +900,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $partLabel }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
                                         {{ $assignee->pivot->gm_assistant_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
@@ -939,7 +942,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">—</td>
                                     <td class="text-muted-soft">
                                         {{ $rfq->gm_assistant_completed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
@@ -1030,7 +1033,7 @@
                                         @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
                                     @endif
                                 </td>
-                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                 <td>
                                     <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
                                 </td>
@@ -1126,7 +1129,7 @@
                                         @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
                                     @endif
                                 </td>
-                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                 <td class="text-muted-soft">{{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                 <td class="text-end text-nowrap">
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
@@ -1196,7 +1199,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $partLabel }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">
                                         {{ $assignee->pivot->gm_approved_at->toBusinessTimezone()->format('M d, Y g:i A') }}
                                         @if ($gmNames->has($assignee->pivot->gm_approved_by))
@@ -1233,7 +1236,7 @@
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->rfq_number }}</td>
                                     <td>{{ $rfq->subject }}</td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-muted-soft">
                                         {{ $rfq->gm_approved_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
                                         @if ($rfq->gmApprovedBy)
@@ -1361,7 +1364,7 @@
                                             @endif
                                         @endif
                                     </td>
-                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                    <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-nowrap">
                                         {{-- Counts down this round's working time against its
                                              priority's target, ticking in admin.js — paused
@@ -1443,7 +1446,7 @@
                                                     </div>
                                                 @endif
                                             </td>
-                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                             <td>
                                                 @if ($handedOver->isDataEntryPaused())
                                                     <span class="running-pill is-on-pause"><i class="bi bi-pause-fill"></i><span class="running-pill-label">Paused</span></span>
@@ -1508,7 +1511,7 @@
                                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                             <td class="text-nowrap">{{ $rfq->partNumberLabel($finalized->part_number) }}</td>
                                             <td>{{ $rfq->subject }}</td>
-                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span></td>
+                                            <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                             <td><span class="badge badge-soft-{{ $stageTone }}">{{ $stageLabel }}</span></td>
                                             <td class="text-muted-soft">{{ $finalized->finalized_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                             <td class="text-end">
@@ -1717,7 +1720,7 @@
                                     <td colspan="{{ $listColumns }}">
                                         @switch($groupBy)
                                             @case('priority')
-                                                <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priority_level }}</span>
+                                                <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span>
                                                 @break
                                             @case('status')
                                                 <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>

@@ -628,7 +628,7 @@
                             <div class="row g-3 mb-3">
                                 @foreach (array_reverse($sourcingTargets, true) as $priority => $minutes)
                                     <div class="col-sm-6">
-                                        <label for="target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <label for="target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</label>
                                         <div class="input-group">
                                             <input type="number" name="targets[{{ $priority }}]" id="target-{{ \Illuminate\Support\Str::slug($priority) }}"
                                                    class="form-control @error('targets.'.$priority, 'sourcing_targets') is-invalid @enderror"
@@ -724,7 +724,7 @@
                             <div class="row g-3 mb-3">
                                 @foreach (array_reverse($finalizeTargets, true) as $priority => $minutes)
                                     <div class="col-sm-6">
-                                        <label for="fin-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ $priority }}</label>
+                                        <label for="fin-target-{{ \Illuminate\Support\Str::slug($priority) }}" class="form-label">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</label>
                                         <div class="input-group">
                                             <input type="number" name="targets[{{ $priority }}]" id="fin-target-{{ \Illuminate\Support\Str::slug($priority) }}"
                                                    class="form-control @error('targets.'.$priority, 'finalize_targets') is-invalid @enderror"

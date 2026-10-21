@@ -107,7 +107,7 @@
                                         <td class="text-nowrap"><a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a></td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
                                         <td class="text-nowrap">{{ $part['rfq']->wc_number ?? '—' }}</td>
-                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priority_level }}</span></td>
+                                        <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priorityLabel() }}</span></td>
                                         @if ($hasCountdown)
                                             <td class="text-nowrap">
                                                 {{-- Against their step's target, as it stood when the page was made. --}}
@@ -201,9 +201,9 @@
                                 <li class="priority-chip-{{ strtolower($priority) }}">
                                     <span class="priority-chip-dot"></span>
                                     @if ($toAllRfqs)
-                                        <a href="{{ $toAllRfqs('open', ['priority' => [$priority]]) }}" class="flex-grow-1 text-reset">{{ $priority }}</a>
+                                        <a href="{{ $toAllRfqs('open', ['priority' => [$priority]]) }}" class="flex-grow-1 text-reset">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</a>
                                     @else
-                                        <span class="flex-grow-1">{{ $priority }}</span>
+                                        <span class="flex-grow-1">{{ \App\Models\Rfq::priorityLabelOf($priority) }}</span>
                                     @endif
                                     <span class="fw-semibold">{{ $count }}</span>
                                     <span class="text-muted-soft small">{{ round($count / $openTotal * 100) }}%</span>

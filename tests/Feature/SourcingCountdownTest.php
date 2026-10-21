@@ -36,7 +36,7 @@ function countdownBadge(string $html, string $rfqNumber): ?string
 // ---- The targets -----------------------------------------------------------------
 
 it('starts with a target per priority, in working minutes', function () {
-    expect(Setting::sourcingTargets())->toBe(['Low' => 1440, 'Medium' => 960, 'High' => 480, 'Urgent' => 240]);
+    expect(Setting::sourcingTargets())->toBe(['Trivial' => 2880, 'Minimal' => 2160, 'Low' => 1440, 'Medium' => 960, 'High' => 480, 'Urgent' => 240, 'Critical' => 120]);
 });
 
 it('lets an Admin set the targets in hours, to the quarter hour', function () {
@@ -45,16 +45,16 @@ it('lets an Admin set the targets in hours, to the quarter hour', function () {
         ->assertSee('name="targets[Urgent]"', false);
 
     test()->actingAs(userWithRole('Admin'))
-        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Low' => 30, 'Medium' => 12, 'High' => 6.5, 'Urgent' => 2.25]])
+        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Trivial' => 48, 'Minimal' => 36, 'Low' => 30, 'Medium' => 12, 'High' => 6.5, 'Urgent' => 2.25, 'Critical' => 1.5]])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status', 'Sourcing targets saved.');
 
-    expect(Setting::sourcingTargets())->toBe(['Low' => 1800, 'Medium' => 720, 'High' => 390, 'Urgent' => 135]);
+    expect(Setting::sourcingTargets())->toBe(['Trivial' => 2880, 'Minimal' => 2160, 'Low' => 1800, 'Medium' => 720, 'High' => 390, 'Urgent' => 135, 'Critical' => 90]);
 });
 
 it('refuses a target that isn\'t sensible', function (mixed $urgent, string $message) {
     test()->actingAs(userWithRole('Admin'))
-        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Low' => 24, 'Medium' => 16, 'High' => 8, 'Urgent' => $urgent]])
+        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Trivial' => 48, 'Minimal' => 36, 'Low' => 24, 'Medium' => 16, 'High' => 8, 'Urgent' => $urgent, 'Critical' => 1.5]])
         ->assertSessionHasErrorsIn('sourcing_targets', ['targets.Urgent' => $message]);
 
     expect(Setting::sourcingTargets()['Urgent'])->toBe(240);
@@ -70,7 +70,7 @@ it('keeps the targets to an Admin', function () {
         ->assertDontSee('Sourcing Targets');
 
     test()->actingAs(userWithRole('Sourcing'))
-        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Low' => 1, 'Medium' => 1, 'High' => 1, 'Urgent' => 1]])
+        ->patch(route('admin.settings.sourcing-targets'), ['targets' => ['Trivial' => 48, 'Minimal' => 36, 'Low' => 1, 'Medium' => 1, 'High' => 1, 'Urgent' => 1, 'Critical' => 1.5]])
         ->assertForbidden();
 });
 

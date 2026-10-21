@@ -228,13 +228,15 @@ class DashboardController extends Controller
         $floor = $this->dataEntryFloor($now, $today);
         $idle = $floor['people']->where('state', 'Idle')->sortByDesc('seconds')->values();
 
-        $urgentCounts = Rfq::query()->where('status', 'Pending')->whereIn('priority_level', ['Urgent', 'High'])
+        // P1 Critical, P2 Urgent and P3 High, the most pressing first.
+        $pressing = ['Critical', 'Urgent', 'High'];
+        $urgentCounts = Rfq::query()->where('status', 'Pending')->whereIn('priority_level', $pressing)
             ->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
         $urgent = Rfq::query()
             ->where('status', 'Pending')
-            ->whereIn('priority_level', ['Urgent', 'High'])
+            ->whereIn('priority_level', $pressing)
             ->with('assignees')
-            ->orderByRaw("case priority_level when 'Urgent' then 0 else 1 end")
+            ->orderByRaw(Rfq::priorityOrderSql())
             ->oldest()
             ->limit(8)
             ->get()
@@ -276,7 +278,7 @@ class DashboardController extends Controller
             'idle' => $idle,
             'alertMinutes' => Setting::dataEntryIdleAlert()['minutes'],
             'urgent' => $urgent,
-            'urgentCounts' => ['Urgent' => (int) ($urgentCounts['Urgent'] ?? 0), 'High' => (int) ($urgentCounts['High'] ?? 0)],
+            'urgentCounts' => collect($pressing)->mapWithKeys(fn (string $priority) => [$priority => (int) ($urgentCounts[$priority] ?? 0)])->all(),
             'returns' => $returns,
             'alerts' => collect($bell['items'])->where('kind', 'alert')->where('unread', true)->values(),
             'messages' => collect($bell['items'])->where('kind', 'message')->where('unread', true)->values(),
@@ -330,6 +332,7 @@ class DashboardController extends Controller
 
         $open = Rfq::query()->where('status', 'Pending');
         $byPriority = (clone $open)->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
+        $openUrgent = (int) collect(Rfq::URGENT_PRIORITIES)->sum(fn (string $priority) => $byPriority[$priority] ?? 0);
         $finished = RfqStep::query()->where('ended_by_role', true)->whereBetween('ended_at', $window)->count();
         $closed = Rfq::query()->whereBetween('bd_closed_at', $window)->count();
         $overdue = $ongoing->where('state', 'overdue')->count();
@@ -337,7 +340,7 @@ class DashboardController extends Controller
 
         return [
             'kpis' => [
-                ['label' => 'Open RFQs', 'value' => (clone $open)->count(), 'caption' => ($byPriority['Urgent'] ?? 0).' urgent', 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => ($byPriority['Urgent'] ?? 0) > 0, 'url' => route('admin.rfqs.index', ['status' => 'Pending'])],
+                ['label' => 'Open RFQs', 'value' => (clone $open)->count(), 'caption' => $openUrgent.' urgent', 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => $openUrgent > 0, 'url' => route('admin.rfqs.index', ['status' => 'Pending'])],
                 ['label' => 'Pending tasks', 'value' => collect($pipeline)->sum('count'), 'caption' => 'Waiting across the workflow', 'icon' => 'bi-list-check', 'tone' => 'violet', 'alert' => false, 'url' => '#pending-by-stage'],
                 ['label' => 'In progress', 'value' => $ongoing->count(), 'caption' => trans_choice('1 person working|:count people working', $working, ['count' => $working]), 'icon' => 'bi-play-circle', 'tone' => 'teal', 'alert' => false, 'url' => '#ongoing-tasks'],
                 ['label' => 'Overdue', 'value' => $overdue, 'caption' => 'Past their target', 'icon' => 'bi-alarm', 'tone' => 'danger', 'alert' => $overdue > 0, 'url' => '#ongoing-tasks'],
@@ -904,7 +907,7 @@ class DashboardController extends Controller
 
         return [
             'pending' => $pending()->count(),
-            'urgent' => $pending()->where('priority_level', 'Urgent')->count(),
+            'urgent' => $pending()->whereIn('priority_level', Rfq::URGENT_PRIORITIES)->count(),
             'inReview' => collect(Rfq::REVIEW_STAGES)->sum(fn (string $stage) => $inStage[$stage] ?? 0),
             'readyToClose' => Rfq::bdClosingCount($createdBy),
             'closed' => $mine()->where('status', 'Completed')->count(),
@@ -1035,7 +1038,7 @@ class DashboardController extends Controller
         return [
             'assigned' => $parts->count(),
             'pending' => $stillTheirs->count(),
-            'urgent' => $stillTheirs->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
+            'urgent' => $stillTheirs->filter(fn (array $part) => $part['rfq']->isUrgent())->count(),
             'overdue' => $parts->filter(fn (array $part) => ($part['timing']['state'] ?? null) === 'overdue')->count(),
             'returned' => $inState('returned')->count(),
             'inReview' => $inState('with_data_entry')->count(),
@@ -1485,7 +1488,7 @@ class DashboardController extends Controller
             ];
         }
 
-        $urgent = $overview['waitingByPriority']['Urgent'] ?? 0;
+        $urgent = (int) collect(Rfq::URGENT_PRIORITIES)->sum(fn (string $priority) => $overview['waitingByPriority'][$priority] ?? 0);
 
         if ($urgent > 0) {
             $notifications[] = [
@@ -1693,7 +1696,7 @@ class DashboardController extends Controller
 
         return [
             'waiting' => $waiting,
-            'waitingUrgent' => $waiting->filter(fn (array $part) => $part['rfq']->priority_level === 'Urgent')->count(),
+            'waitingUrgent' => $waiting->filter(fn (array $part) => $part['rfq']->isUrgent())->count(),
             'waitingOverdue' => $waiting->filter(fn (array $part) => $part['countdown'] !== null && $part['countdown']['remaining'] <= 0)->count(),
             'returnedToMe' => $stage['returns'] !== null ? ($stage['returns'])() : collect(),
             'approved' => $approved->count(),
@@ -1702,7 +1705,7 @@ class DashboardController extends Controller
             'returned' => $returns->count(),
             'returnedTo' => $returns->countBy(fn (RfqComment $comment) => $comment->meta['stage'] ?? 'an earlier step')->sortDesc()->all(),
             'open' => (clone $open)->count(),
-            'openUrgent' => (int) ($byPriority['Urgent'] ?? 0),
+            'openUrgent' => (int) collect(Rfq::URGENT_PRIORITIES)->sum(fn (string $priority) => $byPriority[$priority] ?? 0),
             'closed' => Rfq::query()->whereBetween('bd_closed_at', $window)->count(),
             'priorities' => collect($priorities)->mapWithKeys(fn (string $priority) => [$priority => (int) ($byPriority[$priority] ?? 0)])->all(),
             'pipeline' => $this->pipeline(Rfq::queueCounts()),
@@ -1860,7 +1863,7 @@ class DashboardController extends Controller
         }
 
         if ($user->can('rfqs.view')) {
-            $urgentPending = Rfq::query()->ownedBy($createdBy)->where('status', 'Pending')->where('priority_level', 'Urgent')->count();
+            $urgentPending = Rfq::query()->ownedBy($createdBy)->where('status', 'Pending')->whereIn('priority_level', Rfq::URGENT_PRIORITIES)->count();
             if ($urgentPending > 0) {
                 $notifications[] = [
                     'type' => 'danger',

@@ -64,9 +64,10 @@
     <div class="col-md-6">
         <label for="{{ $idPrefix }}-priority_level" class="form-label">Priority level</label>
         <select name="priority_level" id="{{ $idPrefix }}-priority_level" class="form-select @error('priority_level', $idPrefix) is-invalid @enderror" required>
-            @foreach ($priorities as $priority)
+            {{-- P1 Critical first, down to P7 Trivial — each with its colour, which an option can't be drawn in. --}}
+            @foreach (array_reverse($priorities) as $priority)
                 <option value="{{ $priority }}" {{ ($showOld ? old('priority_level', 'Medium') : 'Medium') === $priority ? 'selected' : '' }}>
-                    {{ $priority }}
+                    {{ \App\Models\Rfq::PRIORITY_SYMBOLS[$priority] ?? '' }} {{ \App\Models\Rfq::priorityLabelOf($priority) }}
                 </option>
             @endforeach
         </select>

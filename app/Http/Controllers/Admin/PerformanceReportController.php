@@ -188,7 +188,7 @@ class PerformanceReportController extends Controller
         match ($sort) {
             'rfq' => $query->orderBy('rfqs.rfq_number', $direction),
             'wc' => $query->orderBy('rfqs.wc_number', $direction),
-            'priority' => $query->orderByRaw("case rfqs.priority_level when 'Urgent' then 0 when 'High' then 1 when 'Medium' then 2 else 3 end ".$direction),
+            'priority' => $query->orderByRaw(Rfq::priorityOrderSql('rfqs.priority_level').' '.$direction),
             default => $query->orderBy('rfqs.created_at', $direction),
         };
 

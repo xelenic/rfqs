@@ -165,7 +165,7 @@ class RfqController extends Controller implements HasMiddleware
                     'wc' => $rfq->wc_number,
                     'rfq' => $rfq->rfq_number,
                     'subject' => $rfq->subject,
-                    'priority' => $rfq->priority_level,
+                    'priority' => $rfq->priorityLabel(),
                     'priorityClass' => $rfq->priorityBadgeClass(),
                     'status' => $rfq->statusLabel(),
                     'statusClass' => $rfq->statusBadgeClass(),
@@ -890,7 +890,7 @@ class RfqController extends Controller implements HasMiddleware
     {
         return match ($group) {
             'wc' => 'upper(trim(rfqs.wc_number))',
-            'priority' => "case rfqs.priority_level when 'Urgent' then 0 when 'High' then 1 when 'Medium' then 2 else 3 end",
+            'priority' => Rfq::priorityOrderSql('rfqs.priority_level'),
             default => "case rfqs.status when 'Pending' then 0 when '".Rfq::ON_HOLD."' then 1 when 'Completed' then 2 else 3 end",
         };
     }
@@ -943,7 +943,7 @@ class RfqController extends Controller implements HasMiddleware
 
         match ($filters['sort']) {
             'oldest' => $query->oldest(),
-            'priority' => $query->orderByRaw("case priority_level when 'Urgent' then 0 when 'High' then 1 when 'Medium' then 2 else 3 end")->latest(),
+            'priority' => $query->orderByRaw(Rfq::priorityOrderSql())->latest(),
             default => $query->latest(),
         };
     }
@@ -1609,7 +1609,8 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * Data Entry sends one Sourcing part of this RFQ back for rework, with
-     * a required reason. Clears that part's completed_at (Mark Complete
+     * a required reason and how many line items they'd added to it so far
+     * (entries, kept with the return — rfq_user.return_line_items). Clears that part's completed_at (Mark Complete
      * becomes available to its assignee again, and it shows up in their
      * "Returns" list) and, if the RFQ had already fully handed off to Data
      * Entry, undoes that too — see Rfq::returnSourcingPart().
@@ -1636,6 +1637,20 @@ class RfqController extends Controller implements HasMiddleware
             return redirect()->back()->with('status', "{$assignee->name}'s part is already back with Sourcing.");
         }
 
+        // How many line items they'd added to it so far, kept with the return.
+        $lineItemsAdded = Validator::make($request->all(), [
+            'entries' => ['required', 'integer', 'min:0', 'max:'.self::MAX_DATA_ENTRIES],
+        ], [
+            'entries.required' => 'Add how many line items you added to this part before sending it back.',
+            'entries.integer' => 'Give the line items added as a whole number, like 12.',
+            'entries.min' => 'The line items added can\'t be less than 0.',
+            'entries.max' => 'That\'s more line items than one part can have — at most '.number_format(self::MAX_DATA_ENTRIES).'.',
+        ]);
+
+        if ($lineItemsAdded->fails()) {
+            return back()->with('error', $lineItemsAdded->errors()->first());
+        }
+
         $reason = $this->requiredComment($request, 'reason', 'Add a reason to send this part back.', 1000);
 
         if ($reason instanceof RedirectResponse) {
@@ -1648,7 +1663,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry')));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry'), (int) $lineItemsAdded->validated()['entries']));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part back to Sourcing.");
     }

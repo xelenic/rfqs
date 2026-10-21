@@ -154,7 +154,7 @@ it('lists the Urgent and High RFQs still open, Urgent first and longest-waiting 
         ->assertDontSee('RFQ4105')
         ->assertSee('2 urgent · 1 high');
 
-    expect($response->viewData('urgentCounts'))->toBe(['Urgent' => 2, 'High' => 1]);
+    expect($response->viewData('urgentCounts'))->toBe(['Critical' => 0, 'Urgent' => 2, 'High' => 1]);
 });
 
 it('counts what\'s been sent back and is waiting, by whose Returns page it\'s on', function () {
@@ -182,7 +182,7 @@ it('says so when nothing is critical', function () {
     criticalMonitor()
         ->assertSee('data-critical-count="0"', false)
         ->assertSee('Nothing is past its target.')
-        ->assertSee('No Urgent or High RFQ is open.')
+        ->assertSee('No Critical, Urgent or High RFQ is open.')
         ->assertSee('No unread alerts.')
         ->assertSee('No unread messages.');
 });

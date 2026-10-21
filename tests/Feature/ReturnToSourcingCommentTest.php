@@ -42,7 +42,7 @@ function sendsBack($user, Rfq $rfq, array $payload)
 it('asks Data Entry for a reason before a part is sent back', function (array $payload) {
     $rfq = completedBySourcing([1 => userWithRole('Sourcing')]);
 
-    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1] + $payload)
+    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1, 'entries' => 0] + $payload)
         ->assertRedirect()
         ->assertSessionHas('error');
 
@@ -60,10 +60,10 @@ it('says what is missing when the reason is', function () {
     $rfq = completedBySourcing([1 => userWithRole('Sourcing')]);
     $dataEntry = userWithRole('Data Entry');
 
-    sendsBack($dataEntry, $rfq, ['part' => 1])
+    sendsBack($dataEntry, $rfq, ['part' => 1, 'entries' => 0])
         ->assertSessionHas('error', 'Add a reason to send this part back.');
 
-    sendsBack($dataEntry, $rfq, ['part' => 1, 'reason' => str_repeat('a', 1001)])
+    sendsBack($dataEntry, $rfq, ['part' => 1, 'entries' => 0, 'reason' => str_repeat('a', 1001)])
         ->assertSessionHas('error', 'That comment is too long — keep it under 1000 characters.');
 });
 
@@ -72,7 +72,7 @@ it('sends the part back with the reason, and posts it to the thread', function (
     $dataEntry = userWithRole('Data Entry');
     $rfq = completedBySourcing([1 => $riley, 2 => userWithRole('Sourcing')], ['rfq_number' => 'RFQ1001']);
 
-    sendsBack($dataEntry, $rfq, ['part' => 1, 'reason' => 'Supplier quote is missing prices'])
+    sendsBack($dataEntry, $rfq, ['part' => 1, 'entries' => 6, 'reason' => 'Supplier quote is missing prices'])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status');
 
@@ -80,6 +80,8 @@ it('sends the part back with the reason, and posts it to the thread', function (
 
     expect($pivot->returned_at)->not->toBeNull()
         ->and($pivot->return_reason)->toBe('Supplier quote is missing prices')
+        // With how many line items they'd added so far.
+        ->and($pivot->return_line_items)->toBe(6)
         ->and($pivot->completed_at)->toBeNull()
         // Only that part — the other stays as it was.
         ->and($rfq->assigneeForPart(2)->pivot->returned_at)->toBeNull()
@@ -87,17 +89,18 @@ it('sends the part back with the reason, and posts it to the thread', function (
         // The reason as written, marked as a return — with whose part and which.
         ->and($rfq->comments()->sole()->body)->toBe('Supplier quote is missing prices')
         ->and($rfq->comments()->sole()->action)->toBe('returned_to_sourcing')
-        ->and($rfq->comments()->sole()->meta)->toBe(['part' => 1, 'label' => 'RFQ1001-P1 of P2', 'who' => $riley->name]);
+        ->and($rfq->comments()->sole()->meta)->toBe(['part' => 1, 'label' => 'RFQ1001-P1 of P2', 'who' => $riley->name, 'entries' => 6])
+        ->and($rfq->comments()->sole()->actionContext())->toBe($riley->name.'\'s part · RFQ1001-P1 of P2 · 6 line items added');
 });
 
 it('lets only Data Entry or Admin send a part back', function () {
     $rfq = completedBySourcing([1 => userWithRole('Sourcing')]);
 
     foreach (['Sourcing', 'Business Development'] as $role) {
-        sendsBack(userWithRole($role), $rfq, ['part' => 1, 'reason' => 'Not mine to say'])->assertForbidden();
+        sendsBack(userWithRole($role), $rfq, ['part' => 1, 'entries' => 0, 'reason' => 'Not mine to say'])->assertForbidden();
     }
 
-    sendsBack(userWithRole('Admin'), $rfq, ['part' => 1, 'reason' => 'Sent back by Admin'])->assertSessionHas('status');
+    sendsBack(userWithRole('Admin'), $rfq, ['part' => 1, 'entries' => 0, 'reason' => 'Sent back by Admin'])->assertSessionHas('status');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->return_reason)->toBe('Sent back by Admin');
 });
@@ -107,7 +110,7 @@ it('goes back to the page it was done from', function () {
 
     test()->actingAs(userWithRole('Data Entry'))
         ->from(route('admin.rfqs.index', ['status' => 'Pending']))
-        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'reason' => 'Prices missing'])
+        ->patch(route('admin.rfqs.return-sourcing', $rfq), ['part' => 1, 'entries' => 0, 'reason' => 'Prices missing'])
         ->assertRedirect(route('admin.rfqs.index', ['status' => 'Pending']));
 });
 
@@ -171,9 +174,50 @@ it('offers neither once Data Entry has processed the part, or to Sourcing', func
 it('shows a returned part\'s reason where Sourcing will see it', function () {
     $riley = userWithRole('Sourcing');
     $rfq = completedBySourcing([1 => $riley]);
-    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1, 'reason' => 'Wrong model quoted']);
+    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1, 'entries' => 7, 'reason' => 'Wrong model quoted']);
 
+    // With how many line items Data Entry had added: on their Returns list, the RFQ's page and their dashboard.
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))
         ->assertOk()
-        ->assertSee('Wrong model quoted');
+        ->assertSee('Wrong model quoted')
+        ->assertSee('<span class="text-nowrap" data-return-line-items>· 7 line items added</span>', false);
+    test()->actingAs($riley)->get(route('admin.rfqs.show', $rfq))->assertOk()
+        ->assertSee('<div class="small" data-return-line-items>7 line items added before it was sent back.</div>', false);
+    test()->actingAs($riley)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('· 7 line items added');
+});
+
+it('asks how many line items Data Entry had added before sending a part back', function (array $payload, string $error) {
+    $rfq = completedBySourcing([1 => userWithRole('Sourcing')]);
+
+    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1, 'reason' => 'Prices missing'] + $payload)
+        ->assertSessionHas('error', $error);
+
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->returned_at)->toBeNull()
+        ->and($rfq->comments()->count())->toBe(0);
+})->with([
+    'not given' => [[], 'Add how many line items you added to this part before sending it back.'],
+    'not a number' => [['entries' => 'some'], 'Give the line items added as a whole number, like 12.'],
+    'below 0' => [['entries' => -1], 'The line items added can\'t be less than 0.'],
+]);
+
+it('takes none added, and clears the count once the part is assigned to Data Entry again', function () {
+    $riley = userWithRole('Sourcing');
+    $rfq = completedBySourcing([1 => $riley]);
+
+    sendsBack(userWithRole('Data Entry'), $rfq, ['part' => 1, 'entries' => 0, 'reason' => 'Nothing usable'])->assertSessionHas('status');
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->return_line_items)->toBe(0)
+        ->and($rfq->assigneeForPart(1)->pivot->returnLineItemsLabel())->toBe('0 line items added');
+
+    $rfq->completeSourcingPart(1, 'Fixed', null, 4);
+
+    expect($rfq->refresh()->assigneeForPart(1)->pivot->return_line_items)->toBeNull();
+});
+
+it('shows the line items added field in the Return to Sourcing popup', function () {
+    completedBySourcing([1 => userWithRole('Sourcing')]);
+
+    test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('id="complete-entries-input"', false)
+        ->assertSee('Your reason, and how many line items you&#039;d added, are posted to the RFQ&#039;s comments', false);
 });

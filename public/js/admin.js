@@ -820,7 +820,7 @@ function rfqmsBoot() {
         var error = document.getElementById('complete-error');
         var cancel = document.getElementById('complete-cancel');
         var submit = document.getElementById('complete-submit');
-        // Data Entry's Send to Finalize also asks how many line items they added.
+        // Data Entry's Send to Finalize and Return to Sourcing also ask how many line items they added.
         var entriesBox = document.getElementById('complete-entries');
         var entries = document.getElementById('complete-entries-input');
         var entriesHint = document.getElementById('complete-entries-hint');
@@ -944,12 +944,15 @@ function rfqmsBoot() {
                 showLineItemsError('');
             }
 
+            // Send to Finalize, and Return to Sourcing: how many line items
+            // they've added — when sending back, so far.
             if (entriesBox) {
-                var wantsEntries = button.dataset.kind === 'data_entry';
+                var returning = button.dataset.kind === 'return';
+                var wantsEntries = button.dataset.kind === 'data_entry' || returning;
                 entriesBox.classList.toggle('d-none', !wantsEntries);
                 entries.disabled = !wantsEntries;
                 entries.value = '';
-                entriesHint.textContent = 'How many line items you added to this part.'
+                entriesHint.textContent = (returning ? 'How many line items you added to this part before sending it back — 0 if none.' : 'How many line items you added to this part.')
                     + (button.dataset.lineItems ? ' Sourcing asked for ' + button.dataset.lineItems + (button.dataset.lineItems === '1' ? ' line item.' : ' line items.') : '')
                     + (button.dataset.items ? ' The RFQ has ' + button.dataset.items + (button.dataset.items === '1' ? ' item.' : ' items.') : '');
             }

@@ -59,8 +59,8 @@ it('suggests the RFQs whose WC number has what\'s typed — spaces and case asid
     expect(collect($response->json('results'))->pluck('rfq')->all())->toBe(['RFQ6003', 'RFQ6002', 'RFQ6001'])
         ->and($response->json('results.0'))->toMatchArray([
             'wc' => 'WC2099',
-            'priority' => 'Urgent',
-            'priorityClass' => 'badge-soft-danger',
+            'priority' => 'P2 – Urgent',
+            'priorityClass' => 'badge-priority priority-chip-urgent',
             'status' => 'Pending',
             'url' => route('admin.rfqs.show', Rfq::where('rfq_number', 'RFQ6003')->sole()),
         ])

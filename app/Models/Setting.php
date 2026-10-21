@@ -82,7 +82,7 @@ class Setting extends Model
      *
      * @var array<string, int>
      */
-    public const DEFAULT_SOURCING_TARGETS = ['Low' => 1440, 'Medium' => 960, 'High' => 480, 'Urgent' => 240];
+    public const DEFAULT_SOURCING_TARGETS = ['Trivial' => 2880, 'Minimal' => 2160, 'Low' => 1440, 'Medium' => 960, 'High' => 480, 'Urgent' => 240, 'Critical' => 120];
 
     /**
      * How long, in working minutes, Data Entry has to send a part of each
@@ -91,7 +91,7 @@ class Setting extends Model
      *
      * @var array<string, int>
      */
-    public const DEFAULT_DATA_ENTRY_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
+    public const DEFAULT_DATA_ENTRY_TARGETS = ['Trivial' => 480, 'Minimal' => 360, 'Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30, 'Critical' => 15];
 
     /**
      * How long the part's Sourcing member has to finalize it once Data Entry
@@ -101,7 +101,7 @@ class Setting extends Model
      *
      * @var array<string, int>
      */
-    public const DEFAULT_FINALIZE_TARGETS = ['Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15];
+    public const DEFAULT_FINALIZE_TARGETS = ['Trivial' => 240, 'Minimal' => 180, 'Low' => 120, 'Medium' => 60, 'High' => 30, 'Urgent' => 15, 'Critical' => 15];
 
     /**
      * How long GM Assistant has to submit a part to the General Manager once
@@ -111,7 +111,7 @@ class Setting extends Model
      *
      * @var array<string, int>
      */
-    public const DEFAULT_GM_ASSISTANT_TARGETS = ['Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30];
+    public const DEFAULT_GM_ASSISTANT_TARGETS = ['Trivial' => 480, 'Minimal' => 360, 'Low' => 240, 'Medium' => 120, 'High' => 60, 'Urgent' => 30, 'Critical' => 15];
 
     /**
      * Whether GM Assistant's target is worked out per line item — so many
