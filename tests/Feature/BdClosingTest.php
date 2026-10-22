@@ -4,6 +4,7 @@ use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -565,4 +566,25 @@ it('brings a close with no reference code back in the popup, pointed at the same
         ->toContain('action="'.route('admin.rfqs.close-part', $rfq).'"')
         ->toContain('Give the quotation number to close it.')
         ->toContain('id="closeRfqTarget">RFQ1001-P1 of P2');
+});
+
+it('says whose RFQ each is — the marketing (Business Development) person who created it — to anyone who sees more than their own', function () {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+    $people['closer']->update(['name' => 'Bea Marketing']);
+    $rfq->forceFill(['created_by' => $people['closer']->id])->save();
+    Role::findOrCreate('Admin');
+
+    // Admin's view of the page: every Business Development person's.
+    $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development']))->assertOk()
+        ->assertSeeInOrder(['<th>Approved by GM</th>', '<th>Marketing (BD)</th>', 'Actions'], false)
+        ->getContent();
+
+    expect(Str::betweenFirst($html, numberCell('RFQ1001-P1 of P2'), '</tr>'))
+        ->toContain('<td data-marketing>')
+        ->toContain('Bea Marketing');
+
+    // Their own list is all theirs: no column for it.
+    test()->actingAs($people['closer'])->get(closingUrl())->assertOk()
+        ->assertSee(numberCell('RFQ1001-P1 of P2'), false)
+        ->assertDontSee('Marketing (BD)');
 });

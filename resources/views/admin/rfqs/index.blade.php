@@ -1176,8 +1176,11 @@
                  Closing a part is on its own and puts it in Closed RFQs; the RFQ
                  itself closes once every part has been. An RFQ kept whole is one
                  row. No Sourcing names: Business Development doesn't see who
-                 holds a part. See RfqController::index() ($scopedToBdClosing),
-                 Rfq::closePart(). --}}
+                 holds a part. Whose RFQ it is — the marketing (Business
+                 Development) person who created it — for anyone who sees more
+                 than their own (Admin's view of the page). See
+                 RfqController::index() ($scopedToBdClosing), Rfq::closePart(). --}}
+            @php $showsMarketing = ! auth()->user()->seesOnlyOwnRfqs(); @endphp
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -1187,6 +1190,9 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Approved by GM</th>
+                            @if ($showsMarketing)
+                                <th>Marketing (BD)</th>
+                            @endif
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -1206,6 +1212,9 @@
                                             <div class="text-muted-soft small">by {{ $gmNames->get($assignee->pivot->gm_approved_by) }}</div>
                                         @endif
                                     </td>
+                                    @if ($showsMarketing)
+                                        <td data-marketing>@include('admin.rfqs._marketing_person', ['rfq' => $rfq])</td>
+                                    @endif
                                     <td class="text-end text-nowrap">
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
@@ -1243,6 +1252,9 @@
                                             <div class="text-muted-soft small">by {{ $rfq->gmApprovedBy->name }}</div>
                                         @endif
                                     </td>
+                                    @if ($showsMarketing)
+                                        <td data-marketing>@include('admin.rfqs._marketing_person', ['rfq' => $rfq])</td>
+                                    @endif
                                     <td class="text-end text-nowrap">
                                         <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
@@ -1264,7 +1276,7 @@
                             @endif
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center text-muted-soft py-4">
+                                <td colspan="{{ $showsMarketing ? 7 : 6 }}" class="text-center text-muted-soft py-4">
                                     Nothing's ready to close right now.
                                 </td>
                             </tr>
