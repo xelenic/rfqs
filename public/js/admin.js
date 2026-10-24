@@ -126,6 +126,26 @@ function rfqmsBoot() {
         });
     });
 
+    // Admin → Job Categories: the row's Edit points the one Edit popup at its
+    // category, filled with its name and description.
+    document.querySelectorAll('.js-edit-category').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('editCategoryForm');
+            if (!form) return;
+
+            form.action = button.dataset.action;
+            form.querySelector('[name="category_id"]').value = button.dataset.id || '';
+            form.querySelector('[name="name"]').value = button.dataset.name || '';
+            form.querySelector('[name="description"]').value = button.dataset.description || '';
+            form.querySelectorAll('.is-invalid').forEach(function (field) { field.classList.remove('is-invalid'); });
+
+            var rfqs = Number(button.dataset.rfqs || 0);
+            document.getElementById('edit-category-rename-note').textContent = rfqs > 0
+                ? 'Renaming it renames it on its ' + rfqs + (rfqs === 1 ? ' RFQ' : ' RFQs') + ', too.'
+                : 'No RFQ has it yet.';
+        });
+    });
+
     // Populate the shared "Edit RFQ" modal from the clicked row's data-* attributes.
     document.querySelectorAll('.js-edit-rfq').forEach(function (button) {
         button.addEventListener('click', function () {

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AttendanceController;
 use App\Http\Controllers\Admin\BackupController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ImpersonationController;
+use App\Http\Controllers\Admin\JobCategoryController;
 use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\LogController;
 use App\Http\Controllers\Admin\MessageController;
@@ -81,6 +82,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::put('attendance/{sheet}', [AttendanceController::class, 'update'])->name('attendance.update');
     Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
+
+    // The job categories (JobCategory) the Assign Sourcing wizard offers — Admin only, see JobCategoryController.
+    Route::get('categories', [JobCategoryController::class, 'index'])->name('categories.index');
+    Route::post('categories', [JobCategoryController::class, 'store'])->name('categories.store');
+    Route::put('categories/{category}', [JobCategoryController::class, 'update'])->name('categories.update');
+    Route::delete('categories/{category}', [JobCategoryController::class, 'destroy'])->name('categories.destroy');
 
     // Backups (App\BackupManager) — Admin only, see BackupController.
     Route::get('backups', [BackupController::class, 'index'])->name('backups.index');

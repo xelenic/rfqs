@@ -5,6 +5,7 @@ paths:
   - app/Http/Controllers/Admin/DashboardController.php
   - app/Http/Controllers/Admin/RfqController.php
   - app/Http/Controllers/Admin/PerformanceReportController.php
+  - app/Http/Controllers/Admin/JobCategoryController.php
 ---
 
 # Admin
@@ -33,3 +34,6 @@ Since 2026-10-21 the RFQ tracking sheet filters on ?finalized= (TRACKING_FINALIZ
 - finalized: at least one part is finalized and none that isn't cancelled is left.
 - With a Sourcing member chosen (?person=), only that member's own parts are considered.
 The column follows the same rule: "Not finalized yet", or the finalizers' names with an "N of M parts" badge while a split is only partly finalized. The footer counts "not finalized" the same way. A part's finalizer is finalized_by, falling back to its holder.
+
+## Job categories are matched to RFQs by name, not by FK
+rfqs.category is a plain string, not a job_categories FK. So renaming a JobCategory must also update rfqs.category in the same transaction (JobCategoryController::update does this). Deleting one only takes it off the Assign Sourcing wizard's list; its RFQs keep the text. The index lists such "unlisted" names (on RFQs but not in job_categories) so Admin can put them back. Names are unique ignoring case. Admin only (abortUnlessAdmin). Each popup has its own error bag (createCategory, editCategory) so a refused save reopens the right popup.

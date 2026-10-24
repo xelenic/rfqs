@@ -1035,6 +1035,18 @@ h6, .h6 { font-size: 0.85rem; }
   width: auto;
 }
 
+/* Admin → Job Categories: each category's icon (JobCategory::icon()). */
+.category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.5rem;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary);
+}
+
 /* All RFQs narrowed by a dashboard card (?show=): what's shown, and the way back to everything. */
 .list-view-note {
   display: flex;

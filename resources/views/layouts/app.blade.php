@@ -130,6 +130,14 @@
                     </a>
                 @endcan
 
+                {{-- What the RFQs are set up with — the job categories the Assign Sourcing wizard offers (Admin\JobCategoryController). --}}
+                @if (auth()->user()->hasRole('Admin'))
+                    <div class="sidebar-section-title">Configuration</div>
+                    <a href="{{ route('admin.categories.index') }}" class="nav-link {{ request()->routeIs('admin.categories.*') ? 'active' : '' }}">
+                        <i class="bi bi-tags"></i> Job Categories
+                    </a>
+                @endif
+
                 {{-- The application's log files, read only — Admin\LogController. --}}
                 @if (auth()->user()->hasRole('Admin'))
                     <div class="sidebar-section-title">System</div>
@@ -242,7 +250,7 @@
                 // attendance, the logs and backups, which aren't live — a refresh mid-way would wipe
                 // what's being filled in. Its hash lets a refresh tell whether anything
                 // in it actually changed.
-                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*', 'admin.attendance.*', 'admin.logs.*', 'admin.backups.*');
+                $liveBody = ! request()->routeIs('admin.users.*', 'admin.roles.*', 'admin.permissions.*', 'admin.settings.*', 'admin.attendance.*', 'admin.logs.*', 'admin.backups.*', 'admin.categories.*');
                 $pageContent = $__env->yieldContent('content');
             @endphp
             <main class="page-body" id="live-main" data-live="{{ $liveBody ? 'on' : 'off' }}" data-live-hash="{{ md5($pageContent) }}">
