@@ -219,7 +219,7 @@ it('tells the commenter, in the comment box, that a mention goes to Messages —
 
     foreach ([rfqForMentions(), Rfq::factory()->create()] as $rfq) {
         test()->actingAs($operations)->get(route('admin.rfqs.show', $rfq))->assertOk()
-            ->assertSee('Write a comment... (@ to mention someone — they\'ll get it in Messages)', false);
+            ->assertSee('Write a comment... (everyone on this RFQ gets it in Messages — @ to mention someone else)', false);
     }
 });
 

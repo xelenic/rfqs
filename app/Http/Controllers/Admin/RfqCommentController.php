@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Rfq;
 use App\Models\RfqComment;
 use App\Models\RfqCommentAttachment;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -66,8 +68,11 @@ class RfqCommentController extends Controller implements HasMiddleware
         ]);
         $comment->storeAttachments($files);
 
-        // Whoever it @mentions gets it in their Messages.
-        $messaged = $comment->setRelation('rfq', $rfq)->messageMentionedUsers();
+        // Whoever it @mentions gets it in their Messages, as a mention — and
+        // so does everyone else involved in the RFQ, as a comment.
+        $comment->setRelation('rfq', $rfq)->setRelation('parent', $parent);
+        $mentioned = $comment->messageMentionedUsers();
+        $messaged = $mentioned->concat($comment->messagePeopleInvolved($mentioned));
 
         // Comments can now be posted from more than one place — the RFQ's
         // own show page, or the quick-detail modal on Data Entry's "By
@@ -75,7 +80,22 @@ class RfqCommentController extends Controller implements HasMiddleware
         // rather than always the show page.
         return redirect()->back()
             ->with('status', ($parent ? 'Reply posted.' : 'Comment posted.')
-                .($messaged->isNotEmpty() ? ' '.$messaged->pluck('name')->join(', ', ' and ').' will see it in Messages.' : ''));
+                .($messaged->isNotEmpty() ? ' '.$this->namesOf($messaged).' will see it in Messages.' : ''));
+    }
+
+    /**
+     * "Riley Chen and Sam Rivera" — or, past four, the first three "and 5
+     * others".
+     *
+     * @param  Collection<int, User>  $people
+     */
+    private function namesOf(Collection $people): string
+    {
+        $names = $people->pluck('name');
+
+        return $names->count() > 4
+            ? $names->take(3)->join(', ').' and '.($names->count() - 3).' others'
+            : $names->join(', ', ' and ');
     }
 
     /**

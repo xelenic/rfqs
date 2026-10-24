@@ -237,6 +237,26 @@ class Rfq extends Model
      *
      * @var array<string, string>
      */
+    /**
+     * The columns of an RFQ, and of each of its parts (rfq_user), that name
+     * someone who's had a hand in it — see peopleInvolved().
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const PEOPLE_COLUMNS = [
+        'rfqs' => [
+            'created_by', 'operations_assigned_by', 'category_set_by', 'sourcing_completed_by',
+            'data_entry_completed_by', 'finalized_by', 'senior_ops_reviewed_by', 'head_of_bd_approved_by',
+            'head_of_bd_rejected_by', 'rejected_by', 'gm_assistant_completed_by', 'gm_approved_by',
+            'bd_closed_by', 'status_changed_by',
+        ],
+        'rfq_user' => [
+            'user_id', 'returned_by', 'data_entry_assigned_to', 'data_entry_started_by', 'data_entry_completed_by',
+            'finalized_by', 'senior_ops_reviewed_by', 'head_of_bd_approved_by', 'gm_assistant_started_by',
+            'gm_assistant_completed_by', 'gm_approved_by', 'bd_closed_by', 'status_changed_by',
+        ],
+    ];
+
     public const RETURN_TARGET_ROLES = [
         'business_development' => 'Business Development',
         'operations' => 'Senior Operations',
@@ -3518,6 +3538,40 @@ class Rfq extends Model
         };
 
         return collect($people)->filter(fn (?User $person) => $person !== null && ! $person->isDeactivated())->unique('id')->values();
+    }
+
+    /**
+     * Everyone who's had a hand in this RFQ, and so is told of what's said
+     * on it (RfqComment::messagePeopleInvolved()): its creator, whoever
+     * routed it, each part's Sourcing member, whoever was given or did a
+     * part's Data Entry, finalized, reviewed, approved, returned, held or
+     * closed it (PEOPLE_COLUMNS), everyone who's commented or acted on it —
+     * and whoever it's waiting with now: the review stage's people
+     * (peopleAtStage()), or Senior Operations' while it's yet to be
+     * assigned. Active people only.
+     *
+     * @return Collection<int, User>
+     */
+    public function peopleInvolved(): Collection
+    {
+        $ids = collect(self::PEOPLE_COLUMNS['rfqs'])->map(fn (string $column) => $this->getAttribute($column))
+            ->merge(DB::table('rfq_user')->where('rfq_id', $this->id)->get(self::PEOPLE_COLUMNS['rfq_user'])
+                ->flatMap(fn (object $part) => array_values((array) $part)))
+            ->merge(RfqComment::query()->where('rfq_id', $this->id)->distinct()->pluck('user_id'))
+            ->filter()
+            ->unique();
+
+        $waitingWith = match (true) {
+            in_array($this->stage, [...self::REVIEW_STAGES, 'bd_closing'], true) => $this->peopleAtStage($this->stage),
+            $this->stage === null && ! DB::table('rfq_user')->where('rfq_id', $this->id)->exists() => $this->peopleAtStage('operations'),
+            default => collect(),
+        };
+
+        return User::query()->whereKey($ids->all())->orderBy('id')->get()
+            ->merge($waitingWith)
+            ->reject(fn (User $person) => $person->isDeactivated())
+            ->unique('id')
+            ->values();
     }
 
     /**

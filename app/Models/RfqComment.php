@@ -343,10 +343,59 @@ class RfqComment extends Model
                 'sender_id' => $this->user_id,
                 'recipient_id' => $user->id,
                 'rfq_comment_id' => $this->id,
-                'body' => "Mentioned you {$where}:\n{$this->body}",
+                'body' => "Mentioned you {$where}:\n{$this->body}".$this->photosNote(),
             ]);
         }
 
         return $mentioned;
+    }
+
+    /**
+     * Sends everyone else involved in the RFQ (Rfq::peopleInvolved()) who can
+     * open it this comment in their Messages, from its author: "Commented on
+     * RFQ… — subject:", or "Replied to your comment / a comment on…", then
+     * the comment. Not to its author, nor again to anyone in $alreadyTold —
+     * those it @mentions, who've had it as a mention. Returns who was sent it.
+     *
+     * @param  Collection<int, User>  $alreadyTold
+     * @return Collection<int, User>
+     */
+    public function messagePeopleInvolved(Collection $alreadyTold): Collection
+    {
+        $people = $this->rfq->peopleInvolved()
+            ->reject(fn (User $user) => $user->id === $this->user_id || $alreadyTold->contains('id', $user->id))
+            ->filter(fn (User $user) => $user->can('rfqs.view') && $this->rfq->isVisibleTo($user))
+            ->values();
+
+        $on = 'on '.($this->rfq->isClosed() ? 'closed ' : '')."{$this->rfq->rfq_number} — {$this->rfq->subject}";
+        $parentAuthorId = $this->parent?->user_id;
+
+        foreach ($people as $user) {
+            $what = match (true) {
+                $this->parent_id === null => 'Commented',
+                $parentAuthorId === $user->id => 'Replied to your comment',
+                default => 'Replied to a comment',
+            };
+
+            PrivateMessage::query()->create([
+                'sender_id' => $this->user_id,
+                'recipient_id' => $user->id,
+                'rfq_comment_id' => $this->id,
+                'body' => "{$what} {$on}:\n{$this->body}".$this->photosNote(),
+            ]);
+        }
+
+        return $people;
+    }
+
+    /**
+     * "(2 photos attached)" on a line of its own, for a message about a
+     * comment that has photos — they're seen on the RFQ.
+     */
+    private function photosNote(): string
+    {
+        $photos = $this->attachments()->count();
+
+        return $photos > 0 ? "\n(".$photos.' '.($photos === 1 ? 'photo' : 'photos').' attached)' : '';
     }
 }

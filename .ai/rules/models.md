@@ -2,6 +2,7 @@
 paths:
   - 'app/Models/**'
   - app/Models/Attendance.php
+  - app/Models/RfqComment.php
 ---
 
 # Models
@@ -92,3 +93,6 @@ Since 2026-10-21, Senior Operations' Verify line items popup and the Head of BD'
 - sourcing, data_entry and finalize rfq_steps stretches, with working time;
 - the part's verified_line_items.
 A part is matched by meta part, or 1 on a whole RFQ. When times tie, actions sort before the stretch they start. Each row carries a change against what was requested and the previous count, and tone (off/ok). A new action that sets or changes a line-item count must put it in its comment's meta, or the history won't show it. Tests compare the counts with popupParts(), which drops the history.
+
+## Every RFQ comment goes to everyone involved, in Messages
+Since 2026-10-24, at the client's request, RfqCommentController::store() sends each comment and reply as a PrivateMessage (rfq_comment_id) from its author. First it sends @mentions (messageMentionedUsers()), then RfqComment::messagePeopleInvolved($mentioned) sends it to Rfq::peopleInvolved(): the PEOPLE_COLUMNS on rfqs and rfq_user, everyone who has commented or acted on it (any rfq_comments.user_id), and whoever it's waiting with (a review stage's peopleAtStage(), or Senior Operations while it has no parts). A mentioned person gets only the mention. It never goes to the author, a deactivated account, or anyone who can't open the RFQ (rfqs.view + isVisibleTo()). Bodies are "Commented on [closed ]RFQ… — subject:", "Replied to your comment on…" or "Replied to a comment on…", plus "(N photos attached)". Workflow action comments (postActionComment) are not sent this way; TaskMessages covers those. Someone newly involved in an RFQ should be added through PEOPLE_COLUMNS or a comment, not by a separate send.

@@ -100,7 +100,7 @@
                                     @csrf
                                     <input type="hidden" name="parent_id" value="{{ $comment->id }}">
                                     <textarea name="body" rows="1" class="form-control form-control-sm js-mention-input @error('body', 'reply') is-invalid @enderror"
-                                              placeholder="Write a reply... (@ to mention someone — they'll get it in Messages)">{{ $isFailedReply ? old('body') : '' }}</textarea>
+                                              placeholder="Write a reply... (everyone on this RFQ gets it in Messages — @ to mention someone else)">{{ $isFailedReply ? old('body') : '' }}</textarea>
                                     @if ($isFailedReply)
                                         @error('body', 'reply')
                                             <div class="invalid-feedback d-block">{{ $message }}</div>
