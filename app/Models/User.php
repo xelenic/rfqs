@@ -174,6 +174,15 @@ class User extends Authenticatable
     public const WORKING_HOURS_ROLES = ['Admin', 'HR Executive'];
 
     /**
+     * The roles that manage the job categories (Admin\JobCategoryController)
+     * — the list Senior Operations picks from in the Assign Sourcing wizard.
+     * Senior Operations' and GM Assistant's too since 2026-10-24.
+     *
+     * @var array<int, string>
+     */
+    public const JOB_CATEGORY_ROLES = ['Admin', 'Senior Operations', 'GM Assistant'];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -319,6 +328,15 @@ class User extends Authenticatable
     public function canViewTimeSpentReport(): bool
     {
         return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
+    }
+
+    /**
+     * Whether this person adds, edits and deletes the job categories — see
+     * JOB_CATEGORY_ROLES.
+     */
+    public function canManageJobCategories(): bool
+    {
+        return $this->hasAnyRole(self::JOB_CATEGORY_ROLES);
     }
 
     /**

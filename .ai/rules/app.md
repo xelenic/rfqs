@@ -2,6 +2,7 @@
 paths:
   - 'app/**'
   - app/PerformanceReports.php
+  - app/Spreadsheet.php
 ---
 
 # App
@@ -79,3 +80,6 @@ Since 2026-10-21, at the client's request, every task that reaches a specific pe
 - replaceSourcingPart: to both the new and the old member.
 - forwardBack.
 A new path that hands work to a person should call TaskMessages::send(). It is never sent to the actor or to deactivated users. Because private_messages now has an rfq_id, RfqDataEraser::KEPT_TABLES excludes it from truncation. Only RFQ-linked messages are deleted, so never drop that exclusion, or Clear RFQ data would wipe everyone's personal messages.
+
+## Spreadsheets are read and written natively (App\Spreadsheet), no package
+Since 2026-10-24 the project has no spreadsheet package. App\Spreadsheet reads .xlsx (first sheet; shared, rich, inline and formula strings) and CSV (comma, semicolon or tab; BOM dropped; Windows-1252 converted) with ZipArchive and SimpleXML (LIBXML_NONET, 20 MB cap per part). Rows are keyed by Excel's own row numbers, so error messages can say "row 7". It also writes a one-sheet .xlsx (Spreadsheet::xlsx()) for downloads. Legacy .xls isn't readable: ask for it to be saved as .xlsx. Validate uploads with extensions:xlsx,csv, not mimes (finfo often reports xlsx as application/zip); the parse itself rejects non-workbooks with a RuntimeException whose message is written for the end user. Reuse this for any future import or export rather than adding phpoffice/phpspreadsheet without approval.

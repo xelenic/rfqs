@@ -20,12 +20,15 @@ function categoryAdmin(): User
     return tap(userWithRole('Admin'))->update(['name' => 'Ada Admin']);
 }
 
-it('is an Admin\'s page, in their sidebar', function () {
-    test()->actingAs(categoryAdmin())->get(route('admin.dashboard'))->assertOk()
-        ->assertSee('href="'.route('admin.categories.index').'"', false)
-        ->assertSee('Job Categories');
+it('is for Admin, Senior Operations and GM Assistant, in their sidebar', function () {
+    foreach ([categoryAdmin(), userWithRole('Senior Operations'), userWithRole('GM Assistant')] as $person) {
+        test()->actingAs($person)->get(route('admin.dashboard'))->assertOk()
+            ->assertSee('href="'.route('admin.categories.index').'"', false)
+            ->assertSee('Job Categories');
+        test()->actingAs($person)->get(route('admin.categories.index'))->assertOk();
+    }
 
-    foreach (['Senior Operations', 'Sourcing', 'Business Development', 'General Manager'] as $role) {
+    foreach (['Sourcing', 'Business Development', 'Data Entry', 'General Manager', 'Head of Business Development'] as $role) {
         $person = userWithRole($role);
         test()->actingAs($person)->get(route('admin.dashboard'))->assertOk()->assertDontSee(route('admin.categories.index'));
         test()->actingAs($person)->get(route('admin.categories.index'))->assertForbidden();
@@ -134,4 +137,26 @@ it('deletes a category — its RFQs keep it, and it can be put back from the lis
 
     test()->actingAs($admin)->post(route('admin.categories.store'), ['name' => 'Pest Control'])->assertSessionHasNoErrors();
     expect(test()->actingAs($admin)->get(route('admin.categories.index'))->getContent())->not->toContain('data-unlisted-category');
+});
+
+it('lets Senior Operations and GM Assistant add, rename and delete categories', function () {
+    $operations = tap(userWithRole('Senior Operations'))->update(['name' => 'Omar Ops']);
+    $assistant = userWithRole('GM Assistant');
+    Rfq::factory()->create(['category' => 'Solar Panels']);
+
+    test()->actingAs($operations)->post(route('admin.categories.store'), ['name' => 'Solar Panels', 'description' => 'PV modules'])
+        ->assertRedirect(route('admin.categories.index'));
+    $category = JobCategory::query()->where('name', 'Solar Panels')->sole();
+    expect($category->created_by)->toBe($operations->id);
+
+    test()->actingAs($assistant)->put(route('admin.categories.update', $category), ['name' => 'Solar Energy', 'category_id' => $category->id])
+        ->assertRedirect(route('admin.categories.index'));
+    expect(Rfq::query()->where('category', 'Solar Energy')->count())->toBe(1);
+
+    test()->actingAs($assistant)->delete(route('admin.categories.destroy', $category))->assertRedirect(route('admin.categories.index'));
+    expect(JobCategory::query()->whereKey($category->id)->exists())->toBeFalse();
+
+    // Its RFQ keeps it — on the list to put back.
+    test()->actingAs($operations)->get(route('admin.categories.index'))->assertOk()
+        ->assertSee('data-unlisted-category="Solar Energy"', false);
 });

@@ -130,8 +130,8 @@
                     </a>
                 @endcan
 
-                {{-- What the RFQs are set up with — the job categories the Assign Sourcing wizard offers (Admin\JobCategoryController). --}}
-                @if (auth()->user()->hasRole('Admin'))
+                {{-- What the RFQs are set up with — the job categories the Assign Sourcing wizard offers (Admin\JobCategoryController, User::JOB_CATEGORY_ROLES). --}}
+                @if (auth()->user()->canManageJobCategories())
                     <div class="sidebar-section-title">Configuration</div>
                     <a href="{{ route('admin.categories.index') }}" class="nav-link {{ request()->routeIs('admin.categories.*') ? 'active' : '' }}">
                         <i class="bi bi-tags"></i> Job Categories

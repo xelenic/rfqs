@@ -83,9 +83,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('attendance/{sheet}/approve', [AttendanceController::class, 'approve'])->name('attendance.approve');
     Route::patch('attendance/{sheet}/return', [AttendanceController::class, 'sendBack'])->name('attendance.return');
 
-    // The job categories (JobCategory) the Assign Sourcing wizard offers — Admin only, see JobCategoryController.
+    // The job categories (JobCategory) the Assign Sourcing wizard offers — User::JOB_CATEGORY_ROLES, see JobCategoryController.
     Route::get('categories', [JobCategoryController::class, 'index'])->name('categories.index');
     Route::post('categories', [JobCategoryController::class, 'store'])->name('categories.store');
+    Route::post('categories/import', [JobCategoryController::class, 'import'])->name('categories.import');
+    Route::get('categories/template', [JobCategoryController::class, 'template'])->name('categories.template');
     Route::put('categories/{category}', [JobCategoryController::class, 'update'])->name('categories.update');
     Route::delete('categories/{category}', [JobCategoryController::class, 'destroy'])->name('categories.destroy');
 
