@@ -125,3 +125,41 @@ it('counts Senior Operations\' Returns badge, on their own sidebar and Admin\'s 
         ->assertSee('RFQ2001')
         ->assertSee('Split it by floor instead');
 });
+
+it('keeps an RFQ sent back to their assignment step off the Unassigned page and its count — it\'s on Returns', function () {
+    ['ops' => $ops, 'head' => $head, 'riley' => $riley, 'rfq' => $rfq] = atHeadOfBdReview();
+    Rfq::factory()->create(['rfq_number' => 'RFQ2002']);
+
+    test()->actingAs($head)
+        ->patch(route('admin.rfqs.reject-head-of-bd', $rfq), ['target_stage' => 'operations', 'reason' => 'Split it by floor instead'])
+        ->assertSessionHasNoErrors();
+
+    $unassigned = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('title="1 not yet assigned to Sourcing"', false)
+        ->assertSee('title="1 sent back by a reviewer"', false);
+    expect($unassigned->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2002'])
+        ->and(Rfq::queueCounts())->unassigned->toBe(1)->ops_returns->toBe(1)
+        ->and(test()->actingAs($ops)->get(opsReturnsUrl())->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2001']);
+
+    // Admin's grouped sidebar, and their view of the Unassigned page, agree.
+    expect(test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations']))
+        ->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2002']);
+
+    // Assigned again, it's on neither: with Sourcing.
+    test()->actingAs($ops)->patch(route('admin.rfqs.assign', $rfq), ['assignments' => [1 => $riley->id]])->assertSessionHasNoErrors();
+
+    expect(test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending']))->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2002'])
+        ->and(Rfq::queueCounts())->unassigned->toBe(1)->ops_returns->toBe(0);
+});
+
+it('keeps a part an Admin sends back to Senior Operations on Returns, not Unassigned', function () {
+    $ops = userWithRole('Senior Operations');
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2003']), [1 => userWithRole('Sourcing')]);
+
+    test()->actingAs(userWithRole('Admin'))
+        ->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Wrong supplier group'])
+        ->assertSessionHasNoErrors();
+
+    expect(test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending']))->viewData('rfqs')->pluck('rfq_number')->all())->toBe([])
+        ->and(test()->actingAs($ops)->get(opsReturnsUrl())->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2003']);
+});

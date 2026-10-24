@@ -3,6 +3,7 @@ paths:
   - 'app/Models/**'
   - app/Models/Attendance.php
   - app/Models/RfqComment.php
+  - app/Models/Rfq.php
 ---
 
 # Models
@@ -96,3 +97,6 @@ A part is matched by meta part, or 1 on a whole RFQ. When times tie, actions sor
 
 ## Every RFQ comment goes to everyone involved, in Messages
 Since 2026-10-24, at the client's request, RfqCommentController::store() sends each comment and reply as a PrivateMessage (rfq_comment_id) from its author. First it sends @mentions (messageMentionedUsers()), then RfqComment::messagePeopleInvolved($mentioned) sends it to Rfq::peopleInvolved(): the PEOPLE_COLUMNS on rfqs and rfq_user, everyone who has commented or acted on it (any rfq_comments.user_id), and whoever it's waiting with (a review stage's peopleAtStage(), or Senior Operations while it has no parts). A mentioned person gets only the mention. It never goes to the author, a deactivated account, or anyone who can't open the RFQ (rfqs.view + isVisibleTo()). Bodies are "Commented on [closed ]RFQ… — subject:", "Replied to your comment on…" or "Replied to a comment on…", plus "(N photos attached)". Workflow action comments (postActionComment) are not sent this way; TaskMessages covers those. Someone newly involved in an RFQ should be added through PEOPLE_COLUMNS or a comment, not by a separate send.
+
+## Returns to Senior Operations are on Returns only, not Unassigned
+Since 2026-10-24, at the user's request, an RFQ sent back to Senior Operations' assignment step (reject_target_stage 'operations') is listed only on their Returns page (scopeReturnedToSeniorOperations()), never on Unassigned. This covers returns from a reviewer, or a Sourcing part an Admin sends back. Senior Operations' Unassigned queue is Rfq::scopeAwaitingAssignment(): Pending + needingSourcing(), minus target 'operations'. The list (RfqController $scopedToUnassigned), their sidebar badge and queueCounts()['unassigned'] (Admin's sidebar and pipeline) all use it; don't count "unassigned" with a bare needingSourcing(). Once every part is assigned again it leaves Returns by itself. Returns to Business Development still show on Unassigned with their marker, as before.

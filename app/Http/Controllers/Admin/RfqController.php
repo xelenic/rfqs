@@ -235,9 +235,10 @@ class RfqController extends Controller implements HasMiddleware
         $scopedToSeniorOpsReturns = $status === 'Pending' && $actsAs('Senior Operations') && $request->query('view') === 'returns';
 
         // Operations' Pending list is just their actionable backlog — RFQs
-        // nobody's assigned to Sourcing yet — not every Pending RFQ in the
-        // company regardless of stage. Matches the red count badge in the
-        // sidebar (layouts/app.blade.php).
+        // nobody's assigned to Sourcing yet, but not those sent back to them,
+        // which are on their Returns page (Rfq::scopeAwaitingAssignment()) —
+        // not every Pending RFQ in the company regardless of stage. Matches
+        // the red count badge in the sidebar (layouts/app.blade.php).
         $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
 
         // Head of Business Development's Returns page — RFQs the General
@@ -392,7 +393,7 @@ class RfqController extends Controller implements HasMiddleware
                 });
             })
             ->when($scopedToDataEntry, fn ($query) => $query->whereNotNull('sourcing_completed_at'))
-            ->when($scopedToUnassigned, fn ($query) => $query->needingSourcing())
+            ->when($scopedToUnassigned, fn ($query) => $query->awaitingAssignment())
             ->when($scopedToHeadOfBdReview, fn ($query) => $query->awaitingHeadOfBdReview()->notHeldOnAReturnsPage())
             // An RFQ sent back to the Head of Business Development or GM
             // Assistant is on their Returns page and nobody's review page

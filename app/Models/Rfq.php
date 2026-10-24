@@ -1211,15 +1211,29 @@ class Rfq extends Model
     /**
      * RFQs that still have a Sourcing part nobody holds yet — nobody
      * assigned at all, or fewer parts assigned than the planned split.
-     * Operations' "Unassigned" queue, mirrored in PHP by
-     * hasUnassignedParts(). Every assignment is one part, so counting them
-     * against split_count is enough.
+     * Mirrored in PHP by hasUnassignedParts(); Operations' "Unassigned"
+     * queue is scopeAwaitingAssignment(). Every assignment is one part, so
+     * counting them against split_count is enough.
      */
     public function scopeNeedingSourcing(Builder $query): void
     {
         $query->where(fn (Builder $q) => $q
             ->doesntHave('assignees')
             ->orWhereRaw('rfqs.split_count > (select count(*) from rfq_user where rfq_user.rfq_id = rfqs.id)'));
+    }
+
+    /**
+     * Senior Operations' Unassigned queue: Pending RFQs with a Sourcing part
+     * nobody holds (scopeNeedingSourcing()) — but not one sent back to their
+     * assignment step ('operations'), which is on their Returns page
+     * (scopeReturnedToSeniorOperations()), and only there, until it's assigned
+     * again. Since 2026-10-24, at the user's request.
+     */
+    public function scopeAwaitingAssignment(Builder $query): void
+    {
+        $query->where('rfqs.status', 'Pending')->needingSourcing()->where(fn (Builder $q) => $q
+            ->whereNull('rfqs.reject_target_stage')
+            ->orWhere('rfqs.reject_target_stage', '!=', 'operations'));
     }
 
     /**
@@ -4798,7 +4812,7 @@ class Rfq extends Model
         return [
             'closing' => static::bdClosingCount(),
             'bd_returns' => static::bdReturnsCount(),
-            'unassigned' => static::where('status', 'Pending')->needingSourcing()->count(),
+            'unassigned' => static::awaitingAssignment()->count(),
             'ops_review' => static::seniorOpsReviewCount(),
             'ops_returns' => static::seniorOpsReturnsCount(),
             'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count() + static::awaitingFinalizeCount(),

@@ -6,7 +6,8 @@
 @php
     // Each role's own actionable backlog on their "Pending
     // RFQs" link, as a red count so it doesn't get lost in
-    // the list — Operations: not yet assigned to Sourcing;
+    // the list — Operations: not yet assigned to Sourcing (those sent back
+    // to them are on their Returns link instead);
     // Sourcing: their own parts not yet marked complete —
     // one per part — and not counting the ones Data Entry sent
     // back, which are on their Returns link (with its own count)
@@ -17,9 +18,7 @@
     // $bySourcingRfqs), since a split RFQ can hand off
     // more than one assignee's part to Data Entry.
     $pendingBadgeCount = match (true) {
-        auth()->user()->hasRole('Senior Operations') => \App\Models\Rfq::where('status', 'Pending')
-            ->needingSourcing()
-            ->count(),
+        auth()->user()->hasRole('Senior Operations') => \App\Models\Rfq::awaitingAssignment()->count(),
         auth()->user()->hasRole('Sourcing') => \Illuminate\Support\Facades\DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
