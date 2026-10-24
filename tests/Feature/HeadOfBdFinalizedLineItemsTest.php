@@ -3,6 +3,7 @@
 use App\Models\Rfq;
 use App\Models\Setting;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -142,4 +143,63 @@ it('lets Admin finalize them on the Head\'s behalf', function () {
         ->assertSessionHas('status');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot)->toMatchArray(['head_of_bd_approved_by' => $head->id, 'finalized_line_items' => 21]);
+});
+
+it('times each part of a whole-RFQ approval by its own finalized line items × the time a line item takes', function () {
+    ['rfq' => $rfq, 'head' => $head] = withTheHead(split: true);
+    $rfq->update(['stage' => 'head_of_bd_review']);
+    Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
+
+    test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd', $rfq), ['finalized_line_items' => [1 => 10, 2 => 15]])
+        ->assertSessionHas('status', 'Approved — escalated to GM Assistant.');
+
+    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1200)
+        ->and($rfq->gmAssistantTargetSeconds(2))->toBe(1800);
+
+    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('10 line items × 2 min = 20m')
+        ->assertSee('15 line items × 2 min = 30m');
+});
+
+it('counts GM Assistant down from it once they start — on their list and their dashboard', function () {
+    test()->travelTo(CarbonImmutable::parse('2026-10-05 09:00', Setting::DEFAULT_TIMEZONE));
+    ['rfq' => $rfq, 'head' => $head] = withTheHead();
+    Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
+    $rfq->approveHeadOfBdPart(1, $head, 30);
+    $gma = userWithRole('GM Assistant');
+    startGmAssistantOn($rfq, 1, $gma);
+
+    // 20 working minutes in: an hour (30 × 2 min) less 20 minutes.
+    test()->travelTo(CarbonImmutable::parse('2026-10-05 09:20', Setting::DEFAULT_TIMEZONE));
+    expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 3600, 'remaining' => 2400]);
+
+    test()->actingAs($gma)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('data-remaining="2400" data-target="3600"', false)
+        ->assertSee('30 line items × 2 min = 1h');
+    test()->actingAs($gma)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('40m left');
+});
+
+it('keeps timing by them when the General Manager sends the part back to GM Assistant', function () {
+    ['rfq' => $rfq, 'head' => $head] = withTheHead();
+    Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
+    $rfq->approveHeadOfBdPart(1, $head, 30);
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+
+    $rfq->refresh()->rejectPartToStage(1, 'gm_assistant', 'Attach the brochure', userWithRole('General Manager'), 'gm_review');
+
+    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(3600)
+        ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 120, 'seconds' => 3600, 'source' => 'finalized']);
+    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+        ->assertSee('30 line items × 2 min = 1h');
+});
+
+it('goes by Data Entry\'s count when none are finalized, rather than giving GM Assistant no time', function () {
+    ['rfq' => $rfq, 'head' => $head] = withTheHead();
+    Setting::putGmAssistantPerItem(['enabled' => true, 'seconds' => 120]);
+
+    $rfq->approveHeadOfBdPart(1, $head, 0);
+
+    expect($rfq->refresh()->gmAssistantLineItemsFor(1))->toBe(['count' => 22, 'source' => 'added'])
+        ->and($rfq->gmAssistantTargetSeconds(1))->toBe(2640);
 });
