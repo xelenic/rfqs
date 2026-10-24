@@ -786,7 +786,12 @@
                                             @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
                                                 <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
                                             @endif
-                                            {{-- What they finalized approving it — GM Assistant's target goes by it. --}}
+                                            {{-- The Actual Line Items Senior Operations counted — GM Assistant's
+                                                 target goes by them (Rfq::gmAssistantLineItemsFor()) — and what the
+                                                 Head finalized approving it. --}}
+                                            @if ($assignee->pivot->verifiedLineItems() !== null)
+                                                <div class="text-muted-soft small"><i class="bi bi-list-ol"></i> {{ trans_choice('1 actual line item|:count actual line items', $assignee->pivot->verifiedLineItems(), ['count' => number_format($assignee->pivot->verifiedLineItems())]) }}</div>
+                                            @endif
                                             @if ($assignee->pivot->finalizedLineItems() !== null)
                                                 <div class="text-muted-soft small"><i class="bi bi-list-check"></i> {{ trans_choice('1 line item finalized|:count line items finalized', $assignee->pivot->finalizedLineItems(), ['count' => number_format($assignee->pivot->finalizedLineItems())]) }}</div>
                                             @endif

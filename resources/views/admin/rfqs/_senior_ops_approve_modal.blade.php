@@ -5,7 +5,8 @@
     add, the line items Data Entry added and the difference between them —
     worked out by the system, read only (RfqAssignment::lineItemsCheck()) — and
     the Actual Line Items Senior Operations counted, which they enter
-    (actual_line_items[part], kept as rfq_user.verified_line_items). One shared
+    (actual_line_items[part], kept as rfq_user.verified_line_items) — what GM
+    Assistant's target goes by (Rfq::gmAssistantLineItemsFor()). One shared
     popup, pointed at a part or an RFQ by the .js-senior-ops-approve button
     that opens it (_senior_ops_approve_button) — admin.js fills it in, as it
     does every .js-line-items-modal. See

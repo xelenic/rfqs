@@ -3167,10 +3167,11 @@ class Rfq extends Model
 
     /**
      * The working time GM Assistant has to submit $part to the General
-     * Manager: its line items times the time a line item takes — always once
-     * the Head of Business Development has finalized them, otherwise while
-     * per line item is on (gmAssistantTargetBreakdown()) — else by its
-     * priority — see Setting::gmAssistantTargets(). In seconds.
+     * Manager: its line items times the time a line item takes — always for
+     * the Actual Line Items Senior Operations counted (or the Head of
+     * Business Development's finalized ones), otherwise while per line item
+     * is on (gmAssistantTargetBreakdown()) — else by its priority — see
+     * Setting::gmAssistantTargets(). In seconds.
      */
     public function gmAssistantTargetSeconds(?int $part = null): int
     {
@@ -3182,10 +3183,11 @@ class Rfq extends Model
      * How GM Assistant's target for $part comes about while it's worked out
      * per line item: its line items (gmAssistantLineItemsFor()), the working
      * seconds a line item takes (Setting::gmAssistantPerItem()), and the two
-     * multiplied — always for the Head of Business Development's finalized
-     * line items (source 'finalized'), and for the others while per line item
-     * is on. Null by priority — per line item off without finalized line
-     * items, or the part having no line items to go by.
+     * multiplied — always for the Actual Line Items Senior Operations counted
+     * (source 'actual') or the Head of Business Development's finalized ones
+     * ('finalized'), and for the others while per line item is on. Null by
+     * priority — per line item off with neither, or the part having no line
+     * items to go by.
      *
      * @return array{items: int, perItem: int, seconds: int, source: string}|null
      */
@@ -3194,9 +3196,9 @@ class Rfq extends Model
         $perItem = Setting::gmAssistantPerItem();
         $lineItems = $part !== null ? $this->gmAssistantLineItemsFor($part) : null;
 
-        // The Head of Business Development's finalized line items always go by
-        // the line item, as Sourcing's line items to add do for Data Entry.
-        if ($lineItems === null || (! $perItem['enabled'] && $lineItems['source'] !== 'finalized')) {
+        // Line items counted on review always go by the line item, as
+        // Sourcing's line items to add do for Data Entry.
+        if ($lineItems === null || (! $perItem['enabled'] && ! in_array($lineItems['source'], ['actual', 'finalized'], true))) {
             return null;
         }
 
@@ -3204,12 +3206,13 @@ class Rfq extends Model
     }
 
     /**
-     * The line items GM Assistant has on $part: those the Head of Business
-     * Development finalized as they approved it on to them
-     * (RfqAssignment::finalizedLineItems()), else those Data Entry said they
-     * added (rfq_user.data_entry_entries) — what's actually there — else
-     * those Sourcing said to add (line_items_to_add). Null with none (or none
-     * of any).
+     * The line items GM Assistant has on $part: the Actual Line Items Senior
+     * Operations counted as they approved it (RfqAssignment::verifiedLineItems()
+     * — since 2026-10-24, at the user's request), else those the Head of
+     * Business Development finalized (finalizedLineItems()), else those Data
+     * Entry said they added (rfq_user.data_entry_entries), else those Sourcing
+     * said to add (line_items_to_add). A count of 0 is passed over for the
+     * next. Null with none of any.
      *
      * @return array{count: int, source: string}|null
      */
@@ -3219,6 +3222,7 @@ class Rfq extends Model
 
         return match (true) {
             $assignment === null => null,
+            (int) $assignment->verifiedLineItems() > 0 => ['count' => (int) $assignment->verifiedLineItems(), 'source' => 'actual'],
             (int) $assignment->finalizedLineItems() > 0 => ['count' => (int) $assignment->finalizedLineItems(), 'source' => 'finalized'],
             (int) $assignment->data_entry_entries > 0 => ['count' => (int) $assignment->data_entry_entries, 'source' => 'added'],
             (int) $assignment->line_items_to_add > 0 => ['count' => (int) $assignment->line_items_to_add, 'source' => 'to_add'],

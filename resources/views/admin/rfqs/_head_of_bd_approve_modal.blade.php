@@ -5,7 +5,8 @@
     gave Data Entry to add, what Data Entry added, and what Senior Operations
     verified (RfqAssignment::lineItemsCheck(), verifiedLineItems()) — and the
     Finalized Line Items, which they enter (finalized_line_items[part], kept as
-    rfq_user.finalized_line_items): what GM Assistant's target goes by
+    rfq_user.finalized_line_items). GM Assistant's target goes by the Actual
+    Line Items, and by these only where there are none
     (Rfq::gmAssistantLineItemsFor()). One shared popup, pointed at a part or
     an RFQ by the .js-head-of-bd-approve button that opens it
     (_head_of_bd_approve_button) — admin.js fills it in, as it does every
