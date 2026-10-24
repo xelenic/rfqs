@@ -30,10 +30,13 @@ Since 2026-10-20, at the user's request, every RFQ list paginates by RfqControll
 
 ## Tracking sheet's "Finalized by Sourcing" works per part, cancelled parts aside
 Since 2026-10-21 the RFQ tracking sheet filters on ?finalized= (TRACKING_FINALIZED: all, not_finalized, finalized). Finalization is judged on the parts (rfq_user.finalized_at), not on rfqs.finalized_at:
-- not_finalized: some part that isn't cancelled is still to finalize, or no part is assigned yet.
+- not_finalized: some part that isn't cancelled is still to finalize, or (since 2026-10-24) a planned part nobody holds yet, which includes no part assigned at all. Both filters are Rfq::scopeNotFinalizedBySourcing() / scopeFinalizedBySourcing() ($memberId for ?person=), shared with All RFQs' "Not finalized by Sourcing" view.
 - finalized: at least one part is finalized and none that isn't cancelled is left.
 - With a Sourcing member chosen (?person=), only that member's own parts are considered.
 The column follows the same rule: "Not finalized yet", or the finalizers' names with an "N of M parts" badge while a split is only partly finalized. The footer counts "not finalized" the same way. A part's finalizer is finalized_by, falling back to its holder.
 
 ## Job categories are matched to RFQs by name, not by FK
 rfqs.category is a plain string, not a job_categories FK. So renaming a JobCategory must also update rfqs.category in the same transaction (JobCategoryController::update does this). Deleting one only takes it off the Assign Sourcing wizard's list; its RFQs keep the text. The index lists such "unlisted" names (on RFQs but not in job_categories) so Admin can put them back. Names are unique ignoring case. Managed by User::JOB_CATEGORY_ROLES (Admin, Senior Operations, GM Assistant since 2026-10-24) via canManageJobCategories(), which gates both the controller and the sidebar link; to give another role the page, add it there. Each popup has its own error bag (createCategory, editCategory) so a refused save reopens the right popup.
+
+## All RFQs' "Not finalized by Sourcing" view
+Since 2026-10-24, All RFQs' Show filter (ALL_RFQS_VIEWS) has 'not_finalized' (?show=not_finalized). It lists RFQs still open (Pending or On Hold; never Completed or Cancelled) that match Rfq::scopeNotFinalizedBySourcing(), the same scope the RFQ tracking sheet uses. Each row (_rfq_row $showToFinalize) notes every part still to finalize from Rfq::partsToFinalizeBySourcing(): "Not finalized — <member> · <progressLabel>", the part number on a split, or "Not assigned to Sourcing yet". Cancelled parts are left out, and names are hidden under restrictAssignment. Change what "finalized" means in those scopes only, so the tracking sheet and All RFQs never disagree.

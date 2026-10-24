@@ -1749,7 +1749,7 @@
                                      Business Development closes it (see Rfq::closePart()). --}}
                                 @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null, 'showCreatedAndClosed' => ! $hidesCreatedAndClosed])
                             @else
-                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed])
+                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed, 'showToFinalize' => ($allRfqsView['show'] ?? null) === 'not_finalized'])
                             @endif
                         @empty
                             <tr>

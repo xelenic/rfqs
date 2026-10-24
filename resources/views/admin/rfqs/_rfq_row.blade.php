@@ -12,6 +12,9 @@
     Optional: $groupedParts — this row heads a group whose parts follow it
     (see _rfq_parts.blade.php), so it gets the button that folds them away
     and a one-line summary of how far along they are.
+    Optional: $showToFinalize — All RFQs' "Not finalized by Sourcing", where
+    each part still to finalize is noted under the subject: who has it and
+    where it stands, or that nobody does yet (Rfq::partsToFinalizeBySourcing()).
     Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
     an RFQ can be sent back to Business Development for details
     (_request_details_modal.blade.php) — or, once it has been, is marked as
@@ -82,6 +85,20 @@
                 </div>
             @endforeach
         @endunless
+        @if ($showToFinalize ?? false)
+            @foreach ($rfq->partsToFinalizeBySourcing() as $toFinalize)
+                @php
+                    $holder = $toFinalize['assignee'];
+                    $standing = $holder === null
+                        ? 'Not assigned to Sourcing yet'
+                        : collect([$restrictAssignment ? null : $holder->name, $holder->pivot->progressLabel(), $holder->pivot->isOnHold() ? 'On hold' : null])->filter()->join(' · ');
+                @endphp
+                <div class="rfq-list-subnote rfq-list-subnote-to-finalize" data-to-finalize="{{ $toFinalize['part'] }}">
+                    <i class="bi bi-hourglass-split"></i>
+                    {{ match (true) { $rfq->isSplit() => $toFinalize['number'].' — ', $holder !== null => 'Not finalized — ', default => '' } }}{{ $standing }}
+                </div>
+            @endforeach
+        @endif
         @if (($canRequestDetails ?? false) && $rfq->isReturnedToBusinessDevelopment())
             <div class="rfq-list-subnote rfq-list-subnote-returned">
                 <i class="bi bi-arrow-counterclockwise"></i>

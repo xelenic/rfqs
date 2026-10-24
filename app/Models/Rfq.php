@@ -1237,6 +1237,64 @@ class Rfq extends Model
     }
 
     /**
+     * RFQs Sourcing hasn't finalized yet: a part that isn't cancelled still
+     * to finalize (rfq_user.finalized_at) — $memberId's own, when given — or,
+     * asked of everyone, a planned part nobody holds yet (needingSourcing()).
+     * The RFQ tracking sheet's "Not finalized yet", and All RFQs' "Not
+     * finalized by Sourcing" (RfqController::ALL_RFQS_VIEWS).
+     */
+    public function scopeNotFinalizedBySourcing(Builder $query, ?int $memberId = null): void
+    {
+        $query->where(fn (Builder $rfqs) => $rfqs
+            ->whereHas('assignees', fn (Builder $parts) => self::partsToFinalize($parts, $memberId))
+            ->when($memberId === null, fn (Builder $unassigned) => $unassigned->orWhere(fn (Builder $open) => $open->needingSourcing())));
+    }
+
+    /**
+     * The opposite, of those Sourcing has had: a part finalized — finalized
+     * or held by $memberId, when given — and none left to finalize, nor,
+     * asked of everyone, any planned part nobody holds.
+     */
+    public function scopeFinalizedBySourcing(Builder $query, ?int $memberId = null): void
+    {
+        $query->whereHas('assignees', fn (Builder $parts) => $parts->whereNotNull('rfq_user.finalized_at')
+            ->when($memberId, fn (Builder $theirs, int $member) => $theirs->where(fn (Builder $by) => $by
+                ->where('rfq_user.finalized_by', $member)
+                ->orWhere('rfq_user.user_id', $member))))
+            ->whereDoesntHave('assignees', fn (Builder $parts) => self::partsToFinalize($parts, $memberId))
+            ->when($memberId === null, fn (Builder $all) => $all->fullySourced());
+    }
+
+    /**
+     * Narrows rfq_user rows to the parts still to finalize: not finalized,
+     * not cancelled — $memberId's, when given.
+     *
+     * @param  Builder<covariant Model>  $parts
+     */
+    private static function partsToFinalize(Builder $parts, ?int $memberId): void
+    {
+        $parts->whereNull('rfq_user.finalized_at')
+            ->where(fn (Builder $live) => $live->whereNull('rfq_user.status')->orWhere('rfq_user.status', '!=', self::CANCELLED))
+            ->when($memberId, fn (Builder $mine, int $member) => $mine->where('rfq_user.user_id', $member));
+    }
+
+    /**
+     * The parts of this RFQ Sourcing still has to finalize: each planned
+     * part nobody holds, and each held one not finalized nor cancelled — as
+     * sourcingParts() gives them. What All RFQs' "Not finalized by Sourcing"
+     * notes on each row.
+     *
+     * @return Collection<int, array{part: int, number: string, assignee: ?User}>
+     */
+    public function partsToFinalizeBySourcing(): Collection
+    {
+        return $this->sourcingParts()
+            ->filter(fn (array $part) => $part['assignee'] === null
+                || ($part['assignee']->pivot->finalized_at === null && ! $part['assignee']->pivot->isCancelled()))
+            ->values();
+    }
+
+    /**
      * The opposite: somebody's assigned, and every planned part has
      * someone on it.
      */

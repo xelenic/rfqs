@@ -150,17 +150,9 @@ class PerformanceReportController extends Controller
             'finalized' => array_key_exists((string) $request->query('finalized'), self::TRACKING_FINALIZED) ? (string) $request->query('finalized') : 'all',
         ];
 
-        // A part still to finalize: not finalized, not cancelled — the chosen member's, if one is.
-        $partToFinalize = fn ($parts) => $parts->whereNull('rfq_user.finalized_at')
-            ->where(fn ($live) => $live->whereNull('rfq_user.status')->orWhere('rfq_user.status', '!=', Rfq::CANCELLED))
-            ->when($filters['person'], fn ($mine, int $person) => $mine->where('rfq_user.user_id', $person));
-        $notFinalized = fn (Builder $query) => $query->where(fn (Builder $rfqs) => $rfqs
-            ->whereHas('assignees', $partToFinalize)
-            ->when(! $filters['person'], fn (Builder $unassigned) => $unassigned->orWhereDoesntHave('assignees')));
-        $finalized = fn (Builder $query) => $query
-            ->whereHas('assignees', fn ($parts) => $parts->whereNotNull('rfq_user.finalized_at')
-                ->when($filters['person'], fn ($theirs, int $person) => $theirs->where(fn ($by) => $by->where('rfq_user.finalized_by', $person)->orWhere('rfq_user.user_id', $person))))
-            ->whereDoesntHave('assignees', $partToFinalize);
+        // Finalized by Sourcing or not, as All RFQs asks it too — the chosen member's parts, if one is.
+        $notFinalized = fn (Builder $query) => $query->notFinalizedBySourcing($filters['person']);
+        $finalized = fn (Builder $query) => $query->finalizedBySourcing($filters['person']);
         [$sort, $descending] = $this->sorting($request, self::TRACKING_SORTS, 'date', true);
 
         $query = Rfq::query()

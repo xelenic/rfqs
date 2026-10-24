@@ -67,14 +67,16 @@ class RfqController extends Controller implements HasMiddleware
      * What All RFQs — the list with no status or role asked for
      * (User::canListAllRfqs()) — can be narrowed to (?show=, the filter bar):
      * where the General Manager's dashboard cards lead
-     * (dashboard/_approver), each listing the RFQs its card counted. The
-     * decisions and the closed ones over the card's dates (?show_from,
-     * ?show_to). See allRfqsView(), applyAllRfqsView().
+     * (dashboard/_approver), each listing the RFQs its card counted, and
+     * the open RFQs Sourcing hasn't finalized yet. The decisions and the
+     * closed ones over the card's dates (?show_from, ?show_to). See
+     * allRfqsView(), applyAllRfqsView().
      *
      * @var array<string, string>
      */
     public const ALL_RFQS_VIEWS = [
         'open' => 'Open RFQs',
+        'not_finalized' => 'Not finalized by Sourcing',
         'awaiting_gm' => 'Awaiting the General Manager',
         'gm_approved' => 'Approved by the General Manager',
         'gm_returned' => 'Sent back by the General Manager',
@@ -790,7 +792,9 @@ class RfqController extends Controller implements HasMiddleware
     /**
      * Narrows All RFQs to $view (allRfqsView()), as the General Manager's
      * dashboard counts each (DashboardController::approverOverview()): every
-     * open RFQ; those with a part waiting on their approval; those with a
+     * open RFQ; those still open — pending or on hold — that Sourcing hasn't
+     * finalized (Rfq::scopeNotFinalizedBySourcing()); those with a part
+     * waiting on their approval; those with a
      * part they approved, or that they sent back (the reject's comment),
      * between its dates; and those Business Development closed between them.
      *
@@ -806,6 +810,7 @@ class RfqController extends Controller implements HasMiddleware
 
         match ($view['show']) {
             'open' => $query->where('rfqs.status', 'Pending'),
+            'not_finalized' => $query->whereIn('rfqs.status', ['Pending', Rfq::ON_HOLD])->notFinalizedBySourcing(),
             'awaiting_gm' => $query->where('rfqs.status', 'Pending')->awaitingGmApproval(),
             'gm_approved' => $query->whereHas('assignees', fn ($parts) => $parts
                 ->whereIn('rfq_user.gm_approved_by', $view['deciders'])

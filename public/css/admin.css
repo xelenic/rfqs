@@ -6736,6 +6736,15 @@ a[data-hover-card] {
   font-weight: 600;
 }
 
+/* All RFQs' "Not finalized by Sourcing": each part still to finalize, as waiting (_rfq_row $showToFinalize). */
+.rfq-list-subnote-to-finalize {
+  color: #92400e;
+}
+
+:root[data-theme="dark"] .rfq-list-subnote-to-finalize {
+  color: #fbbf24;
+}
+
 /* Settings → Danger Zone (clearing every RFQ): marked out in red. */
 .settings-tabs .nav-link.is-danger,
 .settings-tabs .nav-link.is-danger:hover {
