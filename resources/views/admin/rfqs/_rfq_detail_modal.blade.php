@@ -119,7 +119,7 @@
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     @if ($canOpenFullRfq)
-                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary">
+                        <a href="{{ $rfq->detailsUrl($part, 'Pending') }}" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-arrows-fullscreen"></i> Open full RFQ
                         </a>
                     @endif

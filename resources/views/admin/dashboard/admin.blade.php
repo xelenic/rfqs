@@ -89,7 +89,7 @@
                                     @php [$stateLabel, $stateBadge, $stateTone] = $taskStates[$task['state']]; @endphp
                                     <tr>
                                         <td class="task-sheet-task">
-                                            <a href="{{ route('admin.rfqs.show', $task['rfq']) }}?status=Pending" class="fw-semibold">{{ $task['label'] }}</a>
+                                            <a href="{{ $task['rfq']->detailsUrl($task['part'] ?? null, 'Pending') }}" class="fw-semibold">{{ $task['label'] }}</a>
                                             <div class="small text-muted-soft text-truncate">{{ $task['task'] }} · {{ $task['rfq']->subject }}</div>
                                         </td>
                                         <td>

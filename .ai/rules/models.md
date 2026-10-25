@@ -4,6 +4,8 @@ paths:
   - app/Models/Attendance.php
   - app/Models/RfqComment.php
   - app/Models/Rfq.php
+  - app/Models/PrivateMessage.php
+  - app/Models/Setting.php
 ---
 
 # Models
@@ -100,3 +102,9 @@ Since 2026-10-24, at the client's request, RfqCommentController::store() sends e
 
 ## Returns to Senior Operations are on Returns only, not Unassigned
 Since 2026-10-24, at the user's request, an RFQ sent back to Senior Operations' assignment step (reject_target_stage 'operations') is listed only on their Returns page (scopeReturnedToSeniorOperations()), never on Unassigned. This covers returns from a reviewer, or a Sourcing part an Admin sends back. Senior Operations' Unassigned queue is Rfq::scopeAwaitingAssignment(): Pending + needingSourcing(), minus target 'operations'. The list (RfqController $scopedToUnassigned), their sidebar badge and queueCounts()['unassigned'] (Admin's sidebar and pipeline) all use it; don't count "unassigned" with a bare needingSourcing(). Once every part is assigned again it leaves Returns by itself. Returns to Business Development still show on Unassigned with their marker, as before.
+
+## RFQ comment copies show once, under RFQ comments, never in Private messages
+Since 2026-10-25, at the user's request (the same comment showed once per recipient in the author's Private messages), the PrivateMessage copies of RFQ comments and mentions (rfq_comment_id set) are read only in Messages → RFQ comments, one thread per RFQ. In the bell they are one line per RFQ (User::bellItems(), icon bi-chat-square-text, url messages.rfq). The Private messages list, conversations, per-sender unread counts, marking read on a conversation, the bell's per-person lines and the tab counts all go through PrivateMessage::personalFor($user). The RFQ-comment side uses onReadableRfqsFor($user) and unreadCommentsByRfq(). One exception: a copy on an RFQ the user can't open (no rfqs.view, or not visibleTo, e.g. HR Executive or another BD person who was @mentioned) stays in Private messages, the only place they can read it. Task messages (rfq_id only) stay in Private messages. Rows are still created per recipient; this is a reading filter, so never add a second copy for the author.
+
+## Time per item can be set person by person (Data Entry, GM Assistant)
+Since 2026-10-25, Settings → Data Entry Time and GM Assistant Time each have a "person by person" card (settings/_per_item_people). It holds Setting::perItemPeople('data_entry'|'gm_assistant'): user id => seconds, within DATA_ENTRY_PER_ITEM_RANGE, saved by SettingsController::savePerItemPeople() for people in that role only. An empty field means the company's time. Targets go through Setting::dataEntryPerItemFor($userId) / gmAssistantPerItemFor($userId), which keep the company's on/off switch and use the person's seconds when they have their own ('own'). Whose time applies: Rfq::dataEntryPersonFor($part) (started_by ?? completed_by ?? assigned_to, so a part left to anyone uses the company's time until someone starts it) and Rfq::gmAssistantPersonFor($part) (started_by ?? completed_by). The hovers say whose own time it is (_data_entry_target "(Name's own)", the GM time card's perItemOwnOf). Never read Setting::dataEntryPerItem()['seconds'] directly for a part's target.

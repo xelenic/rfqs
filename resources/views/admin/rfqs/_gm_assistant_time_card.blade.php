@@ -57,7 +57,11 @@
                     <strong>Time a line item takes</strong>
                     <strong>{{ $perItem ?? '—' }}</strong>
                 </div>
-                <div class="tb-meta">{{ $how['byPriority'] ? 'Not used — the target is by priority, Settings → GM Assistant Targets' : 'Settings → GM Assistant Time' }}</div>
+                <div class="tb-meta">{{ match (true) {
+                    $how['byPriority'] => 'Not used — the target is by priority, Settings → GM Assistant Targets',
+                    $how['perItemOwnOf'] !== null => $how['perItemOwnOf'].'\'s own time — Settings → GM Assistant Time, person by person',
+                    default => 'Settings → GM Assistant Time',
+                } }}</div>
             </li>
             <li>
                 <div class="tb-stretch-head">

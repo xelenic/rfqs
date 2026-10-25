@@ -58,7 +58,7 @@
                             {{ ($scopedToReturns ? $partAssignment->pivot->returned_at : $partAssignment->pivot->created_at)?->format('M d, Y g:i A') ?? '—' }}
                         </td>
                         <td class="text-end text-nowrap">
-                            <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                            <a href="{{ $rfq->detailsUrl($partAssignment->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                 <i class="bi bi-eye"></i>
                             </a>
                             @if ($partAssignment->pivot->isAwaitingFinalize())

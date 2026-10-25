@@ -322,7 +322,7 @@
                                             <td class="text-end fw-semibold" style="font-variant-numeric: tabular-nums;">{{ $assignee->pivot->data_entry_entries !== null ? number_format($assignee->pivot->data_entry_entries) : '—' }}@if ($assignee->pivot->lineItemsDiscrepancyLabel())<div class="small fw-normal text-danger text-nowrap"><i class="bi bi-exclamation-diamond"></i> {{ $assignee->pivot->lineItemsDiscrepancyLabel() }}</div>@endif</td>
                                             <td><span class="badge {{ $nowClass }}">{{ $nowLabel }}</span></td>
                                             <td class="text-end">
-                                                <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number) }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                             </td>
@@ -405,7 +405,7 @@
                                     </td>
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->returned_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($myAssignment->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
@@ -490,7 +490,7 @@
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part, its line items verified first — see
@@ -611,7 +611,7 @@
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         @if ($scopedToHeadOfBdReturns && ($forwardBack = $rfq->openReturnFor($assignee->pivot->part_number)))
@@ -798,7 +798,7 @@
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part: Start, then Pause or Submit — see
@@ -914,7 +914,7 @@
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part — see
@@ -1221,7 +1221,7 @@
                                         <td data-marketing>@include('admin.rfqs._marketing_person', ['rfq' => $rfq])</td>
                                     @endif
                                     <td class="text-end text-nowrap">
-                                        <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                        <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         {{-- Only this one part — see RfqController::closePart(). Asks
@@ -1479,7 +1479,7 @@
                                             </td>
                                             <td class="text-muted-soft">{{ $handedOver->completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                             <td class="text-end">
-                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                <a href="{{ $rfq->detailsUrl($myAssignment->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                             </td>
@@ -1532,7 +1532,7 @@
                                             <td><span class="badge badge-soft-{{ $stageTone }}">{{ $stageLabel }}</span></td>
                                             <td class="text-muted-soft">{{ $finalized->finalized_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                                             <td class="text-end">
-                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                <a href="{{ $rfq->detailsUrl($myAssignment->pivot->part_number, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                             </td>

@@ -8,8 +8,8 @@
     Expects: $tab ('private', 'groups' or 'rfqs').
 --}}
 @php
-    $unreadPrivate = auth()->user()->receivedMessages()->unread()->whereNull('rfq_comment_id')->count();
-    $unreadComments = auth()->user()->receivedMessages()->unread()->whereNotNull('rfq_comment_id')->count();
+    $unreadPrivate = auth()->user()->receivedMessages()->unread()->personalFor(auth()->user())->count();
+    $unreadComments = auth()->user()->receivedMessages()->unread()->onReadableRfqsFor(auth()->user())->count();
     $unreadGroups = (int) \App\Models\MessageGroup::unreadCountsFor(auth()->user())->sum();
 @endphp
 <ul class="nav nav-pills rfq-view-toggle mb-3">

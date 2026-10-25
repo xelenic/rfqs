@@ -10,7 +10,6 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 /**
@@ -59,7 +58,7 @@ class RfqDiscussionController extends Controller
         return view('admin.messages.rfqs', [
             'rfqs' => $rfqs,
             'lastComments' => RfqComment::query()->with('author')->whereIn('id', collect($rfqs->items())->pluck('last_comment_id'))->get()->keyBy('id'),
-            'unread' => self::unreadByRfq($me),
+            'unread' => PrivateMessage::unreadCommentsByRfq($me),
         ]);
     }
 
@@ -92,24 +91,6 @@ class RfqDiscussionController extends Controller
                 ->get(),
             'canPost' => ! self::readsOnlyTheirOwn($me),
         ]);
-    }
-
-    /**
-     * How many comments are unread for $user, by RFQ — their comment
-     * messages not yet opened.
-     *
-     * @return Collection<int, int> rfq id => unread
-     */
-    public static function unreadByRfq(User $user): Collection
-    {
-        return PrivateMessage::query()
-            ->join('rfq_comments', 'rfq_comments.id', '=', 'private_messages.rfq_comment_id')
-            ->where('private_messages.recipient_id', $user->id)
-            ->whereNull('private_messages.read_at')
-            ->groupBy('rfq_comments.rfq_id')
-            ->selectRaw('rfq_comments.rfq_id, count(*) as total')
-            ->pluck('total', 'rfq_id')
-            ->map(fn ($total) => (int) $total);
     }
 
     /**

@@ -14,12 +14,23 @@
     // Sourcing partners are also on it — they still see their own entry.
     $restrictSourcingView = auth()->user()->hasRole('Sourcing');
 
+    // Opened from a split part's row (?part=, Rfq::detailsUrl()), the page is
+    // about that part ($pagePart): its progress, its step details, the actions
+    // on it alone and its timeline — the RFQ's own details and the discussion
+    // staying. An Admin can switch to the whole RFQ (?flow=whole) and back;
+    // everyone else sees the part they came from.
+    $focusPart = $rfq->isSplit() && in_array((int) request('part'), range(1, $rfq->splitTotal()), true) ? (int) request('part') : null;
+    $canSwitchFlow = $focusPart !== null && auth()->user()->hasRole('Admin');
+    $pagePart = $focusPart !== null && ! ($canSwitchFlow && request('flow') === 'whole') ? $focusPart : null;
+    $inPage = fn ($assignee) => $pagePart === null || $assignee->pivot->part_number === $pagePart;
+    $pageAssignees = $rfq->assignees->filter($inPage);
+
     // Only a Sourcing member actually assigned to a part of this RFQ can
     // mark that part complete, and only once. Every part is completed on its
     // own — someone holding several gets a Mark Complete for each — and the
     // RFQ only hands off to Data Entry once all of its parts have been. See
     // Rfq::completeSourcingPart().
-    $myParts = $restrictSourcingView ? $rfq->assignees->where('id', auth()->id()) : collect();
+    $myParts = $restrictSourcingView ? $rfq->assignees->where('id', auth()->id())->filter($inPage) : collect();
     // Not a part stopped on its own (Rfq::changePartStatus()) — out of every
     // queue, and with nothing to be done on it, until it's set going again.
     $myOpenParts = $myParts->whereNull('pivot.status')->whereNull('pivot.completed_at');
@@ -33,7 +44,7 @@
     // who the prompt names — see RfqController::completeSourcing(). Not the
     // ones already offered above, if Admin also holds Sourcing.
     $adminOpenParts = auth()->user()->hasRole('Admin')
-        ? $rfq->assignees->whereNull('pivot.status')->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
+        ? $pageAssignees->whereNull('pivot.status')->whereNull('pivot.completed_at')->whereNotIn('pivot.part_number', $myOpenParts->pluck('pivot.part_number'))
         : collect();
 
     // Parts Data Entry has sent to finalize (Send to Finalize), waiting on
@@ -41,7 +52,7 @@
     // every one of them, finalized as its member. See
     // RfqController::finalize().
     $finalizableParts = $rfq->status === 'Pending'
-        ? (auth()->user()->hasRole('Admin') ? $rfq->assignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped())
+        ? (auth()->user()->hasRole('Admin') ? $pageAssignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped())
         : collect();
 
     // Sourcing never gets access to the assign controls at all — it's a
@@ -86,6 +97,26 @@
     // lifecycle. See Rfq::closeOut().
     $canCloseRfq = auth()->user()->hasAnyRole(['Business Development', 'Admin']) && $rfq->stage === 'bd_closing' && ! $hasPartOnHold;
 
+    // On one part, the decision on it alone, as on the review lists — never
+    // the whole RFQ's, which would decide every part at once.
+    $partDecision = null;
+    if ($pagePart !== null) {
+        $viewer = auth()->user();
+        $partDecision = match (true) {
+            $viewer->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->partAwaitsSeniorOpsReview($pagePart) => 'senior_ops_review',
+            $viewer->hasAnyRole(['Head of Business Development', 'Admin']) && $rfq->partAwaitsHeadOfBdReview($pagePart) => 'head_of_bd_review',
+            $viewer->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->partAwaitsGmAssistant($pagePart) => 'gm_assistant',
+            $viewer->hasAnyRole(['General Manager', 'Admin']) && $rfq->partAwaitsGmApproval($pagePart) => 'gm_review',
+            $viewer->hasAnyRole(['Business Development', 'Admin']) && $rfq->partAwaitsBdClosing($pagePart) => 'bd_closing',
+            default => null,
+        };
+        $canApproveSeniorOpsReview = $canRejectSeniorOps = $partDecision === 'senior_ops_review';
+        $canDecideHeadOfBdReview = $partDecision === 'head_of_bd_review';
+        $canSubmitGmAssistantDetails = $partDecision === 'gm_assistant';
+        $canApproveGm = $canRejectGm = $partDecision === 'gm_review';
+        $canCloseRfq = $partDecision === 'bd_closing';
+    }
+
     // The one shared reject modal (_reject_modal) works for whichever of
     // the review or closing steps is theirs to decide right now — its route name and the
     // stages it can send the RFQ back to (Rfq::rejectTargetStages()) both
@@ -119,9 +150,11 @@
     // A Sourcing assignee sees their own split RFQ number (e.g.
     // "RFQ1001-P2 of P3") once more than one person is sharing the work;
     // everyone else sees the master number. See Rfq::sourcingSplitNumberFor().
-    $displayRfqNumber = ($restrictSourcingView && $rfq->assignees->contains('id', auth()->id()))
-        ? $rfq->sourcingSplitNumberFor(auth()->user())
-        : $rfq->rfq_number;
+    $displayRfqNumber = match (true) {
+        $pagePart !== null && (! $restrictSourcingView || $pageAssignees->contains('id', auth()->id())) => $rfq->partNumberLabel($pagePart),
+        $restrictSourcingView && $rfq->assignees->contains('id', auth()->id()) => $rfq->sourcingSplitNumberFor(auth()->user()),
+        default => $rfq->rfq_number,
+    };
 
     // Drives the vertical Progress stepper below — one boolean per stage,
     // in the same top-to-bottom order they're drawn in, so the first not
@@ -140,6 +173,19 @@
         'gm_review' => $rfq->gm_approved_at !== null,
         'closed' => $rfq->bd_closed_at !== null,
     ];
+    if ($pagePart !== null) {
+        $pagePivot = $rfq->assigneeForPart($pagePart)?->pivot;
+        $stepDone = array_merge($stepDone, [
+            'sourcing' => $pagePivot?->completed_at !== null,
+            'data_entry' => $pagePivot?->data_entry_completed_at !== null,
+            'finalize' => $pagePivot?->finalized_at !== null,
+            'senior_ops' => $pagePivot?->senior_ops_reviewed_at !== null,
+            'head_of_bd' => $pagePivot?->head_of_bd_approved_at !== null,
+            'gm_assistant' => $pagePivot?->gm_assistant_completed_at !== null,
+            'gm_review' => $pagePivot?->gm_approved_at !== null,
+            'closed' => $pagePivot?->bd_closed_at !== null,
+        ]);
+    }
     $currentStep = collect($stepDone)->search(false, true);
 
     // Most stages are taken part by part on a split RFQ, each part going on as
@@ -156,7 +202,7 @@
         'closed' => 'bd_closed_at',
     ];
     $stepPartsDone = collect($stepPartColumns)->map(
-        fn (string $column) => $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->{$column} !== null)->count()
+        fn (string $column) => $pageAssignees->filter(fn ($assignee) => $assignee->pivot->{$column} !== null)->count()
     );
 
     // The latest time the Head sent something back — which part it was about,
@@ -347,11 +393,20 @@
         ];
     };
 
+    // On one part ($pagePart), the chart shows its flow alone — the RFQ's
+    // steps up to Sourcing, then its one branch.
+    $chartPart = $pagePart;
+
     // One branch per planned Sourcing part — including parts nobody's been
     // assigned to yet, which show as an "Unassigned" branch that stays
-    // pending all the way down (see Rfq::sourcingParts()).
+    // pending all the way down (see Rfq::sourcingParts()) — or the one part
+    // the chart's focused on.
     $sourcingBranches = [];
     foreach ($rfq->sourcingParts() as $part) {
+        if ($chartPart !== null && $part['part'] !== $chartPart) {
+            continue;
+        }
+
         $assignee = $part['assignee'];
 
         if ($assignee === null) {
@@ -553,28 +608,30 @@
             @endforeach
             @if ($canApproveSeniorOpsReview)
                 {{-- Its line items verified first (_senior_ops_approve_modal). --}}
-                @include('admin.rfqs._senior_ops_approve_button', ['rfq' => $rfq, 'approvePart' => null])
+                @include('admin.rfqs._senior_ops_approve_button', ['rfq' => $rfq, 'approvePart' => $pagePart])
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-senior-ops', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}">
+                        data-rfq-id="{{ $rfq->id }}"
+                        @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
             @if ($canDecideHeadOfBdReview)
                 {{-- Its line items finalized first (_head_of_bd_approve_modal). --}}
-                @include('admin.rfqs._head_of_bd_approve_button', ['rfq' => $rfq, 'approvePart' => null])
+                @include('admin.rfqs._head_of_bd_approve_button', ['rfq' => $rfq, 'approvePart' => $pagePart])
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-head-of-bd', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}">
+                        data-rfq-id="{{ $rfq->id }}"
+                        @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
             @if ($canSubmitGmAssistantDetails)
                 {{-- Part by part: Start, then Pause or Submit (_gm_assistant_actions);
                      the whole RFQ's Submit only with no part to start. --}}
-                @forelse ($rfq->partsAwaitingGmAssistant() as $gmaPart)
+                @forelse ($rfq->partsAwaitingGmAssistant()->filter($inPage) as $gmaPart)
                     <span class="d-inline-flex align-items-center gap-1">
                         @if ($rfq->isSplit())
                             <span class="small text-muted-soft">P{{ $gmaPart->pivot->part_number }}</span>
@@ -587,15 +644,19 @@
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-gm-assistant', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}">
+                        data-rfq-id="{{ $rfq->id }}"
+                        @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
             @if ($canApproveGm)
-                <form action="{{ route('admin.rfqs.approve-gm', $rfq) }}" method="POST"
-                      data-confirm="Approve this RFQ? It moves on to Business Development to close.">
+                <form action="{{ $pagePart ? route('admin.rfqs.approve-gm-part', $rfq) : route('admin.rfqs.approve-gm', $rfq) }}" method="POST"
+                      data-confirm="{{ $pagePart ? 'Approve '.$rfq->partNumberLabel($pagePart).'? The RFQ moves on to Business Development to close once every part is approved.' : 'Approve this RFQ? It moves on to Business Development to close.' }}">
                     @csrf
                     @method('PATCH')
+                    @if ($pagePart)
+                        <input type="hidden" name="part" value="{{ $pagePart }}">
+                    @endif
                     @include('admin.rfqs._acting_as', ['role' => 'General Manager'])
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="bi bi-check2-circle"></i> Approve
@@ -604,11 +665,29 @@
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-gm', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}">
+                        data-rfq-id="{{ $rfq->id }}"
+                        @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
-            @if (auth()->user()->canChangeRfqStatus() && $rfq->status !== 'Completed')
+            @if (auth()->user()->canChangeRfqStatus() && $rfq->status !== 'Completed' && $pagePart !== null)
+                {{-- On one part: stopping it alone, or setting it going again (Rfq::changePartStatus()). --}}
+                @php $statusPivot = $rfq->assigneeForPart($pagePart)?->pivot; @endphp
+                @if ($statusPivot?->isStopped())
+                    @include('admin.rfqs._status_resume', ['rfq' => $rfq, 'stoppedPart' => $statusPivot, 'showLabel' => true])
+                @elseif ($statusPivot && $rfq->status === 'Pending')
+                    <button type="button" class="btn btn-sm btn-outline-secondary js-rfq-status"
+                            data-bs-toggle="modal" data-bs-target="#rfqStatusModal" data-status="{{ \App\Models\Rfq::ON_HOLD }}"
+                            data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}">
+                        <i class="bi bi-pause-circle"></i> Put P{{ $pagePart }} on hold
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger js-rfq-status"
+                            data-bs-toggle="modal" data-bs-target="#rfqStatusModal" data-status="{{ \App\Models\Rfq::CANCELLED }}"
+                            data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}">
+                        <i class="bi bi-x-circle"></i> Cancel P{{ $pagePart }}
+                    </button>
+                @endif
+            @elseif (auth()->user()->canChangeRfqStatus() && $rfq->status !== 'Completed')
                 {{-- Senior Operations stopping an RFQ — on hold, or cancelled — or
                      setting it going again (RfqController::changeStatus()). --}}
                 @if ($rfq->status === 'Pending')
@@ -629,14 +708,15 @@
             @if ($canCloseRfq)
                 @include('admin.rfqs._close_button', [
                     'rfq' => $rfq,
-                    'part' => null,
-                    'label' => $rfq->rfq_number,
-                    'hint' => 'It moves out of Pending into Closed RFQs.',
+                    'part' => $pagePart,
+                    'label' => $pagePart ? $rfq->partNumberLabel($pagePart) : $rfq->rfq_number,
+                    'hint' => $pagePart ? 'It moves into Closed RFQs. The RFQ closes once every part is closed.' : 'It moves out of Pending into Closed RFQs.',
                 ])
                 <button type="button" class="btn btn-sm btn-outline-danger js-reject-rfq"
                         data-bs-toggle="modal" data-bs-target="#rejectRfqModal"
                         data-action="{{ route('admin.rfqs.reject-bd', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}">
+                        data-rfq-id="{{ $rfq->id }}"
+                        @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
             @endif
@@ -687,6 +767,32 @@
         </div>
     @endforeach
 
+    {{-- On one part of a split ($pagePart): what this page is about — and, for
+         an Admin, the switch to the whole RFQ and back (?flow=whole). --}}
+    @if ($focusPart !== null)
+        @php $pageHolder = $rfq->assigneeForPart($focusPart); @endphp
+        <div class="alert alert-light border d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 py-2" data-part-flow>
+            <span class="small">
+                <i class="bi {{ $pagePart !== null ? 'bi-diagram-2' : 'bi-diagram-3' }}"></i>
+                @if ($pagePart !== null)
+                    Showing <strong>{{ $rfq->partNumberLabel($focusPart) }}</strong> only{{ $pageHolder && ! ($restrictAssignment || ($restrictSourcingView && $pageHolder->id !== auth()->id())) ? ' — '.$pageHolder->name.'\'s part' : '' }}: its progress, step details, actions and timeline. The RFQ's own details and its discussion are the whole RFQ's.
+                @else
+                    Showing the <strong>whole RFQ</strong> — all {{ $rfq->splitTotal() }} parts.
+                @endif
+            </span>
+            @if ($canSwitchFlow)
+                <div class="btn-group btn-group-sm" role="group" aria-label="Show this part or the whole RFQ">
+                    <a href="{{ request()->fullUrlWithQuery(['flow' => null]) }}" class="btn {{ $pagePart !== null ? 'btn-primary' : 'btn-outline-secondary' }}" @if ($pagePart !== null) aria-current="true" @endif>
+                        <i class="bi bi-diagram-2"></i> This part ({{ 'P'.$focusPart }})
+                    </a>
+                    <a href="{{ request()->fullUrlWithQuery(['flow' => 'whole']) }}" class="btn {{ $pagePart === null ? 'btn-primary' : 'btn-outline-secondary' }}" @if ($pagePart === null) aria-current="true" @endif>
+                        <i class="bi bi-diagram-3"></i> Whole RFQ ({{ $rfq->splitTotal() }} parts)
+                    </a>
+                </div>
+            @endif
+        </div>
+    @endif
+
     @if ($rfq->isStopped())
         {{-- On hold or cancelled by Senior Operations — out of every queue
              until it's set going again. --}}
@@ -712,7 +818,7 @@
         </div>
     @endif
 
-    @php $stoppedParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isStopped()); @endphp
+    @php $stoppedParts = $pageAssignees->filter(fn ($assignee) => $assignee->pivot->isStopped()); @endphp
     @if ($stoppedParts->isNotEmpty())
         {{-- Parts of the split stopped on their own (Rfq::changePartStatus()) —
              the rest carries on. Set going again from Senior Operations'
@@ -767,7 +873,12 @@
 
     <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <span>Progress</span>
+            <span class="d-flex align-items-center flex-wrap gap-2">
+                Progress
+                @if ($chartPart !== null)
+                    <span class="badge badge-soft-primary" data-progress-part="{{ $chartPart }}">{{ $rfq->partNumberLabel($chartPart) }} only</span>
+                @endif
+            </span>
             <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
                 <button type="button" class="btn btn-outline-secondary" id="rfq-progress-zoom-out" title="Zoom out">
                     <i class="bi bi-zoom-out"></i>
@@ -890,6 +1001,7 @@
                                 </thead>
                                 <tbody>
                                     @foreach ($rfq->sourcingParts() as $part)
+                                        @continue($pagePart !== null && $part['part'] !== $pagePart)
                                         @php
                                             $tabAssignee = $part['assignee'];
                                             $tabBlurred = $tabAssignee && ($restrictAssignment || ($restrictSourcingView && $tabAssignee->id !== auth()->id()));
@@ -952,6 +1064,7 @@
                                 </thead>
                                 <tbody>
                                     @foreach ($rfq->sourcingParts() as $part)
+                                        @continue($pagePart !== null && $part['part'] !== $pagePart)
                                         @php
                                             $tabAssignee = $part['assignee'];
                                             $tabBlurred = $tabAssignee && ($restrictAssignment || ($restrictSourcingView && $tabAssignee->id !== auth()->id()));
@@ -1251,7 +1364,7 @@
                              one for the RFQ, or each closed part's on a split closed
                              part by part with different ones. --}}
                         @php
-                            $closingCodes = $rfq->assignees
+                            $closingCodes = $pageAssignees
                                 ->filter(fn ($assignee) => filled($assignee->pivot->bd_reference_code))
                                 ->mapWithKeys(fn ($assignee) => [$rfq->partNumberLabel($assignee->pivot->part_number) => $assignee->pivot->bd_reference_code]);
                         @endphp
@@ -1324,6 +1437,7 @@
                 <div class="{{ $restrictAssignment ? 'rfq-locked-panel' : '' }}">
                     <div class="card-body {{ $restrictAssignment ? 'rfq-blurred' : '' }}">
                         @foreach ($rfq->sourcingParts() as $part)
+                            @continue($pagePart !== null && $part['part'] !== $pagePart)
                             @php $assignee = $part['assignee']; @endphp
                             @if ($assignee)
                                 <div class="d-flex align-items-center gap-2 mb-2 {{ ($restrictSourcingView && $assignee->id !== auth()->id()) ? 'rfq-blurred' : '' }}">
@@ -1389,7 +1503,7 @@
         $failedReplyParentId = old('parent_id');
         // What they see of the timeline — Sourcing and Data Entry only their
         // own part of it (Rfq::activityTimelineFor()) — and its comments.
-        $timeline = $rfq->activityTimelineFor(auth()->user());
+        $timeline = $rfq->activityTimelineFor(auth()->user(), $pagePart);
         $commentCount = collect($timeline)->where('type', 'comment')->count();
 
         // Data Entry/Admin can complete an assignee's finished split or send
@@ -1402,7 +1516,7 @@
         // RfqController::completeDataEntry() and returnSourcing().
         $canReturnSourcing = auth()->user()->hasAnyRole(['Data Entry', 'Admin']);
         $returnEligibleAssignees = $canReturnSourcing
-            ? $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && $assignee->pivot->data_entry_completed_at === null && ! $assignee->pivot->isStopped())
+            ? $pageAssignees->filter(fn ($assignee) => $assignee->pivot->completed_at !== null && $assignee->pivot->data_entry_completed_at === null && ! $assignee->pivot->isStopped())
             : collect();
     @endphp
 

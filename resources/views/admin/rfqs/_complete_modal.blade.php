@@ -89,7 +89,7 @@
                             <span class="input-group-text">line items</span>
                         </div>
                         @php $minutesPerItem = rtrim(rtrim(number_format(\App\Models\Setting::dataEntryPerItem()['seconds'] / 60, 1), '0'), '.'); @endphp
-                        <div class="form-text" id="complete-line-items-hint">How many line items Data Entry has to add for this part — their time on it is these × {{ $minutesPerItem }} min.</div>
+                        <div class="form-text" id="complete-line-items-hint">How many line items Data Entry has to add for this part — their time on it is these × {{ $minutesPerItem }} min{{ \App\Models\Setting::perItemPeople('data_entry') !== [] ? ', or the Data Entry person\'s own time an item where they have one' : '' }}.</div>
                         <div class="text-danger small mt-1 d-none" id="complete-line-items-error" role="alert"></div>
                     </div>
 

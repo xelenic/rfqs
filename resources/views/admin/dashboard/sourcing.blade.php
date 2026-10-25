@@ -112,7 +112,7 @@
                                         {{-- Wrapping when the card's narrow, so they stay in view. --}}
                                         <td class="text-end">
                                             <div class="d-flex flex-wrap justify-content-end align-items-center gap-1 text-nowrap">
-                                                <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
+                                                <a href="{{ $rfq->detailsUrl($part['part'] ?? null, 'Pending') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                                                     <i class="bi bi-eye"></i>
                                                 </a>
                                                 @if ($assignment->completed_at === null)
@@ -189,7 +189,7 @@
                     @forelse ($overview['returnedParts'] as $part)
                         <div class="dash-item">
                             <div>
-                                <a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a>
+                                <a href="{{ $part['rfq']->detailsUrl($part['assignment']->part_number ?? null, 'Pending') }}" class="fw-semibold">{{ $part['label'] }}</a>
                                 <div class="small">{{ $part['rfq']->subject }}</div>
                                 @if ($part['assignment']->return_reason)
                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
@@ -213,7 +213,7 @@
                     @forelse ($overview['inReviewParts'] as $part)
                         <div class="dash-item">
                             <div>
-                                <a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a>
+                                <a href="{{ $part['rfq']->detailsUrl($part['assignment']->part_number ?? null, 'Pending') }}" class="fw-semibold">{{ $part['label'] }}</a>
                                 <div class="small">{{ $part['rfq']->subject }}</div>
                                 <div class="text-muted-soft small">You completed it {{ $part['assignment']->completed_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '' }}</div>
                             </div>

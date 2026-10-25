@@ -14,7 +14,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/layouts/** | .ai/rules/layouts.md |
 | resources/views/admin/messages/** | .ai/rules/messages.md |
 | database/migrations/** | .ai/rules/migrations.md |
-| app/Models/**, app/Models/Attendance.php, app/Models/RfqComment.php, app/Models/Rfq.php | .ai/rules/models.md |
+| app/Models/**, app/Models/Attendance.php, app/Models/RfqComment.php, app/Models/Rfq.php, app/Models/PrivateMessage.php, app/Models/Setting.php | .ai/rules/models.md |
 | app/Notifications/** | .ai/rules/notifications.md |
 | resources/views/admin/rfqs/** | .ai/rules/rfqs.md |
 | routes/console.php | .ai/rules/routes.md |

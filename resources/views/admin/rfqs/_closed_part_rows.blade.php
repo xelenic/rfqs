@@ -43,7 +43,7 @@
             </td>
         @endif
         <td class="text-end">
-            <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Completed" class="btn btn-sm btn-outline-secondary" title="View details">
+            <a href="{{ $rfq->detailsUrl($assignee->pivot->part_number, 'Completed') }}" class="btn btn-sm btn-outline-secondary" title="View details">
                 <i class="bi bi-eye"></i>
             </a>
         </td>

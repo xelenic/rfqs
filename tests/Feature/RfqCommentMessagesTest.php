@@ -93,15 +93,14 @@ it('sends a comment on an RFQ to everyone involved in it, in their Messages — 
         ->and(PrivateMessage::query()->where('rfq_comment_id', $comment->id)->pluck('sender_id')->unique()->all())->toBe([$people['riley']->id])
         ->and(PrivateMessage::query()->where('rfq_comment_id', $comment->id)->first()->body)->toBe("Commented on RFQ8401 — Pumps:\nSupplier quotes are in.");
 
-    // In their Messages and bell, unread, with the way back to the RFQ.
+    // In their bell and Messages → RFQ comments, unread, with the way back to the RFQ — once each.
     test()->actingAs($people['ben'])->get(route('admin.dashboard'))->assertOk()
         ->assertSee('Riley Chen: Commented on RFQ8401');
-    test()->actingAs($people['ben'])->get(route('admin.messages.index'))->assertOk()
-        ->assertSee('Riley Chen')
-        ->assertSee('Commented on RFQ8401 — Pumps:');
-    test()->actingAs($people['ben'])->get(route('admin.messages.show', $people['riley']))->assertOk()
+    test()->actingAs($people['ben'])->get(route('admin.messages.rfqs'))->assertOk()
+        ->assertSee('Riley Chen:')
         ->assertSee('Supplier quotes are in.')
-        ->assertSee('Open RFQ8401');
+        ->assertSee('title="1 unread"', false);
+    expect(pageMain(test()->actingAs($people['riley'])->get(route('admin.messages.index'))->assertOk()))->not->toContain('Commented on RFQ8401');
 });
 
 it('names the first three and counts the rest when it goes to more than four', function () {

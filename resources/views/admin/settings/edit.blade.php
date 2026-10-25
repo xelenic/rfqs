@@ -50,9 +50,9 @@
             'role-hours' => $roleHoursTab,
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
-            'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item']],
+            'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item', 'data_entry_per_item_people']],
             'finalize-targets' => ['label' => 'Finalize Targets', 'icon' => 'bi-check2-all', 'bag' => 'finalize_targets'],
-            'gm-assistant-targets' => ['label' => 'GM Assistant Time', 'icon' => 'bi-file-earmark-text', 'bag' => ['gm_assistant_targets', 'gm_assistant_per_item']],
+            'gm-assistant-targets' => ['label' => 'GM Assistant Time', 'icon' => 'bi-file-earmark-text', 'bag' => ['gm_assistant_targets', 'gm_assistant_per_item', 'gm_assistant_per_item_people']],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => ['idle_alert', 'gm_assistant_idle_alert']],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'messaging' => ['label' => 'Messaging', 'icon' => 'bi-chat-dots', 'bag' => 'message_roles'],
@@ -705,6 +705,18 @@
                         </form>
                     </div>
                 </div>
+
+                @include('admin.settings._per_item_people', [
+                    'id' => 'data-entry-per-item-people',
+                    'role' => 'Data Entry',
+                    'item' => 'item',
+                    'action' => route('admin.settings.data-entry-per-item-people'),
+                    'bag' => 'data_entry_per_item_people',
+                    'people' => $dataEntryPeople,
+                    'own' => $dataEntryPerItemPeople,
+                    'companySeconds' => $dataEntryPerItem['seconds'],
+                    'range' => $dataEntryPerItemRange,
+                ])
             </div>
 
             <div class="tab-pane fade {{ $activeTab === 'finalize-targets' ? 'show active' : '' }}" id="settings-pane-finalize-targets" role="tabpanel" aria-labelledby="settings-tab-finalize-targets" tabindex="0">
@@ -800,6 +812,18 @@
                         </form>
                     </div>
                 </div>
+
+                @include('admin.settings._per_item_people', [
+                    'id' => 'gm-assistant-per-item-people',
+                    'role' => 'GM Assistant',
+                    'item' => 'line item',
+                    'action' => route('admin.settings.gm-assistant-per-item-people'),
+                    'bag' => 'gm_assistant_per_item_people',
+                    'people' => $gmAssistantPeople,
+                    'own' => $gmAssistantPerItemPeople,
+                    'companySeconds' => $gmAssistantPerItem['seconds'],
+                    'range' => $dataEntryPerItemRange,
+                ])
             </div>
 
             <div class="tab-pane fade {{ $activeTab === 'idle-alert' ? 'show active' : '' }}" id="settings-pane-idle-alert" role="tabpanel" aria-labelledby="settings-tab-idle-alert" tabindex="0">

@@ -104,7 +104,7 @@
                             <tbody>
                                 @foreach ($overview['waiting']->take(8) as $part)
                                     <tr>
-                                        <td class="text-nowrap"><a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a></td>
+                                        <td class="text-nowrap"><a href="{{ $part['rfq']->detailsUrl($part['part'] ?? null, 'Pending') }}" class="fw-semibold">{{ $part['label'] }}</a></td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
                                         <td class="text-nowrap">{{ $part['rfq']->wc_number ?? '—' }}</td>
                                         <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priorityLabel() }}</span></td>

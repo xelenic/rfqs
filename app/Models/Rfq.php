@@ -3184,7 +3184,8 @@ class Rfq extends Model
     /**
      * How GM Assistant's target for $part comes about while it's worked out
      * per line item: its line items (gmAssistantLineItemsFor()), the working
-     * seconds a line item takes (Setting::gmAssistantPerItem()), and the two
+     * seconds a line item takes (Setting::gmAssistantPerItem() — or the
+     * person's own who started it, gmAssistantPersonFor()), and the two
      * multiplied — always for the Head of Business Development's Finalized
      * Line Items (source 'finalized'), and for the others while per line item
      * is on. Null by priority — per line item off without finalized ones, or
@@ -3194,7 +3195,7 @@ class Rfq extends Model
      */
     public function gmAssistantTargetBreakdown(?int $part = null): ?array
     {
-        $perItem = Setting::gmAssistantPerItem();
+        $perItem = Setting::gmAssistantPerItemFor($part !== null ? $this->gmAssistantPersonFor($part) : null);
         $lineItems = $part !== null ? $this->gmAssistantLineItemsFor($part) : null;
 
         // The Head of Business Development's finalized line items always go by
@@ -3239,7 +3240,7 @@ class Rfq extends Model
      * stands now: waiting for GM Assistant's Start (the whole target),
      * running from it, or paused, with the working time used and left.
      *
-     * @return array{lineItems: ?array{count: int, label: string, by: ?string, role: string, at: ?CarbonInterface}, perItem: ?int, target: int, byPriority: bool, state: string, startedAt: ?CarbonInterface, startedBy: ?string, pausedAt: ?CarbonInterface, pauseReason: ?string, remaining: int, used: int}
+     * @return array{lineItems: ?array{count: int, label: string, by: ?string, role: string, at: ?CarbonInterface}, perItem: ?int, perItemOwnOf: ?string, target: int, byPriority: bool, state: string, startedAt: ?CarbonInterface, startedBy: ?string, pausedAt: ?CarbonInterface, pauseReason: ?string, remaining: int, used: int}
      */
     public function gmAssistantTimeExplained(int $part): array
     {
@@ -3259,6 +3260,10 @@ class Rfq extends Model
         return [
             'lineItems' => $from === null ? null : ['count' => $lineItems['count']] + $from,
             'perItem' => $breakdown['perItem'] ?? null,
+            // Whose own time a line item it is, when it's someone's (Settings → GM Assistant Time).
+            'perItemOwnOf' => $breakdown !== null && Setting::gmAssistantPerItemFor($this->gmAssistantPersonFor($part))['own']
+                ? User::query()->whereKey($this->gmAssistantPersonFor($part))->value('name')
+                : null,
             'target' => $target,
             'byPriority' => $breakdown === null,
             'state' => match (true) {
@@ -3379,8 +3384,10 @@ class Rfq extends Model
 
     /**
      * How Data Entry's target for $part comes about when it's worked out per
-     * item: how many, the working seconds an item takes
-     * (Setting::dataEntryPerItem()), and the two multiplied. The line items
+     * item: how many, the working seconds an item takes — the company's
+     * (Setting::dataEntryPerItem()), or the part's Data Entry person's own
+     * (dataEntryPersonFor(), Setting::dataEntryPerItemFor()) — and the two
+     * multiplied. The line items
      * its Sourcing member said to add (rfq_user.line_items_to_add), whenever
      * they did — 'source' line_items; else, while per item is on, the RFQ's
      * own items (dataEntryItemsFor()) — 'source' items. Null by priority:
@@ -3390,7 +3397,7 @@ class Rfq extends Model
      */
     public function dataEntryTargetBreakdown(?int $part = null): ?array
     {
-        $perItem = Setting::dataEntryPerItem();
+        $perItem = Setting::dataEntryPerItemFor($part !== null ? $this->dataEntryPersonFor($part) : null);
         $lineItems = $part !== null ? $this->assigneeForPart($part)?->pivot->line_items_to_add : null;
 
         if ($lineItems) {
@@ -3404,6 +3411,30 @@ class Rfq extends Model
         }
 
         return ['items' => $items, 'perItem' => $perItem['seconds'], 'seconds' => $items * $perItem['seconds'], 'source' => 'items'];
+    }
+
+    /**
+     * Whose time per item $part's Data Entry goes by: whoever's doing it (or
+     * did it), else whoever it was given to by name — null while it's left
+     * to anyone in Data Entry, so it takes the company's till someone starts.
+     */
+    public function dataEntryPersonFor(int $part): ?int
+    {
+        $assignment = $this->assigneeForPart($part)?->pivot;
+
+        return $assignment?->data_entry_started_by ?? $assignment?->data_entry_completed_by ?? $assignment?->data_entry_assigned_to;
+    }
+
+    /**
+     * Whose time per line item $part's GM Assistant step goes by: whoever
+     * started it (or submitted it) — null till someone in GM Assistant does,
+     * so it takes the company's till then.
+     */
+    public function gmAssistantPersonFor(int $part): ?int
+    {
+        $assignment = $this->assigneeForPart($part)?->pivot;
+
+        return $assignment?->gm_assistant_started_by ?? $assignment?->gm_assistant_completed_by;
     }
 
     /**
@@ -4599,6 +4630,7 @@ class Rfq extends Model
                 'tone' => $alert['tone'],
                 'icon' => $alert['icon'],
                 'recipients' => $alert['recipients'],
+                'part' => $alert['part'] ?? null,
             ];
         }
 
@@ -4615,13 +4647,20 @@ class Rfq extends Model
      * (SOURCING_AND_DATA_ENTRY_TIMELINE_TYPES), the discussion and their own
      * actions (RfqComment::isForSourcingAndDataEntry()), and the alerts that
      * went to one of them — never another role's reviews, approvals,
-     * rejections, holds or alerts.
+     * rejections, holds or alerts. With $part, only what's about that part of
+     * a split, or the RFQ as a whole (timelineEntryPart()).
      *
      * @return array<int, array<string, mixed>>
      */
-    public function activityTimelineFor(User $viewer): array
+    public function activityTimelineFor(User $viewer, ?int $part = null): array
     {
         $timeline = $this->activityTimeline();
+
+        // On one part of a split (the RFQ's page focused on it): what's about
+        // that part, and what's about the RFQ as a whole — not the other parts'.
+        if ($part !== null) {
+            $timeline = array_values(array_filter($timeline, fn (array $entry) => in_array(self::timelineEntryPart($entry), [null, $part], true)));
+        }
 
         if (! $viewer->seesOnlySourcingAndDataEntryTimeline()) {
             return $timeline;
@@ -4632,6 +4671,25 @@ class Rfq extends Model
             'notification' => $entry['recipients']->contains(fn (User $recipient) => $recipient->isSourcingOrDataEntry()),
             default => in_array($entry['type'], self::SOURCING_AND_DATA_ENTRY_TIMELINE_TYPES, true),
         }));
+    }
+
+    /**
+     * Which part of a split a timeline entry (activityTimeline()) is about — a
+     * part's own step (its holder's), an action on one part (its comment's
+     * meta part), an alert about one (its part) — or null for the RFQ as a
+     * whole: its own steps, the discussion, actions on every part.
+     *
+     * @param  array<string, mixed>  $entry
+     */
+    public static function timelineEntryPart(array $entry): ?int
+    {
+        $part = match ($entry['type']) {
+            'comment' => $entry['comment']->meta['part'] ?? null,
+            'notification' => $entry['part'] ?? null,
+            default => $entry['related']?->pivot?->part_number,
+        };
+
+        return $part !== null ? (int) $part : null;
     }
 
     /**
@@ -4680,6 +4738,7 @@ class Rfq extends Model
                     'icon' => $first->data['icon'] ?? 'bi-bell',
                     'detail' => method_exists($type, 'timelineDetail') ? $type::timelineDetail($first->data, $names, $this) : (string) ($first->data['message'] ?? ''),
                     'recipients' => $recipients,
+                    'part' => isset($first->data['part']) ? (int) $first->data['part'] : null,
                 ];
             })
             ->values();
@@ -4995,6 +5054,21 @@ class Rfq extends Model
     public static function formatRfqNumber(int $sequence): string
     {
         return self::RFQ_NUMBER_PREFIX.str_pad((string) $sequence, self::RFQ_NUMBER_DIGITS, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Its page (RfqController::show()) — focused on $part when it's split:
+     * the progress chart then shows that part's flow alone (an Admin can
+     * switch to the whole RFQ's). $status is the list it's opened from,
+     * for the way back.
+     */
+    public function detailsUrl(?int $part = null, ?string $status = null): string
+    {
+        return route('admin.rfqs.show', array_filter([
+            'rfq' => $this,
+            'status' => $status,
+            'part' => $part !== null && $this->isSplit() ? $part : null,
+        ]));
     }
 
     /**

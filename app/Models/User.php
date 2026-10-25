@@ -541,9 +541,11 @@ class User extends Authenticatable
      * What the top bar's bell lists for them (layouts/_notification_bell),
      * newest first, up to $limit: their alerts (database notifications, such
      * as DataEntryIdle), the private messages sent to them — one line per
-     * person, their latest message, saying how many are unread — and their
-     * group chats (MessageGroup), one line each, likewise. And how many of
-     * them all are unread, for its count.
+     * person, their latest message, saying how many are unread — the RFQ
+     * comments sent to them, one line per RFQ (not one per person who
+     * commented: PrivateMessage::personalFor() / onReadableRfqsFor()), and
+     * their group chats (MessageGroup), one line each, likewise. And how many
+     * of them all are unread, for its count.
      *
      * @return array{items: SupportCollection<int, array{kind: string, at: CarbonInterface, unread: bool, url: string, icon: string, text: string, note: string}>, unread: int}
      */
@@ -561,10 +563,10 @@ class User extends Authenticatable
                 'note' => $alert->data['note'] ?? 'message them',
             ]);
 
-        $unreadBySender = $this->receivedMessages()->unread()->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id');
+        $unreadBySender = $this->receivedMessages()->unread()->personalFor($this)->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id');
 
         $latestFromEach = PrivateMessage::query()
-            ->whereIn('id', $this->receivedMessages()->groupBy('sender_id')->selectRaw('max(id)'))
+            ->whereIn('id', $this->receivedMessages()->personalFor($this)->groupBy('sender_id')->selectRaw('max(id)'))
             ->with('sender')
             ->latest('id')
             ->limit($limit)
@@ -586,6 +588,36 @@ class User extends Authenticatable
                         $unread > 1 => "{$unread} new messages",
                         $unread === 1 => 'new message',
                         default => 'message',
+                    },
+                ];
+            });
+
+        $unreadByRfq = PrivateMessage::unreadCommentsByRfq($this);
+
+        $comments = PrivateMessage::query()
+            ->whereIn('id', $this->receivedMessages()->onReadableRfqsFor($this)
+                ->join('rfq_comments', 'rfq_comments.id', '=', 'private_messages.rfq_comment_id')
+                ->groupBy('rfq_comments.rfq_id')
+                ->selectRaw('max(private_messages.id)'))
+            ->with(['sender', 'rfqComment'])
+            ->latest('id')
+            ->limit($limit)
+            ->get()
+            ->filter(fn (PrivateMessage $message) => $message->rfqComment !== null)
+            ->map(function (PrivateMessage $message) use ($unreadByRfq) {
+                $unread = (int) ($unreadByRfq[$message->rfqComment->rfq_id] ?? 0);
+
+                return [
+                    'kind' => 'message',
+                    'at' => $message->created_at,
+                    'unread' => $unread > 0,
+                    'url' => route('admin.messages.rfq', $message->rfqComment->rfq_id),
+                    'icon' => 'bi-chat-square-text',
+                    'text' => ($message->sender?->name ?? 'Someone').': '.Str::limit($message->body, 80),
+                    'note' => match (true) {
+                        $unread > 1 => "{$unread} new comments",
+                        $unread === 1 => 'new comment',
+                        default => 'comment',
                     },
                 ];
             });
@@ -618,8 +650,8 @@ class User extends Authenticatable
             });
 
         return [
-            'items' => $alerts->concat($messages)->concat($groups)->sortByDesc('at')->take($limit)->values(),
-            'unread' => $this->unreadNotifications()->count() + (int) $unreadBySender->sum() + (int) $unreadByGroup->sum(),
+            'items' => $alerts->concat($messages)->concat($comments)->concat($groups)->sortByDesc('at')->take($limit)->values(),
+            'unread' => $this->unreadNotifications()->count() + (int) $unreadBySender->sum() + (int) $unreadByRfq->sum() + (int) $unreadByGroup->sum(),
         ];
     }
 

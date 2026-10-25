@@ -429,6 +429,7 @@ class DashboardController extends Controller
 
                 return [
                     'rfq' => $rfq,
+                    'part' => $step->part_number,
                     'label' => $step->part_number !== null && $rfq->isSplit() ? $rfq->partNumberLabel($step->part_number) : $rfq->rfq_number,
                     'task' => self::TASK_LABELS[$step->step],
                     'role' => $step->role(),

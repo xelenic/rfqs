@@ -9,7 +9,8 @@
     when the stage is done for a part), $byRelation (the RfqAssignment
     relation for who did it), $reachedColumn (the column of the stage before —
     a part has reached this one once that's set) and $awaiting (what a part
-    that's reached it reads until it's done). Optional: $doneNote — given the
+    that's reached it reads until it's done). On one part of a split (the
+    page's $pagePart), just that part's line. Optional: $doneNote — given the
     part's pivot, more to say once it's done (Senior Operations' verified line
     items), or null. From the page: $maskIfBlurred, $restrictAssignment,
     $restrictSourcingView.
@@ -25,6 +26,7 @@
         </thead>
         <tbody>
             @foreach ($rfq->sourcingParts() as $part)
+                @continue(($pagePart ?? null) !== null && $part['part'] !== $pagePart)
                 @php
                     $stepAssignee = $part['assignee'];
                     $stepBlurred = $stepAssignee && ($restrictAssignment || ($restrictSourcingView && $stepAssignee->id !== auth()->id()));

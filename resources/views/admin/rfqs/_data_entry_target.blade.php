@@ -3,8 +3,9 @@
     the time: once started, its countdown (_countdown_badge) — held where it
     stopped while they've paused it; till then, the whole target, still to
     run. How the target is made up — the line items to add (or the RFQ's
-    items) times the time an item takes (Rfq::dataEntryTargetBreakdown()), or
-    its priority's — is on hover. See Settings → Data Entry Time.
+    items) times the time an item takes (Rfq::dataEntryTargetBreakdown()) —
+    the person's own, where they have one — or its priority's — is on hover.
+    See Settings → Data Entry Time.
 
     Expects: $rfq, $part, $countdown (Rfq::dataEntryCountdown(), or null),
     $workerId (whoever started it, or null). Optional: $pausedCountdown
@@ -17,11 +18,16 @@
     $perItemOn = \App\Models\Setting::dataEntryPerItem()['enabled'];
     $itemWord = ($breakdown['source'] ?? 'items') === 'line_items' ? 'line item' : 'item';
     $minutesLabel = fn (int $seconds) => rtrim(rtrim(number_format($seconds / 60, 1), '0'), '.').' min';
+    // Someone's own time an item (Settings → Data Entry Time, person by person).
+    $deworker = $rfq->dataEntryPersonFor((int) $part);
+    $ownOf = $breakdown !== null && \App\Models\Setting::dataEntryPerItemFor($deworker)['own']
+        ? \App\Models\User::query()->whereKey($deworker)->value('name')
+        : null;
 @endphp
 @php
     // How it's made up, for the hover.
     $madeUp = match (true) {
-        $breakdown !== null => number_format($breakdown['items']).' '.\Illuminate\Support\Str::plural($itemWord, $breakdown['items']).' × '.$minutesLabel($breakdown['perItem']).' = '.\App\Models\Setting::durationLabel($breakdown['seconds']),
+        $breakdown !== null => number_format($breakdown['items']).' '.\Illuminate\Support\Str::plural($itemWord, $breakdown['items']).' × '.$minutesLabel($breakdown['perItem']).($ownOf ? " ({$ownOf}'s own)" : '').' = '.\App\Models\Setting::durationLabel($breakdown['seconds']),
         $perItemOn => "No number of items — {$rfq->priority_level}'s target",
         default => "{$rfq->priority_level}'s target",
     };

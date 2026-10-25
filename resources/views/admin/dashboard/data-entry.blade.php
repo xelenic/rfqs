@@ -98,7 +98,7 @@
                             <span class="de-now-icon tone-success"><i class="bi bi-play-circle-fill"></i></span>
                             <div class="de-now-main">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
-                                    <a href="{{ route('admin.rfqs.show', $current['rfq']) }}?status=Pending" class="fw-semibold">{{ $current['label'] }}</a>
+                                    <a href="{{ $current['rfq']->detailsUrl($current['part'] ?? null, 'Pending') }}" class="fw-semibold">{{ $current['label'] }}</a>
                                     <span class="badge {{ $current['rfq']->priorityBadgeClass() }}">{{ $current['rfq']->priorityLabel() }}</span>
                                     <span class="badge {{ $stateBadge }}">{{ $stateLabel }}</span>
                                 </div>
@@ -186,7 +186,7 @@
                                 @foreach ($overview['waiting']->take(8) as $part)
                                     <tr>
                                         <td class="text-nowrap">
-                                            <a href="{{ route('admin.rfqs.show', $part['rfq']) }}?status=Pending" class="fw-semibold">{{ $part['label'] }}</a>
+                                            <a href="{{ $part['rfq']->detailsUrl($part['part'] ?? null, 'Pending') }}" class="fw-semibold">{{ $part['label'] }}</a>
                                             @if ($part['forMe'])
                                                 <span class="badge badge-soft-primary ms-1">For you</span>
                                             @endif
@@ -383,7 +383,7 @@
                                 @foreach ($overview['latest'] as $part)
                                     @php $sentAt = $part['at']->copy()->setTimezone($timezone); @endphp
                                     <tr>
-                                        <td class="text-nowrap"><a href="{{ route('admin.rfqs.show', $part['rfq']) }}" class="fw-semibold">{{ $part['label'] }}</a></td>
+                                        <td class="text-nowrap"><a href="{{ $part['rfq']->detailsUrl($part['part'] ?? null) }}" class="fw-semibold">{{ $part['label'] }}</a></td>
                                         <td class="text-truncate" style="max-width: 280px;">{{ $part['rfq']->subject }}</td>
                                         <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ \App\Models\Rfq::priorityLabelOf($part['priority']) }}</span></td>
                                         <td class="text-end team-figure">{{ $part['entries'] ?? '—' }}</td>

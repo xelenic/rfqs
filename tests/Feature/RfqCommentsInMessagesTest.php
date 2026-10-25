@@ -157,3 +157,24 @@ it('leaves the RFQ comments it opens unread no more, and no other', function () 
     expect(PrivateMessage::query()->where('recipient_id', $olivia->id)->whereNull('read_at')->pluck('body')->all())
         ->toBe(["Commented on RFQ8702 — Valves:\nValves quote too."]);
 });
+
+it('shows an RFQ\'s comments once — not as a conversation with each person they went to, and one bell line for the RFQ', function () {
+    ['pumps' => $pumps, 'olivia' => $olivia, 'riley' => $riley, 'ben' => $ben] = twoDiscussions();
+    commentOn($riley, $pumps, 'Supplier quotes are in.');
+    commentOn($olivia, $pumps, 'Great — over to Data Entry.');
+
+    // Riley wrote to everyone on it, and was written to: no Private messages for either.
+    $main = pageMain(test()->actingAs($riley)->get(route('admin.messages.index'))->assertOk());
+    expect(substr_count($main, 'class="conversation-row'))->toBe(0)
+        ->and($main)->toContain('No messages yet');
+
+    // Ben has two comments on the Pumps — one line in his bell, under RFQ comments.
+    $lines = collect($ben->bellItems()['items'])->where('url', route('admin.messages.rfq', $pumps));
+    expect($lines)->toHaveCount(1)
+        ->and($lines->first())->toMatchArray(['unread' => true, 'note' => '2 new comments', 'text' => "Olivia Park: Commented on RFQ8701 — Pumps:\nGreat — over to Data Entry."])
+        ->and($ben->bellItems()['unread'])->toBe(2);
+
+    // Read once, under RFQ comments: the bell's read too.
+    test()->actingAs($ben)->get(route('admin.messages.rfq', $pumps))->assertOk();
+    expect($ben->fresh()->bellItems()['unread'])->toBe(0);
+});

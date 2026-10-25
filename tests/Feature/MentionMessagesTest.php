@@ -71,7 +71,7 @@ it('says it was a reply when it was', function () {
     expect(PrivateMessage::query()->sole()->body)->toStartWith('Mentioned you in a reply on closed RFQ8301 — Valves:');
 });
 
-it('shows in their Messages and bell, with the way back to the RFQ', function () {
+it('shows in their bell and under Messages → RFQ comments — once, not in Private messages too — with the way back to the RFQ', function () {
     $riley = personNamed('Riley Chen');
     $operations = personNamed('Olivia Park', 'Senior Operations');
     $rfq = rfqForMentions();
@@ -79,16 +79,20 @@ it('shows in their Messages and bell, with the way back to the RFQ', function ()
     commentMentioning($operations, $rfq, '@Riley Chen please look');
 
     test()->actingAs($riley)->get(route('admin.dashboard'))->assertOk()
-        ->assertSee('Olivia Park: Mentioned you on closed RFQ8301');
+        ->assertSee('Olivia Park: Mentioned you on closed RFQ8301')
+        ->assertSee('href="'.route('admin.messages.rfq', $rfq).'"', false);
 
-    test()->actingAs($riley)->get(route('admin.messages.index'))->assertOk()
-        ->assertSee('Olivia Park')
-        ->assertSee('Mentioned you on closed RFQ8301 — Valves:');
+    expect(pageMain(test()->actingAs($riley)->get(route('admin.messages.index'))->assertOk()))
+        ->not->toContain('Mentioned you on closed RFQ8301')
+        ->toContain('No messages yet');
+    expect(pageMain(test()->actingAs($riley)->get(route('admin.messages.show', $operations))->assertOk()))->not->toContain('please look');
 
-    test()->actingAs($riley)->get(route('admin.messages.show', $operations))->assertOk()
-        ->assertSee('@Riley Chen please look')
-        ->assertSee('href="'.route('admin.rfqs.show', $rfq).'"', false)
-        ->assertSee('Open RFQ8301');
+    test()->actingAs($riley)->get(route('admin.messages.rfqs'))->assertOk()
+        ->assertSee('Olivia Park:')
+        ->assertSee('@Riley Chen please look');
+    test()->actingAs($riley)->get(route('admin.messages.rfq', $rfq))->assertOk()
+        ->assertSee('@Riley Chen please look', false)
+        ->assertSee('href="'.route('admin.rfqs.show', $rfq).'"', false);
 
     expect(PrivateMessage::query()->sole()->read_at)->not->toBeNull();
 });
@@ -145,15 +149,17 @@ it('links the RFQ in the conversation only for someone who can open it', functio
     commentMentioning($author, $rfq, '@Riley Chen @Ben Dev @Dana Entry @Harper Hr please look');
 
     $link = 'href="'.route('admin.rfqs.show', $rfq).'"';
-    test()->actingAs($riley)->get(route('admin.messages.show', $author))->assertOk()->assertSee($link, false);
-    // Business Development sees only their own RFQs, Data Entry only what's been given them, HR Executive none.
+    // Riley can open it: it's read under RFQ comments, with the way to the RFQ.
+    test()->actingAs($riley)->get(route('admin.messages.rfq', $rfq))->assertOk()->assertSee($link, false);
+    // Business Development sees only their own RFQs, Data Entry only what's been given them, HR Executive none:
+    // theirs stays in Private messages — the one place they can read it — with no way to an RFQ they can't open.
     foreach ([$ben, $dana, $hr] as $person) {
         test()->actingAs($person)->get(route('admin.messages.show', $author))->assertOk()
             ->assertSee('@Riley Chen @Ben Dev @Dana Entry @Harper Hr please look')
             ->assertDontSee($link, false);
     }
-    // The author can.
-    test()->actingAs($author)->get(route('admin.messages.show', $riley))->assertOk()->assertSee($link, false);
+    // The author keeps none of it in Private messages — it's their own comment.
+    expect(pageMain(test()->actingAs($author)->get(route('admin.messages.show', $riley))->assertOk()))->not->toContain('please look');
 });
 
 it('sends each person mentioned one message — not the author, nor a deactivated account', function () {

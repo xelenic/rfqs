@@ -59,6 +59,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('settings/gm-assistant-targets', [SettingsController::class, 'updateGmAssistantTargets'])->name('settings.gm-assistant-targets');
     Route::patch('settings/gm-assistant-per-item', [SettingsController::class, 'updateGmAssistantPerItem'])->name('settings.gm-assistant-per-item');
     Route::patch('settings/data-entry-per-item', [SettingsController::class, 'updateDataEntryPerItem'])->name('settings.data-entry-per-item');
+    Route::patch('settings/data-entry-per-item-people', [SettingsController::class, 'updateDataEntryPerItemPeople'])->name('settings.data-entry-per-item-people');
+    Route::patch('settings/gm-assistant-per-item-people', [SettingsController::class, 'updateGmAssistantPerItemPeople'])->name('settings.gm-assistant-per-item-people');
     Route::patch('settings/rfq-numbers', [SettingsController::class, 'updateRfqNumbers'])->name('settings.rfq-numbers');
     Route::delete('settings/rfq-data', [SettingsController::class, 'clearRfqData'])->middleware('throttle:5,1')->name('settings.rfq-data.clear');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');

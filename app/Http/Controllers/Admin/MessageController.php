@@ -31,8 +31,10 @@ class MessageController extends Controller
     {
         $me = $request->user();
 
-        // The newest message in each conversation, whichever way it went.
+        // The newest message in each conversation, whichever way it went — an
+        // RFQ's comments are read under RFQ comments instead (personalFor()).
         $latestIds = PrivateMessage::query()
+            ->personalFor($me)
             ->where(fn ($query) => $query->where('sender_id', $me->id)->orWhere('recipient_id', $me->id))
             ->groupByRaw('case when sender_id = ? then recipient_id else sender_id end', [$me->id])
             ->selectRaw('max(id) as id')
@@ -44,7 +46,7 @@ class MessageController extends Controller
                 ->whereIn('id', $latestIds)
                 ->latest('id')
                 ->get(),
-            'unread' => $me->receivedMessages()->unread()->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id'),
+            'unread' => $me->receivedMessages()->unread()->personalFor($me)->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id'),
             'people' => User::query()->active()->whereKeyNot($me->id)->with('roles')->orderBy('name')->get()
                 ->filter(fn (User $person) => $me->canMessage($person))
                 ->values(),
@@ -68,7 +70,7 @@ class MessageController extends Controller
 
         // Only when there's something to read: a write on every visit would
         // move the live version on each time this page is refreshed by it.
-        $unread = $me->receivedMessages()->unread()->where('sender_id', $user->id);
+        $unread = $me->receivedMessages()->unread()->personalFor($me)->where('sender_id', $user->id);
 
         if ($unread->exists()) {
             $unread->update(['read_at' => now()]);
@@ -78,7 +80,7 @@ class MessageController extends Controller
             'other' => $user,
             'canReply' => $me->canMessage($user),
             'messagingLimit' => $me->messagingLimitText(),
-            'messages' => PrivateMessage::query()->between($me, $user)->with(['rfq', 'rfqComment.rfq'])->oldest('id')->get(),
+            'messages' => PrivateMessage::query()->between($me, $user)->personalFor($me)->with(['rfq', 'rfqComment.rfq'])->oldest('id')->get(),
         ]);
     }
 

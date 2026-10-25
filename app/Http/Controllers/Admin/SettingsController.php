@@ -59,6 +59,11 @@ class SettingsController extends Controller
             'gmAssistantTargets' => Setting::gmAssistantTargets(),
             'gmAssistantPerItem' => Setting::gmAssistantPerItem(),
             'dataEntryPerItem' => Setting::dataEntryPerItem(),
+            // Person by person: their own time an item, for an Admin to set.
+            'dataEntryPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('Data Entry')->orderBy('name')->get() : collect(),
+            'dataEntryPerItemPeople' => Setting::perItemPeople('data_entry'),
+            'gmAssistantPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('GM Assistant')->orderBy('name')->get() : collect(),
+            'gmAssistantPerItemPeople' => Setting::perItemPeople('gm_assistant'),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
             'gmAssistantIdleAlert' => Setting::gmAssistantIdleAlert(),
@@ -442,6 +447,57 @@ class SettingsController extends Controller
         return $this->backToTab('data-entry-targets', $request->boolean('enabled')
             ? 'Saved — line items to add times the time per item, and parts without line items worked out per item too.'
             : 'Saved — line items to add times the time per item; parts without line items keep their priority\'s target.');
+    }
+
+    /**
+     * Data Entry people's own time per item — see savePerItemPeople().
+     */
+    public function updateDataEntryPerItemPeople(Request $request): RedirectResponse
+    {
+        return $this->savePerItemPeople($request, 'data_entry', 'Data Entry', 'data-entry-targets');
+    }
+
+    /**
+     * GM Assistant people's own time per line item — see savePerItemPeople().
+     */
+    public function updateGmAssistantPerItemPeople(Request $request): RedirectResponse
+    {
+        return $this->savePerItemPeople($request, 'gm_assistant', 'GM Assistant', 'gm-assistant-targets');
+    }
+
+    /**
+     * The people in $role who take their own time an item rather than the
+     * company's — people[user id] in minutes (to the half minute), kept in
+     * seconds; left empty, the company's. Only for those in $role; anyone
+     * else sent is ignored. See Setting::perItemPeople(). Admin only.
+     */
+    private function savePerItemPeople(Request $request, string $step, string $role, string $tab): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, "Only an Admin can change {$role}'s times.");
+
+        [$fewest, $most] = array_map(fn (int $seconds) => $seconds / 60, Setting::DATA_ENTRY_PER_ITEM_RANGE);
+
+        $validated = $request->validateWithBag("{$step}_per_item_people", [
+            'people' => ['array'],
+            'people.*' => ['nullable', 'numeric', "between:{$fewest},{$most}", 'multiple_of:0.5'],
+        ], [
+            'people.*.numeric' => 'Give the minutes an item takes, like 2 or 1.5.',
+            'people.*.between' => "Keep each person's time between {$fewest} and {$most} minutes an item.",
+            'people.*.multiple_of' => 'Give it to the half minute, like 2.5.',
+        ]);
+
+        $inRole = User::query()->holdingRole($role)->pluck('id')->all();
+
+        $people = collect($validated['people'] ?? [])
+            ->filter(fn ($minutes, $userId) => $minutes !== null && $minutes !== '' && in_array((int) $userId, $inRole, true))
+            ->mapWithKeys(fn ($minutes, $userId) => [(int) $userId => (int) round($minutes * 60)])
+            ->all();
+
+        Setting::putPerItemPeople($step, $people);
+
+        return $this->backToTab($tab, $people === []
+            ? "Saved — everyone in {$role} takes the time per item above."
+            : 'Saved — '.count($people).' '.(count($people) === 1 ? 'person takes their' : 'people take their').' own time per item.');
     }
 
     /**

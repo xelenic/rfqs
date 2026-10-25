@@ -102,7 +102,7 @@
                     Overdue tasks <span class="badge badge-soft-danger ms-1">{{ $overdue->count() }}</span>
                 </div>
                 @forelse ($overdue as $task)
-                    <a href="{{ route('admin.rfqs.show', $task['rfq']) }}?status=Pending" class="critical-row">
+                    <a href="{{ $task['rfq']->detailsUrl($task['part'] ?? null, 'Pending') }}" class="critical-row">
                         <span class="critical-row-mark tone-danger"><i class="bi bi-alarm"></i></span>
                         <span class="critical-row-main">
                             <strong>{{ $task['label'] }}</strong> · {{ $task['task'] }}

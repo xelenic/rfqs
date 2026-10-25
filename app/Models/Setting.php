@@ -1052,6 +1052,67 @@ class Setting extends Model
     }
 
     /**
+     * People's own time per item — Data Entry's ('data_entry') or GM
+     * Assistant's ('gm_assistant'), set person by person on that Settings tab
+     * for someone who works faster or slower than the rest: user id => the
+     * working seconds an item takes them (within DATA_ENTRY_PER_ITEM_RANGE).
+     * Everyone else takes the company's (dataEntryPerItem(),
+     * gmAssistantPerItem()). Since 2026-10-25.
+     *
+     * @return array<int, int>
+     */
+    public static function perItemPeople(string $step): array
+    {
+        $saved = json_decode((string) static::get("{$step}_per_item_people"), true);
+        [$fewest, $most] = self::DATA_ENTRY_PER_ITEM_RANGE;
+
+        return collect(is_array($saved) ? $saved : [])
+            ->filter(fn ($seconds) => is_numeric($seconds))
+            ->mapWithKeys(fn ($seconds, $userId) => [(int) $userId => max($fewest, min($most, (int) $seconds))])
+            ->all();
+    }
+
+    /**
+     * Saves people's own time per item for $step — see perItemPeople(); none
+     * leaves everyone on the company's.
+     *
+     * @param  array<int, int>  $people  user id => seconds an item
+     */
+    public static function putPerItemPeople(string $step, array $people): void
+    {
+        static::put("{$step}_per_item_people", $people === [] ? null : json_encode($people));
+    }
+
+    /**
+     * Data Entry's per item for the parts $userId does: whether it's on (the
+     * company's switch), and the seconds an item takes them — their own where
+     * they have it ('own'), else the company's.
+     *
+     * @return array{enabled: bool, seconds: int, own: bool}
+     */
+    public static function dataEntryPerItemFor(?int $userId): array
+    {
+        $company = static::dataEntryPerItem();
+        $own = $userId !== null ? (static::perItemPeople('data_entry')[$userId] ?? null) : null;
+
+        return ['enabled' => $company['enabled'], 'seconds' => $own ?? $company['seconds'], 'own' => $own !== null];
+    }
+
+    /**
+     * GM Assistant's per line item for the parts $userId does — as
+     * dataEntryPerItemFor().
+     *
+     * @return array{enabled: bool, seconds: int, own: bool}
+     */
+    public static function gmAssistantPerItemFor(?int $userId): array
+    {
+        $company = static::gmAssistantPerItem();
+        $own = $userId !== null ? (static::perItemPeople('gm_assistant')[$userId] ?? null) : null;
+
+        return ['enabled' => $company['enabled'], 'seconds' => $own ?? $company['seconds'], 'own' => $own !== null];
+    }
+
+    /**
      * Saves Data Entry's target per item — see dataEntryPerItem().
      *
      * @param  array{enabled: bool, seconds: int}  $perItem
