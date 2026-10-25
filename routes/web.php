@@ -92,6 +92,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::get('categories', [JobCategoryController::class, 'index'])->name('categories.index');
     Route::post('categories', [JobCategoryController::class, 'store'])->name('categories.store');
     Route::post('categories/import', [JobCategoryController::class, 'import'])->name('categories.import');
+    Route::post('categories/reassign', [JobCategoryController::class, 'reassign'])->name('categories.reassign');
     Route::get('categories/template', [JobCategoryController::class, 'template'])->name('categories.template');
     Route::put('categories/{category}', [JobCategoryController::class, 'update'])->name('categories.update');
     Route::delete('categories/{category}', [JobCategoryController::class, 'destroy'])->name('categories.destroy');

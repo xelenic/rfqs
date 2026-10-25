@@ -160,3 +160,59 @@ it('lets Senior Operations and GM Assistant add, rename and delete categories', 
     test()->actingAs($operations)->get(route('admin.categories.index'))->assertOk()
         ->assertSee('data-unlisted-category="Solar Energy"', false);
 });
+
+it('moves the RFQs of a category not on the list to one that is', function () {
+    $ops = userWithRole('Senior Operations');
+    $electrical = JobCategory::query()->create(['name' => 'Electrical Works']);
+    JobCategory::query()->create(['name' => 'Plumbing & Sanitary']);
+    Rfq::factory()->count(2)->create(['category' => 'Old Wiring']);
+    Rfq::factory()->create(['category' => 'Electrical Works']);
+
+    $html = test()->actingAs($ops)->get(route('admin.categories.index'))->assertOk()
+        ->assertSee('id="reassignCategoryModal"', false)
+        ->getContent();
+    expect(Str::betweenFirst($html, 'data-unlisted-category="Old Wiring"', '</form>'))
+        ->toContain('js-reassign-category')
+        ->toContain('data-from="Old Wiring"')
+        ->toContain('data-rfqs="2"')
+        ->and(Str::betweenFirst($html, 'id="reassign-category-to"', '</select>'))
+        ->toContain('Electrical Works')->toContain('Plumbing &amp; Sanitary');
+
+    test()->actingAs($ops)->post(route('admin.categories.reassign'), ['from' => 'Old Wiring', 'to' => $electrical->id])
+        ->assertRedirect(route('admin.categories.index'))
+        ->assertSessionHas('status', 'Moved the 2 RFQs with "Old Wiring" to "Electrical Works".');
+
+    expect(Rfq::query()->where('category', 'Electrical Works')->count())->toBe(3)
+        ->and(Rfq::query()->where('category', 'Old Wiring')->exists())->toBeFalse();
+
+    test()->actingAs($ops)->get(route('admin.categories.index'))->assertOk()
+        ->assertDontSee('data-unlisted-category', false);
+});
+
+it('refuses a reassign of a category on the list, one no RFQ has, or with nowhere to go — back in the popup', function (Closure $payload, string $message) {
+    $admin = categoryAdmin();
+    $electrical = JobCategory::query()->create(['name' => 'Electrical Works']);
+    Rfq::factory()->create(['category' => 'Old Wiring']);
+
+    test()->actingAs($admin)->from(route('admin.categories.index'))
+        ->post(route('admin.categories.reassign'), $payload($electrical))
+        ->assertRedirect(route('admin.categories.index'));
+
+    test()->actingAs($admin)->get(route('admin.categories.index'))->assertOk()
+        ->assertSee($message)
+        ->assertSee("getElementById('reassignCategoryModal')", false);
+
+    expect(Rfq::query()->where('category', 'Old Wiring')->count())->toBe(1);
+})->with([
+    'nowhere to go' => [fn (JobCategory $electrical) => ['from' => 'Old Wiring'], 'Choose the category to move them to.'],
+    'a category on the list' => [fn (JobCategory $electrical) => ['from' => 'Electrical Works', 'to' => $electrical->id], 'That one\'s on the list — rename it with Edit instead.'],
+    'no RFQ has it' => [fn (JobCategory $electrical) => ['from' => 'Never Used', 'to' => $electrical->id], 'No RFQ has that category any more.'],
+]);
+
+it('keeps reassigning to those who manage the categories', function () {
+    $electrical = JobCategory::query()->create(['name' => 'Electrical Works']);
+    Rfq::factory()->create(['category' => 'Old Wiring']);
+
+    test()->actingAs(userWithRole('Sourcing'))->post(route('admin.categories.reassign'), ['from' => 'Old Wiring', 'to' => $electrical->id])->assertForbidden();
+    expect(Rfq::query()->where('category', 'Old Wiring')->count())->toBe(1);
+});

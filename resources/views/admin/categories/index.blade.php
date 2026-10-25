@@ -12,7 +12,9 @@
     put back.
 
     Expects: $categories (paginated, with creator, rfqs_count,
-    open_rfqs_count), $search, $total, $unlisted (name => RFQs).
+    open_rfqs_count), $search, $total, $unlisted (name => RFQs), $listedNames
+    (id => name, what an unlisted one's RFQs can be moved to —
+    #reassignCategoryModal, JobCategoryController::reassign()).
 --}}
 @extends('layouts.app')
 
@@ -22,6 +24,7 @@
     @php
         $failedCreate = $errors->createCategory->any();
         $failedImport = $errors->importCategories->any();
+        $failedReassign = $errors->reassignCategory->any();
         $importSkipped = session('importSkipped');
         $failedEdit = $errors->editCategory->any();
         $failedEditCategory = $failedEdit && old('category_id') ? \App\Models\JobCategory::query()->find(old('category_id')) : null;
@@ -151,7 +154,8 @@
         @endif
     </div>
 
-    {{-- Categories RFQs have that the list doesn't — one deleted, say: put it back, to offer it again. --}}
+    {{-- Categories RFQs have that the list doesn't — one deleted, say: put it back, to offer it
+         again, or move its RFQs to one on the list (Reassign). --}}
     @if ($unlisted->isNotEmpty())
         <div class="card" id="unlisted-categories">
             <div class="card-header d-flex align-items-center justify-content-between">
@@ -165,13 +169,64 @@
                             <span class="fw-semibold">{{ $name }}</span>
                             <span class="text-muted-soft small">· {{ $count }} {{ $count === 1 ? 'RFQ' : 'RFQs' }}</span>
                         </span>
-                        <form action="{{ route('admin.categories.store') }}" method="POST" class="d-inline">
-                            @csrf
-                            <input type="hidden" name="name" value="{{ $name }}">
-                            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg"></i> Put back on the list</button>
-                        </form>
+                        <span class="d-flex flex-wrap justify-content-end gap-2">
+                            @if ($listedNames->isNotEmpty())
+                                <button type="button" class="btn btn-sm btn-outline-secondary js-reassign-category"
+                                        data-bs-toggle="modal" data-bs-target="#reassignCategoryModal"
+                                        data-from="{{ $name }}" data-rfqs="{{ $count }}">
+                                    <i class="bi bi-arrow-left-right"></i> Reassign
+                                </button>
+                            @endif
+                            <form action="{{ route('admin.categories.store') }}" method="POST" class="d-inline">
+                                @csrf
+                                <input type="hidden" name="name" value="{{ $name }}">
+                                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg"></i> Put back on the list</button>
+                            </form>
+                        </span>
                     </div>
                 @endforeach
+            </div>
+        </div>
+    @endif
+
+    {{-- Move an unlisted category's RFQs to one on the list — filled from its
+         row's Reassign (admin.js, .js-reassign-category). --}}
+    @if ($unlisted->isNotEmpty() && $listedNames->isNotEmpty())
+        <div class="modal fade" id="reassignCategoryModal" tabindex="-1" aria-labelledby="reassignCategoryModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <form method="POST" action="{{ route('admin.categories.reassign') }}" class="modal-content" id="reassignCategoryForm" novalidate>
+                    @csrf
+                    <input type="hidden" name="from" value="{{ $failedReassign ? old('from') : '' }}">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="reassignCategoryModalLabel">Reassign RFQs</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3" id="reassign-category-from">
+                            @if ($failedReassign)
+                                Move the RFQs with <strong>{{ old('from') }}</strong> to:
+                            @endif
+                        </p>
+                        @error('from', 'reassignCategory')
+                            <div class="alert alert-danger py-2 small">{{ $message }}</div>
+                        @enderror
+                        <label for="reassign-category-to" class="form-label">Category on the list</label>
+                        <select name="to" id="reassign-category-to" class="form-select @error('to', 'reassignCategory') is-invalid @enderror" required>
+                            <option value="">Choose a category…</option>
+                            @foreach ($listedNames as $id => $listedName)
+                                <option value="{{ $id }}" @selected($failedReassign && (string) old('to') === (string) $id)>{{ $listedName }}</option>
+                            @endforeach
+                        </select>
+                        @error('to', 'reassignCategory')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                        <div class="form-text">They take that category's name; this one comes off the list below.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-arrow-left-right"></i> Move the RFQs</button>
+                    </div>
+                </form>
             </div>
         </div>
     @endif
@@ -263,11 +318,11 @@
     </div>
 
     {{-- A refused save: back in its popup, as it was sent. --}}
-    @if ($failedCreate || $failedEditCategory || $failedImport)
+    @if ($failedCreate || $failedEditCategory || $failedImport || ($failedReassign && $unlisted->isNotEmpty()))
         @push('scripts')
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('{{ $failedCreate ? 'createCategoryModal' : ($failedImport ? 'importCategoriesModal' : 'editCategoryModal') }}')).show();
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('{{ match (true) { $failedCreate => 'createCategoryModal', $failedImport => 'importCategoriesModal', $failedReassign => 'reassignCategoryModal', default => 'editCategoryModal' } }}')).show();
                 });
             </script>
         @endpush

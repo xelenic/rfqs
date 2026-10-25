@@ -23,7 +23,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  * Renaming one renames it on the RFQs that have it too (rfqs.category keeps
  * the name); deleting one takes it off the wizard's list, and its RFQs keep
  * it as their category. Categories RFQs have that aren't on the list — one
- * deleted, say — are listed, to put back. Many can be added at once from an
+ * deleted, say — are listed, to put back, or to move their RFQs to one
+ * that is (reassign()). Many can be added at once from an
  * Excel workbook or CSV (JobCategoryImport), starting from the list itself,
  * downloaded as one. For User::JOB_CATEGORY_ROLES
  * (Admin, Senior Operations, GM Assistant).
@@ -78,6 +79,8 @@ class JobCategoryController extends Controller
             'search' => $search,
             'total' => JobCategory::query()->count(),
             'unlisted' => $unlisted,
+            // What an unlisted one's RFQs can be moved to (reassign()).
+            'listedNames' => $unlisted->isNotEmpty() ? JobCategory::query()->orderBy('name')->pluck('name', 'id') : collect(),
         ]);
     }
 
@@ -123,7 +126,8 @@ class JobCategoryController extends Controller
 
     /**
      * Deletes a category: it's off the wizard's list, and the RFQs that have
-     * it keep it as their category.
+     * it keep it as their category — listed under it to put back, or move to
+     * another (reassign()).
      */
     public function destroy(Request $request, JobCategory $category): RedirectResponse
     {
@@ -134,6 +138,40 @@ class JobCategoryController extends Controller
 
         return redirect()->route('admin.categories.index', $request->only('search', 'page'))
             ->with('status', "Deleted \"{$category->name}\"".($kept > 0 ? " — its {$kept} ".($kept === 1 ? 'RFQ keeps' : 'RFQs keep').' it as their category.' : '.'));
+    }
+
+    /**
+     * Moves the RFQs that have a category not on the list ($from — deleted
+     * since, or from before the list) to one that is: they take its name,
+     * and $from is no longer on any RFQ. Refused for a name on the list —
+     * that's renamed with Edit instead — or one no RFQ has.
+     */
+    public function reassign(Request $request): RedirectResponse
+    {
+        $this->abortUnlessCanManage($request);
+
+        $validated = $request->validateWithBag('reassignCategory', [
+            'from' => [
+                'required', 'string',
+                function (string $attribute, string $value, Closure $fail) {
+                    if (JobCategory::query()->where('name', $value)->exists()) {
+                        $fail('That one\'s on the list — rename it with Edit instead.');
+                    } elseif (! Rfq::query()->where('category', $value)->exists()) {
+                        $fail('No RFQ has that category any more.');
+                    }
+                },
+            ],
+            'to' => ['required', 'integer', 'exists:job_categories,id'],
+        ], [
+            'to.required' => 'Choose the category to move them to.',
+            'to.exists' => 'That category isn\'t on the list any more.',
+        ]);
+
+        $to = JobCategory::query()->findOrFail($validated['to']);
+        $moved = DB::transaction(fn () => Rfq::query()->where('category', $validated['from'])->update(['category' => $to->name]));
+
+        return redirect()->route('admin.categories.index')
+            ->with('status', 'Moved '.($moved === 1 ? 'the RFQ' : "the {$moved} RFQs")." with \"{$validated['from']}\" to \"{$to->name}\".");
     }
 
     /**

@@ -146,6 +146,28 @@ function rfqmsBoot() {
         });
     });
 
+    // Admin → Job Categories: an unlisted category's Reassign points the one
+    // Reassign popup at it — which, and how many RFQs have it.
+    document.querySelectorAll('.js-reassign-category').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var form = document.getElementById('reassignCategoryForm');
+            if (!form) return;
+
+            var rfqs = Number(button.dataset.rfqs || 0);
+            form.querySelector('[name="from"]').value = button.dataset.from || '';
+            form.querySelector('[name="to"]').value = '';
+            form.querySelectorAll('.is-invalid').forEach(function (field) { field.classList.remove('is-invalid'); });
+            form.querySelectorAll('.alert-danger').forEach(function (alert) { alert.remove(); });
+
+            var from = document.getElementById('reassign-category-from');
+            from.textContent = '';
+            from.append('Move the ' + (rfqs === 1 ? 'RFQ' : rfqs + ' RFQs') + ' with ');
+            var name = document.createElement('strong');
+            name.textContent = button.dataset.from || '';
+            from.append(name, ' to:');
+        });
+    });
+
     // Populate the shared "Edit RFQ" modal from the clicked row's data-* attributes.
     document.querySelectorAll('.js-edit-rfq').forEach(function (button) {
         button.addEventListener('click', function () {
