@@ -113,3 +113,16 @@ it('counts the step tabs and the current step by that part', function () {
     expect(Str::betweenFirst($html, 'id="step-pane-senior_ops"', '>'))->toBeString()
         ->and($html)->toMatch('/class="tab-pane fade show active" id="step-pane-senior_ops"/');
 });
+
+it('counts the time spent on that part alone', function () {
+    ['rfq' => $rfq] = partTwoFinalized();
+    $rfq->load('steps');
+
+    $whole = $rfq->timeSpent();
+    $two = $rfq->timeSpent(part: 2);
+
+    expect(array_keys($whole['roles']['Sourcing']['parts']))->toBe([1, 2, 3])
+        ->and(array_keys($two['roles']['Sourcing']['parts']))->toBe([2])
+        ->and($two['roles']['Sourcing']['reworks'])->toBe(0)
+        ->and($whole['roles']['Sourcing']['reworks'])->toBe(1);
+});

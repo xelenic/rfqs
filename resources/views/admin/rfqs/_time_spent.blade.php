@@ -13,10 +13,12 @@
 
     Expects: $rfq (with steps loaded). Optional: $onlyRoles — the roles whose
     time shows, the rest left out, and the total with them (Sourcing sees
-    their own alone).
+    their own alone). On one part of a split (the RFQ page's $pagePart), that
+    part's time alone.
 --}}
 @php
-    $timeSpent = $rfq->timeSpent();
+    // On one part of a split (the page's $pagePart), that part's time alone.
+    $timeSpent = $rfq->timeSpent(part: $pagePart ?? null);
     $onlyRoles ??= null;
     $shownRoles = $onlyRoles === null ? $timeSpent['roles'] : array_intersect_key($timeSpent['roles'], array_flip($onlyRoles));
 @endphp

@@ -3517,20 +3517,22 @@ class Rfq extends Model
      * whether it's still going — counted up to $now while it is. And the work
      * done out of hours (RfqStep::isOutOfHoursWork()): how many stretches,
      * and how much of them fell outside the working hours. $book is
-     * Attendance::book(), loaded for this RFQ's people if not given. Expects
-     * steps to be loaded, or loads them.
+     * Attendance::book(), loaded for this RFQ's people if not given. With
+     * $part, only that part of a split's (the RFQ's page focused on it).
+     * Expects steps to be loaded, or loads them.
      *
      * @param  array<int, array<string, string>>|null  $book
      * @return array{roles: array<string, array{parts: array<int, int>, minutes: int, seconds: int, awaiting: int, absent: int, elapsed: int, out_of_hours: int, out_of_hours_count: int, rounds: int, reworks: int, ongoing: bool}>, minutes: int, seconds: int, awaiting: int, absent: int, elapsed: int, out_of_hours: int, out_of_hours_count: int}
      */
-    public function timeSpent(?CarbonInterface $now = null, ?array $book = null): array
+    public function timeSpent(?CarbonInterface $now = null, ?array $book = null, ?int $part = null): array
     {
         $now ??= now();
         $book ??= Attendance::book($this->steps->pluck('worked_by'));
         $roles = [];
 
         foreach (RfqStep::ROLE_STEPS as $role => $roleSteps) {
-            $stretches = $this->steps->filter(fn (RfqStep $step) => in_array($step->step, $roleSteps, true));
+            $stretches = $this->steps->filter(fn (RfqStep $step) => in_array($step->step, $roleSteps, true)
+                && ($part === null || $step->part_number === $part));
             $splits = $stretches->mapWithKeys(fn (RfqStep $step) => [$step->id => $step->secondsByAttendance($book, $now)]);
 
             $partSeconds = $stretches->groupBy('part_number')

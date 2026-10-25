@@ -1,6 +1,7 @@
 ---
 paths:
   - 'resources/views/admin/rfqs/**'
+  - resources/views/admin/rfqs/show.blade.php
 ---
 
 # Rfqs
@@ -40,3 +41,6 @@ Since 2026-10-24, every GM Assistant Time Left has a popup: on their list (runni
 
 ## A split part's "View details" opens the RFQ focused on that part
 Since 2026-10-25, any link from a row or line that stands for one part of a split RFQ uses Rfq::detailsUrl($part, $status), which adds ?part= only when the RFQ is split. This covers the per-part list rows, closed part rows, the quick view's Open full RFQ, the Sourcing overview, and the dashboards and critical monitor via each entry's 'part' key. On show.blade.php, ?part= sets $focusPart, and the progress chart keeps only that part's Sourcing branch ($chartPart), with a "RFQ…-P2 of P3 only" badge. An Admin gets a This part / Whole RFQ switch (?flow=whole); every other role always sees the part they came from. A whole-RFQ row (fallback rows, Returns, All RFQs) links without a part. Use detailsUrl() for any new per-part link rather than route('admin.rfqs.show').
+
+## RFQ page on one part ($pagePart): every part-related section follows it
+Since 2026-10-25 the part focus covers the whole RFQ page, not just the chart. $pagePart is set at the top of show.blade.php from ?part= (and cleared by ?flow=whole, Admin only). $inPage/$pageAssignees narrow every per-part section: the top-bar parts (Assign to Data Entry, Finalize, GM Assistant parts), $stepDone/$currentStep/$stepPartsDone (from that part's pivot), the step panels (_step_parts reads $pagePart), the Assigned Sourcing card, the stopped-part banner, quotation numbers, Data Entry returns, the timeline (Rfq::activityTimelineFor($viewer, $part) via timelineEntryPart(); the RFQ's own steps and plain comments stay) and Time spent (Rfq::timeSpent(part:)). Decisions become the part's own ($partDecision: approve-*-part, reject with data-part, close the part, hold or cancel the part), never the whole RFQ's, which would decide every part. The title is that part's number, and the banner [data-part-flow] says what's shown. RFQ-level details (subject, WC, description) and the discussion stay whole. A new per-part section must filter by $pagePart.
