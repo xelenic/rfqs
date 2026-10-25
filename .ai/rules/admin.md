@@ -7,6 +7,8 @@ paths:
   - app/Http/Controllers/Admin/PerformanceReportController.php
   - app/Http/Controllers/Admin/JobCategoryController.php
   - app/Http/Controllers/Admin/RfqDiscussionController.php
+  - app/Http/Controllers/Admin/MessageController.php
+  - app/Http/Controllers/Admin/MessageGroupController.php
 ---
 
 # Admin
@@ -44,3 +46,9 @@ Since 2026-10-24, All RFQs' Show filter (ALL_RFQS_VIEWS) has 'not_finalized' (?s
 
 ## Messages → RFQ comments: one thread per RFQ (RfqDiscussionController)
 Since 2026-10-25, Messages has two tabs (messages/_tabs): Private messages (MessageController) and RFQ comments (routes messages.rfqs and messages.rfq, defined before messages/{user}). The list shows RFQs the user commented on or was sent a comment on (private_messages.rfq_comment_id), visibleTo() them, latest comment first. Unread is their unread comment messages per RFQ (unreadByRfq()); the tab badges split unread by rfq_comment_id null or not null. A thread shows plain comments and replies (action null), never workflow actions. Opening it marks that RFQ's comment messages read, and only when there are any (the live-page rule). Posting goes through RfqCommentController::store() and redirects back to the thread, so mentions and the people involved get it as usual. Business Development sees only comments they wrote or were sent and has no post box, because their RFQ page keeps the thread blurred. The thread route needs rfqs.view, and EnsureRfqIsVisible guards {rfq}.
+
+## Who can message whom: Settings → Messaging (User::canMessage())
+Since 2026-10-25, an Admin limits per role who its people can start a private message with: Settings → Messaging, SettingsController::updateMessageRoles(), stored as Setting::messageRoles() (role name => allowed role names). A role with no entry is unrestricted, and Admin is never limited. User::messageableRoles() unions a person's roles, and is null if any of their roles is unrestricted. User::canMessage($recipient) is true if an allowed role matches, or if the recipient has hand-written to them before (peopleWhoWroteToMe(), messages with no rfq_id and no rfq_comment_id), so a reply is always possible. It gates MessageController::store (JSON and form, error under recipient_id), the New message list, the conversation reply box, and the hover card (data-can-message on _comment_author). System messages (TaskMessages, mention and comment messages) are never limited. Rules are keyed by role name, so renaming a role drops its rule, like every other by-name role check here.
+
+## Group chats: Admin sets them up, only members read them (MessageGroup)
+Since 2026-10-25, Messages → Groups (third tab, messages/_tabs). Tables: message_groups, message_group_user (pivot last_read_message_id) and group_messages, all in LiveVersion::WATCHED_TABLES. Only an Admin creates, edits or deletes a group, and a group needs at least two people. Only members can read or post in it (403 otherwise), Admin included. An Admin who isn't a member sees the group listed to manage, with no preview. Unread is other people's messages past the member's last_read_message_id (MessageGroup::unreadCountsFor()). New members start at the latest message (setMembers()), so they see the history without it all counting as unread. markReadFor() writes only when something was unread (the live-page rule). Group lines appear in the bell (User::bellItems(), kind message, icon bi-people), so pop-ups, the title count and desktop alerts work. The sidebar Messages badge is User::unreadMessageCount(), and "Mark all as read" covers groups. Settings → Messaging limits don't apply inside groups. Group routes sit before messages/{user}.

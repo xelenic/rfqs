@@ -3,7 +3,7 @@
     Password and Preferences for everyone, and for an Admin the Application
     settings, WC Validation, RFQ Numbers, the Working Hours, each role's own
     (Role Hours — HR Executive's too), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
-    and people's Extra Hours. Each tab is its own form with its own error bag. The tab that
+    and people's Extra Hours, and Messaging — who each role can message. Each tab is its own form with its own error bag. The tab that
     opens is the one a form was just saved from (session settings_tab) or
     failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
@@ -25,7 +25,9 @@
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
     (Setting::halfDayOff()), $roleHours (each role with its current
-    WorkingSchedule, or null), $peopleHours (each person with their own).
+    WorkingSchedule, or null), $peopleHours (each person with their own),
+    $messageRules (Setting::messageRoles()) and $allRoles (every role, for an
+    Admin).
 --}}
 @extends('layouts.app')
 
@@ -53,6 +55,7 @@
             'gm-assistant-targets' => ['label' => 'GM Assistant Time', 'icon' => 'bi-file-earmark-text', 'bag' => ['gm_assistant_targets', 'gm_assistant_per_item']],
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => ['idle_alert', 'gm_assistant_idle_alert']],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
+            'messaging' => ['label' => 'Messaging', 'icon' => 'bi-chat-dots', 'bag' => 'message_roles'],
             'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
         ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
         $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Executive';
@@ -966,6 +969,72 @@
                                 @endforelse
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {{ $activeTab === 'messaging' ? 'show active' : '' }}" id="settings-pane-messaging" role="tabpanel" aria-labelledby="settings-tab-messaging" tabindex="0">
+                {{-- Who each role can start a private message with — Setting::messageRoles(), User::canMessage(). --}}
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Messaging
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.message-roles') }}" novalidate>
+                            @csrf
+                            @method('PUT')
+
+                            <p class="text-muted-soft small">Who each role can send a private message to. <strong>Anyone</strong> leaves a role free to message everyone; <strong>Only these roles</strong> limits it to the roles ticked — New message, a name's hover card and a conversation's reply box then offer only those. Anyone can still answer someone who wrote to them, an Admin can always message anyone, and what the system sends for tasks, @mentions and RFQ comments isn't limited.</p>
+
+                            @error('limits', 'message_roles')
+                                <div class="alert alert-danger py-2 small">{{ $message }}</div>
+                            @enderror
+
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-3 message-roles-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Role</th>
+                                            <th>Can message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($allRoles->reject(fn ($role) => $role->name === 'Admin') as $role)
+                                            @php $limit = $messageRules[$role->name] ?? null; @endphp
+                                            <tr data-message-role="{{ $role->name }}">
+                                                <td class="fw-semibold text-nowrap">{{ $role->name }}</td>
+                                                <td>
+                                                    <div class="d-flex flex-wrap gap-3 mb-2">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input js-message-limit" type="radio" name="limits[{{ $role->id }}][limited]" value="0" id="message-limit-{{ $role->id }}-anyone" @checked($limit === null)>
+                                                            <label class="form-check-label" for="message-limit-{{ $role->id }}-anyone">Anyone</label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input js-message-limit" type="radio" name="limits[{{ $role->id }}][limited]" value="1" id="message-limit-{{ $role->id }}-only" @checked($limit !== null)>
+                                                            <label class="form-check-label" for="message-limit-{{ $role->id }}-only">Only these roles</label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="message-roles-choices">
+                                                        @foreach ($allRoles as $target)
+                                                            <div class="form-check form-check-inline">
+                                                                <input class="form-check-input" type="checkbox" name="limits[{{ $role->id }}][roles][]" value="{{ $target->id }}"
+                                                                       id="message-limit-{{ $role->id }}-to-{{ $target->id }}" @checked(in_array($target->name, $limit ?? [], true)) @disabled($limit === null)>
+                                                                <label class="form-check-label small" for="message-limit-{{ $role->id }}-to-{{ $target->id }}">{{ $target->name }}</label>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <p class="small text-muted-soft"><i class="bi bi-shield-check"></i> Admin can always message anyone.</p>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save messaging</button>
+                        </form>
                     </div>
                 </div>
             </div>

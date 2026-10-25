@@ -28,6 +28,8 @@
         <a href="#" class="user-card-link" id="userCardConversation">Open conversation</a>
     </div>
     <div class="user-card-you d-none" id="userCardYou"><i class="bi bi-person-check"></i> This is you.</div>
+    {{-- Settings → Messaging keeps their role from writing to this person (User::canMessage()). --}}
+    <div class="user-card-you d-none" id="userCardBlocked"><i class="bi bi-slash-circle"></i> Your role can't message them.</div>
 
     <form method="POST" action="{{ route('admin.messages.store') }}" class="user-card-composer d-none" id="userCardComposer" novalidate>
         @csrf

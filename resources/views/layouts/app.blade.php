@@ -45,7 +45,7 @@
                         <i class="bi bi-collection"></i> All RFQs
                     </a>
                 @endif
-                @php $unreadMessages = auth()->user()->receivedMessages()->unread()->count(); @endphp
+                @php $unreadMessages = auth()->user()->unreadMessageCount(); @endphp
                 <a href="{{ route('admin.messages.index') }}" class="nav-link {{ request()->routeIs('admin.messages.*') ? 'active' : '' }}">
                     <i class="bi bi-chat-dots"></i>
                     <span class="nav-link-label">Messages</span>

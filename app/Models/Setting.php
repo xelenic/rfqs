@@ -215,6 +215,32 @@ class Setting extends Model
     }
 
     /**
+     * Who each role may start a private message with (Settings → Messaging):
+     * role name => the role names its people may write to. A role not here
+     * may write to anyone — as every role may until an Admin limits it
+     * (since 2026-10-25). See User::messageableRoles().
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function messageRoles(): array
+    {
+        $saved = json_decode((string) static::get('message_roles'), true);
+
+        return is_array($saved) ? array_filter($saved, 'is_array') : [];
+    }
+
+    /**
+     * Saves who each role may message — see messageRoles(); none limited
+     * leaves everyone free to message anyone.
+     *
+     * @param  array<string, array<int, string>>  $rules
+     */
+    public static function putMessageRoles(array $rules): void
+    {
+        static::put('message_roles', $rules === [] ? null : json_encode($rules));
+    }
+
+    /**
      * Changes a setting; null puts it back to its default.
      */
     public static function put(string $key, ?string $value): void

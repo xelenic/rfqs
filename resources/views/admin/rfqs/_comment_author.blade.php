@@ -16,6 +16,7 @@
           data-since="{{ $author->created_at?->toBusinessTimezone()->format('M Y') }}"
           data-photo="{{ $author->avatarUrl() }}"
           data-self="{{ $author->is(auth()->user()) ? '1' : '0' }}"
+          data-can-message="{{ auth()->user()->canMessage($author) ? '1' : '0' }}"
           data-conversation="{{ route('admin.messages.show', $author) }}">{{ $author->name }}</span>
     @if ($roleNames->isNotEmpty())
         <span class="badge badge-soft-secondary rfq-comment-role">{{ $roleNames->implode(', ') }}</span>

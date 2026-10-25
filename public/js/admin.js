@@ -1137,6 +1137,7 @@ function rfqmsBoot() {
             since: document.getElementById('userCardSince'),
             actions: document.getElementById('userCardActions'),
             you: document.getElementById('userCardYou'),
+            blocked: document.getElementById('userCardBlocked'),
             message: document.getElementById('userCardMessage'),
             conversation: document.getElementById('userCardConversation'),
             composer: document.getElementById('userCardComposer'),
@@ -1194,10 +1195,13 @@ function rfqmsBoot() {
             els.email.textContent = data.email;
             els.since.textContent = data.since ? 'Member since ' + data.since : '';
 
-            // Nobody messages themselves.
+            // Nobody messages themselves — nor anyone their role isn't let write to (Settings → Messaging).
             var isSelf = data.self === '1';
+            var blocked = !isSelf && data.canMessage === '0';
             els.actions.classList.toggle('d-none', isSelf);
             els.you.classList.toggle('d-none', !isSelf);
+            els.message.classList.toggle('d-none', blocked);
+            if (els.blocked) els.blocked.classList.toggle('d-none', !blocked);
 
             els.recipientId.value = data.userId;
             els.recipientName.textContent = data.name;
@@ -1642,6 +1646,50 @@ function rfqmsBoot() {
 
             var digits = field.value.replace(/\D/g, '').slice(0, 4);
             if (digits !== field.value) field.value = digits;
+        });
+    }
+
+    // A popup's list of people to pick (Messages → New message, a group's
+    // members — .new-message-people): narrowed to those whose name or role
+    // has what's typed (.js-people-filter), with how many are ticked
+    // (.js-people-picked).
+    if (!window.__rfqmsPeoplePicker) {
+        window.__rfqmsPeoplePicker = true;
+        document.addEventListener('input', function (event) {
+            if (!event.target.classList || !event.target.classList.contains('js-people-filter')) return;
+
+            var picker = event.target.closest('.modal');
+            var typed = event.target.value.trim().toLowerCase();
+            var shown = 0;
+
+            picker.querySelectorAll('.new-message-person').forEach(function (person) {
+                var match = typed === '' || person.dataset.search.indexOf(typed) !== -1;
+                person.classList.toggle('d-none', !match);
+                if (match) shown++;
+            });
+            picker.querySelector('.js-people-none').classList.toggle('d-none', shown > 0);
+        });
+        document.addEventListener('change', function (event) {
+            var list = event.target.closest && event.target.closest('.new-message-people');
+            var picked = list && list.closest('.modal').querySelector('.js-people-picked');
+            if (!picked) return;
+
+            var count = list.querySelectorAll('input[type="checkbox"]:checked').length;
+            picked.textContent = count === 1 ? '1 picked' : count + ' picked';
+        });
+    }
+
+    // Settings → Messaging: a role's roles to tick only count — and only
+    // take a tick — once it's limited to them ("Only these roles").
+    if (!window.__rfqmsMessageLimits) {
+        window.__rfqmsMessageLimits = true;
+        document.addEventListener('change', function (event) {
+            if (!event.target.classList || !event.target.classList.contains('js-message-limit')) return;
+
+            var limited = event.target.value === '1';
+            event.target.closest('tr').querySelectorAll('.message-roles-choices input').forEach(function (box) {
+                box.disabled = !limited;
+            });
         });
     }
 

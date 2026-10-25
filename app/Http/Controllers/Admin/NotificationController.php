@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\MessageGroup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -49,6 +50,7 @@ class NotificationController extends Controller
     {
         $request->user()->unreadNotifications()->update(['read_at' => now()]);
         $request->user()->receivedMessages()->unread()->update(['read_at' => now()]);
+        MessageGroup::markAllReadFor($request->user());
 
         return back();
     }

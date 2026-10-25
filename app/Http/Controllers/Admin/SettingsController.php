@@ -74,6 +74,8 @@ class SettingsController extends Controller
             'dataEntryIdleMinutesRange' => Setting::DATA_ENTRY_IDLE_MINUTES_RANGE,
             'attendanceSince' => Setting::attendanceSince(),
             'halfDayOff' => Setting::halfDayOff(),
+            'messageRules' => Setting::messageRoles(),
+            'allRoles' => $user->hasRole('Admin') ? Role::query()->orderBy('name')->get() : collect(),
             'managesWorkingHours' => $user->canManageWorkingHours(),
             'roleHours' => $user->canManageWorkingHours()
                 ? WorkingSchedule::roleOrder()->map(fn (Role $role) => ['role' => $role, 'current' => WorkingSchedule::currentFor($role)])
@@ -497,6 +499,42 @@ class SettingsController extends Controller
         ]);
 
         return $this->backToTab('idle-alert', 'GM Assistant idle alert saved.');
+    }
+
+    /**
+     * Who each role may start a private message with — limits[role id]:
+     * limited (else anyone) and roles[] (the role ids it may write to) — see
+     * Setting::messageRoles(). Admin is never limited. Admin only.
+     */
+    public function updateMessageRoles(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change who can message whom.');
+
+        $roles = Role::query()->orderBy('name')->pluck('name', 'id');
+
+        $validated = $request->validateWithBag('message_roles', [
+            'limits' => ['array'],
+            'limits.*.limited' => ['boolean'],
+            'limits.*.roles' => ['array'],
+            'limits.*.roles.*' => ['integer', Rule::in($roles->keys()->all())],
+        ]);
+
+        $rules = [];
+
+        foreach ($roles as $id => $name) {
+            $limit = $validated['limits'][$id] ?? [];
+
+            // Admin can always message anyone.
+            if ($name === 'Admin' || ! filter_var($limit['limited'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                continue;
+            }
+
+            $rules[$name] = collect($limit['roles'] ?? [])->map(fn ($roleId) => $roles[(int) $roleId])->unique()->sort()->values()->all();
+        }
+
+        Setting::putMessageRoles($rules);
+
+        return $this->backToTab('messaging', $rules === [] ? 'Messaging saved — every role can message anyone.' : 'Messaging saved.');
     }
 
     /**

@@ -51,6 +51,12 @@
             @endforelse
         </div>
 
+        {{-- Settings → Messaging: only to someone their role may write to, or who wrote to them. --}}
+        @unless ($canReply)
+            <div class="card-footer bg-white small text-muted-soft" data-messaging-limited>
+                <i class="bi bi-slash-circle"></i> You can't message {{ $other->name }}. {{ $messagingLimit }}
+            </div>
+        @else
         <div class="card-footer bg-white">
             <form method="POST" action="{{ route('admin.messages.store') }}" novalidate>
                 @csrf
@@ -67,6 +73,7 @@
                 </div>
             </form>
         </div>
+        @endunless
     </div>
 @endsection
 

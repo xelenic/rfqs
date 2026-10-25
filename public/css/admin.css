@@ -2176,6 +2176,61 @@ a.pipeline-label:hover {
   color: #fff;
 }
 
+/* Messages → New message (messages/index): who to send it to, one row each. */
+.new-message-people {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--rfq-border);
+  border-radius: 0.5rem;
+}
+
+.new-message-people.is-invalid {
+  border-color: var(--bs-form-invalid-border-color);
+}
+
+.new-message-person {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--rfq-border);
+  cursor: pointer;
+}
+
+.new-message-person:last-of-type {
+  border-bottom: 0;
+}
+
+.new-message-person:hover {
+  background: var(--rfq-bg);
+}
+
+.new-message-person:has(input:checked) {
+  background: var(--rfq-primary-soft);
+}
+
+.new-message-person .form-check-input {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.new-message-person-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Messages → Groups (messages/group): one of the people in a group chat. */
+.group-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.25rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
 /* Messages → RFQ comments (messages/rfqs, messages/rfq): an RFQ's thread. */
 .rfq-thread-icon {
   display: inline-flex;

@@ -313,14 +313,14 @@ function openSettingsTab(string $html): ?string
     return preg_match('/<button type="button" class="nav-link active" id="settings-tab-([a-z-]+)"/', $html, $match) ? $match[1] : null;
 }
 
-it('splits the page into tabs: three for everyone, thirteen more for an Admin', function () {
+it('splits the page into tabs: three for everyone, fourteen more for an Admin', function () {
     $tabs = fn (string $html) => preg_match_all('/data-settings-tab="([a-z-]+)"/', $html, $matches) ? $matches[1] : [];
 
     expect($tabs(test()->actingAs(userWithRole('Sourcing'))->get(route('admin.settings.edit'))->getContent()))
         ->toBe(['profile', 'password', 'preferences']);
 
     expect($tabs(test()->actingAs(userWithRole('Admin'))->get(route('admin.settings.edit'))->getContent()))
-        ->toBe(['profile', 'password', 'preferences', 'application', 'wc-validation', 'rfq-numbers', 'working-hours', 'role-hours', 'half-day', 'sourcing-targets', 'data-entry-targets', 'finalize-targets', 'gm-assistant-targets', 'idle-alert', 'extra-hours', 'danger-zone']);
+        ->toBe(['profile', 'password', 'preferences', 'application', 'wc-validation', 'rfq-numbers', 'working-hours', 'role-hours', 'half-day', 'sourcing-targets', 'data-entry-targets', 'finalize-targets', 'gm-assistant-targets', 'idle-alert', 'extra-hours', 'messaging', 'danger-zone']);
 });
 
 it('opens on Profile, or on the tab asked for — one that\'s theirs to see', function () {

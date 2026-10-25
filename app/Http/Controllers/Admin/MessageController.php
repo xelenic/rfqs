@@ -14,15 +14,18 @@ use Illuminate\View\View;
 
 /**
  * Private messages between two users — the "Message" button on a person's
- * hover card, and the Messages pages where they're read and answered. A
- * message is only ever visible to its sender and its recipient; nobody,
- * Admin included, reads anyone else's.
+ * hover card, New message on the Messages page (to anyone active), and the
+ * Messages pages where they're read and answered. A message is only ever
+ * visible to its sender and its recipient; nobody, Admin included, reads
+ * anyone else's.
  */
 class MessageController extends Controller
 {
     /**
      * Everyone the signed-in user has talked to, most recent first, each with
-     * the last thing said and how many of theirs are still unread.
+     * the last thing said and how many of theirs are still unread — and,
+     * for New message, everyone else they can write to (User::canMessage(),
+     * by Settings → Messaging): active, by name.
      */
     public function index(Request $request): View
     {
@@ -42,6 +45,10 @@ class MessageController extends Controller
                 ->latest('id')
                 ->get(),
             'unread' => $me->receivedMessages()->unread()->groupBy('sender_id')->selectRaw('sender_id, count(*) as total')->pluck('total', 'sender_id'),
+            'people' => User::query()->active()->whereKeyNot($me->id)->with('roles')->orderBy('name')->get()
+                ->filter(fn (User $person) => $me->canMessage($person))
+                ->values(),
+            'messagingLimit' => $me->messagingLimitText(),
         ]);
     }
 
@@ -69,6 +76,8 @@ class MessageController extends Controller
 
         return view('admin.messages.show', [
             'other' => $user,
+            'canReply' => $me->canMessage($user),
+            'messagingLimit' => $me->messagingLimitText(),
             'messages' => PrivateMessage::query()->between($me, $user)->with(['rfq', 'rfqComment.rfq'])->oldest('id')->get(),
         ]);
     }
@@ -86,6 +95,8 @@ class MessageController extends Controller
             'recipient_id' => ['required', 'integer', 'exists:users,id', Rule::notIn([$me->id])],
             'body' => ['required', 'string', 'max:'.PrivateMessage::MAX_LENGTH],
         ], [
+            'recipient_id.required' => 'Choose who to send it to.',
+            'recipient_id.exists' => 'That person isn\'t on the system any more.',
             'recipient_id.not_in' => 'You can\'t send a message to yourself.',
             'body.required' => 'Write a message to send.',
             'body.max' => 'That message is too long — keep it under '.PrivateMessage::MAX_LENGTH.' characters.',
@@ -110,6 +121,15 @@ class MessageController extends Controller
             return $request->expectsJson()
                 ? response()->json(['message' => $message, 'errors' => ['body' => [$message]]], 422)
                 : back()->withErrors(['body' => $message])->withInput();
+        }
+
+        // Settings → Messaging: whom their role may write to — or someone who wrote to them.
+        if (! $me->canMessage($recipient)) {
+            $message = "You can't message {$recipient->name}. ".$me->messagingLimitText();
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message, 'errors' => ['recipient_id' => [$message]]], 422)
+                : back()->withErrors(['recipient_id' => $message])->withInput();
         }
 
         $me->sentMessages()->create([

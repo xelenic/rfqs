@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\JobCategoryController;
 use App\Http\Controllers\Admin\LivePulseController;
 use App\Http\Controllers\Admin\LogController;
 use App\Http\Controllers\Admin\MessageController;
+use App\Http\Controllers\Admin\MessageGroupController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\PerformanceReportController;
 use App\Http\Controllers\Admin\PermissionController;
@@ -63,6 +64,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
     Route::patch('settings/gm-assistant-idle-alert', [SettingsController::class, 'updateGmAssistantIdleAlert'])->name('settings.gm-assistant-idle-alert');
     Route::patch('settings/wc-validation', [SettingsController::class, 'updateWcValidation'])->name('settings.wc-validation');
+    Route::put('settings/message-roles', [SettingsController::class, 'updateMessageRoles'])->name('settings.message-roles');
     Route::post('settings/extra-hours', [SettingsController::class, 'storeExtraHours'])->name('settings.extra-hours.store');
     Route::delete('settings/extra-hours/{extraHours}', [SettingsController::class, 'destroyExtraHours'])->name('settings.extra-hours.destroy');
     Route::patch('settings/half-day', [SettingsController::class, 'updateHalfDay'])->name('settings.half-day');
@@ -159,6 +161,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::get('notifications/{notification}', [NotificationController::class, 'open'])->name('notifications.open');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
+    // Messages → Groups: group chats an Admin sets up — see MessageGroupController. Before messages/{user}.
+    Route::get('messages/groups', [MessageGroupController::class, 'index'])->name('messages.groups');
+    Route::post('messages/groups', [MessageGroupController::class, 'store'])->name('messages.groups.store');
+    Route::get('messages/groups/{group}', [MessageGroupController::class, 'show'])->name('messages.group');
+    Route::put('messages/groups/{group}', [MessageGroupController::class, 'update'])->name('messages.groups.update');
+    Route::delete('messages/groups/{group}', [MessageGroupController::class, 'destroy'])->name('messages.groups.destroy');
+    Route::post('messages/groups/{group}/messages', [MessageGroupController::class, 'send'])->middleware('throttle:30,1')->name('messages.groups.send');
     // Messages → RFQ comments: one thread per RFQ — see RfqDiscussionController. Before messages/{user}.
     Route::get('messages/rfqs', [RfqDiscussionController::class, 'index'])->name('messages.rfqs');
     Route::get('messages/rfqs/{rfq}', [RfqDiscussionController::class, 'show'])->name('messages.rfq');

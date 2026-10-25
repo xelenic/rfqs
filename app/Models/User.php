@@ -183,6 +183,14 @@ class User extends Authenticatable
     public const JOB_CATEGORY_ROLES = ['Admin', 'Senior Operations', 'GM Assistant'];
 
     /**
+     * Who has written to this person themselves — peopleWhoWroteToMe(),
+     * looked up once a request.
+     *
+     * @var array<int, int>|null
+     */
+    protected ?array $peopleWhoWroteToMe = null;
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -331,6 +339,77 @@ class User extends Authenticatable
     }
 
     /**
+     * The roles this person may start a private message with, by their roles'
+     * rules on Settings → Messaging (Setting::messageRoles()) — all of their
+     * roles' allowed roles together — or null for anyone: an Admin always,
+     * and anyone holding a role (or no role) that isn't limited.
+     *
+     * @return array<int, string>|null
+     */
+    public function messageableRoles(): ?array
+    {
+        $rules = Setting::messageRoles();
+        $mine = $this->roles->pluck('name');
+
+        if ($mine->isEmpty() || $mine->contains('Admin') || $mine->contains(fn (string $role) => ! array_key_exists($role, $rules))) {
+            return null;
+        }
+
+        return $mine->flatMap(fn (string $role) => $rules[$role])->unique()->sort()->values()->all();
+    }
+
+    /**
+     * Whether this person may send $recipient a private message: their roles
+     * allow one of $recipient's (messageableRoles()), or $recipient has
+     * written to them themselves — which can always be answered.
+     */
+    public function canMessage(User $recipient): bool
+    {
+        $allowed = $this->messageableRoles();
+
+        return $allowed === null
+            || $recipient->roles->pluck('name')->intersect($allowed)->isNotEmpty()
+            || in_array($recipient->id, $this->peopleWhoWroteToMe(), true);
+    }
+
+    /**
+     * Who this person may message, as they'd be told it — "As Sourcing, you
+     * can message Admin, Data Entry and Senior Operations." — or null when
+     * they may message anyone.
+     */
+    public function messagingLimitText(): ?string
+    {
+        $allowed = $this->messageableRoles();
+
+        if ($allowed === null) {
+            return null;
+        }
+
+        $as = 'As '.$this->roles->pluck('name')->sort()->join(', ', ' and ').', you can ';
+
+        return $allowed === []
+            ? $as.'only answer those who write to you.'
+            : $as.'message '.collect($allowed)->join(', ', ' and ').' — and answer anyone who writes to you.';
+    }
+
+    /**
+     * Who has written to this person in Messages themselves — not a task,
+     * mention or comment message sent for them — looked up once.
+     *
+     * @return array<int, int>
+     */
+    public function peopleWhoWroteToMe(): array
+    {
+        return $this->peopleWhoWroteToMe ??= $this->receivedMessages()
+            ->whereNull('rfq_id')
+            ->whereNull('rfq_comment_id')
+            ->distinct()
+            ->pluck('sender_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
      * Whether this person adds, edits and deletes the job categories — see
      * JOB_CATEGORY_ROLES.
      */
@@ -461,9 +540,10 @@ class User extends Authenticatable
     /**
      * What the top bar's bell lists for them (layouts/_notification_bell),
      * newest first, up to $limit: their alerts (database notifications, such
-     * as DataEntryIdle) and the private messages sent to them — one line per
-     * person, their latest message, saying how many are unread. And how many
-     * of both are unread, for its count.
+     * as DataEntryIdle), the private messages sent to them — one line per
+     * person, their latest message, saying how many are unread — and their
+     * group chats (MessageGroup), one line each, likewise. And how many of
+     * them all are unread, for its count.
      *
      * @return array{items: SupportCollection<int, array{kind: string, at: CarbonInterface, unread: bool, url: string, icon: string, text: string, note: string}>, unread: int}
      */
@@ -510,10 +590,55 @@ class User extends Authenticatable
                 ];
             });
 
+        $unreadByGroup = MessageGroup::unreadCountsFor($this);
+
+        $groups = GroupMessage::query()
+            ->whereIn('id', GroupMessage::query()->whereIn('message_group_id', $this->messageGroups()->select('message_groups.id'))->groupBy('message_group_id')->selectRaw('max(id)'))
+            ->with(['group', 'sender'])
+            ->latest('id')
+            ->limit($limit)
+            ->get()
+            ->map(function (GroupMessage $message) use ($unreadByGroup) {
+                $unread = (int) ($unreadByGroup[$message->message_group_id] ?? 0);
+                $who = $message->user_id === $this->id ? 'You' : ($message->sender?->name ?? 'Someone');
+
+                return [
+                    'kind' => 'message',
+                    'at' => $message->created_at,
+                    'unread' => $unread > 0,
+                    'url' => route('admin.messages.group', $message->message_group_id),
+                    'icon' => 'bi-people',
+                    'text' => $message->group->name.' · '.$who.': '.Str::limit($message->body, 70),
+                    'note' => match (true) {
+                        $unread > 1 => "{$unread} new in the group",
+                        $unread === 1 => 'new in the group',
+                        default => 'group',
+                    },
+                ];
+            });
+
         return [
-            'items' => $alerts->concat($messages)->sortByDesc('at')->take($limit)->values(),
-            'unread' => $this->unreadNotifications()->count() + (int) $unreadBySender->sum(),
+            'items' => $alerts->concat($messages)->concat($groups)->sortByDesc('at')->take($limit)->values(),
+            'unread' => $this->unreadNotifications()->count() + (int) $unreadBySender->sum() + (int) $unreadByGroup->sum(),
         ];
+    }
+
+    /**
+     * How many messages are unread for them — private ones sent to them and
+     * those in their group chats — what the sidebar's Messages counts.
+     */
+    public function unreadMessageCount(): int
+    {
+        return $this->receivedMessages()->unread()->count() + (int) MessageGroup::unreadCountsFor($this)->sum();
+    }
+
+    /**
+     * The group chats they're in (MessageGroup), each with the last message
+     * they've read.
+     */
+    public function messageGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(MessageGroup::class)->withPivot('last_read_message_id')->withTimestamps();
     }
 
     /**

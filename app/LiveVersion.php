@@ -28,7 +28,7 @@ final class LiveVersion
      *
      * @var list<string>
      */
-    public const WATCHED_TABLES = ['rfqs', 'rfq_user', 'rfq_comments', 'rfq_comment_attachments', 'rfq_steps', 'attendance_sheets', 'attendances', 'private_messages', 'job_categories', 'notifications', 'rfq_returns', 'extra_working_hours', 'working_schedules'];
+    public const WATCHED_TABLES = ['rfqs', 'rfq_user', 'rfq_comments', 'rfq_comment_attachments', 'rfq_steps', 'attendance_sheets', 'attendances', 'private_messages', 'job_categories', 'notifications', 'rfq_returns', 'extra_working_hours', 'working_schedules', 'message_groups', 'message_group_user', 'group_messages'];
 
     /**
      * Every other table — framework plumbing, access control and settings. A new table
