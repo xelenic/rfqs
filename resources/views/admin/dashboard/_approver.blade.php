@@ -110,11 +110,18 @@
                                         <td><span class="badge {{ $part['rfq']->priorityBadgeClass() }}">{{ $part['rfq']->priorityLabel() }}</span></td>
                                         @if ($hasCountdown)
                                             <td class="text-nowrap">
-                                                {{-- Against their step's target, as it stood when the page was made. --}}
+                                                {{-- Against their step's target, as it stood when the page was made —
+                                                     GM Assistant's explained on hover (_gm_assistant_time_card). --}}
                                                 @if ($part['countdown'])
-                                                    <span class="badge {{ \App\Models\Setting::countdownBadgeClass($part['countdown']['remaining'], $part['countdown']['target']) }}">
-                                                        <i class="bi bi-stopwatch"></i> {{ \App\Models\Setting::countdownLabel($part['countdown']['remaining']) }}
+                                                    @php $timeCardId = $stage['countdownStep'] === 'gm_assistant' ? 'gma-dash-time-'.$part['rfq']->id.'-p'.$part['part'] : null; @endphp
+                                                    <span @class(['countdown-explained' => $timeCardId]) @if ($timeCardId) data-hover-card="{{ $timeCardId }}" tabindex="0" aria-label="How the time left is worked out" @endif>
+                                                        <span class="badge {{ \App\Models\Setting::countdownBadgeClass($part['countdown']['remaining'], $part['countdown']['target']) }}">
+                                                            <i class="bi bi-stopwatch"></i> {{ \App\Models\Setting::countdownLabel($part['countdown']['remaining']) }}
+                                                        </span>
                                                     </span>
+                                                    @if ($timeCardId)
+                                                        @include('admin.rfqs._gm_assistant_time_card', ['id' => $timeCardId, 'rfq' => $part['rfq'], 'part' => $part['part']])
+                                                    @endif
                                                 @else
                                                     <span class="text-muted-soft">—</span>
                                                 @endif

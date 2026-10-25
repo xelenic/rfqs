@@ -3,6 +3,8 @@
 @section('title', 'Messages')
 
 @section('content')
+    @include('admin.messages._tabs', ['tab' => 'private'])
+
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between">
             <span>Private messages</span>

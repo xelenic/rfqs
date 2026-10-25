@@ -1,7 +1,8 @@
 {{--
     What a Sourcing member can do with a part Data Entry has sent to
     finalize: Return to Data Entry (with a reason, in the shared prompt —
-    _complete_modal.blade.php must be on the page) or Finalize, which sends
+    _complete_modal.blade.php must be on the page) or Finalize, which asks
+    for the submitted line items (_finalize_modal, on the page too) and sends
     it on to Senior Operations' review. See RfqController::returnDataEntry()
     and finalize().
 
@@ -25,6 +26,7 @@
         'part' => $part,
         'returnTo' => $returnTo ?? null,
         'redirectRole' => $redirectRole ?? null,
+        'backModal' => $backModal ?? null,
         'label' => $finalizeLabel ?? null,
     ])
 </div>

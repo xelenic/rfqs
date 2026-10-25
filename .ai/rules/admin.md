@@ -6,6 +6,7 @@ paths:
   - app/Http/Controllers/Admin/RfqController.php
   - app/Http/Controllers/Admin/PerformanceReportController.php
   - app/Http/Controllers/Admin/JobCategoryController.php
+  - app/Http/Controllers/Admin/RfqDiscussionController.php
 ---
 
 # Admin
@@ -40,3 +41,6 @@ rfqs.category is a plain string, not a job_categories FK. So renaming a JobCateg
 
 ## All RFQs' "Not finalized by Sourcing" view
 Since 2026-10-24, All RFQs' Show filter (ALL_RFQS_VIEWS) has 'not_finalized' (?show=not_finalized). It lists RFQs still open (Pending or On Hold; never Completed or Cancelled) that match Rfq::scopeNotFinalizedBySourcing(), the same scope the RFQ tracking sheet uses. Each row (_rfq_row $showToFinalize) notes every part still to finalize from Rfq::partsToFinalizeBySourcing(): "Not finalized — <member> · <progressLabel>", the part number on a split, or "Not assigned to Sourcing yet". Cancelled parts are left out, and names are hidden under restrictAssignment. Change what "finalized" means in those scopes only, so the tracking sheet and All RFQs never disagree.
+
+## Messages → RFQ comments: one thread per RFQ (RfqDiscussionController)
+Since 2026-10-25, Messages has two tabs (messages/_tabs): Private messages (MessageController) and RFQ comments (routes messages.rfqs and messages.rfq, defined before messages/{user}). The list shows RFQs the user commented on or was sent a comment on (private_messages.rfq_comment_id), visibleTo() them, latest comment first. Unread is their unread comment messages per RFQ (unreadByRfq()); the tab badges split unread by rfq_comment_id null or not null. A thread shows plain comments and replies (action null), never workflow actions. Opening it marks that RFQ's comment messages read, and only when there are any (the live-page rule). Posting goes through RfqCommentController::store() and redirects back to the thread, so mentions and the people involved get it as usual. Business Development sees only comments they wrote or were sent and has no post box, because their RFQ page keeps the thread blurred. The thread route needs rfqs.view, and EnsureRfqIsVisible guards {rfq}.

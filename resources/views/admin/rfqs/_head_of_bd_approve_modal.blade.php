@@ -2,11 +2,11 @@
     The Head of Business Development's Approve — the popup that finalizes the
     line items before a part (or the whole RFQ) goes on to GM Assistant. For
     each part it's approving: the line items so far, read only — what Sourcing
-    gave Data Entry to add, what Data Entry added, and what Senior Operations
-    verified (RfqAssignment::lineItemsCheck(), verifiedLineItems()) — and the
+    gave Data Entry to add, what Data Entry added, what Sourcing submitted
+    finalizing it, and what Senior Operations verified
+    (RfqAssignment::lineItemsCheck(), verifiedLineItems()) — and the
     Finalized Line Items, which they enter (finalized_line_items[part], kept as
-    rfq_user.finalized_line_items). GM Assistant's target goes by the Actual
-    Line Items, and by these only where there are none
+    rfq_user.finalized_line_items): what GM Assistant's target goes by
     (Rfq::gmAssistantLineItemsFor()). One shared popup, pointed at a part or
     an RFQ by the .js-head-of-bd-approve button that opens it
     (_head_of_bd_approve_button) — admin.js fills it in, as it does every
@@ -38,22 +38,27 @@
                     <div class="line-items-check">
                         <div class="line-items-check-title"></div>
                         <div class="row g-2">
-                            <div class="col-6 col-md-3">
+                            <div class="col-6 col-md">
                                 <label class="form-label small" data-label-for="to_add">Line Items to Add</label>
                                 <input type="text" class="form-control line-items-check-readonly" data-value="to_add" readonly tabindex="-1">
                                 <div class="form-text">Requested by Sourcing</div>
                             </div>
-                            <div class="col-6 col-md-3">
+                            <div class="col-6 col-md">
                                 <label class="form-label small" data-label-for="added">Line Items Added</label>
                                 <input type="text" class="form-control line-items-check-readonly" data-value="added" readonly tabindex="-1">
                                 <div class="form-text">Entered by Data Entry</div>
                             </div>
-                            <div class="col-6 col-md-3">
+                            <div class="col-6 col-md">
+                                <label class="form-label small" data-label-for="submitted">Submitted Line Items</label>
+                                <input type="text" class="form-control line-items-check-readonly" data-value="submitted" readonly tabindex="-1">
+                                <div class="form-text">Submitted by Sourcing</div>
+                            </div>
+                            <div class="col-6 col-md">
                                 <label class="form-label small" data-label-for="verified">Actual Line Items</label>
                                 <input type="text" class="form-control line-items-check-readonly" data-value="verified" readonly tabindex="-1">
                                 <div class="form-text">Verified by Senior Operations</div>
                             </div>
-                            <div class="col-6 col-md-3">
+                            <div class="col-12 col-md">
                                 <label class="form-label small fw-semibold" data-label-for="count">Finalized Line Items</label>
                                 <input type="number" class="form-control js-actual" min="0" max="{{ \App\Http\Controllers\Admin\RfqController::MAX_DATA_ENTRIES }}" step="1" inputmode="numeric" required>
                                 <div class="form-text">Finalized by you</div>

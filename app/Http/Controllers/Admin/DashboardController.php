@@ -1662,6 +1662,7 @@ class DashboardController extends Controller
                 ->filter(fn (User $holder) => ($stage['awaits'])($rfq, $holder->pivot->part_number))
                 ->map(fn (User $holder) => [
                     'rfq' => $rfq,
+                    'part' => $holder->pivot->part_number,
                     'label' => $rfq->isSplit() ? $rfq->partNumberLabel($holder->pivot->part_number) : $rfq->rfq_number,
                     'since' => $holder->pivot->{$stage['since']},
                     'countdown' => $stage['countdown'] !== null ? ($stage['countdown'])($rfq, $holder->pivot->part_number) : null,

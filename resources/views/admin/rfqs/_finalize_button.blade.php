@@ -1,28 +1,37 @@
 {{--
     The Sourcing member's Finalize on a part Data Entry has sent to finalize
-    (Send to Finalize) — sends that part on to Senior Operations' review. Only
-    for its own assignee, or Admin on their behalf; see
-    RfqController::finalize() and Rfq::finalizePart().
+    (Send to Finalize) — opens _finalize_modal, which shows the part's line
+    items so far and asks for the Submitted Line Items, then sends that part
+    on to Senior Operations' review. Only for its own assignee, or Admin on
+    their behalf; see RfqController::finalize() and Rfq::finalizePart().
+    _finalize_modal must be on the page.
 
     Expects: $rfq, $part (the part number).
     Optional: $returnTo ('show' or 'dashboard' — otherwise back to the
     Pending list), $redirectRole (Admin's role page to come back to, e.g.
-    'sourcing'), $label (the button's text).
+    'sourcing'), $backModal (id of the modal this sits in, which the popup's
+    Back returns to), $label (the button's text).
 --}}
-<form action="{{ route('admin.rfqs.finalize', $rfq) }}" method="POST" class="d-inline"
-      data-confirm="Finalize {{ $rfq->partNumberLabel($part) }}? It goes on to Senior Operations' review.">
-    @csrf
-    @method('PATCH')
-    <input type="hidden" name="part" value="{{ $part }}">
-    @if ($returnTo ?? null)
-        <input type="hidden" name="return_to" value="{{ $returnTo }}">
-    @else
-        <input type="hidden" name="redirect_status" value="Pending">
-        @if ($redirectRole ?? null)
-            <input type="hidden" name="redirect_role" value="{{ $redirectRole }}">
-        @endif
-    @endif
-    <button type="submit" class="btn btn-sm btn-success">
-        <i class="bi bi-check2-all"></i> {{ $label ?? 'Finalize' }}
-    </button>
-</form>
+@php
+    $finalizing = $rfq->assigneeForPart((int) $part);
+    $finalizeCheck = $finalizing ? [[
+        'part' => (int) $part,
+        'label' => $rfq->partNumberLabel((int) $part),
+        'who' => $finalizing->name,
+        // How the line items came about — shown under the counts (_line_items_history).
+        'history' => $rfq->lineItemsHistory((int) $part),
+    ] + $finalizing->pivot->lineItemsCheck()] : [];
+@endphp
+<button type="button" class="btn btn-sm btn-success js-finalize"
+        data-bs-toggle="modal" data-bs-target="#finalizeModal"
+        data-action="{{ route('admin.rfqs.finalize', $rfq) }}"
+        data-part="{{ $part }}"
+        data-label="{{ $rfq->partNumberLabel((int) $part) }} — {{ $rfq->subject }}"
+        data-hint="Check the line items and enter how many you're submitting, then finalize. It goes on to Senior Operations' review."
+        data-parts="{{ json_encode($finalizeCheck) }}"
+        data-return-to="{{ $returnTo ?? '' }}"
+        data-redirect-status="{{ ($returnTo ?? null) ? '' : 'Pending' }}"
+        data-redirect-role="{{ ($returnTo ?? null) ? '' : ($redirectRole ?? '') }}"
+        data-back-modal="{{ $backModal ?? '' }}">
+    <i class="bi bi-check2-all"></i> {{ $label ?? 'Finalize' }}
+</button>

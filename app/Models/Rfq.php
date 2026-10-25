@@ -878,7 +878,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'returned_by', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -2000,12 +2000,14 @@ class Rfq extends Model
      * without waiting for the rest of a split. Once every part has been
      * finalized the RFQ as a whole moves on to that review (stage
      * senior_ops_review). Recorded as the part's own assignee, whoever
-     * clicks it (Admin can, on their behalf). Idempotent — a part that isn't
-     * waiting on it is left alone.
+     * clicks it (Admin can, on their behalf), with the line items they
+     * submitted ($submittedLineItems — rfq_user.submitted_line_items, asked
+     * in _finalize_modal). Idempotent — a part that isn't waiting on it is
+     * left alone.
      *
      * Caller is responsible for verifying who's finalizing it.
      */
-    public function finalizePart(int $part): void
+    public function finalizePart(int $part, ?int $submittedLineItems = null): void
     {
         if (! $this->partAwaitsFinalize($part)) {
             return;
@@ -2016,6 +2018,7 @@ class Rfq extends Model
         $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
             'finalized_at' => now(),
             'finalized_by' => $assignee->id,
+            'submitted_line_items' => $submittedLineItems,
         ]);
         $this->load('assignees');
 
@@ -3168,10 +3171,9 @@ class Rfq extends Model
     /**
      * The working time GM Assistant has to submit $part to the General
      * Manager: its line items times the time a line item takes — always for
-     * the Actual Line Items Senior Operations counted (or the Head of
-     * Business Development's finalized ones), otherwise while per line item
-     * is on (gmAssistantTargetBreakdown()) — else by its priority — see
-     * Setting::gmAssistantTargets(). In seconds.
+     * the Finalized Line Items the Head of Business Development gave,
+     * otherwise while per line item is on (gmAssistantTargetBreakdown()) —
+     * else by its priority — see Setting::gmAssistantTargets(). In seconds.
      */
     public function gmAssistantTargetSeconds(?int $part = null): int
     {
@@ -3183,11 +3185,10 @@ class Rfq extends Model
      * How GM Assistant's target for $part comes about while it's worked out
      * per line item: its line items (gmAssistantLineItemsFor()), the working
      * seconds a line item takes (Setting::gmAssistantPerItem()), and the two
-     * multiplied — always for the Actual Line Items Senior Operations counted
-     * (source 'actual') or the Head of Business Development's finalized ones
-     * ('finalized'), and for the others while per line item is on. Null by
-     * priority — per line item off with neither, or the part having no line
-     * items to go by.
+     * multiplied — always for the Head of Business Development's Finalized
+     * Line Items (source 'finalized'), and for the others while per line item
+     * is on. Null by priority — per line item off without finalized ones, or
+     * the part having no line items to go by.
      *
      * @return array{items: int, perItem: int, seconds: int, source: string}|null
      */
@@ -3196,9 +3197,9 @@ class Rfq extends Model
         $perItem = Setting::gmAssistantPerItem();
         $lineItems = $part !== null ? $this->gmAssistantLineItemsFor($part) : null;
 
-        // Line items counted on review always go by the line item, as
-        // Sourcing's line items to add do for Data Entry.
-        if ($lineItems === null || (! $perItem['enabled'] && ! in_array($lineItems['source'], ['actual', 'finalized'], true))) {
+        // The Head of Business Development's finalized line items always go by
+        // the line item, as Sourcing's line items to add do for Data Entry.
+        if ($lineItems === null || (! $perItem['enabled'] && $lineItems['source'] !== 'finalized')) {
             return null;
         }
 
@@ -3206,13 +3207,13 @@ class Rfq extends Model
     }
 
     /**
-     * The line items GM Assistant has on $part: the Actual Line Items Senior
-     * Operations counted as they approved it (RfqAssignment::verifiedLineItems()
-     * — since 2026-10-24, at the user's request), else those the Head of
-     * Business Development finalized (finalizedLineItems()), else those Data
-     * Entry said they added (rfq_user.data_entry_entries), else those Sourcing
-     * said to add (line_items_to_add). A count of 0 is passed over for the
-     * next. Null with none of any.
+     * The line items GM Assistant has on $part: the Finalized Line Items the
+     * Head of Business Development gave as they approved it on to them
+     * (RfqAssignment::finalizedLineItems()), else those Data Entry said they
+     * added (rfq_user.data_entry_entries), else those Sourcing said to add
+     * (line_items_to_add). Senior Operations' Actual Line Items don't count
+     * here (since 2026-10-24, at the user's request). A count of 0 is passed
+     * over for the next. Null with none of any.
      *
      * @return array{count: int, source: string}|null
      */
@@ -3222,12 +3223,56 @@ class Rfq extends Model
 
         return match (true) {
             $assignment === null => null,
-            (int) $assignment->verifiedLineItems() > 0 => ['count' => (int) $assignment->verifiedLineItems(), 'source' => 'actual'],
             (int) $assignment->finalizedLineItems() > 0 => ['count' => (int) $assignment->finalizedLineItems(), 'source' => 'finalized'],
             (int) $assignment->data_entry_entries > 0 => ['count' => (int) $assignment->data_entry_entries, 'source' => 'added'],
             (int) $assignment->line_items_to_add > 0 => ['count' => (int) $assignment->line_items_to_add, 'source' => 'to_add'],
             default => null,
         };
+    }
+
+    /**
+     * How $part's time left with GM Assistant comes about — what the popup on
+     * it explains (rfqs/_gm_assistant_time_card): the line items it goes by
+     * (gmAssistantLineItemsFor()) — which count they are, who gave it, in
+     * which role and when — the time a line item takes, the target they make
+     * (or the priority's, with nothing to go by per line item), and where it
+     * stands now: waiting for GM Assistant's Start (the whole target),
+     * running from it, or paused, with the working time used and left.
+     *
+     * @return array{lineItems: ?array{count: int, label: string, by: ?string, role: string, at: ?CarbonInterface}, perItem: ?int, target: int, byPriority: bool, state: string, startedAt: ?CarbonInterface, startedBy: ?string, pausedAt: ?CarbonInterface, pauseReason: ?string, remaining: int, used: int}
+     */
+    public function gmAssistantTimeExplained(int $part): array
+    {
+        $holder = $this->assigneeForPart($part);
+        $assignment = $holder?->pivot;
+        $breakdown = $this->gmAssistantTargetBreakdown($part);
+        $lineItems = $this->gmAssistantLineItemsFor($part);
+        $target = $this->gmAssistantTargetSeconds($part);
+        $countdown = $this->gmAssistantCountdown($part) ?? $this->pausedGmAssistantCountdown($part);
+
+        $from = $lineItems === null || $assignment === null ? null : match ($lineItems['source']) {
+            'finalized' => ['label' => 'Finalized Line Items', 'by' => $assignment->headOfBdApprovedBy?->name, 'role' => 'Head of Business Development', 'at' => $assignment->head_of_bd_approved_at],
+            'added' => ['label' => 'Line Items Added', 'by' => $assignment->dataEntryCompletedBy?->name, 'role' => 'Data Entry', 'at' => $assignment->data_entry_completed_at],
+            default => ['label' => 'Line Items to Add', 'by' => $holder->name, 'role' => 'Sourcing', 'at' => $assignment->completed_at],
+        };
+
+        return [
+            'lineItems' => $from === null ? null : ['count' => $lineItems['count']] + $from,
+            'perItem' => $breakdown['perItem'] ?? null,
+            'target' => $target,
+            'byPriority' => $breakdown === null,
+            'state' => match (true) {
+                $assignment?->isGmAssistantPaused() === true => 'paused',
+                $assignment?->hasGmAssistantStarted() === true => 'running',
+                default => 'waiting',
+            },
+            'startedAt' => $assignment?->gm_assistant_started_at,
+            'startedBy' => $assignment?->gmAssistantStartedBy?->name,
+            'pausedAt' => $assignment?->gm_assistant_paused_at,
+            'pauseReason' => $assignment?->gm_assistant_pause_reason,
+            'remaining' => $countdown['remaining'] ?? $target,
+            'used' => $countdown !== null ? max(0, $countdown['target'] - $countdown['remaining']) : 0,
+        ];
     }
 
     /**
@@ -3690,8 +3735,9 @@ class Rfq extends Model
      * to when, and the working time), each time Data Entry
      * sent it to finalize with the line items added — against what was
      * asked, and what they'd sent before — or sent it back to Sourcing with
-     * those added so far, each time Sourcing returned it to Data Entry, and
-     * Senior Operations' verified count once there is one. Each with who,
+     * those added so far, each time Sourcing returned it to Data Entry, the
+     * line items Sourcing submitted as they finalized it, and Senior
+     * Operations' verified count once there is one. Each with who,
      * in which role, and any note, ready for the popup (admin.js).
      *
      * "tone" says whether a change is a difference ("off") or a match ("ok").
@@ -3796,8 +3842,31 @@ class Rfq extends Model
             $entries[] = ['sort' => $comment->created_at, 'row' => $row];
         }
 
-        // Senior Operations' own count, once they've verified it.
         $holder = $this->assigneeForPart($part)?->pivot;
+
+        // What Sourcing submitted finalizing it — the latest Finalize's.
+        $submitted = $holder?->submittedLineItems();
+        if ($submitted !== null) {
+            $entries[] = ['sort' => $holder->finalized_at, 'row' => [
+                'kind' => 'submitted',
+                'at' => $stamp($holder->finalized_at),
+                'until' => null,
+                'duration' => null,
+                'who' => $holder->finalizedBy?->name ?? $this->assigneeForPart($part)?->name ?? 'Sourcing',
+                'role' => 'Sourcing',
+                'title' => 'Submitted line items — finalized',
+                'count' => $submitted,
+                'change' => $added !== null && $added !== $submitted
+                    ? $count(abs($submitted - $added)).($submitted < $added ? ' fewer' : ' more').' than Data Entry added'
+                    : ($added !== null ? 'Matches what Data Entry added' : null),
+                'tone' => $added === null ? null : ($added !== $submitted ? 'off' : 'ok'),
+                'note' => null,
+            ]];
+        }
+
+        // Senior Operations' own count, once they've verified it — against
+        // what Sourcing submitted, else what Data Entry added.
+        [$before, $beforeBy] = $submitted !== null ? [$submitted, 'Sourcing submitted'] : [$added, 'Data Entry added'];
         if ($holder?->senior_ops_reviewed_at !== null && $holder->verified_line_items !== null) {
             $entries[] = ['sort' => $holder->senior_ops_reviewed_at, 'row' => [
                 'kind' => 'verified',
@@ -3808,10 +3877,10 @@ class Rfq extends Model
                 'role' => 'Senior Operations',
                 'title' => 'Actual line items — verified',
                 'count' => (int) $holder->verified_line_items,
-                'change' => $added !== null && $added !== (int) $holder->verified_line_items
-                    ? $count(abs((int) $holder->verified_line_items - $added)).((int) $holder->verified_line_items < $added ? ' fewer' : ' more').' than Data Entry added'
-                    : ($added !== null ? 'Matches what Data Entry added' : null),
-                'tone' => $added === null ? null : ($added !== (int) $holder->verified_line_items ? 'off' : 'ok'),
+                'change' => $before !== null && $before !== (int) $holder->verified_line_items
+                    ? $count(abs((int) $holder->verified_line_items - $before)).((int) $holder->verified_line_items < $before ? ' fewer' : ' more').' than '.$beforeBy
+                    : ($before !== null ? 'Matches what '.$beforeBy : null),
+                'tone' => $before === null ? null : ($before !== (int) $holder->verified_line_items ? 'off' : 'ok'),
                 'note' => null,
             ]];
         }

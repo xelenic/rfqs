@@ -341,11 +341,11 @@ it('moves to Senior Operations\' review only once every part is through Data Ent
 
     // Each part's own Sourcing member finalizes it — Riley holds two.
     foreach ([1 => $riley, 2 => $sam] as $part => $member) {
-        test()->actingAs($member)->patch(route('admin.rfqs.finalize', $rfq), ['part' => $part]);
+        test()->actingAs($member)->patch(route('admin.rfqs.finalize', $rfq), ['part' => $part, 'submitted_line_items' => [$part => 10]]);
         expect($rfq->refresh()->stage)->toBeNull();
     }
 
-    test()->actingAs($riley)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 3]);
+    test()->actingAs($riley)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 3, 'submitted_line_items' => [3 => 10]]);
     expect($rfq->refresh()->stage)->toBe('senior_ops_review');
 });
 

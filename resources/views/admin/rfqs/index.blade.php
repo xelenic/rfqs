@@ -753,26 +753,30 @@
                                     <td class="text-nowrap">
                                         {{-- Counts down their target from their Start, ticking in admin.js —
                                              paused outside working hours, and held where it stopped while
-                                             they've paused it; till they start, the whole target. --}}
+                                             they've paused it; till they start, the whole target. Hovering
+                                             it shows how it's worked out (_gm_assistant_time_card). --}}
                                         @php
-                                            $gmaCountdown = $rfq->gmAssistantCountdown($assignee->pivot->part_number);
-                                            $gmaBreakdown = $rfq->gmAssistantTargetBreakdown($assignee->pivot->part_number);
-                                            // How it's made up, for the hover: line items × time a line item, or its priority's.
-                                            $gmaMadeUp = $gmaBreakdown
-                                                ? number_format($gmaBreakdown['items']).' '.\Illuminate\Support\Str::plural('line item', $gmaBreakdown['items']).' × '.rtrim(rtrim(number_format($gmaBreakdown['perItem'] / 60, 1), '0'), '.').' min = '.\App\Models\Setting::durationLabel($gmaBreakdown['seconds'])
-                                                : "{$rfq->priority_level}'s GM Assistant target";
+                                            $gmaPart = $assignee->pivot->part_number;
+                                            $gmaCountdown = $rfq->gmAssistantCountdown($gmaPart);
+                                            $gmaPaused = $gmaCountdown ? null : $rfq->pausedGmAssistantCountdown($gmaPart);
+                                            $gmaCardId = 'gma-time-'.$rfq->id.'-p'.$gmaPart;
                                         @endphp
-                                        @if ($gmaCountdown)
-                                            @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => "Working time left to submit it to the General Manager · {$gmaMadeUp}", 'workerId' => $assignee->pivot->gm_assistant_started_by])
-                                        @elseif ($gmaPaused = $rfq->pausedGmAssistantCountdown($assignee->pivot->part_number))
-                                            <span class="badge sourcing-countdown is-on-pause {{ \App\Models\Setting::countdownBadgeClass($gmaPaused['remaining'], $gmaPaused['target']) }}" title="Paused — it carries on from here when it's resumed · {{ $gmaMadeUp }}">
-                                                <i class="bi bi-pause-fill"></i>
-                                                <span class="sourcing-countdown-label">{{ \App\Models\Setting::countdownLabel($gmaPaused['remaining']) }}</span>
+                                        @if ($gmaCountdown || $gmaPaused || ! $assignee->pivot->hasGmAssistantStarted())
+                                            <span class="countdown-explained" data-hover-card="{{ $gmaCardId }}" tabindex="0" aria-label="How the time left is worked out">
+                                                @if ($gmaCountdown)
+                                                    @include('admin.rfqs._countdown_badge', ['countdown' => $gmaCountdown, 'title' => '', 'workerId' => $assignee->pivot->gm_assistant_started_by, 'hoverCard' => true])
+                                                @elseif ($gmaPaused)
+                                                    <span class="badge sourcing-countdown is-on-pause {{ \App\Models\Setting::countdownBadgeClass($gmaPaused['remaining'], $gmaPaused['target']) }}">
+                                                        <i class="bi bi-pause-fill"></i>
+                                                        <span class="sourcing-countdown-label">{{ \App\Models\Setting::countdownLabel($gmaPaused['remaining']) }}</span>
+                                                    </span>
+                                                @else
+                                                    <span class="badge badge-soft-secondary de-target">
+                                                        <i class="bi bi-stopwatch"></i> {{ \App\Models\Setting::durationLabel($rfq->gmAssistantTargetSeconds($gmaPart)) }}
+                                                    </span>
+                                                @endif
                                             </span>
-                                        @elseif (! $assignee->pivot->hasGmAssistantStarted())
-                                            <span class="badge badge-soft-secondary de-target" title="Counts down from Start, in working hours · {{ $gmaMadeUp }}">
-                                                <i class="bi bi-stopwatch"></i> {{ \App\Models\Setting::durationLabel($rfq->gmAssistantTargetSeconds($assignee->pivot->part_number)) }}
-                                            </span>
+                                            @include('admin.rfqs._gm_assistant_time_card', ['id' => $gmaCardId, 'rfq' => $rfq, 'part' => $gmaPart])
                                         @else
                                             <span class="text-muted-soft">—</span>
                                         @endif
@@ -786,12 +790,8 @@
                                             @if ($headOfBdNames->has($assignee->pivot->head_of_bd_approved_by))
                                                 <div class="text-muted-soft small">by {{ $headOfBdNames->get($assignee->pivot->head_of_bd_approved_by) }}</div>
                                             @endif
-                                            {{-- The Actual Line Items Senior Operations counted — GM Assistant's
-                                                 target goes by them (Rfq::gmAssistantLineItemsFor()) — and what the
-                                                 Head finalized approving it. --}}
-                                            @if ($assignee->pivot->verifiedLineItems() !== null)
-                                                <div class="text-muted-soft small"><i class="bi bi-list-ol"></i> {{ trans_choice('1 actual line item|:count actual line items', $assignee->pivot->verifiedLineItems(), ['count' => number_format($assignee->pivot->verifiedLineItems())]) }}</div>
-                                            @endif
+                                            {{-- What they finalized approving it — GM Assistant's target goes by it
+                                                 (Rfq::gmAssistantLineItemsFor()). --}}
                                             @if ($assignee->pivot->finalizedLineItems() !== null)
                                                 <div class="text-muted-soft small"><i class="bi bi-list-check"></i> {{ trans_choice('1 line item finalized|:count line items finalized', $assignee->pivot->finalizedLineItems(), ['count' => number_format($assignee->pivot->finalizedLineItems())]) }}</div>
                                             @endif
@@ -1811,6 +1811,7 @@
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter])
     @if ($scopedToDataEntry || $scopedToMe || $scopedToReturns)
         @include('admin.rfqs._complete_modal')
+        @include('admin.rfqs._finalize_modal')
     @endif
     @if ($scopedToDataEntry || $scopedToGmAssistant || $scopedToGmAssistantReturns)
         @include('admin.rfqs._pause_data_entry_modal')

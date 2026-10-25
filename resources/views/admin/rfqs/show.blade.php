@@ -1000,7 +1000,8 @@
                     @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
                         <p class="text-muted-soft mb-0">Not yet assigned.</p>
                     @else
-                        @include('admin.rfqs._step_parts', ['doneColumn' => 'finalized_at', 'byRelation' => 'finalizedBy', 'reachedColumn' => 'data_entry_completed_at', 'awaiting' => 'Awaiting Finalize'])
+                        @include('admin.rfqs._step_parts', ['doneColumn' => 'finalized_at', 'byRelation' => 'finalizedBy', 'reachedColumn' => 'data_entry_completed_at', 'awaiting' => 'Awaiting Finalize',
+                            'doneNote' => fn ($pivot) => $pivot->submittedLineItems() !== null ? trans_choice('1 line item submitted|:count line items submitted', $pivot->submittedLineItems(), ['count' => number_format($pivot->submittedLineItems())]) : null])
                     @endif
                 </div>
 
@@ -1479,6 +1480,9 @@
     @include('admin.rfqs._assign_operations_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
     @if ($myOpenParts->isNotEmpty() || $adminOpenParts->isNotEmpty() || $returnEligibleAssignees->isNotEmpty() || $finalizableParts->isNotEmpty())
         @include('admin.rfqs._complete_modal')
+    @endif
+    @if ($finalizableParts->isNotEmpty())
+        @include('admin.rfqs._finalize_modal')
     @endif
     @if (auth()->user()->hasAnyRole(['Data Entry', 'GM Assistant', 'Admin']))
         @include('admin.rfqs._pause_data_entry_modal')

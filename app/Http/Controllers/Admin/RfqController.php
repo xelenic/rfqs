@@ -1893,9 +1893,11 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * The Sourcing member's Finalize — on a part Data Entry has sent to
-     * finalize, it sends that part on to Senior Operations' review. Only the
-     * part's own assignee can, or Admin on their behalf (recorded as the
-     * assignee either way). See Rfq::finalizePart().
+     * finalize, it sends that part on to Senior Operations' review, with the
+     * line items they submit (submitted_line_items[part], asked in
+     * _finalize_modal; see lineItemsGiven()). Only the part's own assignee
+     * can, or Admin on their behalf (recorded as the assignee either way).
+     * See Rfq::finalizePart().
      */
     public function finalize(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1915,7 +1917,14 @@ class RfqController extends Controller implements HasMiddleware
         );
         abort_unless($rfq->partAwaitsFinalize($part), 422, 'This part is not waiting to be finalized.');
 
-        $rfq->finalizePart($part);
+        // The line items they're submitting, from the Finalize popup (_finalize_modal).
+        $submitted = $this->lineItemsGiven($request, $rfq, collect([$assignee]), 'submitted_line_items', 'Enter the line items you\'re submitting on :part.', 'submitted line items');
+
+        if ($submitted instanceof RedirectResponse) {
+            return $submitted;
+        }
+
+        $rfq->finalizePart($part, $submitted[$part]);
 
         return $this->redirectAfterSave($request, $rfq)->with('status', "Finalized {$rfq->partNumberLabel($part)} — sent to Senior Operations' review.");
     }

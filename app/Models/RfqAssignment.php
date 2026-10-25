@@ -54,6 +54,7 @@ class RfqAssignment extends Pivot
             'line_items_to_add' => 'integer',
             'return_line_items' => 'integer',
             'verified_line_items' => 'integer',
+            'submitted_line_items' => 'integer',
             'finalized_line_items' => 'integer',
             'data_entry_started_at' => 'datetime',
             'data_entry_paused_at' => 'datetime',
@@ -563,12 +564,14 @@ class RfqAssignment extends Pivot
     }
 
     /**
-     * The line items as Senior Operations sees them approving the part (the
-     * popup of _senior_ops_approve_modal): what Sourcing gave Data Entry to
-     * add, what Data Entry added — once they've sent it to finalize — and
-     * added minus to add (0 when they match; null while either is missing).
+     * The line items as the part's checks see them — Sourcing finalizing it
+     * (_finalize_modal), Senior Operations approving it
+     * (_senior_ops_approve_modal): what Sourcing gave Data Entry to add, what
+     * Data Entry added — once they've sent it to finalize — added minus to
+     * add (0 when they match; null while either is missing), and what
+     * Sourcing submitted finalizing it (submittedLineItems()).
      *
-     * @return array{to_add: ?int, added: ?int, difference: ?int}
+     * @return array{to_add: ?int, added: ?int, difference: ?int, submitted: ?int}
      */
     public function lineItemsCheck(): array
     {
@@ -578,7 +581,18 @@ class RfqAssignment extends Pivot
             'to_add' => $this->line_items_to_add,
             'added' => $added,
             'difference' => $added !== null && $this->line_items_to_add !== null ? $added - $this->line_items_to_add : null,
+            'submitted' => $this->submittedLineItems(),
         ];
+    }
+
+    /**
+     * The line items the Sourcing member submitted on the part as they
+     * finalized it (Rfq::finalizePart()) — null until they have, or since it
+     * was sent back past their Finalize.
+     */
+    public function submittedLineItems(): ?int
+    {
+        return $this->finalized_at !== null ? $this->submitted_line_items : null;
     }
 
     /**

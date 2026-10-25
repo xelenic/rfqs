@@ -140,9 +140,11 @@ it('counts the list down from the line items, the formula on hover', function ()
     expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 2700, 'remaining' => 1800]);
 
     $html = test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
-    expect(Str::betweenFirst($html, '<td class="text-nowrap">RFQ9301</td>', '</tr>'))
+    $row = Str::betweenFirst($html, '<td class="text-nowrap">RFQ9301</td>', '</tr>');
+    expect($row)
+        ->toContain('data-hover-card="gma-time-'.$rfq->id.'-p1"')
         ->toContain('data-remaining="1800" data-target="2700"')
-        ->toContain('Working time left to submit it to the General Manager · 45 line items × 1 min = 45m');
+        ->and(Str::squish(strip_tags($row)))->toContain('Target = 45 Line Items Added × 1 min a line item = 45m');
 });
 
 it('lets an Admin switch it on and set the time a line item takes', function () {

@@ -42,18 +42,18 @@ it('opens a check of the line items from Approve, on the review list', function 
 
     $html = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('id="seniorOpsApproveModal"', false)
-        ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Difference', 'Actual Line Items'])
+        ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Difference', 'Submitted Line Items', 'Actual Line Items'])
         ->getContent();
 
     $button = Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>');
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.approve-senior-ops-part', $rfq).'"')
         ->toContain('data-part="1"')
-        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2]]);
+        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => null]]);
 
     // Only Actual Line Items is for them to fill in; the rest are read only, and not sent.
     $part = Str::between($html, '<template id="seniorOpsApprovePart">', '</template>');
-    expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(3)
+    expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(4)
         ->and(substr_count($part, 'name='))->toBe(0)
         ->and($part)->toContain('type="number" class="form-control js-actual"');
 });
@@ -112,8 +112,8 @@ it('asks for every part\'s count when approving the whole RFQ, from its page', f
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.complete-senior-ops-review', $rfq).'"')
         ->and(popupParts($button))->toBe([
-            ['part' => 1, 'label' => 'RFQ8401-P1 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 10, 'difference' => 0],
-            ['part' => 2, 'label' => 'RFQ8401-P2 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 11, 'difference' => 1],
+            ['part' => 1, 'label' => 'RFQ8401-P1 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 10, 'difference' => 0, 'submitted' => null],
+            ['part' => 2, 'label' => 'RFQ8401-P2 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 11, 'difference' => 1, 'submitted' => null],
         ]);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.complete-senior-ops-review', $rfq), ['actual_line_items' => [1 => 10]])
@@ -164,9 +164,9 @@ it('works out the difference, or leaves it out while a count is missing', functi
 
     expect($part->lineItemsCheck())->toBe($check);
 })->with([
-    'fewer' => [24, 22, true, ['to_add' => 24, 'added' => 22, 'difference' => -2]],
-    'more' => [24, 27, true, ['to_add' => 24, 'added' => 27, 'difference' => 3]],
-    'the same' => [24, 24, true, ['to_add' => 24, 'added' => 24, 'difference' => 0]],
-    'no line items given' => [null, 22, true, ['to_add' => null, 'added' => 22, 'difference' => null]],
-    'not sent to finalize' => [24, 22, false, ['to_add' => 24, 'added' => null, 'difference' => null]],
+    'fewer' => [24, 22, true, ['to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => null]],
+    'more' => [24, 27, true, ['to_add' => 24, 'added' => 27, 'difference' => 3, 'submitted' => null]],
+    'the same' => [24, 24, true, ['to_add' => 24, 'added' => 24, 'difference' => 0, 'submitted' => null]],
+    'no line items given' => [null, 22, true, ['to_add' => null, 'added' => 22, 'difference' => null, 'submitted' => null]],
+    'not sent to finalize' => [24, 22, false, ['to_add' => 24, 'added' => null, 'difference' => null, 'submitted' => null]],
 ]);

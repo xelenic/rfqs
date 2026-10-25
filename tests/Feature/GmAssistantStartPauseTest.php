@@ -91,7 +91,7 @@ it('offers Start on a part that\'s reached GM Assistant — not Submit — its w
     expect($row)->toContain('<i class="bi bi-play-fill"></i> Start')
         ->not->toContain('js-gm-assistant-submit')
         ->not->toContain('js-pause-data-entry')
-        ->toContain('Counts down from Start, in working hours')
+        ->toContain('Starts when GM Assistant presses Start')
         ->toContain('1h');
 });
 

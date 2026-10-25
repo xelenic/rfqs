@@ -229,4 +229,5 @@
     </div>
 
     @include('admin.rfqs._complete_modal')
+    @include('admin.rfqs._finalize_modal')
 @endsection

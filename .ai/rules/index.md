@@ -4,7 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
-| app/Http/Controllers/Admin/UserController.php, app/Http/Controllers/Admin/SettingsController.php, app/Http/Controllers/Admin/DashboardController.php, app/Http/Controllers/Admin/RfqController.php, app/Http/Controllers/Admin/PerformanceReportController.php, app/Http/Controllers/Admin/JobCategoryController.php | .ai/rules/admin.md |
+| app/Http/Controllers/Admin/UserController.php, app/Http/Controllers/Admin/SettingsController.php, app/Http/Controllers/Admin/DashboardController.php, app/Http/Controllers/Admin/RfqController.php, app/Http/Controllers/Admin/PerformanceReportController.php, app/Http/Controllers/Admin/JobCategoryController.php, app/Http/Controllers/Admin/RfqDiscussionController.php | .ai/rules/admin.md |
 | app/**, app/PerformanceReports.php, app/Spreadsheet.php | .ai/rules/app.md |
 | resources/views/admin/attendance/** | .ai/rules/attendance.md |
 | app/Console/Commands/** | .ai/rules/commands.md |

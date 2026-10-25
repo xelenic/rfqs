@@ -1645,14 +1645,17 @@ function rfqmsBoot() {
         });
     }
 
-    // The approve popups that count line items (.js-line-items-modal):
-    // Senior Operations' (_senior_ops_approve_modal) and the Head of Business
-    // Development's (_head_of_bd_approve_modal). Each lists the parts it
-    // approves, from the button that opened it (data-parts), with their line
-    // items so far, read only — each box naming what it shows (data-value) —
-    // and asks for that role's own count, sent as data-field[part]. From a
-    // listener on the document, so it holds however often the page is
-    // swapped.
+    // The popups that count line items (.js-line-items-modal): Sourcing's
+    // Finalize (_finalize_modal), Senior Operations' Approve
+    // (_senior_ops_approve_modal) and the Head of Business Development's
+    // (_head_of_bd_approve_modal). Each lists the parts it's for, from the
+    // button that opened it (data-parts), with their line items so far, read
+    // only — each box naming what it shows (data-value) — and asks for that
+    // role's own count, sent as data-field[part]. Hidden fields marked
+    // data-from-button take that button's value (sent only when it has one),
+    // and one opened from inside another popup (data-back-modal) goes Back to
+    // it. From a listener on the document, so it holds however often the
+    // page is swapped.
     if (!window.__rfqmsLineItemsModals) {
         window.__rfqmsLineItemsModals = true;
 
@@ -1727,6 +1730,24 @@ function rfqmsBoot() {
             form.action = button.dataset.action;
             partInput.value = button.dataset.part || '';
             partInput.disabled = !button.dataset.part;
+
+            form.querySelectorAll('[data-from-button]').forEach(function (input) {
+                input.value = button.dataset[input.dataset.fromButton] || '';
+                input.disabled = input.value === '';
+            });
+
+            var back = modal.querySelector('.js-li-back');
+            if (back && button.dataset.backModal) {
+                back.removeAttribute('data-bs-dismiss');
+                back.setAttribute('data-bs-toggle', 'modal');
+                back.setAttribute('data-bs-target', '#' + button.dataset.backModal);
+                back.textContent = 'Back';
+            } else if (back) {
+                back.removeAttribute('data-bs-toggle');
+                back.removeAttribute('data-bs-target');
+                back.setAttribute('data-bs-dismiss', 'modal');
+                back.textContent = 'Cancel';
+            }
             modal.querySelector('.js-li-target').textContent = button.dataset.label || '';
             modal.querySelector('.js-li-hint').textContent = button.dataset.hint || '';
             modal.querySelector('.js-li-none').classList.toggle('d-none', parts.length > 0);
@@ -2307,7 +2328,13 @@ function rfqmsBoot() {
                 badge.classList.toggle('badge-soft-warning', remaining > 0 && remaining <= target / 4);
                 badge.classList.toggle('badge-soft-success', remaining > target / 4);
                 badge.classList.toggle('is-paused', paused);
-                badge.title = paused ? 'Paused — outside working hours' : (badge.dataset.runningTitle || 'Working time left to mark it complete');
+                // What its popup says (_gm_assistant_time_card) — and no title over it, where it has one.
+                badge.dataset.remainingNow = remaining;
+                if (badge.closest('[data-hover-card]')) {
+                    badge.removeAttribute('title');
+                } else {
+                    badge.title = paused ? 'Paused — outside working hours' : (badge.dataset.runningTitle || 'Working time left to mark it complete');
+                }
                 badge.querySelector('i').className = 'bi ' + (paused ? 'bi-pause-circle' : 'bi-stopwatch');
                 badge.querySelector('.sourcing-countdown-label').textContent = countdownLabel(remaining);
             });
@@ -3057,10 +3084,32 @@ window.renderRfqProgressChart = function () {
 // read; Escape closes it. A live update swaps the table, so any open one is
 // cleared and the new figures bound again. A person's name on the
 // attendance sheets ([data-hover-card], attendance/_time_off_card) shows
-// their time off the same way.
+// their time off the same way, and GM Assistant's Time Left how it's worked
+// out (rfqs/_gm_assistant_time_card) — with what its ticking badge says now.
 (function () {
     var HIDE_DELAY = 200;
     var open = [];
+
+    // As Setting::durationLabel(): "24s", "12m", "7h 30m".
+    function durationLabel(seconds) {
+        seconds = Math.max(0, Math.round(seconds));
+        if (seconds > 0 && seconds < 60) return seconds + 's';
+        var minutes = Math.floor(seconds / 60);
+        var hours = Math.floor(minutes / 60);
+        return hours === 0 ? minutes + 'm' : hours + 'h' + (minutes % 60 > 0 ? ' ' + (minutes % 60) + 'm' : '');
+    }
+
+    // A countdown's popup says what its badge says now: the badge ticks on.
+    function syncCountdown(trigger, tip) {
+        var badge = trigger.querySelector('[data-countdown]');
+        if (!badge || !tip) return;
+
+        var label = badge.querySelector('.sourcing-countdown-label');
+        var remaining = Number(badge.dataset.remainingNow !== undefined ? badge.dataset.remainingNow : badge.dataset.remaining);
+        tip.querySelectorAll('[data-countdown-left]').forEach(function (field) { if (label) field.textContent = label.textContent; });
+        tip.querySelectorAll('[data-countdown-used]').forEach(function (field) { field.textContent = durationLabel(Number(badge.dataset.target) - remaining); });
+        tip.querySelectorAll('[data-countdown-off-hours]').forEach(function (note) { note.classList.toggle('d-none', !badge.classList.contains('is-paused')); });
+    }
 
     function attach(trigger) {
         if (trigger.dataset.breakdownBound || !window.bootstrap || !bootstrap.Popover) return;
@@ -3092,6 +3141,7 @@ window.renderRfqProgressChart = function () {
             if (open.indexOf(popover) === -1) open.push(popover);
 
             var tip = popover.tip;
+            syncCountdown(trigger, tip);
             if (tip && !tip.dataset.breakdownBound) {
                 tip.dataset.breakdownBound = '1';
                 tip.addEventListener('mouseenter', function () { window.clearTimeout(hideTimer); });

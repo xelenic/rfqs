@@ -101,7 +101,7 @@ it('can go round again — Data Entry sends it to finalize, and it can be finali
         ->and($pivot->data_entry_return_reason)->toBeNull()
         ->and($rfq->partAwaitsFinalize(1))->toBeTrue();
 
-    test()->actingAs($riley)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 1])->assertSessionHasNoErrors();
+    test()->actingAs($riley)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 1, 'submitted_line_items' => [1 => 10]])->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->stage)->toBe('senior_ops_review');
 });

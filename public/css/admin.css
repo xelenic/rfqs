@@ -2176,6 +2176,43 @@ a.pipeline-label:hover {
   color: #fff;
 }
 
+/* Messages → RFQ comments (messages/rfqs, messages/rfq): an RFQ's thread. */
+.rfq-thread-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary);
+}
+
+.rfq-thread-author {
+  margin-bottom: 0.15rem;
+  font-size: 0.78rem;
+}
+
+.rfq-thread-replied {
+  margin-bottom: 0.2rem;
+  padding-left: 0.4rem;
+  border-left: 2px solid var(--rfq-border);
+  font-size: 0.74rem;
+  opacity: 0.8;
+}
+
+.rfq-thread-reply {
+  font-size: inherit;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.message-bubble-row.is-mine .rfq-thread-author,
+.message-bubble-row.is-mine .rfq-thread-reply {
+  color: #fff;
+}
+
+.message-bubble-row.is-mine .rfq-thread-replied {
+  border-left-color: rgba(255, 255, 255, 0.5);
+}
+
 /* ---------- Operations' Assigned tab — each RFQ with its parts ---------- */
 /* One tbody per RFQ (_rfq_row with $groupedParts, then _rfq_parts): its row,
    then a nested line per part — who holds it and how it's going — hanging
@@ -6516,6 +6553,18 @@ a.critical-row:hover {
 }
 
 /* ---- Time Spent: how a figure came about (reports/_time_breakdown) ---------- */
+
+/* A countdown that explains itself on hover (GM Assistant's Time Left, _gm_assistant_time_card). */
+.countdown-explained {
+  display: inline-block;
+  cursor: help;
+  border-radius: 999px;
+}
+
+.countdown-explained:focus-visible {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
 
 /* The figure itself: underlined, to say there's more on hover. */
 .time-breakdown-trigger {

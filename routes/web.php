@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\PerformanceReportController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\RfqCommentController;
 use App\Http\Controllers\Admin\RfqController;
+use App\Http\Controllers\Admin\RfqDiscussionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\TimeSpentReportController;
@@ -158,6 +159,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::get('notifications/{notification}', [NotificationController::class, 'open'])->name('notifications.open');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
+    // Messages → RFQ comments: one thread per RFQ — see RfqDiscussionController. Before messages/{user}.
+    Route::get('messages/rfqs', [RfqDiscussionController::class, 'index'])->name('messages.rfqs');
+    Route::get('messages/rfqs/{rfq}', [RfqDiscussionController::class, 'show'])->name('messages.rfq');
     Route::get('messages/{user}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('messages', [MessageController::class, 'store'])->middleware('throttle:30,1')->name('messages.store');
     Route::delete('rfqs/{rfq}/comments/{comment}', [RfqCommentController::class, 'destroy'])->name('rfqs.comments.destroy');

@@ -46,16 +46,16 @@ it('asks for the finalized line items when the Head approves — with the counts
 
     $html = test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('id="headOfBdApproveModal" data-field="finalized_line_items"', false)
-        ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Actual Line Items', 'Finalized Line Items'])
+        ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Submitted Line Items', 'Actual Line Items', 'Finalized Line Items'])
         ->getContent();
 
     $button = Str::betweenFirst($html, 'js-head-of-bd-approve"', '</button>');
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"')
-        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8801', 'who' => 'Riley Chen', 'verified' => 23, 'to_add' => 24, 'added' => 22, 'difference' => -2]]);
+        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8801', 'who' => 'Riley Chen', 'verified' => 23, 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => null]]);
 
     $part = Str::between($html, '<template id="headOfBdApprovePart">', '</template>');
-    expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(3)
+    expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(4)
         ->and(substr_count($part, 'name='))->toBe(0)
         ->and($part)->toContain('type="number" class="form-control js-actual"');
 });
@@ -106,20 +106,20 @@ it('asks for every part\'s when approving the whole RFQ', function () {
         ->and($rfq->assigneeForPart(2)->pivot->finalizedLineItems())->toBe(25);
 });
 
-it('times GM Assistant by the Actual Line Items Senior Operations counted, not the finalized ones — even with per line item off', function () {
+it('times GM Assistant by the Finalized Line Items, not Senior Operations\' Actual ones — even with per line item off', function () {
     ['rfq' => $rfq, 'head' => $head] = withTheHead();
     expect(Setting::gmAssistantPerItem()['enabled'])->toBeFalse();
 
     $rfq->approveHeadOfBdPart(1, $head, 30);
 
-    // 23 actual line items × a minute each — not the 30 finalized, nor the 22 added.
-    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1380)
-        ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 23, 'perItem' => 60, 'seconds' => 1380, 'source' => 'actual']);
+    // 30 finalized line items × a minute each — not the 23 actual, nor the 22 added.
+    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1800)
+        ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 60, 'seconds' => 1800, 'source' => 'finalized']);
 
     test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSee('23 line items × 1 min = 23m')
-        ->assertSee('23 actual line items')
-        ->assertSee('30 line items finalized');
+        ->assertSeeText('30 Finalized Line Items × 1 min a line item = 30m')
+        ->assertSee('30 line items finalized')
+        ->assertDontSee('actual line items');
 });
 
 it('goes back to the earlier counts once the part is sent back past Senior Operations\' review', function () {
@@ -146,7 +146,7 @@ it('lets Admin finalize them on the Head\'s behalf', function () {
     expect($rfq->refresh()->assigneeForPart(1)->pivot)->toMatchArray(['head_of_bd_approved_by' => $head->id, 'finalized_line_items' => 21]);
 });
 
-it('times each part of a whole-RFQ approval by its own Actual Line Items × the time a line item takes', function () {
+it('times each part of a whole-RFQ approval by its own Finalized Line Items × the time a line item takes', function () {
     ['rfq' => $rfq, 'head' => $head] = withTheHead(split: true);
     DB::table('rfq_user')->where('rfq_id', $rfq->id)->where('part_number', 2)->update(['verified_line_items' => 15]);
     $rfq->update(['stage' => 'head_of_bd_review']);
@@ -155,12 +155,12 @@ it('times each part of a whole-RFQ approval by its own Actual Line Items × the 
     test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd', $rfq), ['finalized_line_items' => [1 => 10, 2 => 40]])
         ->assertSessionHas('status', 'Approved — escalated to GM Assistant.');
 
-    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(2760)
-        ->and($rfq->gmAssistantTargetSeconds(2))->toBe(1800);
+    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1200)
+        ->and($rfq->gmAssistantTargetSeconds(2))->toBe(4800);
 
     test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSee('23 line items × 2 min = 46m')
-        ->assertSee('15 line items × 2 min = 30m');
+        ->assertSeeText('10 Finalized Line Items × 2 min a line item = 20m')
+        ->assertSeeText('40 Finalized Line Items × 2 min a line item = 1h 20m');
 });
 
 it('counts GM Assistant down from it once they start — on their list and their dashboard', function () {
@@ -171,15 +171,15 @@ it('counts GM Assistant down from it once they start — on their list and their
     $gma = userWithRole('GM Assistant');
     startGmAssistantOn($rfq, 1, $gma);
 
-    // 20 working minutes in: 46 minutes (23 actual × 2 min) less 20.
+    // 20 working minutes in: an hour (30 finalized × 2 min) less 20 minutes.
     test()->travelTo(CarbonImmutable::parse('2026-10-05 09:20', Setting::DEFAULT_TIMEZONE));
-    expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 2760, 'remaining' => 1560]);
+    expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 3600, 'remaining' => 2400]);
 
     test()->actingAs($gma)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
-        ->assertSee('data-remaining="1560" data-target="2760"', false)
-        ->assertSee('23 line items × 2 min = 46m');
+        ->assertSee('data-remaining="2400" data-target="3600"', false)
+        ->assertSeeText('30 Finalized Line Items × 2 min a line item = 1h');
     test()->actingAs($gma)->get(route('admin.dashboard'))->assertOk()
-        ->assertSee('26m left');
+        ->assertSee('40m left');
 });
 
 it('keeps timing by them when the General Manager sends the part back to GM Assistant', function () {
@@ -190,21 +190,19 @@ it('keeps timing by them when the General Manager sends the part back to GM Assi
 
     $rfq->refresh()->rejectPartToStage(1, 'gm_assistant', 'Attach the brochure', userWithRole('General Manager'), 'gm_review');
 
-    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(2760)
-        ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 23, 'perItem' => 120, 'seconds' => 2760, 'source' => 'actual']);
+    expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(3600)
+        ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 120, 'seconds' => 3600, 'source' => 'finalized']);
     test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
-        ->assertSee('23 line items × 2 min = 46m');
+        ->assertSeeText('30 Finalized Line Items × 2 min a line item = 1h');
 });
 
-it('goes by the finalized count where no Actual Line Items were counted, then Data Entry\'s — never no time', function () {
+it('goes by Data Entry\'s count where none were finalized — never by the Actual ones, nor no time', function () {
     ['rfq' => $rfq, 'head' => $head] = withTheHead();
-    DB::table('rfq_user')->where('rfq_id', $rfq->id)->update(['verified_line_items' => 0]);
-    Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
+    Setting::putGmAssistantPerItem(['enabled' => true, 'seconds' => 120]);
 
-    $rfq->approveHeadOfBdPart(1, $head, 30);
-    expect($rfq->refresh()->gmAssistantLineItemsFor(1))->toBe(['count' => 30, 'source' => 'finalized'])
-        ->and($rfq->gmAssistantTargetSeconds(1))->toBe(3600);
+    $rfq->approveHeadOfBdPart(1, $head, 0);
 
-    DB::table('rfq_user')->where('rfq_id', $rfq->id)->update(['finalized_line_items' => 0]);
-    expect($rfq->refresh()->gmAssistantLineItemsFor(1))->toBe(['count' => 22, 'source' => 'added']);
+    // Not Senior Operations' 23 actual: Data Entry's 22 added.
+    expect($rfq->refresh()->gmAssistantLineItemsFor(1))->toBe(['count' => 22, 'source' => 'added'])
+        ->and($rfq->gmAssistantTargetSeconds(1))->toBe(2640);
 });
