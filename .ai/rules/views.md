@@ -13,3 +13,6 @@ Since 2026-10-16, at the user's request, don't use btn-warning or btn-outline-wa
 
 ## Show date and time, never "… ago"
 At the user's request (2026-10-17 for the thread, 2026-10-19 everywhere), past times are shown as a date and time in the business time zone, for example $at->toBusinessTimezone()->format('M d, Y g:i A'). Never use diffForHumans(), not even in a title tooltip, and not as a "waiting N hours" figure: label such a column "Waiting since" and show the date. Future countdowns such as the next backup ("in 3 hours") are the only exception.
+
+## Don't put a comma inside @json(...)
+Blade's @json splits its argument on commas, and the second piece becomes the json_encode options. So @json($items->map(fn ($x) => ['a' => 1, 'b' => 2])) compiles to json_encode(..., 512) without JSON_HEX_TAG. A name containing </script> can then break out of a <script type="application/json"> island. When the expression has a comma, write {!! json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}, as the mention directory does. Plain @json($variable) is fine.

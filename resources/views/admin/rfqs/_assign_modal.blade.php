@@ -13,7 +13,8 @@
     category and split size are settled by then; the summary still follows.
     See RfqController::assign().
 
-    Expects: $sourcingUsers, $jobCategories (JobCategory models — the picker
+    Expects: $sourcingUsers (with withSourcingWorkloadCounts() and their
+    jobCategories loaded), $jobCategories (JobCategory models — the picker
     shows each one's description and icon).
     Optional: $statusFilter, $returnTo — see _edit_modal.blade.php.
 --}}
@@ -193,8 +194,12 @@
 
                     {{-- Step 3 — who takes each part (or the whole task, if it
                          wasn't split): one row per part, its number on the left
-                         and a Sourcing pick-list on the right. The lead-in and
-                         summary are filled in by JS to match the choices made. --}}
+                         and a searchable Sourcing dropdown on the right — each
+                         person's photo, name and pending count, with those
+                         tagged with the RFQ's job category (User::jobCategories())
+                         marked Recommended and listed first. The lead-in,
+                         summary and recommendation note are filled in by JS to
+                         match the choices made. --}}
                     <div class="d-none" data-step-panel="3">
                         <div class="wizard-lead">
                             <span class="wizard-lead-icon"><i class="bi bi-person-plus"></i></span>
@@ -205,6 +210,8 @@
                         </div>
 
                         <div class="wizard-chips wizard-summary" id="assign-summary"></div>
+
+                        <div class="assign-recommend-note d-none" id="assign-recommend-note" aria-live="polite"></div>
 
                         <div class="wizard-part-list" id="assign-parts-list"></div>
 
@@ -277,15 +284,17 @@
                         <div class="text-danger small mt-2 d-none" id="assign-step-4-error" role="alert"></div>
                     </div>
 
-                    {{-- The Sourcing pick-list every part's dropdown is cloned
-                         from — rendered once here rather than once per part.
-                         Each option carries the bare name for the summary. --}}
-                    <template id="assign-user-options">
-                        <option value="">Leave unassigned</option>
-                        @foreach ($sourcingUsers as $sourcingUser)
-                            <option value="{{ $sourcingUser->id }}" data-name="{{ $sourcingUser->name }}">{{ $sourcingUser->name }} — {{ $sourcingUser->pending_rfqs_count }} pending</option>
-                        @endforeach
-                    </template>
+                    {{-- The Sourcing members every part's dropdown lists —
+                         rendered once here rather than once per part: their
+                         photo (or initial), pending parts and job categories. --}}
+                    <script type="application/json" id="assign-sourcing-people">{!! json_encode($sourcingUsers->map(fn ($person) => [
+                        'id' => $person->id,
+                        'name' => $person->name,
+                        'avatar' => $person->avatarUrl(),
+                        'initial' => $person->initial(),
+                        'pending' => (int) $person->pending_rfqs_count,
+                        'categories' => $person->jobCategories->pluck('name')->all(),
+                    ])->values(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
                 </div>
 
                 <div class="modal-footer">
@@ -301,4 +310,20 @@
             @endif
         </form>
     </div>
+
+    @if ($sourcingUsers->isNotEmpty())
+        {{-- The dropdown a part's Sourcing picker opens — one for the
+             wizard, placed under whichever picker is open (admin.js). It
+             sits outside .modal-dialog so the scrolling body doesn't clip
+             it, but inside the modal so its search box can take focus. --}}
+        <div class="person-picker-panel" id="assign-person-panel" hidden>
+            <div class="person-picker-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" class="person-picker-search-input" id="assign-person-search" placeholder="Search Sourcing by name or job category…"
+                       autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="assign-person-options"
+                       aria-label="Search Sourcing members">
+            </div>
+            <div class="person-picker-list" id="assign-person-options" role="listbox" aria-label="Sourcing members"></div>
+        </div>
+    @endif
 </div>

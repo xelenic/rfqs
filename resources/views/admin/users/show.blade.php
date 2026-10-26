@@ -161,7 +161,8 @@
                             data-id="{{ $user->id }}"
                             data-name="{{ $user->name }}"
                             data-email="{{ $user->email }}"
-                            data-roles="{{ $user->roles->pluck('name')->join(',') }}">
+                            data-roles="{{ $user->roles->pluck('name')->join(',') }}"
+                            data-categories="{{ $user->jobCategories->pluck('id')->join(',') }}">
                         <i class="bi bi-pencil"></i> Edit
                     </button>
                 @endif
@@ -239,6 +240,16 @@
                         <dd><a href="mailto:{{ $user->email }}">{{ $user->email }}</a></dd>
                         <dt>Roles</dt>
                         <dd>{{ $user->roles->pluck('name')->join(', ') ?: 'No role' }}</dd>
+                        @if ($user->takesJobCategoryTags())
+                            <dt>Job categories</dt>
+                            <dd data-job-categories="{{ $user->id }}">
+                                @forelse ($user->jobCategories as $category)
+                                    <span class="badge badge-soft-secondary fw-normal"><i class="bi bi-tag"></i> {{ $category->name }}</span>
+                                @empty
+                                    <span class="text-muted-soft">None yet</span>
+                                @endforelse
+                            </dd>
+                        @endif
                         <dt>Joined</dt>
                         <dd>{{ $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</dd>
                         <dt>Last step taken</dt>

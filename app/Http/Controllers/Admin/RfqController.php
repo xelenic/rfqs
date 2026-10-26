@@ -346,7 +346,7 @@ class RfqController extends Controller implements HasMiddleware
         };
 
         $jobCategories = JobCategory::orderBy('name')->get();
-        $sourcingUsers = User::role('Sourcing')->active()->withSourcingWorkloadCounts()->orderBy('name')->get();
+        $sourcingUsers = User::role('Sourcing')->active()->withSourcingWorkloadCounts()->with('jobCategories')->orderBy('name')->get();
 
         // Senior Operations' Unassigned and Assigned tabs can be narrowed —
         // created range, priority, category, Sourcing member, part status —
@@ -967,7 +967,7 @@ class RfqController extends Controller implements HasMiddleware
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
-            'sourcingUsers' => User::role('Sourcing')->active()->withSourcingWorkloadCounts()->orderBy('name')->get(),
+            'sourcingUsers' => User::role('Sourcing')->active()->withSourcingWorkloadCounts()->with('jobCategories')->orderBy('name')->get(),
             'jobCategories' => JobCategory::orderBy('name')->get(),
             'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),

@@ -136,4 +136,49 @@
             @endif
         @endif
     </div>
+
+    {{-- The job categories they take on, as tags — for Sourcing and Data Entry
+         (User::JOB_CATEGORY_TAG_ROLES): shown while one of those roles is
+         ticked (admin.js, .js-job-category-tags); anyone else is saved with
+         none (UserController::syncJobCategories()). Typing in the field
+         drops down the categories that match (the JSON below); picking one
+         adds it as a tag, a hidden job_categories[] id with an × to take it
+         off (admin.js, .js-category-tag-picker). --}}
+    @php
+        $jobCategories ??= collect();
+        $tagRoles = \App\Models\User::JOB_CATEGORY_TAG_ROLES;
+        $pickedCategories = $showOld
+            ? collect((array) old('job_categories', []))->map(fn ($id) => $jobCategories->firstWhere('id', (int) $id))->filter()->unique('id')
+            : collect();
+        $showsTags = $showOld && array_intersect($tagRoles, (array) old('roles', [])) !== [];
+    @endphp
+    <div @class(['col-12 js-job-category-tags', 'd-none' => ! $showsTags]) data-tag-roles="{{ implode('|', $tagRoles) }}">
+        <label class="form-label" for="{{ $idPrefix }}-category-search">Job categories <span class="text-muted-soft fw-normal">(the work they take on)</span></label>
+        @if ($jobCategories->isEmpty())
+            <p class="text-muted-soft small mb-0">No job categories yet — add them on Job Categories.</p>
+        @else
+            <div class="category-tag-picker js-category-tag-picker">
+                <div class="form-control category-tag-box">
+                    <span class="category-tag-chips js-category-tag-chips">
+                        @foreach ($pickedCategories as $category)
+                            <span class="category-tag-chip" data-category-id="{{ $category->id }}">
+                                <i class="bi bi-tag"></i> {{ $category->name }}
+                                <input type="hidden" name="job_categories[]" value="{{ $category->id }}">
+                                <button type="button" class="category-tag-remove js-category-tag-remove" aria-label="Remove {{ $category->name }}"><i class="bi bi-x"></i></button>
+                            </span>
+                        @endforeach
+                    </span>
+                    <input type="text" class="category-tag-input js-category-tag-input" id="{{ $idPrefix }}-category-search"
+                           placeholder="Type a category…" autocomplete="off" role="combobox" aria-autocomplete="list"
+                           aria-expanded="false" aria-controls="{{ $idPrefix }}-category-options">
+                </div>
+                <div class="category-tag-menu js-category-tag-menu" id="{{ $idPrefix }}-category-options" role="listbox" hidden></div>
+                <script type="application/json" class="js-category-tag-options">{!! json_encode($jobCategories->map(fn ($category) => ['id' => $category->id, 'name' => $category->name])->values(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
+            </div>
+            <div class="form-text">For Sourcing and Data Entry — type a category's name and pick it to add it as a tag.</div>
+            @if ($errors->getBag($idPrefix)->has('job_categories.*'))
+                <div class="text-danger small mt-2">{{ $errors->getBag($idPrefix)->first('job_categories.*') }}</div>
+            @endif
+        @endif
+    </div>
 </div>

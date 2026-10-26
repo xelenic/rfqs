@@ -5,6 +5,7 @@ use App\Models\Rfq;
 use App\Models\User;
 use Database\Seeders\JobCategorySeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -555,7 +556,57 @@ it('ends the wizard on a summary step, the only place Finish appears', function 
 it('gives each Sourcing member\'s bare name to the summary', function () {
     $sam = userWithRole('Sourcing');
 
-    test()->actingAs(userWithRole('Senior Operations'))
-        ->get(route('admin.rfqs.index'))
-        ->assertSee('data-name="'.e($sam->name).'"', false);
+    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index'))->assertOk()->getContent();
+
+    expect(wizardSourcingPeople($html))->{0}->name->toBe($sam->name);
+});
+
+/**
+ * The Sourcing members the Assign Sourcing wizard's dropdown lists, read
+ * from the page's #assign-sourcing-people.
+ *
+ * @return list<array{id: int, name: string, avatar: ?string, initial: string, pending: int, categories: list<string>}>
+ */
+function wizardSourcingPeople(string $html): array
+{
+    return json_decode(Str::before(Str::after($html, 'id="assign-sourcing-people">'), '</script>'), true);
+}
+
+it('lists each Sourcing member in the wizard\'s dropdown — photo, name, pending count and job categories', function () {
+    $ops = userWithRole('Senior Operations');
+    $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen', 'avatar_path' => 'avatars/riley.jpg']);
+    $sam = tap(userWithRole('Sourcing'))->update(['name' => 'Sam Rivera']);
+    $riley->jobCategories()->sync([
+        JobCategory::factory()->create(['name' => 'Fire Safety'])->id,
+        JobCategory::factory()->create(['name' => 'Electrical Works'])->id,
+    ]);
+    splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => $riley]);
+    $rfq = Rfq::factory()->create(['status' => 'Pending']);
+
+    $html = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee('id="assign-person-panel"', false)
+        ->assertSee('placeholder="Search Sourcing by name or job category…"', false)
+        ->assertDontSee('assign-user-options', false)
+        ->getContent();
+
+    expect(wizardSourcingPeople($html))->toBe([
+        ['id' => $riley->id, 'name' => 'Riley Chen', 'avatar' => $riley->avatarUrl(), 'initial' => 'R', 'pending' => 2, 'categories' => ['Electrical Works', 'Fire Safety']],
+        ['id' => $sam->id, 'name' => 'Sam Rivera', 'avatar' => null, 'initial' => 'S', 'pending' => 0, 'categories' => []],
+    ]);
+
+    // The RFQ's own page has the wizard too, with the same people.
+    expect(wizardSourcingPeople(test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent()))
+        ->toHaveCount(2)
+        ->{0}->categories->toBe(['Electrical Works', 'Fire Safety']);
+});
+
+it('keeps a job category\'s name from breaking out of the wizard\'s list of people', function () {
+    $riley = userWithRole('Sourcing');
+    $riley->jobCategories()->sync([JobCategory::factory()->create(['name' => 'Wiring </script><script>alert(1)</script>'])->id]);
+    Rfq::factory()->create(['status' => 'Pending']);
+
+    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+
+    expect($html)->not->toContain('<script>alert(1)')
+        ->and(wizardSourcingPeople($html)[0]['categories'])->toBe(['Wiring </script><script>alert(1)</script>']);
 });

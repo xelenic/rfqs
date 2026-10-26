@@ -66,6 +66,14 @@
                                 @empty
                                     <span class="badge badge-soft-secondary">No role</span>
                                 @endforelse
+                                {{-- The job categories they take on (Sourcing, Data Entry). --}}
+                                @if ($user->jobCategories->isNotEmpty())
+                                    <div class="job-category-tag-list mt-1" data-job-categories="{{ $user->id }}">
+                                        @foreach ($user->jobCategories as $category)
+                                            <span class="badge badge-soft-secondary fw-normal"><i class="bi bi-tag"></i> {{ $category->name }}</span>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </td>
                             <td class="text-muted-soft">{{ $user->created_at->toBusinessTimezone()->format('M d, Y') }}</td>
                             <td class="text-end">
@@ -93,7 +101,8 @@
                                                         data-id="{{ $user->id }}"
                                                         data-name="{{ $user->name }}"
                                                         data-email="{{ $user->email }}"
-                                                        data-roles="{{ $user->roles->pluck('name')->join(',') }}">
+                                                        data-roles="{{ $user->roles->pluck('name')->join(',') }}"
+                            data-categories="{{ $user->jobCategories->pluck('id')->join(',') }}">
                                                     <i class="bi bi-pencil"></i> Edit
                                                 </button>
                                             </li>

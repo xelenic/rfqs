@@ -47,6 +47,215 @@ function rfqmsBoot() {
         if (card) card.classList.toggle('selected', input.checked);
     }
 
+    // Users → Add/Edit user: the job categories they take on (tags) show
+    // while Sourcing or Data Entry is ticked (data-tag-roles).
+    function syncJobCategoryTags(form) {
+        var section = form && form.querySelector('.js-job-category-tags');
+        if (!section) return;
+
+        var tagRoles = (section.dataset.tagRoles || '').split('|');
+        var takesTags = Array.prototype.some.call(form.querySelectorAll('input[name="roles[]"]:checked'), function (box) {
+            return tagRoles.indexOf(box.value) !== -1;
+        });
+        section.classList.toggle('d-none', !takesTags);
+    }
+
+    document.querySelectorAll('.js-job-category-tags').forEach(function (section) {
+        var form = section.closest('form');
+        form.querySelectorAll('input[name="roles[]"]').forEach(function (box) {
+            box.addEventListener('change', function () { syncJobCategoryTags(form); });
+        });
+    });
+
+    // The job categories' field: typing drops down the categories whose
+    // name has what's typed (the JSON in .js-category-tag-options), those
+    // starting with it first; picking one — click, or arrows and Enter —
+    // adds it as a tag with a hidden job_categories[] id. A tag's × (or
+    // Backspace in the empty field) takes it off.
+    function categoryTagChip(category) {
+        var chip = document.createElement('span');
+        chip.className = 'category-tag-chip';
+        chip.dataset.categoryId = String(category.id);
+
+        var icon = document.createElement('i');
+        icon.className = 'bi bi-tag';
+        chip.appendChild(icon);
+        chip.appendChild(document.createTextNode(' ' + category.name + ' '));
+
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'job_categories[]';
+        hidden.value = String(category.id);
+        chip.appendChild(hidden);
+
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'category-tag-remove js-category-tag-remove';
+        remove.setAttribute('aria-label', 'Remove ' + category.name);
+        remove.innerHTML = '<i class="bi bi-x"></i>';
+        chip.appendChild(remove);
+
+        return chip;
+    }
+
+    // Sets a picker's tags to the categories with these ids (Edit user).
+    function setCategoryTags(picker, ids) {
+        if (!picker || !picker.categoryTags) return;
+        picker.categoryTags.set(ids);
+    }
+
+    document.querySelectorAll('.js-category-tag-picker').forEach(function (picker) {
+        var input = picker.querySelector('.js-category-tag-input');
+        var chips = picker.querySelector('.js-category-tag-chips');
+        var menu = picker.querySelector('.js-category-tag-menu');
+        var categories = [];
+        try {
+            categories = JSON.parse(picker.querySelector('.js-category-tag-options').textContent || '[]');
+        } catch (e) {
+            categories = [];
+        }
+
+        function pickedIds() {
+            return Array.prototype.map.call(chips.querySelectorAll('input[name="job_categories[]"]'), function (hidden) {
+                return hidden.value;
+            });
+        }
+
+        function closeMenu() {
+            menu.hidden = true;
+            menu.innerHTML = '';
+            input.setAttribute('aria-expanded', 'false');
+        }
+
+        function add(category) {
+            if (pickedIds().indexOf(String(category.id)) === -1) {
+                chips.appendChild(categoryTagChip(category));
+            }
+            input.value = '';
+            closeMenu();
+            input.focus();
+        }
+
+        function openMenu() {
+            var q = input.value.trim().toLowerCase();
+            var picked = pickedIds();
+            var matches = categories
+                .filter(function (category) {
+                    return picked.indexOf(String(category.id)) === -1 && category.name.toLowerCase().indexOf(q) !== -1;
+                })
+                .sort(function (a, b) {
+                    var aStarts = a.name.toLowerCase().indexOf(q) === 0 ? 0 : 1;
+                    var bStarts = b.name.toLowerCase().indexOf(q) === 0 ? 0 : 1;
+                    return aStarts !== bStarts ? aStarts - bStarts : a.name.localeCompare(b.name);
+                });
+
+            menu.innerHTML = '';
+            if (!matches.length) {
+                var none = document.createElement('div');
+                none.className = 'category-tag-menu-empty';
+                none.textContent = q
+                    ? 'No job category matches “' + input.value.trim() + '”.'
+                    : 'All the job categories are added.';
+                menu.appendChild(none);
+            }
+            matches.forEach(function (category, index) {
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'mention-dropdown-item' + (index === 0 ? ' is-active' : '');
+                item.setAttribute('role', 'option');
+                item.innerHTML = '<i class="bi bi-tag"></i>';
+                item.appendChild(document.createTextNode(' ' + category.name));
+                // mousedown (not click) fires before the field blurs and
+                // closes the menu out from under it.
+                item.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    add(category);
+                });
+                menu.appendChild(item);
+            });
+
+            menu.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+        }
+
+        picker.categoryTags = {
+            set: function (ids) {
+                chips.innerHTML = '';
+                ids.forEach(function (id) {
+                    var category = categories.find(function (c) { return String(c.id) === String(id); });
+                    if (category) chips.appendChild(categoryTagChip(category));
+                });
+                input.value = '';
+                closeMenu();
+            },
+        };
+
+        input.addEventListener('input', openMenu);
+        input.addEventListener('focus', openMenu);
+        input.addEventListener('blur', function () {
+            // Delay so a mousedown pick on the menu still registers — and
+            // leave it open if the field has the cursor back by then (a
+            // tag's × hands it straight back).
+            setTimeout(function () {
+                if (document.activeElement !== input) closeMenu();
+            }, 150);
+        });
+
+        input.addEventListener('keydown', function (e) {
+            var items = menu.querySelectorAll('.mention-dropdown-item');
+            var activeIndex = Array.prototype.findIndex.call(items, function (el) {
+                return el.classList.contains('is-active');
+            });
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                if (menu.hidden) {
+                    openMenu();
+                    return;
+                }
+                if (!items.length) return;
+                e.preventDefault();
+                var next = (activeIndex + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+                items.forEach(function (el, i) { el.classList.toggle('is-active', i === next); });
+                items[next].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                // Enter picks the highlighted category — and never sends the
+                // form while something is typed.
+                if (!menu.hidden && activeIndex !== -1) {
+                    e.preventDefault();
+                    items[activeIndex].dispatchEvent(new MouseEvent('mousedown', { cancelable: true }));
+                } else if (input.value.trim() !== '') {
+                    e.preventDefault();
+                }
+            } else if (e.key === 'Escape' && !menu.hidden) {
+                // Close the menu, not the modal around it.
+                e.preventDefault();
+                e.stopPropagation();
+                closeMenu();
+            } else if (e.key === 'Backspace' && input.value === '') {
+                var last = chips.lastElementChild;
+                if (last) {
+                    last.remove();
+                    if (!menu.hidden) openMenu();
+                }
+            }
+        });
+
+        chips.addEventListener('click', function (e) {
+            var remove = e.target.closest('.js-category-tag-remove');
+            if (!remove) return;
+            remove.closest('.category-tag-chip').remove();
+            input.focus();
+        });
+
+        // Clicking the box's empty space puts the cursor in the field.
+        picker.querySelector('.category-tag-box').addEventListener('mousedown', function (e) {
+            if (e.target === e.currentTarget) {
+                e.preventDefault();
+                input.focus();
+            }
+        });
+    });
+
     document.querySelectorAll('.role-pick-input').forEach(function (input) {
         syncRolePickCard(input);
         input.addEventListener('change', function () {
@@ -123,6 +332,10 @@ function rfqmsBoot() {
                 checkbox.checked = roles.indexOf(checkbox.value) !== -1;
                 syncRolePickCard(checkbox);
             });
+
+            // Their job categories, as tags (shown for Sourcing and Data Entry).
+            setCategoryTags(form.querySelector('.js-category-tag-picker'), (button.dataset.categories || '').split(',').filter(Boolean));
+            syncJobCategoryTags(form);
         });
     });
 
@@ -256,10 +469,24 @@ function rfqmsBoot() {
         var leadText = document.getElementById('assign-lead-text');
         var summary = document.getElementById('assign-summary');
         var reviewParts = document.getElementById('review-parts');
-        var userOptions = document.getElementById('assign-user-options');
+        var recommendNote = document.getElementById('assign-recommend-note');
+        var personPanel = document.getElementById('assign-person-panel');
+        var personSearch = document.getElementById('assign-person-search');
+        var personList = document.getElementById('assign-person-options');
         var maxParts = parseInt(partsCountInput.max, 10) || 20;
 
+        // The Sourcing members to pick from: id, name, avatar (photo URL) or
+        // initial, pending (parts not yet completed) and categories (the job
+        // categories they're tagged with) — see _assign_modal.blade.php.
+        var people = [];
+        try {
+            people = JSON.parse(document.getElementById('assign-sourcing-people').textContent || '[]');
+        } catch (e) {
+            people = [];
+        }
+
         var state = null;
+        var openPicker = null; // the part's picker whose dropdown is open
 
         function isSplitChosen() {
             return form.querySelector('input[name="split_choice"]:checked').value === 'split';
@@ -284,6 +511,7 @@ function rfqmsBoot() {
         }
 
         function showStep(step) {
+            closePersonPicker(false);
             state.step = step;
             [1, 2, 3, 4].forEach(function (n) {
                 panels[n].classList.toggle('d-none', step !== n);
@@ -376,25 +604,313 @@ function rfqmsBoot() {
                 return row;
             }
 
-            var select = document.createElement('select');
-            select.className = 'form-select form-select-sm wizard-part-select';
-            select.name = 'assignments[' + part + ']';
-            select.dataset.part = part;
-            select.setAttribute('aria-label', 'Sourcing member for ' + partLabel(part, total));
-            select.appendChild(userOptions.content.cloneNode(true));
+            // Who takes it: a hidden assignments[part] holding their id, and
+            // the button that opens the searchable dropdown to pick them.
+            var picker = document.createElement('div');
+            picker.className = 'person-picker';
+
+            var value = document.createElement('input');
+            value.type = 'hidden';
+            value.name = 'assignments[' + part + ']';
+            value.className = 'js-assign-part-value';
+            value.dataset.part = part;
+            value.value = previousValue && findPerson(previousValue) ? previousValue : '';
+            picker.appendChild(value);
+
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'person-picker-trigger';
+            trigger.setAttribute('aria-haspopup', 'listbox');
+            trigger.setAttribute('aria-expanded', 'false');
+            trigger.setAttribute('aria-label', 'Sourcing member for ' + partLabel(part, total));
             // A whole, unsplit RFQ needs someone; a part of a split can wait.
-            select.querySelector('option[value=""]').textContent =
-                !state.remaining && !isSplitChosen() ? 'Select a Sourcing member' : 'Leave unassigned';
-            select.value = previousValue || '';
-            row.appendChild(select);
+            var whole = !state.remaining && !isSplitChosen();
+            trigger.dataset.allowEmpty = whole ? '' : '1';
+            trigger.dataset.placeholder = whole ? 'Select a Sourcing member' : 'Leave unassigned';
+            trigger.addEventListener('click', function () {
+                openPersonPicker(trigger);
+            });
+            trigger.addEventListener('keydown', function (e) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    openPersonPicker(trigger);
+                }
+            });
+            picker.appendChild(trigger);
+            renderPickerTrigger(trigger);
+
+            row.appendChild(picker);
             return row;
         }
 
+        function findPerson(id) {
+            return people.find(function (person) { return String(person.id) === String(id); }) || null;
+        }
+
+        function pickerValue(trigger) {
+            return trigger.parentNode.querySelector('.js-assign-part-value');
+        }
+
+        // Whether someone is tagged with the job category being assigned —
+        // they're marked Recommended and listed first.
+        function isRecommended(person) {
+            var category = (currentCategory().name || '').trim().toLowerCase();
+            return category !== '' && person.categories.some(function (name) {
+                return name.toLowerCase() === category;
+            });
+        }
+
+        // Their photo, or their initial without one — as <x-avatar>.
+        function personAvatar(person) {
+            var avatar = document.createElement('span');
+            avatar.className = 'assignee-avatar person-picker-avatar' + (person.avatar ? ' has-photo' : '');
+            if (person.avatar) {
+                var photo = document.createElement('img');
+                photo.src = person.avatar;
+                photo.alt = '';
+                photo.loading = 'lazy';
+                avatar.appendChild(photo);
+            } else {
+                avatar.textContent = person.initial || '?';
+            }
+            return avatar;
+        }
+
+        function personBit(className, text, icon) {
+            var bit = document.createElement('span');
+            bit.className = className;
+            if (icon) bit.innerHTML = '<i class="bi ' + icon + '" aria-hidden="true"></i> ';
+            bit.appendChild(document.createTextNode(text));
+            return bit;
+        }
+
+        function pendingBit(person) {
+            return personBit('person-picker-pending' + (person.pending ? '' : ' is-free'), person.pending + ' pending', 'bi-hourglass-split');
+        }
+
+        // The picker's button: who's picked — photo, name, Recommended and
+        // their pending count — or what leaving it empty means.
+        function renderPickerTrigger(trigger) {
+            var person = findPerson(pickerValue(trigger).value);
+            var recommended = !!person && isRecommended(person);
+
+            trigger.innerHTML = '';
+            trigger.classList.toggle('is-recommended', recommended);
+            if (person) {
+                trigger.appendChild(personAvatar(person));
+                trigger.appendChild(personBit('person-picker-name', person.name));
+                if (recommended) trigger.appendChild(personBit('person-picker-recommended', 'Recommended', 'bi-star-fill'));
+                trigger.appendChild(pendingBit(person));
+            } else {
+                trigger.appendChild(personBit('person-picker-placeholder', trigger.dataset.placeholder, trigger.dataset.allowEmpty ? 'bi-person-dash' : 'bi-person'));
+            }
+            var caret = document.createElement('i');
+            caret.className = 'bi bi-chevron-down person-picker-caret';
+            caret.setAttribute('aria-hidden', 'true');
+            trigger.appendChild(caret);
+        }
+
+        // The open dropdown's list: what's typed matches a name or a job
+        // category. Those tagged with the RFQ's category come first, under
+        // Recommended, then everyone else — each with their photo, name,
+        // pending count and categories (the matching one picked out).
+        function renderPersonList() {
+            var q = personSearch.value.trim().toLowerCase();
+            var picked = pickerValue(openPicker).value;
+            var category = currentCategory().name;
+            var matches = people.filter(function (person) {
+                return !q || person.name.toLowerCase().indexOf(q) !== -1 || person.categories.some(function (name) {
+                    return name.toLowerCase().indexOf(q) !== -1;
+                });
+            });
+            var recommended = matches.filter(isRecommended);
+            var others = matches.filter(function (person) { return !isRecommended(person); });
+
+            personList.innerHTML = '';
+            if (openPicker.dataset.allowEmpty && !q) {
+                addPersonOption(null, picked === '');
+            }
+            if (recommended.length) {
+                personList.appendChild(personBit('person-picker-group is-recommended', 'Recommended for ' + category, 'bi-star-fill'));
+                recommended.forEach(function (person) { addPersonOption(person, String(person.id) === picked); });
+            }
+            if (others.length) {
+                if (recommended.length) personList.appendChild(personBit('person-picker-group', 'Other Sourcing members'));
+                others.forEach(function (person) { addPersonOption(person, String(person.id) === picked); });
+            }
+            if (!matches.length) {
+                personList.appendChild(personBit('person-picker-empty', 'No Sourcing member matches “' + personSearch.value.trim() + '”.'));
+            }
+
+            var options = personList.querySelectorAll('.person-picker-option');
+            var selected = personList.querySelector('.person-picker-option.is-selected');
+            setActivePersonOption(q || !selected ? options[0] : selected);
+        }
+
+        function addPersonOption(person, isSelected) {
+            var option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'person-picker-option' + (isSelected ? ' is-selected' : '');
+            option.id = 'assign-person-option-' + (person ? person.id : 'none');
+            option.dataset.value = person ? String(person.id) : '';
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            option.tabIndex = -1;
+
+            if (person) {
+                var recommended = isRecommended(person);
+                var category = (currentCategory().name || '').toLowerCase();
+                option.classList.toggle('is-recommended', recommended);
+                option.appendChild(personAvatar(person));
+
+                var who = document.createElement('span');
+                who.className = 'person-picker-who';
+                var top = document.createElement('span');
+                top.className = 'person-picker-who-top';
+                top.appendChild(personBit('person-picker-name', person.name));
+                if (recommended) top.appendChild(personBit('person-picker-recommended', 'Recommended', 'bi-star-fill'));
+                who.appendChild(top);
+
+                var tags = document.createElement('span');
+                tags.className = 'person-picker-tags';
+                if (person.categories.length) {
+                    person.categories.forEach(function (name) {
+                        tags.appendChild(personBit('person-picker-tag' + (name.toLowerCase() === category ? ' is-match' : ''), name, 'bi-tag'));
+                    });
+                } else {
+                    tags.appendChild(personBit('person-picker-tag is-none', 'No job categories'));
+                }
+                who.appendChild(tags);
+                option.appendChild(who);
+                option.appendChild(pendingBit(person));
+            } else {
+                var none = document.createElement('span');
+                none.className = 'assignee-avatar person-picker-avatar person-picker-avatar-none';
+                none.innerHTML = '<i class="bi bi-person-dash" aria-hidden="true"></i>';
+                option.appendChild(none);
+                var label = document.createElement('span');
+                label.className = 'person-picker-who';
+                label.appendChild(personBit('person-picker-name', 'Leave unassigned'));
+                label.appendChild(personBit('person-picker-tags person-picker-tag is-none', 'Assign this part later'));
+                option.appendChild(label);
+            }
+
+            if (isSelected) {
+                var check = document.createElement('i');
+                check.className = 'bi bi-check-lg person-picker-check';
+                check.setAttribute('aria-hidden', 'true');
+                option.appendChild(check);
+            }
+
+            // mousedown (not click), so the search box keeps focus until
+            // the pick is made.
+            option.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                pickPerson(option.dataset.value);
+            });
+            option.addEventListener('mousemove', function () {
+                setActivePersonOption(option);
+            });
+            personList.appendChild(option);
+        }
+
+        function setActivePersonOption(option) {
+            personList.querySelectorAll('.person-picker-option.is-active').forEach(function (el) {
+                el.classList.remove('is-active');
+            });
+            if (option) {
+                option.classList.add('is-active');
+                personSearch.setAttribute('aria-activedescendant', option.id);
+            } else {
+                personSearch.removeAttribute('aria-activedescendant');
+            }
+        }
+
+        function pickPerson(value) {
+            var trigger = openPicker;
+            if (!trigger) return;
+            pickerValue(trigger).value = value;
+            renderPickerTrigger(trigger);
+            closePersonPicker(true);
+            showError(3, '');
+        }
+
+        function openPersonPicker(trigger) {
+            if (openPicker === trigger) {
+                closePersonPicker(true);
+                return;
+            }
+            closePersonPicker(false);
+            openPicker = trigger;
+            trigger.classList.add('is-open');
+            trigger.setAttribute('aria-expanded', 'true');
+            personSearch.value = '';
+            personPanel.hidden = false;
+            renderPersonList();
+            placePersonPanel();
+            personSearch.focus();
+            var active = personList.querySelector('.person-picker-option.is-active');
+            if (active) active.scrollIntoView({ block: 'nearest' });
+        }
+
+        function closePersonPicker(refocus) {
+            if (!openPicker) return;
+            var trigger = openPicker;
+            openPicker = null;
+            personPanel.hidden = true;
+            trigger.classList.remove('is-open');
+            trigger.setAttribute('aria-expanded', 'false');
+            if (refocus) trigger.focus();
+        }
+
+        // Under its picker — or over it, when there's more room above —
+        // as wide as the picker (at least 380px), and closed once the
+        // picker scrolls out of the wizard's body.
+        function placePersonPanel() {
+            if (!openPicker) return;
+            var rect = openPicker.getBoundingClientRect();
+            var body = openPicker.closest('.modal-body').getBoundingClientRect();
+            if (rect.bottom < body.top || rect.top > body.bottom) {
+                closePersonPicker(false);
+                return;
+            }
+            var width = Math.min(Math.max(rect.width, 380), window.innerWidth - 16);
+            var below = window.innerHeight - rect.bottom - 12;
+            var above = rect.top - 12;
+            var flip = below < 260 && above > below;
+
+            personPanel.style.width = width + 'px';
+            personPanel.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + 'px';
+            personPanel.style.maxHeight = Math.min(400, flip ? above : below) + 'px';
+            personPanel.style.top = flip ? '' : (rect.bottom + 4) + 'px';
+            personPanel.style.bottom = flip ? (window.innerHeight - rect.top + 4) + 'px' : '';
+        }
+
+        // Step 3's note on who's recommended for the category: those tagged
+        // with it, or that nobody is yet.
+        function renderRecommendNote() {
+            var category = (currentCategory().name || '').trim();
+            var names = people.filter(isRecommended).map(function (person) { return person.name; });
+
+            recommendNote.classList.toggle('d-none', !category);
+            recommendNote.classList.toggle('is-none', !names.length);
+            recommendNote.innerHTML = '';
+            if (!category) return;
+
+            var listed = names.length > 3
+                ? names.slice(0, 3).join(', ') + ' and ' + (names.length - 3) + ' more'
+                : names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
+            recommendNote.appendChild(names.length
+                ? personBit('', 'Recommended for ' + category + ': ' + listed + ' — tagged with it, so they\'re marked and listed first.', 'bi-star-fill')
+                : personBit('', 'No Sourcing member is tagged with ' + category + ' yet — tag people with it on Users and they\'ll be recommended here.', 'bi-info-circle'));
+        }
+
         function renderParts() {
+            closePersonPicker(false);
             var total = partsCount();
             var previous = {};
-            partsList.querySelectorAll('select').forEach(function (select) {
-                previous[select.dataset.part] = select.value;
+            partsList.querySelectorAll('.js-assign-part-value').forEach(function (value) {
+                previous[value.dataset.part] = value.value;
             });
 
             partsList.innerHTML = '';
@@ -494,6 +1010,7 @@ function rfqmsBoot() {
                 el.appendChild(document.createTextNode(chip[1]));
                 summary.appendChild(el);
             });
+            renderRecommendNote();
         }
 
         // Step 4: the whole picture, laid out from what the earlier steps
@@ -531,8 +1048,8 @@ function rfqmsBoot() {
 
                 var who = document.createElement('span');
                 who.className = 'review-part-who';
-                var select = partsList.querySelector('select[data-part="' + part + '"]');
-                var picked = select && select.value ? select.options[select.selectedIndex] : null;
+                var value = partsList.querySelector('.js-assign-part-value[data-part="' + part + '"]');
+                var picked = value && value.value ? findPerson(value.value) : null;
 
                 if (state.assigned[part]) {
                     already++;
@@ -545,7 +1062,13 @@ function rfqmsBoot() {
                 } else if (picked) {
                     assignedNow++;
                     who.innerHTML = '<i class="bi bi-person-check-fill"></i> ';
-                    who.appendChild(document.createTextNode(picked.dataset.name || picked.textContent));
+                    who.appendChild(document.createTextNode(picked.name));
+                    if (isRecommended(picked)) {
+                        var recommendedTag = document.createElement('span');
+                        recommendedTag.className = 'review-part-tag';
+                        recommendedTag.textContent = 'recommended';
+                        who.appendChild(recommendedTag);
+                    }
                 } else {
                     unassigned++;
                     who.classList.add('is-empty');
@@ -610,9 +1133,9 @@ function rfqmsBoot() {
         }
 
         function validateStep3() {
-            var selects = partsList.querySelectorAll('select');
-            var anyPicked = Array.prototype.some.call(selects, function (select) {
-                return select.value !== '';
+            var values = partsList.querySelectorAll('.js-assign-part-value');
+            var anyPicked = Array.prototype.some.call(values, function (value) {
+                return value.value !== '';
             });
 
             if (!state.remaining && !isSplitChosen() && !anyPicked) {
@@ -736,6 +1259,43 @@ function rfqmsBoot() {
         });
         backBtn.addEventListener('click', function () {
             showStep(state.step - 1);
+        });
+
+        // The Sourcing dropdown: typing narrows it; arrows and Enter pick;
+        // Escape closes it (not the wizard); a click outside closes it.
+        personSearch.addEventListener('input', renderPersonList);
+        personSearch.addEventListener('keydown', function (e) {
+            var options = Array.prototype.slice.call(personList.querySelectorAll('.person-picker-option'));
+            var active = personList.querySelector('.person-picker-option.is-active');
+            var index = options.indexOf(active);
+
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!options.length) return;
+                var next = options[(index + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length];
+                setActivePersonOption(next);
+                next.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (active) pickPerson(active.dataset.value);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closePersonPicker(true);
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                closePersonPicker(true);
+            }
+        });
+        document.addEventListener('mousedown', function (e) {
+            if (openPicker && !personPanel.contains(e.target) && !openPicker.contains(e.target)) {
+                closePersonPicker(false);
+            }
+        });
+        form.querySelector('.modal-body').addEventListener('scroll', placePersonPanel);
+        window.addEventListener('resize', placePersonPanel);
+        modalEl.addEventListener('hide.bs.modal', function () {
+            closePersonPicker(false);
         });
 
         // The summary's "Change" buttons jump back to the step each card

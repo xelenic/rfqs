@@ -40,7 +40,7 @@ final class LiveVersion
      */
     public const IGNORED_TABLES = [
         'cache', 'cache_locks', 'failed_jobs', 'job_batches', 'jobs', 'migrations', 'password_reset_tokens', 'sessions', 'settings',
-        'users', 'roles', 'permissions', 'model_has_roles', 'model_has_permissions', 'role_has_permissions',
+        'users', 'roles', 'permissions', 'model_has_roles', 'model_has_permissions', 'role_has_permissions', 'job_category_user',
     ];
 
     private const CACHE_KEY = 'live-version';

@@ -183,6 +183,14 @@ class User extends Authenticatable
     public const JOB_CATEGORY_ROLES = ['Admin', 'Senior Operations', 'GM Assistant'];
 
     /**
+     * The roles whose people are tagged with the job categories they take on
+     * (jobCategories()) — asked as they're added or edited on the Users page.
+     *
+     * @var array<int, string>
+     */
+    public const JOB_CATEGORY_TAG_ROLES = ['Sourcing', 'Data Entry'];
+
+    /**
      * Who has written to this person themselves — peopleWhoWroteToMe(),
      * looked up once a request.
      *
@@ -662,6 +670,24 @@ class User extends Authenticatable
     public function unreadMessageCount(): int
     {
         return $this->receivedMessages()->unread()->count() + (int) MessageGroup::unreadCountsFor($this)->sum();
+    }
+
+    /**
+     * The job categories they take on — their tags, for someone in Sourcing
+     * or Data Entry (JOB_CATEGORY_TAG_ROLES).
+     */
+    public function jobCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(JobCategory::class)->withTimestamps()->orderBy('name');
+    }
+
+    /**
+     * Whether they're tagged with job categories — someone in Sourcing or
+     * Data Entry (JOB_CATEGORY_TAG_ROLES).
+     */
+    public function takesJobCategoryTags(): bool
+    {
+        return $this->hasAnyRole(self::JOB_CATEGORY_TAG_ROLES);
     }
 
     /**

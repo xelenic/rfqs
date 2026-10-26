@@ -2176,6 +2176,104 @@ a.pipeline-label:hover {
   color: #fff;
 }
 
+/* Users list and profile: the job categories someone takes on, as tags. */
+.job-category-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Users → Add/Edit user: the job categories' field — the tags picked so far,
+   then the text box that drops down the categories matching what's typed. */
+.category-tag-picker {
+  position: relative;
+}
+
+.category-tag-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.6rem;
+  cursor: text;
+}
+
+.category-tag-box:focus-within {
+  border-color: var(--rfq-primary);
+  box-shadow: 0 0 0 0.2rem var(--rfq-primary-soft);
+}
+
+.category-tag-chips {
+  display: contents;
+}
+
+.category-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.25rem 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--rfq-primary-soft);
+  color: var(--rfq-primary-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.category-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font-size: 0.95rem;
+}
+
+.category-tag-remove:hover,
+.category-tag-remove:focus-visible {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.category-tag-input {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--rfq-text);
+  padding: 0.1rem 0.15rem;
+}
+
+.category-tag-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1080;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.3rem;
+  background: #fff;
+  border: 1px solid var(--rfq-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+}
+
+.category-tag-menu .mention-dropdown-item {
+  gap: 0.45rem;
+}
+
+.category-tag-menu-empty {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  color: var(--rfq-text-muted);
+}
+
 /* Messages → New message (messages/index): who to send it to, one row each. */
 .new-message-people {
   max-height: 280px;
@@ -4570,8 +4668,275 @@ a.pipeline-label:hover {
   white-space: nowrap;
 }
 
-.wizard-part-select {
-  max-width: 18rem;
+/* Assign Sourcing → who takes each part: a searchable dropdown of the
+   Sourcing members (admin.js) — their photo, name and pending count, with
+   those tagged with the RFQ's job category marked Recommended. */
+.person-picker {
+  flex: 0 1 28rem;
+  min-width: 0;
+}
+
+.person-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--rfq-border);
+  border-radius: var(--rfq-radius);
+  background: var(--rfq-surface);
+  color: var(--rfq-text);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.person-picker-trigger:hover {
+  border-color: var(--rfq-primary);
+}
+
+.person-picker-trigger.is-open,
+.person-picker-trigger:focus-visible {
+  outline: none;
+  border-color: var(--rfq-primary);
+  box-shadow: 0 0 0 0.2rem var(--rfq-primary-soft);
+}
+
+.person-picker-trigger.is-recommended {
+  border-color: rgba(26, 156, 106, 0.55);
+  background: rgba(26, 156, 106, 0.06);
+}
+
+.person-picker-trigger .person-picker-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person-picker-placeholder {
+  flex: 1 1 auto;
+  color: var(--rfq-text-muted);
+}
+
+.person-picker-caret {
+  margin-left: auto;
+  color: var(--rfq-text-muted);
+  font-size: 0.75rem;
+}
+
+.person-picker-avatar {
+  width: 28px;
+  height: 28px;
+  margin-left: 0;
+  font-size: 0.72rem;
+}
+
+.person-picker-avatar-none {
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.85rem;
+}
+
+.person-picker-name {
+  font-weight: 600;
+}
+
+.person-picker-recommended {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(26, 156, 106, 0.14);
+  color: #13724d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.person-picker-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.person-picker-pending.is-free {
+  color: var(--rfq-success);
+}
+
+.person-picker-trigger .person-picker-pending + .person-picker-caret,
+.person-picker-trigger .person-picker-placeholder + .person-picker-caret {
+  margin-left: 0.25rem;
+}
+
+/* The dropdown itself — fixed, so the wizard's scrolling body doesn't clip
+   it; admin.js places it under (or over) the open picker. */
+.person-picker-panel {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--rfq-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+.person-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--rfq-border);
+  color: var(--rfq-text-muted);
+}
+
+.person-picker-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--rfq-text);
+  font-size: 0.88rem;
+}
+
+.person-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.3rem;
+}
+
+.person-picker-group {
+  display: block;
+  padding: 0.5rem 0.6rem 0.25rem;
+  color: var(--rfq-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.person-picker-group.is-recommended {
+  color: #13724d;
+}
+
+.person-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--rfq-text);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.person-picker-option .person-picker-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 0.8rem;
+}
+
+.person-picker-option.is-recommended {
+  border-left-color: var(--rfq-success);
+  background: rgba(26, 156, 106, 0.07);
+}
+
+.person-picker-option.is-active {
+  background: var(--rfq-primary-soft);
+}
+
+.person-picker-option.is-recommended.is-active {
+  background: rgba(26, 156, 106, 0.16);
+}
+
+.person-picker-who {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.person-picker-who-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.person-picker-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.person-picker-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
+  font-size: 0.68rem;
+}
+
+.person-picker-tag.is-match {
+  background: rgba(26, 156, 106, 0.16);
+  color: #13724d;
+  font-weight: 700;
+}
+
+.person-picker-tag.is-none {
+  background: none;
+  padding: 0;
+  font-style: italic;
+}
+
+.person-picker-check {
+  color: var(--rfq-primary);
+  font-size: 1rem;
+}
+
+.person-picker-empty {
+  display: block;
+  padding: 0.75rem 0.6rem;
+  color: var(--rfq-text-muted);
+  font-size: 0.85rem;
+}
+
+/* Step 3's note on who's recommended for the RFQ's job category. */
+.assign-recommend-note {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--rfq-radius);
+  background: rgba(26, 156, 106, 0.08);
+  color: #13724d;
+  font-size: 0.8rem;
+}
+
+.assign-recommend-note.is-none {
+  background: var(--rfq-bg);
+  color: var(--rfq-text-muted);
 }
 
 .wizard-part-assignee {
@@ -4603,8 +4968,8 @@ a.pipeline-label:hover {
     gap: 0.4rem;
   }
 
-  .wizard-part-select {
-    max-width: none;
+  .person-picker {
+    flex-basis: auto;
   }
 }
 
@@ -6080,9 +6445,15 @@ a.pipeline-label:hover {
 [data-theme="dark"] .ops-filters { background: var(--rfq-surface); }
 [data-theme="dark"] .conversation-row.is-unread { background: rgba(91, 120, 246, 0.1); }
 [data-theme="dark"] .mention-dropdown,
+[data-theme="dark"] .category-tag-menu,
+[data-theme="dark"] .person-picker-panel,
 [data-theme="dark"] .rfq-de-sourcing-row,
 [data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-number { background: var(--rfq-surface); }
 [data-theme="dark"] .rfq-de-sourcing-row.is-completed { background: rgba(34, 197, 94, 0.12); }
+[data-theme="dark"] .person-picker-recommended,
+[data-theme="dark"] .person-picker-group.is-recommended,
+[data-theme="dark"] .person-picker-tag.is-match,
+[data-theme="dark"] .assign-recommend-note:not(.is-none) { color: #4ade80; }
 [data-theme="dark"] .rfq-de-sourcing-row.is-completed,
 [data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-number,
 [data-theme="dark"] .rfq-de-sourcing-row.is-completed .rfq-de-sourcing-row-name,

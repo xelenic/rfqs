@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\RfqComment;
 use App\Models\RfqStep;
@@ -45,7 +46,7 @@ class UserController extends Controller implements HasMiddleware
     public function index(Request $request): View
     {
         $users = User::query()
-            ->with(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current()])
+            ->with(['roles', 'jobCategories', 'extraWorkingHours' => fn ($ranges) => $ranges->current()])
             ->when($request->string('search')->trim()->toString(), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
@@ -65,6 +66,7 @@ class UserController extends Controller implements HasMiddleware
             'state' => in_array($request->query('state'), ['active', 'deactivated'], true) ? $request->query('state') : null,
             'deactivatedCount' => User::query()->whereNotNull('deactivated_at')->count(),
             'roles' => $this->assignableRoles($request->user()),
+            'jobCategories' => JobCategory::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -77,7 +79,7 @@ class UserController extends Controller implements HasMiddleware
      */
     public function show(Request $request, User $user): View
     {
-        $user->load(['roles', 'extraWorkingHours' => fn ($ranges) => $ranges->current(), 'defaultDataEntryUser', 'defaultForSourcing']);
+        $user->load(['roles', 'jobCategories', 'extraWorkingHours' => fn ($ranges) => $ranges->current(), 'defaultDataEntryUser', 'defaultForSourcing']);
         $isTracked = $user->hasAnyRole(array_keys(RfqStep::ROLE_STEPS));
 
         return view('admin.users.show', [
@@ -85,6 +87,7 @@ class UserController extends Controller implements HasMiddleware
             'isTracked' => $isTracked,
             'canManage' => $request->user()->hasRole('Admin') || ! $user->hasRole('Admin'),
             'roles' => $this->assignableRoles($request->user()),
+            'jobCategories' => JobCategory::query()->orderBy('name')->get(['id', 'name']),
             'work' => $this->workOf($user, $isTracked),
             'partsInHand' => $this->partsInHand($user),
             'activity' => $this->activityOf($user),
@@ -386,9 +389,12 @@ class UserController extends Controller implements HasMiddleware
             'password' => ['exclude_unless:sign_in,password', 'required', 'string', 'min:8', 'confirmed'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
+            'job_categories' => ['array'],
+            'job_categories.*' => ['integer', 'exists:job_categories,id'],
         ], [
             'sign_in.in' => 'Only an Admin can set a password for someone — email them a link instead.',
             'roles.*.in' => 'Pick from the roles listed.',
+            'job_categories.*.exists' => 'Pick from the job categories listed.',
         ]);
 
         if ($validator->fails()) {
@@ -406,6 +412,7 @@ class UserController extends Controller implements HasMiddleware
         ]);
 
         $user->syncRoles($validated['roles'] ?? []);
+        $this->syncJobCategories($user, $validated['job_categories'] ?? []);
 
         if ($setsPassword) {
             return redirect()->route('admin.users.index')->with('status', 'User created — they can sign in with the password you set.');
@@ -528,9 +535,12 @@ class UserController extends Controller implements HasMiddleware
             'password' => $request->user()->hasRole('Admin') ? ['nullable', 'string', 'min:8', 'confirmed'] : ['prohibited'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
+            'job_categories' => ['array'],
+            'job_categories.*' => ['integer', 'exists:job_categories,id'],
         ], [
             'password.prohibited' => 'Only an Admin can set someone\'s password — send them a link instead.',
             'roles.*.in' => 'Pick from the roles listed.',
+            'job_categories.*.exists' => 'Pick from the job categories listed.',
         ]);
 
         if ($validator->fails()) {
@@ -548,8 +558,21 @@ class UserController extends Controller implements HasMiddleware
 
         $user->save();
         $user->syncRoles($validated['roles'] ?? []);
+        $this->syncJobCategories($user, $validated['job_categories'] ?? []);
 
         return $this->backFrom($request, $user)->with('status', 'User updated successfully.');
+    }
+
+    /**
+     * Tags $user with the job categories they take on ($categoryIds) — for
+     * someone in Sourcing or Data Entry (User::JOB_CATEGORY_TAG_ROLES); anyone
+     * else has none, so taking those roles off takes the tags too.
+     *
+     * @param  array<int, int|string>  $categoryIds
+     */
+    private function syncJobCategories(User $user, array $categoryIds): void
+    {
+        $user->jobCategories()->sync($user->refresh()->takesJobCategoryTags() ? array_map('intval', $categoryIds) : []);
     }
 
     public function destroy(Request $request, User $user): RedirectResponse

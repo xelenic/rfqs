@@ -6,6 +6,7 @@ use Database\Factories\JobCategoryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * A selectable job category for RFQs — the dropdown Operations picks from in
@@ -62,6 +63,15 @@ class JobCategory extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * The people in Sourcing and Data Entry tagged with it — who take it on
+     * (User::jobCategories()).
+     */
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class)->withTimestamps();
     }
 
     /**
