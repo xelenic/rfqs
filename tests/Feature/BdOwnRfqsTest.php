@@ -28,7 +28,7 @@ function twoBdMembers(): array
 
     foreach (['Bailey' => $bailey, 'Taylor' => $taylor] as $name => $member) {
         Rfq::factory()->create(['subject' => "{$name} pending", 'wc_number' => 'WC'.($name === 'Bailey' ? '1111' : '2222'), 'created_by' => $member->id]);
-        Rfq::factory()->create(['subject' => "{$name} sent back", 'reject_target_stage' => 'business_development', 'created_by' => $member->id]);
+        Rfq::factory()->create(['subject' => "{$name} sent back", 'reject_target_stage' => 'business_development', 'reject_from_stage' => 'senior_ops_review', 'created_by' => $member->id]);
         Rfq::factory()->create(['subject' => "{$name} to close", 'stage' => 'bd_closing', 'created_by' => $member->id]);
         Rfq::factory()->create(['subject' => "{$name} closed", 'status' => 'Completed', 'stage' => 'closed', 'bd_closed_at' => now(), 'created_by' => $member->id]);
     }
@@ -46,7 +46,7 @@ it('shows Business Development only the RFQs they created, on every list — Clo
         ->assertDontSee($theirs);
 })->with([
     'Pending' => [['status' => 'Pending'], 'Bailey pending', 'Taylor pending'],
-    'Returns' => [['status' => 'Pending', 'view' => 'returns'], 'Bailey sent back', 'Taylor sent back'],
+    'Rejected' => [['status' => 'Pending', 'view' => 'rejected'], 'Bailey sent back', 'Taylor sent back'],
     'Ready to Close' => [['status' => 'Pending', 'view' => 'closing'], 'Bailey to close', 'Taylor to close'],
     'Closed' => [['status' => 'Completed'], 'Bailey closed', 'Taylor closed'],
 ]);
@@ -88,7 +88,7 @@ it('counts only their own on the sidebar badges and the dashboard', function () 
     ['bailey' => $bailey] = twoBdMembers();
 
     test()->actingAs($bailey)->get(route('admin.dashboard'))->assertOk()
-        ->assertSee('title="1 sent back by a reviewer"', false)
+        ->assertSee('title="1 rejected back by a reviewer"', false)
         ->assertSee('title="1 ready to close"', false)
         ->assertViewHas('overview', function (array $overview) {
             // Bailey's three open ones and nobody's.

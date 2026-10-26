@@ -15,7 +15,7 @@ beforeEach(function () {
 
 function gmAssistantReturnsUrl(array $query = []): string
 {
-    return route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns'] + $query);
+    return route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected'] + $query);
 }
 
 /**
@@ -48,9 +48,9 @@ it('shows the empty state until the General Manager sends something back', funct
     ['assistant' => $assistant] = throughToGm();
 
     test()->actingAs($assistant)->get(gmAssistantReturnsUrl())->assertOk()
-        ->assertSee('<title>Returns', false)
+        ->assertSee('<title>Rejected', false)
         ->assertDontSee('>RFQ5001', false)
-        ->assertSee('Nothing\'s been sent back to GM Assistant.', false);
+        ->assertSee('Nothing\'s been rejected back to GM Assistant.', false);
 });
 
 it('lists what the General Manager sent back to GM Assistant, with who and why, and Submit right there — and nowhere else', function () {
@@ -67,12 +67,12 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
 
     test()->actingAs($assistant)->get(gmAssistantReturnsUrl())->assertOk()
         ->assertSee('>RFQ5001', false)
-        ->assertSee('Sent back by General Manager ('.$gm->name.'): Payment terms should be 45 days')
-        ->assertSee('Returned At')
+        ->assertSee('Rejected by General Manager ('.$gm->name.'): Payment terms should be 45 days')
+        ->assertSee('Rejected At')
         // Started afresh, as Data Entry's are when they come back.
         ->assertSee('action="'.route('admin.rfqs.start-gm-assistant', $rfq).'"', false)
         ->assertSee('id="gmAssistantSubmitModal"', false)
-        ->assertSee('title="1 sent back by the General Manager"', false);
+        ->assertSee('title="1 rejected back by the General Manager"', false);
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->hasGmAssistantStarted())->toBeFalse();
     startGmAssistantOn($rfq, 1, $assistant);
@@ -146,15 +146,15 @@ it('leaves out what the General Manager sends back to anyone else', function () 
     test()->actingAs($assistant)->get(gmAssistantReturnsUrl())->assertOk()->assertDontSee('>RFQ5001', false);
 });
 
-it('shows Admin GM Assistant\'s Returns page, counted on the grouped sidebar', function () {
+it('shows Admin GM Assistant\'s Rejected page, counted on the grouped sidebar', function () {
     ['gm' => $gm, 'rfq' => $rfq] = throughToGm();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'gm_assistant', 'reason' => 'Payment terms should be 45 days']);
 
     expect(Rfq::queueCounts()['gm_assistant_returns'])->toBe(1);
 
     test()->actingAs(userWithRole('Admin'))->get(gmAssistantReturnsUrl(['role' => 'gm-assistant']))->assertOk()
-        ->assertSee('Returns · GM Assistant')
+        ->assertSee('Rejected · GM Assistant')
         ->assertSee('>RFQ5001', false)
         ->assertSee('action="'.route('admin.rfqs.start-gm-assistant', $rfq).'"', false)
-        ->assertSee('title="1 sent back by the General Manager"', false);
+        ->assertSee('title="1 rejected back by the General Manager"', false);
 });

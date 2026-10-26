@@ -60,10 +60,10 @@ it('lets Business Development edit a returned RFQ\'s own details, always leaving
         ->status->toBe('Pending');
 });
 
-it('takes a returned RFQ off the Returns page once Business Development saves an edit, banner and badge included', function () {
+it('takes a rejected RFQ off the Rejected page once Business Development saves an edit, banner and badge included', function () {
     ['bd' => $bd, 'rfq' => $rfq] = returnedToBd();
 
-    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
         ->assertSee('RFQ2001');
 
     test()->actingAs($bd)
@@ -76,20 +76,20 @@ it('takes a returned RFQ off the Returns page once Business Development saves an
             'subject' => 'Correct building: Tower B',
         ])
         ->assertSessionHasNoErrors()
-        ->assertSessionHas('status', 'RFQ updated — it\'s been taken off the Returns list.');
+        ->assertSessionHas('status', 'RFQ updated — it\'s been taken off the Rejected list.');
 
     expect($rfq->refresh())
         ->isReturnedToBusinessDevelopment()->toBeFalse()
         ->reject_reason->toBeNull()
         // Still counted, so a second time round is flagged as one.
         ->bd_return_count->toBe(1)
-        ->and(Rfq::bdReturnsCount())->toBe(0)
+        ->and(Rfq::bdReturnsCount(rejected: true))->toBe(0)
         // The reason itself stays in the comment thread.
         ->and($rfq->comments()->where('action', 'rejected')->value('body'))->toBe('Confirm the site with the client');
 
-    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
         ->assertDontSee('RFQ2001')
-        ->assertSee('Nothing\'s been sent back to Business Development.', false);
+        ->assertSee('Nothing\'s been rejected back to Business Development.', false);
 
     test()->actingAs($bd)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertDontSee('Sent back to Business Development');
@@ -214,10 +214,10 @@ it('refuses Business Development assigning an RFQ that hasn\'t been sent back to
     expect($rfq->refresh()->assignees)->toHaveCount(0);
 });
 
-it('gives Business Development no Assign Sourcing button on their Returns page', function () {
+it('gives Business Development no Assign Sourcing button on their Rejected page', function () {
     ['bd' => $bd, 'rfq' => $rfq] = returnedToBd();
 
-    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+    test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
         ->assertSee($rfq->rfq_number)
         ->assertSee('data-action="'.route('admin.rfqs.update', $rfq).'"', false)
         ->assertDontSee('data-action="'.route('admin.rfqs.assign', $rfq).'"', false);
@@ -234,10 +234,10 @@ it('shows Business Development only a blurred, disabled Assign Sourcing button o
 
 // ---- The "sent back more than once" badge -----------------------------------
 
-it('flags a second and third time round differently from a first, on the Returns list and the RFQ page', function () {
+it('flags a second and third time round differently from a first, on the Rejected list and the RFQ page', function () {
     ['bd' => $bd, 'priya' => $priya, 'riley' => $riley, 'rfq' => $rfq] = returnedToBd();
 
-    $first = test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()->getContent();
+    $first = test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()->getContent();
     expect($first)->not->toContain('title="Sent back to Business Development');
 
     // Senior Operations re-assigns it…
@@ -258,7 +258,7 @@ it('flags a second and third time round differently from a first, on the Returns
 
     expect($rfq->refresh()->bd_return_count)->toBe(2);
 
-    $second = test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()->getContent();
+    $second = test()->actingAs($bd)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()->getContent();
     expect($second)->toContain('2nd time');
 
     test()->actingAs($bd)->get(route('admin.rfqs.show', $rfq))->assertOk()

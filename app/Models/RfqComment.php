@@ -36,6 +36,13 @@ class RfqComment extends Model
         'gm_assistant_paused' => ['label' => 'Paused', 'icon' => 'bi-pause-circle-fill', 'tone' => 'info'],
     ];
 
+    /**
+     * How far apart, in seconds, two records of one action can be — written
+     * in the one request, by the one person, with the one reason — and still
+     * be told as the one action (isSameActionAs()).
+     */
+    public const SAME_ACTION_SECONDS = 60;
+
     protected $fillable = [
         'user_id',
         'parent_id',
@@ -128,6 +135,69 @@ class RfqComment extends Model
         $commentPart = $this->meta['part'] ?? null;
 
         return $commentPart === null || (int) $commentPart === $part;
+    }
+
+    /**
+     * Whether this records the same action as $other: by the same person,
+     * with the same words, within SAME_ACTION_SECONDS of it.
+     */
+    public function isSameActionAs(self $other): bool
+    {
+        return $this->user_id === $other->user_id
+            && trim((string) $this->body) === trim((string) $other->body)
+            && $this->created_at->diffInSeconds($other->created_at, true) <= self::SAME_ACTION_SECONDS;
+    }
+
+    /**
+     * The rejection among $comments that this return to Sourcing is part of,
+     * or null. A reviewer sending a part — or the whole RFQ — back to
+     * Sourcing records the rejection ('rejected') and each part's own return
+     * ('returned_to_sourcing', Rfq::returnSourcingPart()) together, with the
+     * one reason: told once, the rejection stands for both (it carries the
+     * photos).
+     *
+     * @param  Collection<int, RfqComment>  $comments
+     */
+    public function rejectionItBelongsTo(Collection $comments): ?self
+    {
+        if ($this->action !== 'returned_to_sourcing') {
+            return null;
+        }
+
+        return $comments->first(fn (self $comment) => $comment->action === 'rejected'
+            && $this->isSameActionAs($comment)
+            && (! isset($comment->meta['part']) || (int) $comment->meta['part'] === (int) ($this->meta['part'] ?? 0)));
+    }
+
+    /**
+     * $comments with each rejection back to Sourcing told once — the parts'
+     * returns that go with a rejection there left out (rejectionItBelongsTo()).
+     *
+     * @param  Collection<int, RfqComment>  $comments
+     * @return Collection<int, RfqComment>
+     */
+    public static function withoutRejectionRepeats(Collection $comments): Collection
+    {
+        return $comments->reject(fn (self $comment) => $comment->rejectionItBelongsTo($comments) !== null)->values();
+    }
+
+    /**
+     * What this return to Sourcing adds to the rejection it's part of, told
+     * as one: whose part, and how many line items Data Entry had added by then
+     * ("Riley Chen's part · 3 line items added") — with which part of the
+     * split, when the rejection was of the whole RFQ ($withLabel).
+     */
+    public function sentBackPartContext(bool $withLabel = false): ?string
+    {
+        $meta = $this->meta ?? [];
+
+        $context = collect([
+            $withLabel ? $meta['label'] ?? null : null,
+            isset($meta['who']) ? "{$meta['who']}'s part" : null,
+            isset($meta['entries']) ? trans_choice('1 line item added|:count line items added', $meta['entries'], ['count' => $meta['entries']]) : null,
+        ])->filter()->implode(' · ');
+
+        return $context !== '' ? $context : null;
     }
 
     public function rfq(): BelongsTo

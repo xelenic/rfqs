@@ -6,7 +6,9 @@
     sending one back is Data Entry's. See RfqController::index()
     ($sourcingOverview), completeSourcing() and finalize().
 
-    Expects: $rfqs, $scopedToReturns (Returns rather than all pending parts).
+    Expects: $rfqs, $scopedToReturns (Returns rather than all pending parts),
+    $onRejectedPage (of those, the ones a reviewer rejected back, rather than
+    Data Entry's returns).
 --}}
 <div class="table-responsive">
     <table class="table table-hover mb-0">
@@ -17,7 +19,7 @@
                 <th>Subject</th>
                 <th>Sourcing</th>
                 <th>Priority</th>
-                <th>{{ $scopedToReturns ? 'Returned At' : 'Assigned At' }}</th>
+                <th>{{ $scopedToReturns ? ($onRejectedPage ? 'Rejected At' : 'Returned At') : 'Assigned At' }}</th>
                 <th class="text-end">Actions</th>
             </tr>
         </thead>
@@ -29,7 +31,7 @@
                     // also has the parts waiting on their member's Finalize.
                     $openParts = $rfq->assignees->whereNull('pivot.status')->whereNull('pivot.completed_at');
                     $listedParts = $scopedToReturns
-                        ? $openParts->whereNotNull('pivot.returned_at')
+                        ? $openParts->whereNotNull('pivot.returned_at')->filter(fn ($assignment) => $assignment->pivot->isRejectedTo('sourcing') === $onRejectedPage)
                         // concat, not merge: an Eloquent merge keeps one entry per
                         // user, and one member can hold several parts.
                         : $openParts->whereNull('pivot.returned_at')->toBase()->concat($rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped()));
@@ -45,6 +47,8 @@
                                     <i class="bi bi-send-check"></i>
                                     Sent to finalize by Data Entry
                                 </div>
+                            @elseif ($partAssignment->pivot->returned_at && $partAssignment->pivot->isRejectedTo('sourcing'))
+                                @include('admin.rfqs._rejected_note', ['assignment' => $partAssignment->pivot])
                             @elseif ($partAssignment->pivot->returned_at)
                                 <div class="rfq-list-subnote rfq-list-subnote-returned">
                                     <i class="bi bi-arrow-counterclockwise"></i>
@@ -70,14 +74,14 @@
                                         'part' => $partAssignment->pivot->part_number,
                                         'kind' => 'sourcing_to_ops',
                                         'redirectRole' => 'sourcing',
-                                        'redirectView' => $scopedToReturns ? 'returns' : '',
+                                        'redirectView' => $scopedToReturns ? ($onRejectedPage ? 'rejected' : 'returns') : '',
                                     ])
                                 @endif
                                 @include('admin.rfqs._complete_button', [
                                     'rfq' => $rfq,
                                     'part' => $partAssignment->pivot->part_number,
                                     'redirectRole' => 'sourcing',
-                                    'redirectView' => $scopedToReturns ? 'returns' : '',
+                                    'redirectView' => $scopedToReturns ? ($onRejectedPage ? 'rejected' : 'returns') : '',
                                 ])
                             @endif
                         </td>
@@ -86,7 +90,7 @@
             @empty
                 <tr>
                     <td colspan="7" class="text-center text-muted-soft py-4">
-                        {{ $scopedToReturns ? 'Nothing has been returned to Sourcing.' : 'No Sourcing parts are pending right now.' }}
+                        {{ $scopedToReturns ? ($onRejectedPage ? 'Nothing has been rejected back to Sourcing.' : 'Nothing has been returned to Sourcing.') : 'No Sourcing parts are pending right now.' }}
                     </td>
                 </tr>
             @endforelse

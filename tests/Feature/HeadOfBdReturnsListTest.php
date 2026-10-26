@@ -15,7 +15,7 @@ beforeEach(function () {
 
 function headOfBdReturnsUrl(array $query = []): string
 {
-    return route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns'] + $query);
+    return route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected'] + $query);
 }
 
 /**
@@ -44,9 +44,9 @@ it('shows the empty state until the General Manager sends something back', funct
     ['head' => $head] = atGmReview();
 
     test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()
-        ->assertSee('<title>Returns', false)
+        ->assertSee('<title>Rejected', false)
         ->assertDontSee('RFQ2001')
-        ->assertSee('Nothing\'s been sent back to the Head of Business Development.', false);
+        ->assertSee('Nothing\'s been rejected back to the Head of Business Development.', false);
 });
 
 it('lists what the General Manager sent back to their review, with who and why, and Approve and Reject right there', function () {
@@ -60,12 +60,12 @@ it('lists what the General Manager sent back to their review, with who and why, 
 
     test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()
         ->assertSee('RFQ2001')
-        ->assertSee('Sent back by General Manager ('.$gm->name.'): Margin is too thin')
-        ->assertSee('Returned At')
+        ->assertSee('Rejected by General Manager ('.$gm->name.'): Margin is too thin')
+        ->assertSee('Rejected At')
         ->assertSee('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
         ->assertSee('data-action="'.route('admin.rfqs.reject-head-of-bd', $rfq).'"', false)
         ->assertSee('id="rejectRfqModal"', false)
-        ->assertSee('title="1 sent back by the General Manager"', false);
+        ->assertSee('title="1 rejected back to you"', false);
 });
 
 it('lists it only on Returns — not on their Review page, or in its count', function () {
@@ -127,18 +127,19 @@ it('drops off once the Head sends it further back', function () {
         ->patch(route('admin.rfqs.reject-head-of-bd', $rfq), ['target_stage' => 'senior_ops_review', 'reason' => 'Recheck the totals'])
         ->assertSessionHasNoErrors();
 
+    // A rejection again, on to Senior Operations' Rejected page.
     expect(Rfq::headOfBdReturnsCount())->toBe(0)
-        ->and(Rfq::seniorOpsReturnsCount())->toBe(1);
+        ->and(Rfq::seniorOpsReturnsCount(rejected: true))->toBe(1);
 });
 
-it('shows Admin the Head\'s Returns page, linked from the grouped sidebar', function () {
+it('shows Admin the Head\'s Rejected page, linked from the grouped sidebar', function () {
     ['gm' => $gm, 'rfq' => $rfq] = atGmReview();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'Margin is too thin']);
 
     expect(Rfq::queueCounts()['head_of_bd_returns'])->toBe(1);
 
     test()->actingAs(userWithRole('Admin'))->get(headOfBdReturnsUrl(['role' => 'head-of-business-development']))->assertOk()
-        ->assertSee('Returns · Head of Business Development')
+        ->assertSee('Rejected · Head of Business Development')
         ->assertSee('RFQ2001')
         ->assertSee('Margin is too thin')
         ->assertSee('data-action="'.route('admin.rfqs.approve-head-of-bd-part', $rfq).'"', false)
@@ -252,4 +253,14 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
     expect(Rfq::seniorOpsReviewCount())->toBe(1);
     test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('RFQ6001-P2 of P2');
+});
+
+it('still opens their Rejected page from the Returns address it had before', function () {
+    ['head' => $head, 'gm' => $gm, 'rfq' => $rfq] = atGmReview();
+    test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'Margin is too thin']);
+
+    test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+        ->assertSee('<title>Rejected', false)
+        ->assertSee('RFQ2001')
+        ->assertSee('Margin is too thin');
 });

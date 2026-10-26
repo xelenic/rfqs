@@ -146,7 +146,7 @@
                 <div class="card mb-4" id="{{ $a }}-returns">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <span>Sent back to you <span class="badge badge-soft-danger ms-1">{{ $returnedToMe->count() }}</span></span>
-                        <a href="{{ $stage['returnsUrl'] }}" class="small">Your returns <i class="bi bi-arrow-right"></i></a>
+                        <a href="{{ $stage['returnsUrl'] }}" class="small">Your Rejected page <i class="bi bi-arrow-right"></i></a>
                     </div>
                     @if ($returnedToMe->isEmpty())
                         <div class="card-body">

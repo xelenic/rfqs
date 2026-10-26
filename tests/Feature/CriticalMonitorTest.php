@@ -157,13 +157,17 @@ it('lists the Urgent and High RFQs still open, Urgent first and longest-waiting 
     expect($response->viewData('urgentCounts'))->toBe(['Critical' => 0, 'Urgent' => 2, 'High' => 1]);
 });
 
-it('counts what\'s been sent back and is waiting, by whose Returns page it\'s on', function () {
-    Rfq::factory()->create(['reject_target_stage' => 'business_development']);
+it('counts what\'s been sent back and is waiting, by whose Returns or Rejected page it\'s on', function () {
+    // Senior Operations' Get Details Again, and a reviewer's rejection.
+    Rfq::factory()->create(['reject_target_stage' => 'business_development', 'reject_from_stage' => 'operations']);
+    Rfq::factory()->count(2)->create(['reject_target_stage' => 'business_development', 'reject_from_stage' => 'gm_review']);
 
     $response = criticalMonitor();
 
-    expect($response->viewData('returns')->firstWhere('label', 'Business Development')['count'])->toBe(1);
-    $response->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns', 'role' => 'business-development'])).'"', false);
+    expect($response->viewData('returns')->firstWhere('label', 'Business Development · Returns')['count'])->toBe(1)
+        ->and($response->viewData('returns')->firstWhere('label', 'Business Development · Rejected')['count'])->toBe(2);
+    $response->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns', 'role' => 'business-development'])).'"', false)
+        ->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected', 'role' => 'business-development'])).'"', false);
 });
 
 it('shows the viewer\'s own unread messages, and nobody else\'s', function () {

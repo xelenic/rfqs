@@ -23,7 +23,7 @@
         ['label' => 'Data Entry idle', 'value' => $idle->count(), 'tone' => 'warning', 'icon' => 'bi-hourglass-bottom',
             'caption' => $floor['idleSeconds'] > 0 ? $duration($floor['idleSeconds']).' idle · '.$floor['waiting'].' waiting' : $floor['waiting'].' parts waiting'],
         ['label' => 'Sent back, waiting', 'value' => $returnsTotal, 'tone' => 'violet', 'icon' => 'bi-arrow-counterclockwise',
-            'caption' => 'On the Returns pages'],
+            'caption' => 'On the Returns and Rejected pages'],
         ['label' => 'Your unread', 'value' => $unreadAlerts + $unreadMessages, 'tone' => 'primary', 'icon' => 'bi-bell',
             'caption' => trans_choice('1 alert|:count alerts', $unreadAlerts, ['count' => $unreadAlerts]).' · '.trans_choice('1 message|:count messages', $unreadMessages, ['count' => $unreadMessages])],
     ];

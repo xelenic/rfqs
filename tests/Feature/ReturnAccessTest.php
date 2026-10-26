@@ -181,7 +181,9 @@ it('lets Business Development send what\'s ready to close back to the General Ma
         ->reject_from_stage->toBe('bd_closing')
         ->and($rfq->assigneeForPart(1)->pivot->gm_approved_at)->toBeNull()
         ->and($rfq->assigneeForPart(2)->pivot->gm_approved_at)->not->toBeNull()
-        ->and(Rfq::gmReviewCount())->toBe(1)
+        // On the General Manager's Rejected page, not their Review.
+        ->and(Rfq::gmRejectedCount())->toBe(1)
+        ->and(Rfq::gmReviewCount())->toBe(0)
         ->and(Rfq::bdClosingCount())->toBe(1);
 });
 

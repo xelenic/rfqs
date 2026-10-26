@@ -271,9 +271,13 @@ it('sends a part back to Data Entry', function () {
         ->and($rfq->stage)->toBeNull()
         ->and($rfq->data_entry_completed_at)->toBeNull();
 
-    // Back on their Ready tab — part 2, still done, stays on their Completed tab.
+    // On their Rejected page, not their Ready tab — part 2, still done, stays on their Completed tab.
     $ready = Str::betweenFirst(test()->actingAs($dataEntry)->get(headReviewUrl())->getContent(), 'id="rfq-de-ready"', 'id="rfq-de-completed"');
-    expect($ready)->toContain('RFQ1001-P1 of P2')
+    $rejected = Str::after(test()->actingAs($dataEntry)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->getContent(), 'id="rfq-de-ready"');
+    expect($ready)->not->toContain('RFQ1001-P1 of P2')
+        ->not->toContain('RFQ1001-P2 of P2')
+        ->and($rejected)->toContain('RFQ1001-P1 of P2')
+        ->toContain('Rejected by Head of Business Development: Prices mistyped')
         ->not->toContain('RFQ1001-P2 of P2');
 });
 

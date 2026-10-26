@@ -1,5 +1,9 @@
 @php
     $pageTitle = match (true) {
+        // What a reviewer rejected back to the role (RfqController::index(),
+        // $onRejectedPage) — all that's ever sent back to the Head of
+        // Business Development and GM Assistant, so their Returns is it.
+        $onRejectedPage, $scopedToHeadOfBdReturns, $scopedToGmAssistantReturns => 'Rejected',
         $scopedToReturns => 'Returns',
         $scopedToBdReturns => 'Returns',
         $scopedToSeniorOpsReturns => 'Returns',
@@ -129,7 +133,15 @@
                  finalize, following it on from there. Each counts its parts,
                  and the tab is kept in the address (?tab=). See
                  RfqController::index() ($dataEntryTab). --}}
-            @php $deOnCompleted = $dataEntryTab === 'completed'; @endphp
+            {{-- Their Rejected page ($onRejectedPage) is the Ready table alone,
+                 with just the parts a reviewer rejected back to them — which
+                 are on it, and only it, till they send them on. --}}
+            @php
+                $deOnCompleted = ! $onRejectedPage && $dataEntryTab === 'completed';
+                $deListedParts = fn ($rfq) => $rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at')
+                    ->filter(fn ($assignee) => $rfq->partIsForDataEntryUser($assignee->pivot->part_number, auth()->user()) && $assignee->pivot->isRejectedTo('data_entry') === $onRejectedPage);
+            @endphp
+            @unless ($onRejectedPage)
             <ul class="nav nav-pills rfq-view-toggle m-3 mb-0" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {{ $deOnCompleted ? '' : 'active' }}" data-bs-toggle="pill" data-bs-target="#rfq-de-ready" data-de-tab="ready" data-tab-default type="button" role="tab" aria-selected="{{ $deOnCompleted ? 'false' : 'true' }}">
@@ -142,6 +154,7 @@
                     </button>
                 </li>
             </ul>
+            @endunless
 
             <div class="tab-content">
                 <div class="tab-pane fade {{ $deOnCompleted ? '' : 'show active' }}" id="rfq-de-ready" role="tabpanel">
@@ -163,7 +176,7 @@
                             <tbody>
                                 @forelse ($bySourcingRfqs as $rfq)
                                     {{-- Only the parts theirs to take: given to them by name, or to anyone in Data Entry (Admin: all). --}}
-                                    @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at')->filter(fn ($assignee) => $rfq->partIsForDataEntryUser($assignee->pivot->part_number, auth()->user())) as $assignee)
+                                    @foreach ($deListedParts($rfq) as $assignee)
                                         {{-- Clicking the row opens a quick-detail modal scoped to
                                              this one assignee (subject, description, their own
                                              comments only — other split sourcers' comments stay
@@ -190,9 +203,12 @@
                                                         {{ trans_choice('1 line item to add|:count line items to add', $assignee->pivot->line_items_to_add, ['count' => number_format($assignee->pivot->line_items_to_add)]) }}
                                                     </div>
                                                 @endif
-                                                {{-- Its Sourcing member sent it back instead of finalizing it
+                                                {{-- Rejected back to them by a reviewer — or its Sourcing
+                                                     member sent it back instead of finalizing it
                                                      (Rfq::returnToDataEntry()). --}}
-                                                @if ($assignee->pivot->data_entry_returned_at)
+                                                @if ($onRejectedPage)
+                                                    @include('admin.rfqs._rejected_note', ['assignment' => $assignee->pivot])
+                                                @elseif ($assignee->pivot->data_entry_returned_at)
                                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                                         <i class="bi bi-arrow-counterclockwise"></i>
                                                         Returned by Sourcing: {{ $assignee->pivot->data_entry_return_reason }}
@@ -264,7 +280,11 @@
                                 @empty
                                     <tr>
                                         <td colspan="9" class="text-center text-muted-soft py-4">
-                                            Nothing's been completed by Sourcing yet.
+                                            @if ($onRejectedPage)
+                                                Nothing's been rejected back to Data Entry — you're all caught up.
+                                            @else
+                                                Nothing's been completed by Sourcing yet.
+                                            @endif
                                         </td>
                                     </tr>
                                 @endforelse
@@ -286,6 +306,7 @@
 
                 {{-- What they've sent to finalize — one row a part, latest first,
                      with where it's got to since (RfqAssignment::whereNow()). --}}
+                @unless ($onRejectedPage)
                 <div class="tab-pane fade {{ $deOnCompleted ? 'show active' : '' }}" id="rfq-de-completed" role="tabpanel">
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
@@ -345,22 +366,29 @@
                         </div>
                     @endif
                 </div>
+                @endunless
             </div>
 
             @foreach ($bySourcingRfqs as $rfq)
-                @foreach ($rfq->assignees->whereNull('pivot.status')->whereNotNull('pivot.completed_at')->whereNull('pivot.data_entry_completed_at') as $assignee)
+                @foreach ($deListedParts($rfq) as $assignee)
                     @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $assignee])
                 @endforeach
             @endforeach
         @elseif ($scopedToReturns)
-            {{-- Parts Data Entry sent back for rework, scoped to this
-                 Sourcing member and not yet completed again — see
-                 RfqController::index() ($scopedToReturns) and
+            {{-- Parts Data Entry sent back for rework — or, on the Rejected
+                 page ($onRejectedPage), parts a reviewer rejected back —
+                 scoped to this Sourcing member and not yet completed again —
+                 see RfqController::index() ($scopedToReturns) and
                  Rfq::returnSourcingPart(). They're worked from here: click a row
                  for the part and its comments, or Mark Complete when it's done
                  again — which lands back on this list. They aren't on My
                  Pending RFQs while they're here. Each counts down again from
                  its return, as a new round against the priority's target. --}}
+            @php
+                $sourcingListView = $onRejectedPage ? 'rejected' : 'returns';
+                $myListedParts = fn ($rfq) => $rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at')
+                    ->filter(fn ($assignment) => $assignment->pivot->isRejectedTo('sourcing') === $onRejectedPage);
+            @endphp
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -370,7 +398,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th title="Working time left to mark it complete again — see Settings → Sourcing Targets">Time left</th>
-                            <th>Returned At</th>
+                            <th>{{ $onRejectedPage ? 'Rejected At' : 'Returned At' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -378,13 +406,15 @@
                         @forelse ($rfqs as $rfq)
                             {{-- One row per returned part of mine — someone holding
                                  several parts of a split can have more than one. --}}
-                            @foreach ($rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
+                            @foreach ($myListedParts($rfq) as $myAssignment)
                                 <tr class="js-de-sourcing-row" data-bs-target="#rfq-detail-modal-{{ $rfq->id }}-p{{ $myAssignment->pivot->part_number }}" role="button" tabindex="0">
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $rfq->partNumberLabel($myAssignment->pivot->part_number) }}</td>
                                     <td>
                                         {{ $rfq->subject }}
-                                        @if ($myAssignment->pivot->return_reason)
+                                        @if ($onRejectedPage)
+                                            @include('admin.rfqs._rejected_note', ['assignment' => $myAssignment->pivot])
+                                        @elseif ($myAssignment->pivot->return_reason)
                                             <div class="rfq-list-subnote rfq-list-subnote-returned">
                                                 <i class="bi bi-arrow-counterclockwise"></i>
                                                 {{ $myAssignment->pivot->return_reason }}
@@ -409,9 +439,9 @@
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
-                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => 'returns'])
+                                            @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'kind' => 'sourcing_to_ops', 'redirectView' => $sourcingListView])
                                         @endif
-                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => 'returns'])
+                                        @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myAssignment->pivot->part_number, 'redirectView' => $sourcingListView])
                                         {{-- Sent back by a reviewer further on: straight back to them. --}}
                                         @if ($forwardBack = $rfq->openReturnFor($myAssignment->pivot->part_number))
                                             @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => collect([$forwardBack]), 'part' => $myAssignment->pivot->part_number])
@@ -422,7 +452,11 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    Nothing's been returned to you — you're all caught up.
+                                    @if ($onRejectedPage)
+                                        Nothing's been rejected back to you — you're all caught up.
+                                    @else
+                                        Nothing's been returned to you — you're all caught up.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse
@@ -436,8 +470,8 @@
             @endif
 
             @foreach ($rfqs as $rfq)
-                @foreach ($rfq->assignees->where('id', auth()->id())->whereNull('pivot.status')->whereNotNull('pivot.returned_at')->whereNull('pivot.completed_at') as $myAssignment)
-                    @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment, 'redirectView' => 'returns'])
+                @foreach ($myListedParts($rfq) as $myAssignment)
+                    @include('admin.rfqs._rfq_detail_modal', ['rfq' => $rfq, 'assignee' => $myAssignment, 'redirectView' => $sourcingListView])
                 @endforeach
             @endforeach
         @elseif ($scopedToSeniorOpsReview)
@@ -576,7 +610,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sourcing</th>
-                            <th>{{ $scopedToHeadOfBdReturns ? 'Returned At' : 'Approved by Senior Operations' }}</th>
+                            <th>{{ $scopedToHeadOfBdReturns ? 'Rejected At' : 'Approved by Senior Operations' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -673,7 +707,7 @@
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
                                     @if ($scopedToHeadOfBdReturns)
-                                        Nothing's been sent back to the Head of Business Development.
+                                        Nothing's been rejected back to the Head of Business Development.
                                     @else
                                         Nothing's waiting on your review right now.
                                     @endif
@@ -707,7 +741,7 @@
                             <th>Priority</th>
                             <th title="Working time left to submit it to the General Manager — see Settings → GM Assistant Time">Time Left</th>
                             <th>Sourcing</th>
-                            <th>{{ $scopedToGmAssistantReturns ? 'Returned At' : 'Approved by Head of BD' }}</th>
+                            <th>{{ $scopedToGmAssistantReturns ? 'Rejected At' : 'Approved by Head of BD' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -858,7 +892,7 @@
                             <tr>
                                 <td colspan="8" class="text-center text-muted-soft py-4">
                                     @if ($scopedToGmAssistantReturns)
-                                        Nothing's been sent back to GM Assistant.
+                                        Nothing's been rejected back to GM Assistant.
                                     @else
                                         Nothing's waiting on you right now.
                                     @endif
@@ -882,7 +916,10 @@
                  Rejecting sends it back to any earlier stage, all the way
                  through Business Development itself. An RFQ kept whole is
                  one row. See RfqController::index() ($scopedToGmReview),
-                 Rfq::approveGmPart() / rejectPartToStage(). --}}
+                 Rfq::approveGmPart() / rejectPartToStage(). Their Rejected
+                 page ($onRejectedPage) is the same table with just the parts
+                 Business Development rejected back to them, which are there
+                 and only there till they're decided again. --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -892,25 +929,37 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sourcing</th>
-                            <th>Submitted</th>
+                            <th>{{ $onRejectedPage ? 'Rejected At' : 'Submitted' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($rfqs as $rfq)
-                            @php $readyParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmApproval() && ! $assignee->pivot->isStopped()); @endphp
+                            @php
+                                $waitingParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isAwaitingGmApproval() && ! $assignee->pivot->isStopped());
+                                $readyParts = $waitingParts->filter(fn ($assignee) => $assignee->pivot->isRejectedTo('gm_review') === $onRejectedPage);
+                            @endphp
                             @foreach ($readyParts as $assignee)
                                 @php $partLabel = $rfq->partNumberLabel($assignee->pivot->part_number); @endphp
                                 <tr>
                                     <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                                     <td class="text-nowrap">{{ $partLabel }}</td>
-                                    <td>{{ $rfq->subject }}</td>
+                                    <td>
+                                        {{ $rfq->subject }}
+                                        @if ($onRejectedPage)
+                                            @include('admin.rfqs._rejected_note', ['assignment' => $assignee->pivot])
+                                        @endif
+                                    </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td>{{ $assignee->name }}</td>
                                     <td class="text-muted-soft">
-                                        {{ $assignee->pivot->gm_assistant_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
-                                        @if ($gmAssistantNames->has($assignee->pivot->gm_assistant_completed_by))
-                                            <div class="text-muted-soft small">by {{ $gmAssistantNames->get($assignee->pivot->gm_assistant_completed_by) }}</div>
+                                        @if ($onRejectedPage)
+                                            {{ $assignee->pivot->part_rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}
+                                        @else
+                                            {{ $assignee->pivot->gm_assistant_completed_at->toBusinessTimezone()->format('M d, Y g:i A') }}
+                                            @if ($gmAssistantNames->has($assignee->pivot->gm_assistant_completed_by))
+                                                <div class="text-muted-soft small">by {{ $gmAssistantNames->get($assignee->pivot->gm_assistant_completed_by) }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="text-end text-nowrap">
@@ -940,7 +989,7 @@
                                     </td>
                                 </tr>
                             @endforeach
-                            @if ($readyParts->isEmpty())
+                            @if ($waitingParts->isEmpty() && ! $onRejectedPage)
                                 {{-- At their step with no part of its own to list: the RFQ as a
                                      whole. --}}
                                 <tr>
@@ -980,7 +1029,11 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    Nothing's waiting on your approval right now.
+                                    @if ($onRejectedPage)
+                                        Nothing's been rejected back to you — you're all caught up.
+                                    @else
+                                        Nothing's waiting on your approval right now.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse
@@ -997,7 +1050,9 @@
                  again, right here) or the second review (approve it again
                  from the Review page). A row leaves once that's done — see
                  Rfq::scopeReturnedToSeniorOperations(), RfqController::index()
-                 ($scopedToSeniorOpsReturns). --}}
+                 ($scopedToSeniorOpsReturns). What a reviewer rejected back is
+                 on their Rejected page ($onRejectedPage) instead, laid out the
+                 same; Returns keeps a Sourcing part sent back to them. --}}
             @php
                 $reviewPageUrl = route('admin.rfqs.index', array_filter([
                     'status' => 'Pending',
@@ -1014,7 +1069,7 @@
                             <th>Subject</th>
                             <th>Priority</th>
                             <th>Sent back to</th>
-                            <th>Returned At</th>
+                            <th>{{ $onRejectedPage ? 'Rejected At' : 'Returned At' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -1032,7 +1087,7 @@
                                     {{ $rfq->subject }}
                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                         <i class="bi bi-arrow-counterclockwise"></i>
-                                        Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                        {{ $onRejectedPage ? 'Rejected' : 'Sent back' }} by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
                                     </div>
                                     @if ($rfq->latestRejection)
                                         @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
@@ -1078,7 +1133,11 @@
                         @empty
                             <tr>
                                 <td colspan="7" class="text-center text-muted-soft py-4">
-                                    Nothing's been sent back to Senior Operations.
+                                    @if ($onRejectedPage)
+                                        Nothing's been rejected back to Senior Operations.
+                                    @else
+                                        Nothing's been sent back to Senior Operations.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse
@@ -1101,7 +1160,10 @@
                  back more than once says so. Saving an Edit fixes it and
                  takes it off this list (Rfq::resolveBusinessDevelopmentReturn());
                  so does it being carried past Senior Operations' review. See
-                 RfqController::index() ($scopedToBdReturns). --}}
+                 RfqController::index() ($scopedToBdReturns). What a reviewer
+                 rejected back is on their Rejected page ($onRejectedPage)
+                 instead, laid out the same; Returns keeps Senior Operations'
+                 Get Details Again. --}}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
@@ -1110,7 +1172,7 @@
                             <th>RFQ Number</th>
                             <th>Subject</th>
                             <th>Priority</th>
-                            <th>Returned At</th>
+                            <th>{{ $onRejectedPage ? 'Rejected At' : 'Returned At' }}</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -1128,7 +1190,7 @@
                                     @endif
                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                         <i class="bi bi-arrow-counterclockwise"></i>
-                                        Sent back by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                        {{ $onRejectedPage ? 'Rejected' : 'Sent back' }} by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
                                     </div>
                                     @if ($rfq->latestRejection)
                                         @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
@@ -1167,7 +1229,11 @@
                         @empty
                             <tr>
                                 <td colspan="6" class="text-center text-muted-soft py-4">
-                                    Nothing's been sent back to Business Development.
+                                    @if ($onRejectedPage)
+                                        Nothing's been rejected back to Business Development.
+                                    @else
+                                        Nothing's been sent back to Business Development.
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse

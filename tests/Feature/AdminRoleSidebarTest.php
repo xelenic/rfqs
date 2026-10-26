@@ -147,19 +147,25 @@ it('counts each role\'s queue company-wide', function () {
     expect(Rfq::queueCounts())->toBe([
         'closing' => 1,
         'bd_returns' => 0,
+        'bd_rejected' => 0,
         // The five stage RFQs have no Sourcing assignees, and neither does anything else…
         'unassigned' => 5,
         'ops_review' => 1,
         'ops_returns' => 0,
-        // Riley's part was sent back, so it's a return rather than a pending part; Sam's is with Data Entry.
+        'ops_rejected' => 0,
+        // Riley's part was sent back by Data Entry, so it's a return rather than a pending part
+        // (not a reviewer's rejection); Sam's is with Data Entry.
         'sourcing_pending' => 0,
         'sourcing_returns' => 1,
+        'sourcing_rejected' => 0,
         'data_entry' => 1,
+        'data_entry_rejected' => 0,
         'head_of_bd' => 1,
         'head_of_bd_returns' => 0,
         'gm_assistant' => 1,
         'gm_assistant_returns' => 0,
         'gm_review' => 1,
+        'gm_rejected' => 0,
         'on_hold' => 0,
         'cancelled' => 0,
     ]);

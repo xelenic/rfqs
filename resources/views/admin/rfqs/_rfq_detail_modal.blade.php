@@ -36,14 +36,16 @@
     // this RFQ — this assignee's own comments and anyone else's (Data
     // Entry, Operations, etc.) still show, only cross-sourcer chatter is
     // hidden — and except actions recorded against a different part of the
-    // split, which belong on that part's own modal.
+    // split, which belong on that part's own modal. A rejection back to
+    // Sourcing shows once, not again as the part's return (RfqComment::
+    // withoutRejectionRepeats()), as on the RFQ's timeline.
     $otherAssigneeIds = $rfq->assignees->where('id', '!=', $assignee->id)->pluck('id');
-    $visibleComments = $rfq->comments
+    $visibleComments = \App\Models\RfqComment::withoutRejectionRepeats($rfq->comments
         ->whereNotIn('user_id', $otherAssigneeIds)
         ->filter(fn ($comment) => $comment->concernsPart($part))
         // Sourcing and Data Entry: none of another role's actions, as on the
         // RFQ's timeline (Rfq::activityTimelineFor()).
-        ->filter(fn ($comment) => ! auth()->user()->seesOnlySourcingAndDataEntryTimeline() || $comment->isForSourcingAndDataEntry());
+        ->filter(fn ($comment) => ! auth()->user()->seesOnlySourcingAndDataEntryTimeline() || $comment->isForSourcingAndDataEntry()));
 
     // Sourcing works entirely from this modal on "My Pending RFQs" — no
     // need for an escape hatch to the full RFQ page there. Data Entry/Admin

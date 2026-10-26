@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * Pivot model for the rfq_user table — one row per Sourcing PART of an RFQ
@@ -68,7 +69,50 @@ class RfqAssignment extends Pivot
             'gm_approved_at' => 'datetime',
             'bd_closed_at' => 'datetime',
             'status_changed_at' => 'datetime',
+            'part_rejected_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether a reviewer's Reject & Return last sent this part back to
+     * $stage — what puts it on that step's Rejected page while it's waiting
+     * there, rather than on the step's own queue or its Returns (a
+     * co-worker's send-back clears it: Rfq::returnSourcingPart(),
+     * returnToDataEntry()).
+     */
+    public function isRejectedTo(string $stage): bool
+    {
+        return $this->part_rejected_to === $stage;
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts a reviewer last
+     * rejected back to $stage — the SQL twin of isRejectedTo().
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function whereRejectedTo(Builder|QueryBuilder $query, string $stage): void
+    {
+        $query->where('rfq_user.part_rejected_to', $stage);
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts not last rejected
+     * back to $stage — what stays on the step's own queue, or its Returns.
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function whereNotRejectedTo(Builder|QueryBuilder $query, string $stage): void
+    {
+        $query->where(fn ($parts) => $parts->whereNull('rfq_user.part_rejected_to')->orWhere('rfq_user.part_rejected_to', '<>', $stage));
+    }
+
+    /**
+     * Who last rejected this part back (part_rejected_by).
+     */
+    public function partRejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'part_rejected_by');
     }
 
     /**
@@ -656,7 +700,7 @@ class RfqAssignment extends Pivot
      * Entry can take: given to them by name, or to anyone in Data Entry
      * (data_entry_assigned_to null). Every part when null.
      *
-     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|\Illuminate\Database\Query\Builder  $query
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
     public static function whereForDataEntryUser($query, ?int $userId): void
     {

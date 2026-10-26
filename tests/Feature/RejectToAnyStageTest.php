@@ -3,6 +3,7 @@
 use App\Models\Rfq;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -347,20 +348,20 @@ it('lets the General Manager reject the whole RFQ all the way back to Business D
         ->and($rfq->reject_target_stage)->toBe('business_development');
 });
 
-it('shows up on Business Development\'s Returns page once rejected there, naming who and why', function () {
+it('shows up on Business Development\'s Rejected page once rejected there, naming who and why', function () {
     $people = chainPeople();
     $rfq = rfqReadyForSeniorOps($people);
 
     test()->actingAs($people['ops'])
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'business_development', 'reason' => 'Wrong subject entirely']);
 
-    expect(Rfq::bdReturnsCount())->toBe(1);
+    expect(Rfq::bdReturnsCount(rejected: true))->toBe(1);
 
     test()->actingAs(userWithRole('Business Development'))
-        ->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))
+        ->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))
         ->assertOk()
         ->assertSee('RFQ1001')
-        ->assertSee('Sent back by Senior Operations (2nd review)', false)
+        ->assertSee('Rejected by Senior Operations (2nd review)', false)
         ->assertSee('Wrong subject entirely');
 });
 
@@ -371,7 +372,7 @@ it('clears once the RFQ is carried past Senior Operations\' review again', funct
     test()->actingAs($people['ops'])
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'business_development', 'reason' => 'Start over']);
 
-    expect(Rfq::bdReturnsCount())->toBe(1);
+    expect(Rfq::bdReturnsCount(rejected: true))->toBe(1);
 
     // A whole-RFQ reject to Business Development unplans the split too
     // (Rfq::rejectToStage()) — whoever picks it up plans it again.
@@ -387,7 +388,7 @@ it('clears once the RFQ is carried past Senior Operations\' review again', funct
     expect($rfq->refresh())
         ->reject_target_stage->toBeNull()
         ->reject_from_stage->toBeNull();
-    expect(Rfq::bdReturnsCount())->toBe(0);
+    expect(Rfq::bdReturnsCount(rejected: true))->toBe(0);
 });
 
 // ---- the timeline -----------------------------------------------------------
@@ -399,10 +400,17 @@ it('records a Senior Operations rejection on the timeline, naming the role that 
     test()->actingAs($people['ops'])
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'sourcing', 'reason' => 'Redo every quote']);
 
-    test()->actingAs($people['ops'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')
+    $timeline = Str::after(test()->actingAs($people['ops'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')
         ->assertOk()
-        ->assertSee('Rejected')
-        ->assertSee('By Senior Operations (2nd review) — returned to Sourcing: Redo every quote', false);
+        ->getContent(), 'Activity Timeline (');
+
+    // Told once — the rejection's comment, by them in their role, saying
+    // where it went and whose parts (Rfq::toldOnce()).
+    expect(substr_count($timeline, 'Redo every quote'))->toBe(1)
+        ->and(Str::betweenFirst($timeline, 'rfq-comment-role">Senior Operations', 'rfq-comment-time'))
+        ->toContain('Rejected')
+        ->toContain('Returned to Sourcing')
+        ->toContain('RFQ1001-P1 of P2 · '.e($people['sourcing']->name).'&#039;s part');
 });
 
 it('records a General Manager rejection on the timeline the same way', function () {
@@ -412,9 +420,14 @@ it('records a General Manager rejection on the timeline the same way', function 
     test()->actingAs($people['gm'])
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 1, 'target_stage' => 'gm_assistant', 'reason' => 'Fix the payment terms']);
 
-    test()->actingAs($people['gm'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')
+    $timeline = Str::after(test()->actingAs($people['gm'])->get(route('admin.rfqs.show', $rfq->refresh()).'?status=Pending')
         ->assertOk()
-        ->assertSee('By General Manager — returned to GM Assistant: Fix the payment terms', false);
+        ->getContent(), 'Activity Timeline (');
+
+    expect(substr_count($timeline, 'Fix the payment terms'))->toBe(1)
+        ->and(Str::betweenFirst($timeline, 'rfq-comment-role">General Manager', 'rfq-comment-time'))
+        ->toContain('Rejected')
+        ->toContain('Returned to GM Assistant');
 });
 
 it('clears a pending reject record once the RFQ is approved past it again, whoever rejected it', function () {

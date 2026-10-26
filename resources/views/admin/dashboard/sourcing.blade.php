@@ -39,8 +39,13 @@
             ],
             [
                 'label' => 'Returned', 'value' => $overview['returned'], 'icon' => 'bi-arrow-counterclockwise', 'iconClass' => 'stat-icon-danger',
-                'url' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']),
-                'caption' => $overview['returned'] > 0 ? 'Needs rework' : 'Nothing sent back',
+                // Data Entry's returns are on Returns, a reviewer's rejections on Rejected.
+                'url' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => $overview['rejected'] > 0 && $overview['rejected'] === $overview['returned'] ? 'rejected' : 'returns']),
+                'caption' => match (true) {
+                    $overview['rejected'] > 0 => trans_choice('1 rejected by a reviewer|:count rejected by a reviewer', $overview['rejected'], ['count' => $overview['rejected']]),
+                    $overview['returned'] > 0 => 'Needs rework',
+                    default => 'Nothing sent back',
+                },
                 'alert' => $overview['returned'] > 0,
             ],
         ] as $card)
@@ -179,7 +184,10 @@
             <div class="card mb-4">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <span>Review items</span>
-                    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="small fw-semibold">Returns <i class="bi bi-arrow-right"></i></a>
+                    <span class="d-flex gap-3">
+                        <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="small fw-semibold">Returns <i class="bi bi-arrow-right"></i></a>
+                        <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="small fw-semibold">Rejected <i class="bi bi-arrow-right"></i></a>
+                    </span>
                 </div>
                 <div class="card-body">
                     <div class="dash-group-title tone-danger">

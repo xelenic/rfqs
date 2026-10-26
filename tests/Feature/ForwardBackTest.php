@@ -63,9 +63,10 @@ function carriedTo(array $people, string $until): Rfq
 }
 
 /**
- * $user's Returns page (or, with no view, their Pending page).
+ * $user's Rejected page — what a reviewer sent back to them — (or, with no
+ * view, their Pending page).
  */
-function returnsPage(User $user, ?string $view = 'returns', array $query = []): string
+function returnsPage(User $user, ?string $view = 'rejected', array $query = []): string
 {
     return test()->actingAs($user)->get(route('admin.rfqs.index', array_filter(['status' => 'Pending', 'view' => $view] + $query)))->assertOk()->getContent();
 }
@@ -77,7 +78,7 @@ function returnsPage(User $user, ?string $view = 'returns', array $query = []): 
  */
 function sendStraightBack(User $user, Rfq $rfq, array $data): TestResponse
 {
-    return test()->actingAs($user)->from(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))
+    return test()->actingAs($user)->from(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))
         ->patch(route('admin.rfqs.forward-back', $rfq), $data);
 }
 
@@ -90,7 +91,7 @@ it('lets Sourcing send a part the Head sent back straight back to the Head, skip
         ->assertSessionHasNoErrors();
     expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->toBeNull();
 
-    // On their Returns page, beside Assign to Data Entry.
+    // On their Rejected page, beside Assign to Data Entry.
     $row = Str::betweenFirst(returnsPage($people['sourcing']), '<td class="text-nowrap">RFQ1001-P1 of P2</td>', '</tr>');
     expect($row)->toContain('action="'.route('admin.rfqs.forward-back', $rfq).'"')
         ->toContain('<i class="bi bi-skip-forward-fill"></i> Send back to Head of Business Development')
@@ -126,7 +127,7 @@ it('lets Data Entry send a part the General Manager sent back straight back to t
     test()->actingAs($people['gm'])->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 2, 'target_stage' => 'data_entry', 'reason' => 'Totals are off'])
         ->assertSessionHasNoErrors();
 
-    $row = Str::betweenFirst(returnsPage($people['dataEntry'], null), '<td class="text-nowrap">RFQ1001-P2 of P2</td>', '</tr>');
+    $row = Str::betweenFirst(returnsPage($people['dataEntry']), '<td class="text-nowrap">RFQ1001-P2 of P2</td>', '</tr>');
     expect($row)->toContain('Send back to General Manager')
         ->toContain('It skips Sourcing (finalize), Senior Operations (2nd review), Head of Business Development and GM Assistant');
 

@@ -77,6 +77,11 @@
                     <div class="rfq-comment-meta">
                         @include('admin.rfqs._comment_author', ['author' => $comment->author])
                         @include('admin.rfqs._comment_action', ['comment' => $comment])
+                        {{-- A rejection back to Sourcing, told once: whose parts
+                             it sent back (Rfq::toldOnce()). --}}
+                        @foreach ($entry['parts_sent_back'] ?? [] as $partSentBack)
+                            <span class="comment-action-context">{{ $partSentBack }}</span>
+                        @endforeach
                         <span class="text-muted-soft rfq-comment-time">{{ $comment->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</span>
                     </div>
                     @if ($entry['detail'])
