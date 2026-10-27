@@ -17,6 +17,8 @@
         'who' => $assignee->name,
         // How the line items came about — shown under the counts (_line_items_history).
         'history' => $rfq->lineItemsHistory($assignee->pivot->part_number),
+        // Submitted by Sourcing less added by Data Entry — the popup's difference.
+        'submitted_difference' => $assignee->pivot->submittedDifference(),
     ] + $assignee->pivot->lineItemsCheck())->values();
     $approveLabel = isset($approvePart) ? $rfq->partNumberLabel((int) $approvePart) : $rfq->rfq_number;
 @endphp

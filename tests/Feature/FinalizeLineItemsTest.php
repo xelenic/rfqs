@@ -124,7 +124,7 @@ it('shows Senior Operations and the Head of Business Development what Sourcing s
 
     $html = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()->getContent();
     expect(popupParts(Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>')))
-        ->toBe([['part' => 1, 'label' => 'RFQ8601', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => 23]]);
+        ->toBe([['part' => 1, 'label' => 'RFQ8601', 'who' => 'Riley Chen', 'submitted_difference' => 1, 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => 23]]);
 
     $rfq->refresh()->approveSeniorOpsPart(1, $ops, 21);
 

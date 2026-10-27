@@ -640,6 +640,20 @@ class RfqAssignment extends Pivot
     }
 
     /**
+     * What Sourcing submitted finalizing the part less what Data Entry added
+     * to it — what Senior Operations checks before counting the actual line
+     * items (_senior_ops_approve_modal): 0 when they match, negative when
+     * Sourcing submitted fewer; null while either is missing.
+     */
+    public function submittedDifference(): ?int
+    {
+        $added = $this->data_entry_completed_at !== null ? $this->data_entry_entries : null;
+        $submitted = $this->submittedLineItems();
+
+        return $added !== null && $submitted !== null ? $submitted - $added : null;
+    }
+
+    /**
      * The line items Senior Operations counted on the part as they approved
      * it (Rfq::approveSeniorOpsPart()) — null until they have, or since it
      * was sent back past their review.

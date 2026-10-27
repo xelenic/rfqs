@@ -17,12 +17,13 @@ beforeEach(function () {
 
 /**
  * RFQ8401 ("Valves") with its parts — given to Data Entry with $toAdd line
- * items to add, Data Entry adding $added, then finalized — waiting on Senior
- * Operations' review; split in two when $split.
+ * items to add, Data Entry adding $added, then finalized, with $submitted
+ * line items when given — waiting on Senior Operations' review; split in
+ * two when $split.
  *
  * @return array{rfq: Rfq, ops: User}
  */
-function finalizedForCheck(?int $toAdd = 24, ?int $added = 22, bool $split = false): array
+function finalizedForCheck(?int $toAdd = 24, ?int $added = 22, bool $split = false, ?int $submitted = null): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $dataEntry = userWithRole('Data Entry');
@@ -31,29 +32,37 @@ function finalizedForCheck(?int $toAdd = 24, ?int $added = 22, bool $split = fal
     foreach ($split ? [1, 2] : [1] as $part) {
         $rfq->refresh()->completeSourcingPart($part, null, null, $toAdd);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry, 'Entered', $added === null ? null : $added + $part - 1);
-        $rfq->refresh()->finalizePart($part);
+        $rfq->refresh()->finalizePart($part, $submitted);
     }
 
     return ['rfq' => $rfq->refresh(), 'ops' => userWithRole('Senior Operations')];
 }
 
-it('opens a check of the line items from Approve, on the review list', function () {
-    ['rfq' => $rfq, 'ops' => $ops] = finalizedForCheck(24, 22);
+it('opens a check of the line items from Approve, on the review list — added, submitted and the difference', function () {
+    ['rfq' => $rfq, 'ops' => $ops] = finalizedForCheck(24, 22, submitted: 21);
 
     $html = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('id="seniorOpsApproveModal"', false)
-        ->assertSeeInOrder(['Line Items to Add', 'Line Items Added', 'Difference', 'Submitted Line Items', 'Actual Line Items'])
         ->getContent();
 
     $button = Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>');
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.approve-senior-ops-part', $rfq).'"')
         ->toContain('data-part="1"')
-        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => null]]);
+        ->and(popupParts($button))->toBe([['part' => 1, 'label' => 'RFQ8401', 'who' => 'Riley Chen', 'submitted_difference' => -1, 'to_add' => 24, 'added' => 22, 'difference' => -2, 'submitted' => 21]]);
 
-    // Only Actual Line Items is for them to fill in; the rest are read only, and not sent.
+    // What Data Entry added, what Sourcing submitted and the difference, read
+    // only and not sent; Actual Line Items is the one thing for them to fill in.
     $part = Str::between($html, '<template id="seniorOpsApprovePart">', '</template>');
-    expect(substr_count($part, ' readonly tabindex="-1"'))->toBe(4)
+    expect($part)->toContain('data-value="added"')
+        ->toContain('data-value="submitted"')
+        ->toContain('data-value="submitted_difference"')
+        ->toContain('data-fewer="fewer submitted than added"')
+        ->not->toContain('Line Items to Add')
+        ->and(strpos($part, 'Line Items Added'))->toBeLessThan(strpos($part, 'Submitted Line Items'))
+        ->and(strpos($part, 'Submitted Line Items'))->toBeLessThan(strpos($part, 'Difference'))
+        ->and(strpos($part, 'Difference'))->toBeLessThan(strpos($part, 'Actual Line Items'))
+        ->and(substr_count($part, ' readonly tabindex="-1"'))->toBe(3)
         ->and(substr_count($part, 'name='))->toBe(0)
         ->and($part)->toContain('type="number" class="form-control js-actual"');
 });
@@ -112,8 +121,8 @@ it('asks for every part\'s count when approving the whole RFQ, from its page', f
     expect($button)
         ->toContain('data-action="'.route('admin.rfqs.complete-senior-ops-review', $rfq).'"')
         ->and(popupParts($button))->toBe([
-            ['part' => 1, 'label' => 'RFQ8401-P1 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 10, 'difference' => 0, 'submitted' => null],
-            ['part' => 2, 'label' => 'RFQ8401-P2 of P2', 'who' => 'Riley Chen', 'to_add' => 10, 'added' => 11, 'difference' => 1, 'submitted' => null],
+            ['part' => 1, 'label' => 'RFQ8401-P1 of P2', 'who' => 'Riley Chen', 'submitted_difference' => null, 'to_add' => 10, 'added' => 10, 'difference' => 0, 'submitted' => null],
+            ['part' => 2, 'label' => 'RFQ8401-P2 of P2', 'who' => 'Riley Chen', 'submitted_difference' => null, 'to_add' => 10, 'added' => 11, 'difference' => 1, 'submitted' => null],
         ]);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.complete-senior-ops-review', $rfq), ['actual_line_items' => [1 => 10]])
@@ -169,4 +178,21 @@ it('works out the difference, or leaves it out while a count is missing', functi
     'the same' => [24, 24, true, ['to_add' => 24, 'added' => 24, 'difference' => 0, 'submitted' => null]],
     'no line items given' => [null, 22, true, ['to_add' => null, 'added' => 22, 'difference' => null, 'submitted' => null]],
     'not sent to finalize' => [24, 22, false, ['to_add' => 24, 'added' => null, 'difference' => null, 'submitted' => null]],
+]);
+
+it('works out what Sourcing submitted less what Data Entry added, or leaves it out while either is missing', function (?int $added, bool $sentToFinalize, ?int $submitted, bool $finalized, ?int $difference) {
+    $part = new RfqAssignment([
+        'data_entry_entries' => $added,
+        'data_entry_completed_at' => $sentToFinalize ? now() : null,
+        'submitted_line_items' => $submitted,
+        'finalized_at' => $finalized ? now() : null,
+    ]);
+
+    expect($part->submittedDifference())->toBe($difference);
+})->with([
+    'fewer submitted' => [22, true, 20, true, -2],
+    'more submitted' => [22, true, 25, true, 3],
+    'the same' => [22, true, 22, true, 0],
+    'not finalized' => [22, true, 20, false, null],
+    'not sent to finalize' => [22, false, 20, true, null],
 ]);

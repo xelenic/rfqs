@@ -1,12 +1,13 @@
 {{--
     Senior Operations' Approve — the popup that verifies the line items before
     a part (or the whole RFQ) goes on to the Head of Business Development.
-    For each part it's approving: the line items Sourcing gave Data Entry to
-    add, the line items Data Entry added and the difference between them —
-    worked out by the system — and those Sourcing submitted finalizing it
-    (_finalize_modal), read only (RfqAssignment::lineItemsCheck()) — and
-    the Actual Line Items Senior Operations counted, which they enter
-    (actual_line_items[part], kept as rfq_user.verified_line_items). One shared
+    For each part it's approving: the line items Data Entry added sending it
+    to finalize, those Sourcing submitted finalizing it (_finalize_modal) and
+    the difference between them — worked out by the system — read only
+    (RfqAssignment::lineItemsCheck(), submittedDifference()); and the Actual
+    Line Items Senior Operations counted, the one thing they enter
+    (actual_line_items[part], kept as rfq_user.verified_line_items). What
+    Sourcing gave Data Entry to add is in the history under it. One shared
     popup, pointed at a part or an RFQ by the .js-senior-ops-approve button
     that opens it (_senior_ops_approve_button) — admin.js fills it in, as it
     does every .js-line-items-modal. See
@@ -38,26 +39,22 @@
                         <div class="line-items-check-title"></div>
                         <div class="row g-2">
                             <div class="col-6 col-md">
-                                <label class="form-label small" data-label-for="to_add">Line Items to Add</label>
-                                <input type="text" class="form-control line-items-check-readonly" data-value="to_add" readonly tabindex="-1">
-                                <div class="form-text">Requested by Sourcing</div>
-                            </div>
-                            <div class="col-6 col-md">
                                 <label class="form-label small" data-label-for="added">Line Items Added</label>
                                 <input type="text" class="form-control line-items-check-readonly" data-value="added" readonly tabindex="-1">
                                 <div class="form-text">Entered by Data Entry</div>
-                            </div>
-                            <div class="col-6 col-md">
-                                <label class="form-label small" data-label-for="difference">Difference</label>
-                                <input type="text" class="form-control line-items-check-readonly" data-value="difference" readonly tabindex="-1">
-                                <div class="form-text js-difference-note"></div>
                             </div>
                             <div class="col-6 col-md">
                                 <label class="form-label small" data-label-for="submitted">Submitted Line Items</label>
                                 <input type="text" class="form-control line-items-check-readonly" data-value="submitted" readonly tabindex="-1">
                                 <div class="form-text">Submitted by Sourcing</div>
                             </div>
-                            <div class="col-12 col-md">
+                            <div class="col-6 col-md">
+                                <label class="form-label small" data-label-for="submitted_difference">Difference</label>
+                                <input type="text" class="form-control line-items-check-readonly" data-value="submitted_difference" readonly tabindex="-1"
+                                       data-difference data-fewer="fewer submitted than added" data-more="more submitted than added">
+                                <div class="form-text js-difference-note"></div>
+                            </div>
+                            <div class="col-6 col-md">
                                 <label class="form-label small fw-semibold" data-label-for="count">Actual Line Items</label>
                                 <input type="number" class="form-control js-actual" min="0" max="{{ \App\Http\Controllers\Admin\RfqController::MAX_DATA_ENTRIES }}" step="1" inputmode="numeric" required>
                                 <div class="form-text">Verified by you</div>

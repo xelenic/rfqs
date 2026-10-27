@@ -2394,19 +2394,23 @@ function rfqmsBoot() {
                     input.id = id + '-' + key;
                     block.querySelector('[data-label-for="' + key + '"]').setAttribute('for', input.id);
 
-                    if (key !== 'difference') {
+                    // A difference (data-difference, or the to-add one): signed,
+                    // coloured, and said in words (data-fewer / data-more).
+                    if (key !== 'difference' && !('difference' in input.dataset)) {
                         input.value = lineItemsCount(part[key]);
                         return;
                     }
 
-                    var note = block.querySelector('.js-difference-note');
-                    if (part.difference === null || part.difference === undefined) {
+                    var difference = part[key];
+                    var note = input.parentNode.querySelector('.js-difference-note');
+                    if (difference === null || difference === undefined) {
                         input.value = '—';
                         note.textContent = 'Not both recorded';
                     } else {
-                        input.value = (part.difference > 0 ? '+' : (part.difference < 0 ? '−' : '')) + Math.abs(part.difference).toLocaleString();
-                        note.textContent = part.difference === 0 ? 'They match' : Math.abs(part.difference).toLocaleString() + (part.difference < 0 ? ' fewer than requested' : ' more than requested');
-                        input.classList.add(part.difference === 0 ? 'is-match' : 'is-off');
+                        input.value = (difference > 0 ? '+' : (difference < 0 ? '−' : '')) + Math.abs(difference).toLocaleString();
+                        note.textContent = difference === 0 ? 'They match' : Math.abs(difference).toLocaleString() + ' '
+                            + (difference < 0 ? input.dataset.fewer || 'fewer than requested' : input.dataset.more || 'more than requested');
+                        input.classList.add(difference === 0 ? 'is-match' : 'is-off');
                     }
                 });
 
