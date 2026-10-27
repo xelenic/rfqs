@@ -171,6 +171,12 @@
             @if ($entry['detail'])
                 <div class="rfq-timeline-detail {{ $detailClass }}">{{ $entry['detail'] }}</div>
             @endif
+            {{-- A closing: the quotation number it was closed with. --}}
+            @if (filled($entry['quotation'] ?? null))
+                <div class="rfq-timeline-detail text-muted-soft" data-quotation>
+                    <i class="bi bi-receipt"></i> Quotation number: <span class="fw-semibold text-body">{{ $entry['quotation'] }}</span>
+                </div>
+            @endif
         @endif
     </div>
 </div>

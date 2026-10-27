@@ -534,6 +534,31 @@ it('keeps the reference code with the part, and with the RFQ when the last part 
         ->assertSee('Quotation: <span class="fw-semibold text-body">PO-7002</span>', false);
 });
 
+it('shows the quotation number on the RFQ\'s timeline where it was closed — each part\'s on a split — but not to Sourcing', function () {
+    [$rfq, $people] = splitWithPartOneApprovedByGm();
+    $quotation = fn (string $code) => 'Quotation number: <span class="fw-semibold text-body">'.$code.'</span>';
+    // The timeline's entries as $viewer sees them, each on its own.
+    $entries = fn (User $viewer, Rfq $of) => collect(explode('<div class="rfq-timeline-item ', Str::after(test()->actingAs($viewer)->get(route('admin.rfqs.show', $of))->assertOk()->getContent(), 'Activity Timeline (')));
+
+    test()->actingAs($people['closer'])->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-7001'])->assertSessionHasNoErrors();
+    $rfq->refresh()->approveGmPart(2, $people['gm']);
+    test()->actingAs($people['closer'])->patch(route('admin.rfqs.close-part', $rfq), ['part' => 2, 'reference_code' => 'PO-7002'])->assertSessionHasNoErrors();
+
+    $seen = $entries($people['gm'], $rfq);
+    $partClosings = $seen->filter(fn (string $entry) => str_contains($entry, 'Part closed by Business Development'));
+
+    expect($partClosings->first(fn (string $entry) => str_contains($entry, 'RFQ1001-P1 of P2')))->toContain($quotation('PO-7001'))->not->toContain('PO-7002')
+        ->and($partClosings->first(fn (string $entry) => str_contains($entry, 'RFQ1001-P2 of P2')))->toContain($quotation('PO-7002'))->not->toContain('PO-7001')
+        ->and($seen->first(fn (string $entry) => str_contains($entry, '>RFQ Closed<')))->toContain($quotation('PO-7001, PO-7002'))
+        ->and($entries($people['sourcing'], $rfq)->join(''))->not->toContain('Quotation number:');
+
+    // One code for a whole RFQ closed at once.
+    $whole = splitAmong(Rfq::factory()->create(['stage' => 'bd_closing']), [1 => $people['sourcing']]);
+    $whole->closeOut($people['closer'], 'Q-2024-118');
+
+    expect($entries($people['gm'], $whole)->first(fn (string $entry) => str_contains($entry, '>RFQ Closed<')))->toContain($quotation('Q-2024-118'));
+});
+
 it('keeps one reference code for a whole RFQ closed at once, on every part it closes', function () {
     [$rfq, $people] = splitWithPartOneApprovedByGm();
     $rfq->refresh()->approveGmPart(2, $people['gm']);

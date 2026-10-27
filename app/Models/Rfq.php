@@ -4429,7 +4429,9 @@ class Rfq extends Model
      * comment).
      *
      * Alerts sent about it (sentAlerts()) are entries too, of type
-     * notification, with their title, tone, icon and recipients as well.
+     * notification, with their title, tone, icon and recipients as well. A
+     * closing (bd_closed, bd_part_closed) carries the quotation number
+     * Business Development closed it with (quotation).
      *
      * @return array<int, array{
      *     type: string,
@@ -4443,6 +4445,7 @@ class Rfq extends Model
      *     icon?: string,
      *     recipients?: Collection<int, User>,
      *     reason?: ?string,
+     *     quotation?: ?string,
      * }>
      */
     public function activityTimeline(): array
@@ -4578,6 +4581,7 @@ class Rfq extends Model
                     'related' => $assignee,
                     'detail' => $this->partNumberLabel($assignee->pivot->part_number),
                     'comment' => null,
+                    'quotation' => $assignee->pivot->bd_reference_code,
                 ];
             }
         }
@@ -4672,6 +4676,10 @@ class Rfq extends Model
         }
 
         if ($this->bd_closed_at) {
+            // Its quotation number — each part's, on a split closed part by
+            // part with different ones.
+            $quotations = $this->assignees->pluck('pivot.bd_reference_code')->filter()->unique()->values();
+
             $entries[] = [
                 'type' => 'bd_closed',
                 'at' => $this->bd_closed_at,
@@ -4679,6 +4687,7 @@ class Rfq extends Model
                 'related' => null,
                 'detail' => null,
                 'comment' => null,
+                'quotation' => $quotations->count() > 1 ? $quotations->join(', ') : ($this->bd_reference_code ?? $quotations->first()),
             ];
         }
 
