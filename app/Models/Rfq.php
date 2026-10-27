@@ -4446,6 +4446,7 @@ class Rfq extends Model
      *     recipients?: Collection<int, User>,
      *     reason?: ?string,
      *     quotation?: ?string,
+     *     part?: ?int,
      * }>
      */
     public function activityTimeline(): array
@@ -4642,6 +4643,13 @@ class Rfq extends Model
         }
 
         if ($this->rejected_at) {
+            // Which part it was about, when it was one (the rejection's own
+            // comment, posted with it), so a part's page shows only its own.
+            $recordedBy = $this->comments->last(fn (RfqComment $comment) => $comment->action === 'rejected'
+                && $comment->user_id === $this->rejected_by
+                && trim((string) $comment->body) === trim((string) $this->reject_reason)
+                && $comment->created_at->diffInSeconds($this->rejected_at, true) <= RfqComment::SAME_ACTION_SECONDS);
+
             $entries[] = [
                 'type' => 'rejected',
                 'at' => $this->rejected_at,
@@ -4650,6 +4658,7 @@ class Rfq extends Model
                 'detail' => 'By '.self::stageLabel($this->reject_from_stage).' — returned to '.self::stageLabel($this->reject_target_stage).': '.$this->reject_reason,
                 'comment' => null,
                 'reason' => $this->reject_reason,
+                'part' => isset($recordedBy?->meta['part']) ? (int) $recordedBy->meta['part'] : null,
             ];
         }
 
@@ -4830,8 +4839,9 @@ class Rfq extends Model
     /**
      * Which part of a split a timeline entry (activityTimeline()) is about — a
      * part's own step (its holder's), an action on one part (its comment's
-     * meta part), an alert about one (its part) — or null for the RFQ as a
-     * whole: its own steps, the discussion, actions on every part.
+     * meta part), an alert about one, or the RFQ's latest rejection of one
+     * (its part) — or null for the RFQ as a whole: its own steps, the
+     * discussion, actions on every part.
      *
      * @param  array<string, mixed>  $entry
      */
@@ -4839,7 +4849,7 @@ class Rfq extends Model
     {
         $part = match ($entry['type']) {
             'comment' => $entry['comment']->meta['part'] ?? null,
-            'notification' => $entry['part'] ?? null,
+            'notification', 'rejected' => $entry['part'] ?? null,
             default => $entry['related']?->pivot?->part_number,
         };
 

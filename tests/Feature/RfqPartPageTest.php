@@ -85,6 +85,33 @@ it('keeps to that part\'s timeline — and the RFQ\'s own, and the discussion �
         ->assertSee('Part 1 supplier sheet is wrong');
 });
 
+it('keeps another part\'s rejection off a part\'s page — its timeline step and its step details — but shows it on its own', function () {
+    ['rfq' => $rfq] = partTwoFinalized();
+    $ops = userWithRole('Senior Operations');
+    $rfq->refresh()->completeSourcingPart(3, null, null, 4);
+    $rfq->refresh()->completeDataEntryPart(3, userWithRole('Data Entry'), 'Part 3 entered', 4);
+    $rfq->refresh()->finalizePart(3, 4);
+
+    // Senior Operations rejects part 3 back to Data Entry — the RFQ's latest rejection.
+    $rfq->refresh()->rejectPartToStage(3, 'data_entry', 'Part 3 totals are off', $ops, 'senior_ops_review');
+    $admin = userWithRole('Admin');
+
+    expect(shownOf(test()->actingAs($admin)->get($rfq->refresh()->detailsUrl(2))->assertOk()))
+        ->not->toContain('Part 3 totals are off')
+        ->and(collect($rfq->activityTimelineFor($admin, 2))->pluck('type'))->not->toContain('rejected');
+
+    // On part 3's own page, and the whole RFQ's, it's there.
+    expect(shownOf(test()->actingAs($admin)->get($rfq->detailsUrl(3))->assertOk()))->toContain('Part 3 totals are off')
+        ->and(shownOf(test()->actingAs($admin)->get(route('admin.rfqs.show', ['rfq' => $rfq, 'part' => 2, 'flow' => 'whole']))->assertOk()))->toContain('Part 3 totals are off');
+
+    // A rejection of the whole RFQ is every part's — told once, by its comment.
+    $rfq->refresh()->rejectToStage('sourcing', 'Every quote is stale', $ops, 'senior_ops_review');
+    foreach ([1, 2, 3] as $part) {
+        expect(collect($rfq->refresh()->activityTimelineFor($admin, $part))->where('type', 'comment')->map(fn (array $entry) => $entry['comment']->body))
+            ->toContain('Every quote is stale');
+    }
+});
+
 it('offers the decisions on that part alone — never the whole RFQ\'s', function () {
     ['rfq' => $rfq] = partTwoFinalized();
     $ops = userWithRole('Senior Operations');

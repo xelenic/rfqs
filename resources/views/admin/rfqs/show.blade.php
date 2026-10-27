@@ -209,6 +209,9 @@
     // if it was one part (RfqComment::concernsPart()) — so only that part's
     // branch shows it as sent back, rather than every one.
     $latestRejection = $rfq->comments->where('action', 'rejected')->last();
+    // On one part's page ($pagePart), whether that rejection is about this
+    // part (or the whole RFQ) — another part's isn't shown here.
+    $rejectionInPage = $pagePart === null || $latestRejection === null || $latestRejection->concernsPart($pagePart);
 
     // Which tab opens by default in the Step Details panel below the
     // Progress chart — whichever stage is currently in play, or Closed
@@ -1146,7 +1149,7 @@
                             @endif
                         </dl>
                     @endif
-                    @if ($rfq->reject_from_stage === 'senior_ops_review' && $rfq->rejected_at && ! $rfq->senior_ops_reviewed_at)
+                    @if ($rfq->reject_from_stage === 'senior_ops_review' && $rfq->rejected_at && ! $rfq->senior_ops_reviewed_at && $rejectionInPage)
                         {{-- The latest thing sent back, and which part it was if it was one. --}}
                         <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
                             <div>
@@ -1202,7 +1205,7 @@
                             @endif
                         </dl>
                     @endif
-                    @if ($rfq->reject_from_stage === 'head_of_bd_review' && $rfq->rejected_at && ! $rfq->head_of_bd_approved_at)
+                    @if ($rfq->reject_from_stage === 'head_of_bd_review' && $rfq->rejected_at && ! $rfq->head_of_bd_approved_at && $rejectionInPage)
                         {{-- The latest thing sent back, and which part it was if it was one. --}}
                         <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
                             <div>
@@ -1280,7 +1283,7 @@
                             </div>
                         </dl>
                     @endif
-                    @if ($rfq->reject_from_stage === 'gm_review' && $rfq->rejected_at && ! $rfq->gm_approved_at)
+                    @if ($rfq->reject_from_stage === 'gm_review' && $rfq->rejected_at && ! $rfq->gm_approved_at && $rejectionInPage)
                         {{-- The latest thing sent back, and which part it was if it was one. --}}
                         <dl class="rfq-detail-grid mb-0 {{ $rfq->isSplit() ? 'mt-3' : '' }}">
                             <div>
