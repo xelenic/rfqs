@@ -3,7 +3,8 @@
     TimeSpentReportController): the average time each tracked role spends on
     an RFQ, then — one tab per lens: Pending, Deadline exceeded, Out of working
     hours, Closed, All — every RFQ some role has started on, with each role's
-    time on it and how it stands against Sourcing's deadline. Each time is its
+    time on it and how it stands against its targets, every timed step
+    judged as the dashboards judge it (_deadline). Each time is its
     working time — only the working hours set in Settings count, and each
     person's own extra hours (ExtraWorkingHour) for their time — with the
     elapsed (clock) time under it. Work done out of hours (RfqStep::
@@ -14,9 +15,11 @@
 
     Expects: $rfqs (paginated), $times (Rfq::timeSpent() per RFQ id),
     $breakdowns (Rfq::timeBreakdown() per RFQ id),
-    $deadlines (Rfq::sourcingDeadline() per RFQ id), $averages (per role, in
+    $deadlines (Rfq::deadlines() per RFQ id), $averages (per role, in
     seconds: average, elapsed, rfqs, seconds), $outOfHours (seconds,
-    stretches, rfqs), $tabs (key => label, count), $tab, $roles, $search.
+    stretches, rfqs), $tabs (key => label, count), $exceeded (of those past a
+    deadline, how many are overdue now and how many finished a step late),
+    $tab, $roles, $search.
     From the day attendance starts, a person's time only counts on a day the
     attendance sheet has them present — what's waiting on a sheet, or was a
     day absent, is noted under it (_attendance_note).
@@ -89,6 +92,15 @@
         @endforeach
     </ul>
 
+    {{-- What's on Deadline exceeded: overdue now — the dashboards' Overdue —
+         and what finished a step late. --}}
+    @if ($tab === 'exceeded' && $tabs['exceeded']['count'] > 0)
+        <p class="text-muted-soft small mb-3" data-exceeded-summary>
+            <span class="fw-semibold text-danger">{{ $exceeded['overdue'] }} overdue now</span>, a task past its target as on the dashboards
+            · <span class="fw-semibold text-body">{{ $exceeded['late'] }} finished a step late</span>
+        </p>
+    @endif
+
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <form method="GET" class="d-flex flex-wrap gap-2">
@@ -116,7 +128,7 @@
                         <th>RFQ Number</th>
                         <th>Subject</th>
                         <th>Status</th>
-                        <th title="Sourcing's time against its priority's target — see Settings → Sourcing Targets">Deadline</th>
+                        <th title="Each step's working time against its target — Sourcing, Data Entry, Finalize and GM Assistant, as on the dashboards — see Settings">Deadline</th>
                         @foreach ($roles as $role)
                             <th class="text-end">{{ $role }}</th>
                         @endforeach
@@ -138,7 +150,7 @@
                             <td>{{ $rfq->subject }}</td>
                             <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
                             <td class="text-nowrap">
-                                @include('admin.reports._deadline', ['deadline' => $deadlines[$rfq->id]])
+                                @include('admin.reports._deadline', ['deadline' => $deadlines[$rfq->id], 'rfq' => $rfq])
                             </td>
                             @foreach ($roles as $role)
                                 @php $roleTime = $time['roles'][$role]; @endphp

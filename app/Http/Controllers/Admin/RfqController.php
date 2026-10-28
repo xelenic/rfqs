@@ -252,7 +252,8 @@ class RfqController extends Controller implements HasMiddleware
 
         // Operations' Pending list is just their actionable backlog — RFQs
         // nobody's assigned to Sourcing yet, but not those sent back to them,
-        // which are on their Returns page (Rfq::scopeAwaitingAssignment()) —
+        // nor those Business Development fixed and sent back on, which are on
+        // their Returns page (Rfq::scopeAwaitingAssignment()) —
         // not every Pending RFQ in the company regardless of stage. Matches
         // the red count badge in the sidebar (layouts/app.blade.php).
         $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
@@ -383,6 +384,8 @@ class RfqController extends Controller implements HasMiddleware
             // those two views.
             ->when($scopedToDataEntry || (($scopedToMe || $scopedToReturns) && ! $sourcingOverview), fn ($query) => $query->with(['comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments']))
             ->when($scopedToBdReturns || $scopedToSeniorOpsReturns || $scopedToHeadOfBdReturns || $scopedToGmAssistantReturns, fn ($query) => $query->with(['rejectedBy', 'latestRejection.attachments']))
+            // What Business Development fixed, and who'd asked them to, on Senior Operations' Returns.
+            ->when($scopedToSeniorOpsReturns, fn ($query) => $query->with(['bdFixedBy', 'latestRejection.author']))
             // A Sourcing member's own Pending list counts each part down, and
             // so does their Returns list — a part sent back carries on from
             // where it was, so every Sourcing stretch of it counts
@@ -1133,7 +1136,7 @@ class RfqController extends Controller implements HasMiddleware
         $bdList = in_array($rfq->reject_from_stage, Rfq::REJECTABLE_STAGES, true) ? 'Rejected' : 'Returns';
 
         if ($resolvesBdReturn) {
-            $rfq->resolveBusinessDevelopmentReturn();
+            $rfq->resolveBusinessDevelopmentReturn($request->user());
         }
 
         return $this->redirectAfterSave($request, $rfq)->with('status', $resolvesBdReturn
@@ -1168,8 +1171,8 @@ class RfqController extends Controller implements HasMiddleware
      *
      * Business Development never has access either — not even on an RFQ
      * sent back to them (Rfq::isReturnedToBusinessDevelopment()): they fix
-     * its details, and Senior Operations re-assigns it from their
-     * Unassigned queue.
+     * its details, and Senior Operations re-assigns it from their Returns
+     * page (Rfq::scopeReturnedToSeniorOperations()).
      */
     public function assign(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -1260,7 +1263,7 @@ class RfqController extends Controller implements HasMiddleware
      * assignment step: any Sourcing part already assigned on a partly
      * assigned split is freed, and the wizard starts over once it's back.
      * Business Development fixing it (RfqController::update()) puts it back
-     * in front of Senior Operations.
+     * in front of Senior Operations, on their Returns page.
      */
     public function requestDetails(Request $request, Rfq $rfq): RedirectResponse
     {

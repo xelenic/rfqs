@@ -236,7 +236,7 @@ it('counts each RFQ returned once, says how many came back to Business Developme
     // Returned to Business Development, and already fixed.
     $fixed = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'stage' => 'senior_ops_review']);
     $fixed->rejectToStage('business_development', 'Which building?', $ops, 'senior_ops_review');
-    $fixed->resolveBusinessDevelopmentReturn();
+    $fixed->resolveBusinessDevelopmentReturn(userWithRole('Business Development'));
     expect($fixed->refresh()->rejected_at)->toBeNull();
 
     // Returned twice, elsewhere.

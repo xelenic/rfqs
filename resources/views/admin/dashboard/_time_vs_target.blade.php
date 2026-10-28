@@ -1,6 +1,6 @@
 {{--
     A task's working time against its target, as the dashboards' "Time vs
-    target" shows it (DashboardController::timeAgainstTarget()): a bar —
+    target" shows it (Rfq::timeAgainstTarget()): a bar —
     green on track, amber due soon (under a quarter of the target left), red
     overdue — and "15h 34m of 20h", or "7h 50m over 1h" once it's past.
     With $for, a line under it says whose target it is and where it stands

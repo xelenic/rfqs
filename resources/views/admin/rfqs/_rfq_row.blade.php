@@ -173,14 +173,7 @@
                 @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => $restrictAssignment])
             @endif
             @if (($canRequestDetails ?? false) && ! $rfq->isReturnedToBusinessDevelopment())
-                <button type="button" class="btn btn-sm btn-outline-danger js-request-details"
-                        data-bs-toggle="modal" data-bs-target="#requestDetailsModal"
-                        data-action="{{ route('admin.rfqs.request-details', $rfq) }}"
-                        data-rfq-id="{{ $rfq->id }}"
-                        data-label="{{ $rfq->rfq_number }} — {{ $rfq->subject }}"
-                        title="Send back to Business Development for details">
-                    <i class="bi bi-arrow-counterclockwise"></i> Get Details Again
-                </button>
+                @include('admin.rfqs._request_details_button', ['rfq' => $rfq])
             @endif
         @endcan
         @if ($rfq->isStopped() && auth()->user()->canChangeRfqStatus())

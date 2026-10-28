@@ -371,7 +371,7 @@ it('doesn\'t count a day absent against Sourcing\'s deadline', function () {
 
     // Tuesday 10:00: all of Monday with them — 7h 30m against an Urgent 4h.
     test()->travelTo(atLk('2026-10-06 10:00'));
-    expect($rfq->refresh()->sourcingDeadline()['exceeded'])->toBeTrue();
+    expect($rfq->refresh()->deadlines())->toMatchArray(['overdue' => true, 'exceeded' => true]);
 
     // Off sick on Monday: only Tuesday 08:30–10:00 counts.
     makeSheet($ops, '2026-10-05');
@@ -379,7 +379,8 @@ it('doesn\'t count a day absent against Sourcing\'s deadline', function () {
     test()->actingAs($ops)->put(route('admin.attendance.update', $sheet), marks($sheet, [$riley->id => 'Sick leave']));
     approveSheetAsHr('2026-10-05');
 
-    expect($rfq->refresh()->sourcingDeadline())->toMatchArray(['remaining' => 4 * 3600 - 90 * 60, 'exceeded' => false]);
+    expect($rfq->refresh()->deadlines())->toMatchArray(['overdue' => false, 'exceeded' => false])
+        ->and($rfq->deadlines()['running'][0]['remaining'])->toBe(4 * 3600 - 90 * 60);
 
     test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('2h 30m left');

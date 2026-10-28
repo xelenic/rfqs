@@ -94,8 +94,10 @@ it('takes a rejected RFQ off the Rejected page once Business Development saves a
     test()->actingAs($bd)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertDontSee('Sent back to Business Development');
 
-    // Senior Operations still has it to re-assign.
-    expect(Rfq::needingSourcing()->pluck('id'))->toContain($rfq->id);
+    // Senior Operations still has it to re-assign — on their Returns, not Unassigned.
+    expect(Rfq::needingSourcing()->pluck('id'))->toContain($rfq->id)
+        ->and(Rfq::returnedToSeniorOperations()->pluck('id'))->toContain($rfq->id)
+        ->and(Rfq::awaitingAssignment()->pluck('id'))->not->toContain($rfq->id);
 });
 
 it('takes a returned RFQ off the Returns page when Admin saves an edit too', function () {
@@ -195,7 +197,7 @@ it('refuses Business Development assigning Sourcing, even on an RFQ sent back to
         ->and($rfq->assignees)->toHaveCount(0);
 });
 
-it('leaves a returned RFQ in Senior Operations\' Unassigned queue for them to re-assign', function () {
+it('leaves a returned RFQ for Senior Operations to re-assign', function () {
     ['rfq' => $rfq] = returnedToBd();
 
     expect(Rfq::needingSourcing()->pluck('id'))->toContain($rfq->id);

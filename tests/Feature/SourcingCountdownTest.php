@@ -242,7 +242,7 @@ it('counts a part late across its rounds with the same member — on the deadlin
     expect($rfq->refresh()->sourcingCountdown(1))->toBe(['target' => 14400, 'remaining' => -3600]);
 
     $rfq->completeSourcingPart(1);
-    expect($rfq->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 1, 'late_by' => 3600, 'exceeded' => true]);
+    expect($rfq->refresh()->deadlines())->toMatchArray(['running' => [], 'late' => ['sourcing' => ['rounds' => 1, 'late_by' => 3600]], 'exceeded' => true]);
 });
 
 it('starts a part afresh with whoever it\'s reassigned to', function () {

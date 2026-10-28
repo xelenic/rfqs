@@ -513,16 +513,27 @@ function deadlineSpread(): array
     return ['overdue' => $overdue, 'onTrack' => $onTrack, 'late' => $late, 'closed' => $closed];
 }
 
-it('tells how each RFQ stands against Sourcing\'s deadline', function () {
+it('tells how each RFQ stands against its targets', function () {
     ['overdue' => $overdue, 'onTrack' => $onTrack, 'late' => $late, 'closed' => $closed] = deadlineSpread();
 
     // 09:00–15:30 less lunch is 5h 30m, against an Urgent 4h.
-    expect($overdue->refresh()->sourcingDeadline())->toMatchArray(['remaining' => -90 * 60, 'late_parts' => 0, 'exceeded' => true])
-        ->and($onTrack->refresh()->sourcingDeadline())->toMatchArray(['remaining' => 8 * 3600 - 90 * 60, 'exceeded' => false])
-        // 09:00–14:30 less lunch is 4h 30m: 30m late.
-        ->and($late->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 1, 'late_by' => 30 * 60, 'exceeded' => true])
-        ->and($closed->refresh()->sourcingDeadline())->toMatchArray(['remaining' => null, 'late_parts' => 0, 'exceeded' => false])
-        ->and(Rfq::factory()->create()->sourcingDeadline())->toBeNull();
+    expect($overdue->refresh()->deadlines())->toMatchArray([
+        'running' => [['step' => 'sourcing', 'part' => 1, 'seconds' => 330 * 60, 'target' => 4 * 3600, 'remaining' => -90 * 60, 'state' => 'overdue']],
+        'late' => [], 'overdue' => true, 'exceeded' => true,
+    ])
+        ->and($onTrack->refresh()->deadlines())->toMatchArray([
+            'running' => [['step' => 'sourcing', 'part' => 1, 'seconds' => 90 * 60, 'target' => 8 * 3600, 'remaining' => 8 * 3600 - 90 * 60, 'state' => 'on_track']],
+            'late' => [], 'overdue' => false, 'exceeded' => false,
+        ])
+        // 09:00–14:30 less lunch is 4h 30m: 30m late. And Data Entry, on it
+        // since 14:30, an hour against an Urgent 30m.
+        ->and($late->refresh()->deadlines())->toMatchArray([
+            'running' => [['step' => 'data_entry', 'part' => 1, 'seconds' => 3600, 'target' => 30 * 60, 'remaining' => -30 * 60, 'state' => 'overdue']],
+            'late' => ['sourcing' => ['rounds' => 1, 'late_by' => 30 * 60]], 'overdue' => true, 'exceeded' => true,
+        ])
+        // Closed: nothing running, Sourcing done in an hour.
+        ->and($closed->refresh()->deadlines())->toMatchArray(['running' => [], 'late' => [], 'on_time' => 1, 'exceeded' => false])
+        ->and(Rfq::factory()->create()->deadlines())->toBeNull();
 });
 
 it('splits the report into tabs, each with its count, opening on Pending', function () {
@@ -553,10 +564,42 @@ it('shows each RFQ\'s deadline in its row', function () {
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.time-spent', ['tab' => 'all']))->assertOk()->getContent();
     $row = fn (string $number) => Str::betweenFirst($html, '>'.$number.'</a>', '</tr>');
 
-    expect($row('RFQ9301'))->toContain('badge-soft-danger')->toContain('Overdue by 1h 30m')
-        ->and($row('RFQ9302'))->toContain('6h 30m left')
-        ->and($row('RFQ9303'))->toContain('Finished 30m late')
+    expect($row('RFQ9301'))->toContain('data-deadline-state="overdue"')->toContain('Sourcing · Overdue by 1h 30m')
+        ->and($row('RFQ9302'))->toContain('data-deadline-state="on_track"')->toContain('Sourcing · 6h 30m left')
+        ->and($row('RFQ9303'))->toContain('Data entry · Overdue by 30m')->toContain('Sourcing · Finished 30m late')
         ->and($row('RFQ9304'))->toContain('On time');
+});
+
+it('marks overdue just what the dashboards do — at any step, not only Sourcing\'s', function () {
+    $sourcing = userWithRole('Sourcing');
+    $gmAssistant = userWithRole('GM Assistant');
+
+    // Sourcing on time; GM Assistant on it since 09:00 against an Urgent 30m.
+    test()->travelTo(colombo('2026-10-05 08:30'));
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9401', 'priority_level' => 'Urgent']), [1 => $sourcing]);
+    test()->travelTo(colombo('2026-10-05 09:00'));
+    $rfq->refresh()->completeSourcingPart(1);
+    startDataEntryOn($rfq, 1);
+    $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
+    $rfq->refresh()->finalizePart(1);
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
+    startGmAssistantOn($rfq, 1, $gmAssistant);
+    test()->travelTo(colombo('2026-10-05 11:00'));
+
+    $dashboard = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk();
+    $overdueOnDashboard = collect($dashboard->viewData('overview')['statuses'])->firstWhere('key', 'overdue')['value'];
+
+    $sheet = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.time-spent', ['tab' => 'exceeded']))->assertOk();
+    $deadline = Str::betweenFirst(Str::after($sheet->getContent(), '>RFQ9401</a>'), '<td class="text-nowrap">', '</td>');
+
+    expect($overdueOnDashboard)->toBe(1)
+        ->and($sheet->viewData('exceeded'))->toBe(['overdue' => 1, 'late' => 0])
+        ->and($deadline)->toContain('data-deadline-state="overdue"')
+        ->toContain('GM Assistant submit · Overdue by 1h 30m')
+        ->not->toContain('Sourcing ·');
+    $sheet->assertSee('data-exceeded-summary', false)
+        ->assertSeeInOrder(['1 overdue now', 'as on the dashboards', '0 finished a step late'], false);
 });
 
 it('opens the report to Senior Operations, without the Admin-only link to the working hours', function () {

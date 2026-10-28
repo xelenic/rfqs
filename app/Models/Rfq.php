@@ -265,7 +265,7 @@ class Rfq extends Model
         'rfqs' => [
             'created_by', 'operations_assigned_by', 'category_set_by', 'sourcing_completed_by',
             'data_entry_completed_by', 'finalized_by', 'senior_ops_reviewed_by', 'head_of_bd_approved_by',
-            'head_of_bd_rejected_by', 'rejected_by', 'gm_assistant_completed_by', 'gm_approved_by',
+            'head_of_bd_rejected_by', 'rejected_by', 'bd_fixed_by', 'gm_assistant_completed_by', 'gm_approved_by',
             'bd_closed_by', 'status_changed_by',
         ],
         'rfq_user' => [
@@ -375,6 +375,8 @@ class Rfq extends Model
         'reject_from_stage',
         'reject_target_stage',
         'bd_return_count',
+        'bd_fixed_at',
+        'bd_fixed_by',
         'client_details',
         'payment_terms',
         'gm_assistant_completed_by',
@@ -409,6 +411,7 @@ class Rfq extends Model
             'category_set_at' => 'datetime',
             'split_count' => 'integer',
             'bd_return_count' => 'integer',
+            'bd_fixed_at' => 'datetime',
             'number_of_items' => 'integer',
             'status_changed_at' => 'datetime',
             'senior_ops_reviewed_at' => 'datetime',
@@ -476,14 +479,22 @@ class Rfq extends Model
      * rejectToStage() posted it, and bd_return_count still counts it. A
      * no-op for an RFQ that isn't sitting with them. See
      * RfqController::update().
+     *
+     * Since 2026-10-28, at the user's request, it goes back to Senior
+     * Operations on their Returns page, not Unassigned: bd_fixed_at/by
+     * (scopeReturnedToSeniorOperations()), till every part is assigned
+     * again (assignSourcingParts()).
      */
-    public function resolveBusinessDevelopmentReturn(): void
+    public function resolveBusinessDevelopmentReturn(User $fixedBy): void
     {
         if (! $this->isReturnedToBusinessDevelopment()) {
             return;
         }
 
-        $this->update($this->clearedRejectRecord());
+        $this->update($this->clearedRejectRecord() + [
+            'bd_fixed_at' => now(),
+            'bd_fixed_by' => $fixedBy->id,
+        ]);
     }
 
     /**
@@ -1031,6 +1042,15 @@ class Rfq extends Model
     }
 
     /**
+     * Who in Business Development fixed this RFQ after it was sent back to
+     * them — or an Admin, for them. See resolveBusinessDevelopmentReturn().
+     */
+    public function bdFixedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'bd_fixed_by');
+    }
+
+    /**
      * The GM Assistant who submitted this RFQ to the General Manager. See
      * recordGmAssistantDetails() / recordGmAssistantPart().
      */
@@ -1249,12 +1269,13 @@ class Rfq extends Model
      * to Business Development and still with them — it's theirs to fix first
      * (their Returns or Rejected page; Senior Operations' Get Details Again
      * also on Senior Operations' Returns, scopeWithBusinessDevelopmentForDetails()),
-     * and it's back here once they have (resolveBusinessDevelopmentReturn()).
-     * Both at the user's request.
+     * nor, since 2026-10-28, once they've fixed it (bd_fixed_at): it's back
+     * on Senior Operations' Returns, till it's assigned again
+     * (scopeReturnedToSeniorOperations()). All at the user's request.
      */
     public function scopeAwaitingAssignment(Builder $query): void
     {
-        $query->where('rfqs.status', 'Pending')->needingSourcing()->where(fn (Builder $q) => $q
+        $query->where('rfqs.status', 'Pending')->needingSourcing()->whereNull('rfqs.bd_fixed_at')->where(fn (Builder $q) => $q
             ->whereNull('rfqs.reject_target_stage')
             ->orWhereNotIn('rfqs.reject_target_stage', ['operations', 'business_development']));
     }
@@ -1264,7 +1285,8 @@ class Rfq extends Model
      * details (Get Details Again — rejectToStage() from 'operations') and
      * still with them: on Senior Operations' Returns page, marked as with
      * Business Development, so they can follow them — not on Unassigned
-     * (scopeAwaitingAssignment()) till Business Development has fixed them.
+     * (scopeAwaitingAssignment()). Once Business Development has fixed one,
+     * it's on their Returns to assign (scopeReturnedToSeniorOperations()).
      */
     public function scopeWithBusinessDevelopmentForDetails(Builder $query): void
     {
@@ -1492,7 +1514,10 @@ class Rfq extends Model
      * that's while a part is still unassigned; once they've re-assigned it,
      * it's done with here. Sent back to their second review, it's while a
      * part still awaits that review; approving it clears the record (see
-     * clearedRejectRecord()).
+     * clearedRejectRecord()). And, since 2026-10-28, one sent back to
+     * Business Development that they've fixed (bd_fixed_at), back for
+     * Senior Operations to assign — while a part is still unassigned, and
+     * not while it's been sent back to Business Development again.
      */
     public function scopeReturnedToSeniorOperations(Builder $query): void
     {
@@ -1502,7 +1527,22 @@ class Rfq extends Model
                 ->needingSourcing())
             ->orWhere(fn (Builder $toReview) => $toReview
                 ->where('rfqs.reject_target_stage', 'senior_ops_review')
-                ->awaitingSeniorOpsReview()));
+                ->awaitingSeniorOpsReview())
+            ->orWhere(fn (Builder $fixed) => $fixed
+                ->whereNotNull('rfqs.bd_fixed_at')
+                ->where(fn (Builder $notBackWithThem) => $notBackWithThem
+                    ->whereNull('rfqs.reject_target_stage')
+                    ->orWhere('rfqs.reject_target_stage', '<>', 'business_development'))
+                ->needingSourcing()));
+    }
+
+    /**
+     * Whether this RFQ is back from Business Development, fixed, for Senior
+     * Operations to assign again (bd_fixed_at), with nothing sent back since.
+     */
+    public function isFixedByBusinessDevelopment(): bool
+    {
+        return $this->bd_fixed_at !== null && $this->reject_target_stage === null;
     }
 
     /**
@@ -1677,6 +1717,12 @@ class Rfq extends Model
         }
 
         $this->load('assignees');
+
+        // Back from Business Development and every part assigned again: done
+        // with on Senior Operations' Returns (scopeReturnedToSeniorOperations()).
+        if ($this->bd_fixed_at !== null && $this->allPartsAssigned()) {
+            $this->update(['bd_fixed_at' => null, 'bd_fixed_by' => null]);
+        }
 
         $this->syncSteps();
 
@@ -3597,52 +3643,142 @@ class Rfq extends Model
     }
 
     /**
-     * How this RFQ stands against Sourcing's deadline — its priority's target
-     * (sourcingTargetSeconds()) for each part with each member, every round
-     * they've had it added up (sourcingTimeOf()): the least time left on a
-     * part still with them (negative once it's overdue; null with none),
-     * how many parts they finished past the target and by how much in all,
-     * and whether it's been exceeded at all — overdue now, or finished late.
-     * A day its member was absent (Attendance) doesn't count against it. Null
-     * if Sourcing hasn't had it yet. $book is Attendance::book(), loaded if
-     * not given. Expects steps to be loaded, or loads them.
+     * How this RFQ stands against every timed step's target (RfqStep::LABELS:
+     * Sourcing, Data Entry, Finalize, GM Assistant), as the dashboards judge
+     * it. Each task someone's on now, with its countdown (countdownFor())
+     * and where that stands (timeAgainstTarget()), overdue first, as on
+     * Admin's ongoing tasks. And, of the rounds each step's role finished
+     * (RfqStep::ended_by_role), as the team's on-time figures judge them:
+     * those past their target (stepTargetSeconds()), by step, with how many
+     * and by how much in all, and how many were within it. Sourcing's time on
+     * a part runs on across its rounds with the same member
+     * (sourcingTimeOf()), judged as it stood when they last finished it; the
+     * other steps' each round on its own. A day its worker was absent doesn't
+     * count (Attendance). Overdue when a task's past its target now — the
+     * dashboards' Overdue — and exceeded when that, or anything finished
+     * late. Null if no timed step has had it. Expects steps to be loaded, or
+     * loads them.
      *
-     * @param  array<int, array<string, string>>|null  $book
-     * @return array{target: int, remaining: ?int, late_parts: int, late_by: int, exceeded: bool}|null in seconds
+     * @return array{running: list<array{step: string, part: ?int, seconds: int, target: int, remaining: int, state: string}>, late: array<string, array{rounds: int, late_by: int}>, on_time: int, overdue: bool, exceeded: bool}|null in seconds
      */
-    public function sourcingDeadline(?CarbonInterface $now = null, ?array $book = null): ?array
+    public function deadlines(?CarbonInterface $now = null): ?array
     {
-        $stretches = $this->steps->where('step', 'sourcing');
+        $timed = $this->steps->filter(fn (RfqStep $stretch) => array_key_exists($stretch->step, RfqStep::LABELS))->values();
 
-        if ($stretches->isEmpty()) {
+        if ($timed->isEmpty()) {
             return null;
         }
 
         $now ??= now();
-        $book ??= Attendance::book($stretches->pluck('worked_by'));
-        $target = $this->sourcingTargetSeconds();
+        $book = Attendance::book($timed->pluck('worked_by'));
+        $taken = fn (Collection $stretches) => (int) $stretches->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now));
+        $states = ['overdue', 'due_soon', 'on_track'];
 
-        // One budget for each part with each member: every stretch of every
-        // round they've had it — time on hold aside — less any day they were
-        // absent.
-        $budgets = $stretches
+        $running = $timed->whereNull('ended_at')
+            ->map(function (RfqStep $open) use ($now) {
+                $countdown = $this->countdownFor($open->step, (int) $open->part_number, $now);
+
+                return $countdown === null ? null : ['step' => $open->step, 'part' => $open->part_number] + self::timeAgainstTarget($countdown);
+            })
+            ->filter()
+            ->sortBy(fn (array $task) => [array_search($task['state'], $states, true), $task['remaining']])
+            ->values();
+
+        // Sourcing's: each part with its member, every round up to the last
+        // they finished, unless they've it again now (it's running, above).
+        $finished = $timed->where('step', 'sourcing')
             ->groupBy(fn (RfqStep $stretch) => $stretch->part_number.'|'.$stretch->assignee_id)
-            ->map(fn (Collection $theirs) => [
-                'taken' => (int) $theirs->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)),
-                'open' => $theirs->contains(fn (RfqStep $stretch) => $stretch->ended_at === null),
-            ]);
+            ->reject(fn (Collection $theirs) => $theirs->contains(fn (RfqStep $stretch) => $stretch->ended_at === null))
+            ->map(fn (Collection $theirs) => $theirs->last(fn (RfqStep $stretch) => $stretch->ended_by_role))
+            ->filter()
+            ->map(fn (RfqStep $lastFinish) => [
+                'step' => 'sourcing',
+                'seconds' => $taken(self::sourcingTimeOf($timed, $lastFinish)),
+                'target' => $this->sourcingTargetSeconds(),
+            ])
+            ->values()
+            // The other steps': each round on its own.
+            ->concat(self::roundsOf($timed->where('step', '!=', 'sourcing'))
+                ->filter(fn (Collection $round) => $round->last()->ended_at !== null && $round->last()->ended_by_role)
+                ->map(fn (Collection $round) => [
+                    'step' => $round->first()->step,
+                    'seconds' => $taken($round),
+                    'target' => $this->stepTargetSeconds($round->first()->step, $round->first()->part_number),
+                ]));
 
-        $remaining = $this->status === 'Pending'
-            ? $budgets->where('open', true)->map(fn (array $budget) => $target - $budget['taken'])->min()
-            : null;
-        $late = $budgets->where('open', false)->filter(fn (array $budget) => $budget['taken'] > $target);
+        $late = $finished->filter(fn (array $round) => $round['seconds'] > $round['target'])->groupBy('step');
+        $overdue = $running->contains('state', 'overdue');
 
         return [
-            'target' => $target,
-            'remaining' => $remaining,
-            'late_parts' => $late->count(),
-            'late_by' => (int) $late->sum(fn (array $budget) => $budget['taken'] - $target),
-            'exceeded' => $late->isNotEmpty() || ($remaining !== null && $remaining <= 0),
+            'running' => $running->all(),
+            // In workflow order (FORWARD_BACK_ORDER).
+            'late' => collect(self::FORWARD_BACK_ORDER)
+                ->filter(fn (string $step) => $late->has($step))
+                ->mapWithKeys(fn (string $step) => [$step => [
+                    'rounds' => $late[$step]->count(),
+                    'late_by' => (int) $late[$step]->sum(fn (array $round) => $round['seconds'] - $round['target']),
+                ]])
+                ->all(),
+            'on_time' => $finished->filter(fn (array $round) => $round['seconds'] <= $round['target'])->count(),
+            'overdue' => $overdue,
+            'exceeded' => $overdue || $late->isNotEmpty(),
+        ];
+    }
+
+    /**
+     * Where $part's countdown stands at $step, one of RfqStep::LABELS — see
+     * sourcingCountdown(), dataEntryCountdown(), finalizeCountdown() and
+     * gmAssistantCountdown(). Null unless it's at $step now.
+     *
+     * @return array{target: int, remaining: int}|null in seconds
+     */
+    public function countdownFor(string $step, int $part, ?CarbonInterface $now = null): ?array
+    {
+        return match ($step) {
+            'sourcing' => $this->sourcingCountdown($part, $now),
+            'data_entry' => $this->dataEntryCountdown($part, $now),
+            'finalize' => $this->finalizeCountdown($part, $now),
+            'gm_assistant' => $this->gmAssistantCountdown($part, $now),
+            default => null,
+        };
+    }
+
+    /**
+     * The working time $step, one of RfqStep::LABELS, has for a round on
+     * $part — the target its countdown runs against (countdownFor()). In
+     * seconds.
+     */
+    public function stepTargetSeconds(string $step, ?int $part = null): int
+    {
+        return match ($step) {
+            'sourcing' => $this->sourcingTargetSeconds(),
+            'data_entry' => $this->dataEntryTargetSeconds($part),
+            'finalize' => $this->finalizeTargetSeconds(),
+            'gm_assistant' => $this->gmAssistantTargetSeconds($part),
+        };
+    }
+
+    /**
+     * Where a countdown (countdownFor()) stands, as the dashboards' "Time vs
+     * target" (dashboard/_time_vs_target) and the Time Spent report show it:
+     * the working time spent, the target, what's left (below 0 once past
+     * it), and so whether it's overdue, due soon — under a quarter of the
+     * target left — or on track. The one place these thresholds are kept.
+     *
+     * @param  array{target: int, remaining: int}  $countdown
+     * @return array{seconds: int, target: int, remaining: int, state: string}
+     */
+    public static function timeAgainstTarget(array $countdown): array
+    {
+        return [
+            'seconds' => max(0, $countdown['target'] - $countdown['remaining']),
+            'target' => $countdown['target'],
+            'remaining' => $countdown['remaining'],
+            'state' => match (true) {
+                $countdown['remaining'] < 0 => 'overdue',
+                $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
+                default => 'on_track',
+            },
         ];
     }
 

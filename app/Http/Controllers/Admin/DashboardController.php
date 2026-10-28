@@ -329,7 +329,7 @@ class DashboardController extends Controller
     /**
      * Where each pending RFQ with a timed task running stands against its
      * target, by RFQ id — judged as Admin's dashboard and the Critical
-     * monitor judge it (ongoingTasks(), timeAgainstTarget()): overdue when
+     * monitor judge it (ongoingTasks(), Rfq::timeAgainstTarget()): overdue when
      * any of its tasks is past its target, else due soon when one has under a
      * quarter of it left. RFQs on track, or with nothing timed running,
      * aren't in it. With each, the tasks behind it ("Sourcing · RFQ1001-P2 ·
@@ -518,15 +518,9 @@ class DashboardController extends Controller
         return $steps
             ->map(function (RfqStep $step) use ($now, $workers) {
                 $rfq = $step->rfq;
-                $countdown = match ($step->step) {
-                    'sourcing' => $rfq->sourcingCountdown((int) $step->part_number, $now),
-                    'data_entry' => $rfq->dataEntryCountdown((int) $step->part_number, $now),
-                    'finalize' => $rfq->finalizeCountdown((int) $step->part_number, $now),
-                    'gm_assistant' => $rfq->gmAssistantCountdown((int) $step->part_number, $now),
-                    default => null,
-                };
+                $countdown = $rfq->countdownFor($step->step, (int) $step->part_number, $now);
 
-                $timing = $countdown !== null ? $this->timeAgainstTarget($countdown) : null;
+                $timing = $countdown !== null ? Rfq::timeAgainstTarget($countdown) : null;
 
                 return [
                     'rfq' => $rfq,
@@ -545,30 +539,6 @@ class DashboardController extends Controller
             })
             ->sortBy(fn (array $task) => [array_search($task['state'], $states, true), $task['remaining'] ?? -$task['seconds']])
             ->values();
-    }
-
-    /**
-     * Where a countdown (Rfq::sourcingCountdown() and the like) stands, as
-     * the dashboards' "Time vs target" shows it (dashboard/_time_vs_target):
-     * the working time spent, the target, what's left (below 0 once past
-     * it), and so whether it's overdue, due soon — under a quarter of the
-     * target left — or on track.
-     *
-     * @param  array{target: int, remaining: int}  $countdown
-     * @return array{seconds: int, target: int, remaining: int, state: string}
-     */
-    protected function timeAgainstTarget(array $countdown): array
-    {
-        return [
-            'seconds' => max(0, $countdown['target'] - $countdown['remaining']),
-            'target' => $countdown['target'],
-            'remaining' => $countdown['remaining'],
-            'state' => match (true) {
-                $countdown['remaining'] < 0 => 'overdue',
-                $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
-                default => 'on_track',
-            },
-        ];
     }
 
     /**
@@ -1084,7 +1054,7 @@ class DashboardController extends Controller
      * the same count as the badge on their sidebar link.
      *
      * Each part on their clock — sourcing it, or finalizing it — has its
-     * time against its target (timeAgainstTarget(), "for" Sourcing or
+     * time against its target (Rfq::timeAgainstTarget(), "for" Sourcing or
      * Finalize), as Admin's ongoing tasks do; how many are overdue.
      *
      * @return array{
@@ -1123,7 +1093,7 @@ class DashboardController extends Controller
                         'assignment' => $assignee->pivot,
                         'state' => $state,
                         'timing' => $countdown !== null
-                            ? ['for' => $state === 'data_entry_done' ? 'Finalize' : 'Sourcing'] + $this->timeAgainstTarget($countdown)
+                            ? ['for' => $state === 'data_entry_done' ? 'Finalize' : 'Sourcing'] + Rfq::timeAgainstTarget($countdown)
                             : null,
                     ];
                 })
@@ -1284,12 +1254,7 @@ class DashboardController extends Controller
                 'seconds' => $seconds,
                 'target' => $countdown['target'] ?? null,
                 'remaining' => $countdown['remaining'] ?? null,
-                'state' => match (true) {
-                    $countdown === null => 'running',
-                    $countdown['remaining'] < 0 => 'overdue',
-                    $countdown['remaining'] < $countdown['target'] / 4 => 'due_soon',
-                    default => 'on_track',
-                },
+                'state' => $countdown === null ? 'running' : Rfq::timeAgainstTarget($countdown)['state'],
             ];
         }
 
@@ -1814,7 +1779,7 @@ class DashboardController extends Controller
         return [
             'waiting' => $waiting,
             'waitingUrgent' => $waiting->filter(fn (array $part) => $part['rfq']->isUrgent())->count(),
-            'waitingOverdue' => $waiting->filter(fn (array $part) => $part['countdown'] !== null && $part['countdown']['remaining'] <= 0)->count(),
+            'waitingOverdue' => $waiting->filter(fn (array $part) => $part['countdown'] !== null && Rfq::timeAgainstTarget($part['countdown'])['state'] === 'overdue')->count(),
             'returnedToMe' => $stage['returns'] !== null ? ($stage['returns'])() : collect(),
             'approved' => $approved->count(),
             'approvedRfqs' => Rfq::query()->where($stage['rfqBy'], $user->id)->whereBetween($stage['rfqAt'], $window)->count(),

@@ -15,8 +15,10 @@ use Illuminate\View\View;
  * The Time Spent report, for Admin, Senior Operations and HR Executive
  * (User::TIME_SPENT_REPORT_ROLES): the working time Sourcing, Data Entry and
  * GM Assistant have spent on each RFQ (Rfq::timeSpent()), and on average
- * across them, so a slow stage stands out; how each stands against Sourcing's
- * deadline (Rfq::sourcingDeadline()); and work done out of hours
+ * across them, so a slow stage stands out; how each stands against its
+ * targets (Rfq::deadlines()) — every timed step, judged as the dashboards
+ * judge it, so an RFQ they call Overdue is on Deadline exceeded too, with
+ * those that finished a step late; and work done out of hours
  * (RfqStep::isOutOfHoursWork()) flagged — each role's figure with how it
  * came about on hover (Rfq::timeBreakdown()). One tab per lens — TABS — and
  * a search across them. Only RFQs some tracked role has started on are listed.
@@ -57,13 +59,13 @@ class TimeSpentReportController extends Controller
                 ->where('wc_number', 'like', "%{$search}%")
                 ->orWhere('rfq_number', 'like', "%{$search}%")
                 ->orWhere('subject', 'like', "%{$search}%")))
-            ->with('steps')
+            ->with(['steps', 'assignees'])
             ->latest()
             ->get()
             ->map(fn (Rfq $rfq) => [
                 'rfq' => $rfq,
                 'time' => $rfq->timeSpent($now),
-                'deadline' => $rfq->sourcingDeadline($now),
+                'deadline' => $rfq->deadlines($now),
             ]);
 
         $tabs = collect(self::TABS)->map(fn (string $label, string $key) => [
@@ -97,6 +99,12 @@ class TimeSpentReportController extends Controller
                 'rfqs' => $tabs['out-of-hours']['rows']->count(),
             ],
             'tabs' => $tabs->map(fn (array $tabRows) => ['label' => $tabRows['label'], 'count' => $tabRows['rows']->count()])->all(),
+            // Of those past a deadline: overdue now, as the dashboards count
+            // them, and those with a step finished late.
+            'exceeded' => [
+                'overdue' => $tabs['exceeded']['rows']->filter(fn (array $row) => $row['deadline']['overdue'])->count(),
+                'late' => $tabs['exceeded']['rows']->filter(fn (array $row) => $row['deadline']['late'] !== [])->count(),
+            ],
             'tab' => $tab,
             'roles' => array_keys(RfqStep::ROLE_STEPS),
             'search' => $search,
@@ -106,7 +114,7 @@ class TimeSpentReportController extends Controller
     /**
      * Whether an RFQ's row belongs on a tab.
      *
-     * @param  array{rfq: Rfq, time: array{out_of_hours_count: int}, deadline: array{exceeded: bool}|null}  $row
+     * @param  array{rfq: Rfq, time: array{out_of_hours_count: int}, deadline: array{overdue: bool, exceeded: bool}|null}  $row
      */
     private function isOnTab(string $tab, array $row): bool
     {

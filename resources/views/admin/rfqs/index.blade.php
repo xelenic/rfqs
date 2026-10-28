@@ -1070,8 +1070,10 @@
                  same; Returns keeps a Sourcing part sent back to them — and
                  what they sent back to Business Development for details (Get
                  Details Again), marked as with Business Development, just to
-                 follow: it's back on Unassigned once Business Development has
-                 fixed it (Rfq::scopeWithBusinessDevelopmentForDetails()). --}}
+                 follow (Rfq::scopeWithBusinessDevelopmentForDetails()). Once
+                 Business Development has fixed one — or one a reviewer sent
+                 them — it's back here, never on Unassigned, to assign again
+                 (Rfq::isFixedByBusinessDevelopment()), or to ask again. --}}
             @php
                 $reviewPageUrl = route('admin.rfqs.index', array_filter([
                     'status' => 'Pending',
@@ -1096,8 +1098,10 @@
                         @forelse ($rfqs as $rfq)
                             @php
                                 $withBusinessDevelopment = $rfq->reject_target_stage === 'business_development';
-                                $backToAssignment = $rfq->reject_target_stage === 'operations';
-                                $passBackTo = $backToAssignment ? $rfq->previousHoldersOfOpenParts() : [];
+                                $fixedByBusinessDevelopment = $rfq->isFixedByBusinessDevelopment();
+                                $backToAssignment = $rfq->reject_target_stage === 'operations' || $fixedByBusinessDevelopment;
+                                // A whole RFQ back from Business Development is planned afresh (split_count null) — nothing to pass back.
+                                $passBackTo = $backToAssignment && $rfq->split_count !== null ? $rfq->previousHoldersOfOpenParts() : [];
                                 $passBackNames = collect($passBackTo)->pluck('name')->unique()->join(', ', ' and ');
                             @endphp
                             <tr>
@@ -1109,13 +1113,19 @@
                                         <i class="bi bi-arrow-counterclockwise"></i>
                                         @if ($withBusinessDevelopment)
                                             Sent back to Business Development for details{{ $rfq->rejectedBy ? ' by '.$rfq->rejectedBy->name : '' }}: {{ $rfq->reject_reason }}
+                                        @elseif ($fixedByBusinessDevelopment)
+                                            Sent back to Business Development{{ $rfq->latestRejection?->author ? ' by '.$rfq->latestRejection->author->name : '' }}{{ $rfq->latestRejection ? ': '.$rfq->latestRejection->body : '' }}
                                         @else
                                             {{ $onRejectedPage ? 'Rejected' : 'Sent back' }} by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
                                         @endif
                                     </div>
                                     @if ($withBusinessDevelopment)
                                         <div class="rfq-list-subnote" data-with-business-development>
-                                            <i class="bi bi-hourglass-split"></i> Waiting on Business Development — it's back on Unassigned once they've fixed it.
+                                            <i class="bi bi-hourglass-split"></i> Waiting on Business Development — it's back here to assign once they've fixed it.
+                                        </div>
+                                    @elseif ($fixedByBusinessDevelopment)
+                                        <div class="rfq-list-subnote" data-fixed-by-business-development>
+                                            <i class="bi bi-check2-circle"></i> Fixed by Business Development{{ $rfq->bdFixedBy ? ' ('.$rfq->bdFixedBy->name.')' : '' }} — ready to assign again.
                                         </div>
                                     @endif
                                     @if ($rfq->latestRejection)
@@ -1130,7 +1140,7 @@
                                         <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
                                     @endif
                                 </td>
-                                <td class="text-muted-soft">{{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
+                                <td class="text-muted-soft">{{ ($fixedByBusinessDevelopment ? $rfq->bd_fixed_at : $rfq->rejected_at)?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                 <td class="text-end text-nowrap">
                                     <a href="{{ route('admin.rfqs.show', $rfq) }}?status=Pending" class="btn btn-sm btn-outline-secondary" title="View details">
                                         <i class="bi bi-eye"></i>
@@ -1159,6 +1169,10 @@
                                                 </form>
                                             @endif
                                             @include('admin.rfqs._assign_sourcing_button', ['rfq' => $rfq, 'restrictAssignment' => false, 'showLabel' => true])
+                                            {{-- Still not what they need: ask again, as from Unassigned. --}}
+                                            @if ($fixedByBusinessDevelopment)
+                                                @include('admin.rfqs._request_details_button', ['rfq' => $rfq])
+                                            @endif
                                         @else
                                             <a href="{{ $reviewPageUrl }}" class="btn btn-sm btn-outline-secondary" title="Approve it again from the Review page">
                                                 <i class="bi bi-clipboard2-check"></i> Review
@@ -1192,7 +1206,7 @@
                  (subject/description/priority/etc.) is live for them on a
                  row here (see Rfq::isReturnedToBusinessDevelopment(),
                  RfqController::update()). No Assign Sourcing: re-assigning
-                 it is Senior Operations' job, from their Unassigned queue
+                 it is Senior Operations' job, from their Returns page
                  (see RfqController::assign()). A row that's bounced
                  back more than once says so. Saving an Edit fixes it and
                  takes it off this list (Rfq::resolveBusinessDevelopmentReturn());
@@ -1935,8 +1949,10 @@
     @if ($scopedToBdClosing)
         @include('admin.rfqs._close_modal')
     @endif
-    @if ($scopedToUnassigned)
+    @if ($scopedToUnassigned || $scopedToSeniorOpsReturns)
         @include('admin.rfqs._request_details_modal')
+    @endif
+    @if ($scopedToUnassigned)
         @if (auth()->user()->canChangeRfqStatus())
             {{-- No RFQ of its own — not the list loop's last one either. --}}
             @include('admin.rfqs._status_modal', ['rfq' => null])

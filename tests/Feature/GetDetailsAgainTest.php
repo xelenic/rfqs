@@ -52,7 +52,7 @@ it('sends the RFQ to Business Development\'s Returns page with the reason', func
         ->assertSee($ops->name);
 });
 
-it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with Business Development, until they update it', function () {
+it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with Business Development, and keeps it there once they\'ve fixed it', function () {
     $ops = userWithRole('Senior Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001']);
@@ -83,11 +83,10 @@ it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with 
         'subject' => 'Now with the site address',
     ])->assertSessionHasNoErrors();
 
-    // Fixed: back on Unassigned for them to assign, and off their Returns.
-    test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()
-        ->assertDontSee('With Business Development:')
-        ->assertSee('data-action="'.route('admin.rfqs.request-details', $rfq).'"', false);
-    expect(test()->actingAs($ops)->get($returnsUrl)->viewData('rfqs')->pluck('rfq_number')->all())->toBe([]);
+    // Fixed: still on their Returns, now to assign — never back on Unassigned.
+    expect(test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()->viewData('rfqs')->pluck('rfq_number')->all())->toBe([])
+        ->and(Rfq::queueCounts()['unassigned'])->toBe(0)
+        ->and(test()->actingAs($ops)->get($returnsUrl)->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2001']);
 });
 
 it('keeps an RFQ a reviewer rejected back to Business Development off Senior Operations\' Unassigned too, till it\'s fixed', function () {
@@ -100,9 +99,10 @@ it('keeps an RFQ a reviewer rejected back to Business Development off Senior Ope
     expect(Rfq::awaitingAssignment()->pluck('rfq_number')->all())->toBe([])
         ->and(Rfq::withBusinessDevelopmentForDetails()->count())->toBe(0);
 
-    $rfq->refresh()->resolveBusinessDevelopmentReturn();
+    $rfq->refresh()->resolveBusinessDevelopmentReturn(userWithRole('Business Development'));
 
-    expect(Rfq::awaitingAssignment()->pluck('rfq_number')->all())->toBe(['RFQ2002']);
+    expect(Rfq::awaitingAssignment()->pluck('rfq_number')->all())->toBe([])
+        ->and(Rfq::returnedToSeniorOperations()->pluck('rfq_number')->all())->toBe(['RFQ2002']);
 });
 
 it('refuses a reason left empty, changing nothing', function () {

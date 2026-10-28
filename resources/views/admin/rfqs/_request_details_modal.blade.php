@@ -1,7 +1,8 @@
 {{--
     "Get Details Again" modal — Senior Operations sends an RFQ on their
-    Unassigned queue back to Business Development's Returns page, with what
-    they need. Shared across the rows of that queue, populated per-row via
+    Unassigned queue, or one Business Development fixed on their Returns,
+    back to Business Development's Returns page, with what they need.
+    Shared across the rows of those lists (_request_details_button), populated per-row via
     JS, see public/js/admin.js (.js-request-details) and
     RfqController::requestDetails().
 --}}
@@ -27,7 +28,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted-soft small">It goes on Business Development's Returns page with your note, and stays marked "With Business Development" here until they've updated it.</p>
+                    <p class="text-muted-soft small">It goes on Business Development's Returns page with your note. Your Returns shows it as with Business Development until they've updated it, then as ready for you to assign.</p>
                     <div class="mb-0">
                         <label for="request-details-reason" class="form-label">What's needed</label>
                         <textarea name="reason" id="request-details-reason" rows="3" class="form-control @error('reason', 'requestDetails') is-invalid @enderror" required>{{ $isFailedRequest ? old('reason') : '' }}</textarea>
