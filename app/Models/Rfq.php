@@ -103,6 +103,18 @@ class Rfq extends Model
     ];
 
     /**
+     * All RFQs' Status filter: STATUS_FILTERS, and Deadline exceeded — an RFQ
+     * overdue now, or with a step its role finished late (deadlines()) —
+     * just what the Time Spent report's tab of that name lists. Not a card on
+     * Senior Operations' dashboard.
+     *
+     * @var array<string, string>
+     */
+    public const ALL_RFQS_STATUS_FILTERS = self::STATUS_FILTERS + [
+        'exceeded' => 'Deadline exceeded',
+    ];
+
+    /**
      * Prefix, zero-padding width, and the sequence auto-generated RFQ
      * numbers count on from until an Admin says where they start
      * (Setting::rfqNumberStart()), e.g. "RFQ1001", "RFQ1002". See
@@ -1471,19 +1483,23 @@ class Rfq extends Model
     }
 
     /**
-     * The RFQs with one of STATUS_FILTERS ($filter): pending, overdue or due
-     * soon — pending, with $targetStates (DashboardController::
+     * The RFQs with one of ALL_RFQS_STATUS_FILTERS ($filter): pending, overdue
+     * or due soon — pending, with $targetStates (DashboardController::
      * targetStatesByRfq(), by RFQ id) saying it's that — on hold or
-     * cancelled, as their own pages list them (scopeStoppedAs()), or closed.
-     * All RFQs' Status filter and Senior Operations' dashboard cards both
-     * count through here, so the two always agree.
+     * cancelled, as their own pages list them (scopeStoppedAs()), closed, or
+     * deadline exceeded: overdue now, or one of $finishedLate
+     * (idsWithAStepFinishedLate()). All RFQs' Status filter and Senior
+     * Operations' dashboard cards both count through here, so the two always
+     * agree.
      *
      * @param  Builder<self>  $query
      * @param  Collection<int, array{state: string, tasks: array<int, string>}>  $targetStates
+     * @param  array<int, int>  $finishedLate
      */
-    public function scopeInStatusFilter(Builder $query, string $filter, Collection $targetStates): void
+    public function scopeInStatusFilter(Builder $query, string $filter, Collection $targetStates, array $finishedLate = []): void
     {
         match ($filter) {
+            'exceeded' => $query->whereIn('rfqs.id', [...$targetStates->where('state', 'overdue')->keys()->all(), ...$finishedLate]),
             'pending' => $query->where('rfqs.status', 'Pending'),
             'overdue', 'due_soon' => $query->where('rfqs.status', 'Pending')
                 ->whereIn('rfqs.id', $targetStates->where('state', $filter)->keys()->all()),
@@ -3723,6 +3739,24 @@ class Rfq extends Model
             'overdue' => $overdue,
             'exceeded' => $overdue || $late->isNotEmpty(),
         ];
+    }
+
+    /**
+     * The ids of the RFQs with a step its role finished past its target —
+     * deadlines()'s late — whatever they're at now: with those overdue now,
+     * what the Time Spent report lists under Deadline exceeded, and All
+     * RFQs' Status filter of that name (scopeInStatusFilter()).
+     *
+     * @return array<int, int>
+     */
+    public static function idsWithAStepFinishedLate(?CarbonInterface $now = null): array
+    {
+        return static::query()
+            ->whereHas('steps', fn (Builder $steps) => $steps->where('ended_by_role', true))
+            ->with(['steps', 'assignees'])
+            ->get()
+            ->filter(fn (self $rfq) => $rfq->deadlines($now)['late'] !== [])
+            ->modelKeys();
     }
 
     /**

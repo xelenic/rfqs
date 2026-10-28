@@ -332,11 +332,14 @@ class RfqController extends Controller implements HasMiddleware
         $isAllRfqsPage = $status === null && $lensRole === null && $user->canListAllRfqs();
         $allRfqsView = $isAllRfqsPage ? $this->allRfqsView($request, $user) : null;
 
-        // All RFQs' Status filter (?state=, Rfq::STATUS_FILTERS), where Senior
-        // Operations' dashboard cards lead — and where each RFQ stands against
-        // its target, for it and for the rows' Overdue / Due soon badges.
-        $allRfqsStatus = $isAllRfqsPage && array_key_exists((string) $request->query('state'), Rfq::STATUS_FILTERS) ? (string) $request->query('state') : null;
+        // All RFQs' Status filter (?state=, Rfq::ALL_RFQS_STATUS_FILTERS), where
+        // Senior Operations' dashboard cards lead — and where each RFQ stands
+        // against its target, for it and for the rows' Overdue / Due soon
+        // badges. Deadline exceeded also takes those with a step finished
+        // late, worked out only when it's asked for.
+        $allRfqsStatus = $isAllRfqsPage && array_key_exists((string) $request->query('state'), Rfq::ALL_RFQS_STATUS_FILTERS) ? (string) $request->query('state') : null;
         $targetStates = $isAllRfqsPage ? DashboardController::targetStatesByRfq() : null;
+        $finishedLateIds = $allRfqsStatus === 'exceeded' ? Rfq::idsWithAStepFinishedLate() : [];
 
         $applySearch = function ($query) use ($search, $listRange, $listPriority) {
             $query->when($search, function ($query, $search) {
@@ -443,7 +446,7 @@ class RfqController extends Controller implements HasMiddleware
                     ->whereHas('assignees', fn ($parts) => $parts->whereKey($user->id)))
                 ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
             ->when($allRfqsView, fn ($query, array $view) => $this->applyAllRfqsView($query, $view))
-            ->when($allRfqsStatus, fn ($query, string $filter) => $query->inStatusFilter($filter, $targetStates))
+            ->when($allRfqsStatus, fn ($query, string $filter) => $query->inStatusFilter($filter, $targetStates, $finishedLateIds))
             ->when($groupBy, fn ($query, string $group) => $query->orderByRaw($this->listGroupOrder($group)))
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters));
@@ -457,6 +460,12 @@ class RfqController extends Controller implements HasMiddleware
             : collect();
 
         $rfqs = $rfqsQuery->paginate(self::PER_PAGE)->withQueryString();
+
+        // All RFQs marks a row with a step finished late, and which, as the
+        // Time Spent report does (Rfq::deadlines()) — id => late, by step.
+        $finishedLate = $isAllRfqsPage
+            ? $rfqs->getCollection()->load('steps')->mapWithKeys(fn (Rfq $rfq) => [$rfq->id => $rfq->deadlines()['late'] ?? []])->filter()
+            : null;
 
         // Data Entry's "By Sourcing" tab shows each Sourcing assignee's
         // completed part as soon as *they* finish it — each by each —
@@ -664,9 +673,10 @@ class RfqController extends Controller implements HasMiddleware
             'groupTotals' => $groupTotals,
             'allRfqsViews' => $isAllRfqsPage ? $this->allRfqsViewLabels($user) : null,
             'allRfqsView' => $allRfqsView,
-            'allRfqsStatuses' => $isAllRfqsPage ? Rfq::STATUS_FILTERS : null,
+            'allRfqsStatuses' => $isAllRfqsPage ? Rfq::ALL_RFQS_STATUS_FILTERS : null,
             'allRfqsStatus' => $allRfqsStatus,
             'targetStates' => $targetStates,
+            'finishedLate' => $finishedLate,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,

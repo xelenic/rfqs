@@ -18,7 +18,9 @@
     Optional: $targetStates — All RFQs, where an RFQ with a task running past
     its target, or with under a quarter of it left, is marked Overdue or Due
     soon beside its status, the tasks behind it on hover
-    (DashboardController::targetStatesByRfq()).
+    (DashboardController::targetStatesByRfq()). $finishedLate — All RFQs
+    too: a step finished past its target marks it Finished late, which and
+    by how much on hover (Rfq::deadlines()), as the Time Spent report says.
     Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
     an RFQ can be sent back to Business Development for details
     (_request_details_modal.blade.php). Once it has been, it's off that queue
@@ -31,6 +33,7 @@
 @php
     $stoppedParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isStopped());
     $targetState = isset($targetStates) ? $targetStates->get($rfq->id) : null;
+    $lateSteps = isset($finishedLate) ? $finishedLate->get($rfq->id, []) : [];
 @endphp
 <tr @class(['rfq-group-head' => $groupedParts ?? false])>
     <td class="fw-semibold">
@@ -77,6 +80,13 @@
                       data-target-state="{{ $targetState['state'] }}" title="{{ implode("\n", $targetState['tasks']) }}">
                     <i class="bi {{ $targetState['state'] === 'overdue' ? 'bi-alarm' : 'bi-clock-history' }}" aria-hidden="true"></i>
                     {{ \App\Models\Rfq::STATUS_FILTERS[$targetState['state']] }}
+                </span>
+            @endif
+            @if ($lateSteps !== [])
+                <span class="badge badge-soft-danger" data-deadline-state="late"
+                      title="{{ collect($lateSteps)->map(fn (array $late, string $step) => \App\Models\RfqStep::LABELS[$step].' · Finished '.\App\Models\Setting::durationLabel($late['late_by']).' late'.($late['rounds'] > 1 ? ' ('.$late['rounds'].' times)' : ''))->implode("\n") }}">
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                    Finished late
                 </span>
             @endif
         </td>

@@ -113,10 +113,11 @@
                     $allRfqsView['to'] !== null => ' up to '.$viewDay($allRfqsView['to']),
                     default => '',
                 };
-                // What Overdue and Due soon go by.
+                // What Overdue, Due soon and Deadline exceeded go by.
                 $statusHint = match ($allRfqsStatus) {
                     'overdue' => ' (a task running past its target)',
                     'due_soon' => ' (a task with under a quarter of its target left)',
+                    'exceeded' => ' (a task past its target now, or a step finished late — as on Time Spent)',
                     default => '',
                 };
                 $listedCount = $rfqs->total().' '.($rfqs->total() === 1 ? 'RFQ' : 'RFQs');
@@ -1871,7 +1872,7 @@
                                      Business Development closes it (see Rfq::closePart()). --}}
                                 @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null, 'showCreatedAndClosed' => ! $hidesCreatedAndClosed])
                             @else
-                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed, 'showToFinalize' => ($allRfqsView['show'] ?? null) === 'not_finalized', 'targetStates' => $targetStates])
+                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed, 'showToFinalize' => ($allRfqsView['show'] ?? null) === 'not_finalized', 'targetStates' => $targetStates, 'finishedLate' => $finishedLate])
                             @endif
                         @empty
                             <tr>

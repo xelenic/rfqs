@@ -131,6 +131,43 @@ it('marks All RFQs\' rows Overdue or Due soon, with the tasks behind it', functi
         ->and($row('RFQ5004'))->not->toContain('data-target-state');
 });
 
+it('marks a row Finished late, and lists it under Deadline exceeded with what\'s overdue now, as Time Spent does', function () {
+    everyStatus();
+
+    // RFQ5009, Urgent: Sourcing from 09:00 to 14:30 — 4h 30m less lunch against 4h.
+    statusAt('09:00');
+    $late = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ5009', 'priority_level' => 'Urgent']), [1 => userWithRole('Sourcing')]);
+    statusAt('14:30');
+    $late->refresh()->completeSourcingPart(1);
+
+    $admin = userWithRole('Admin');
+    $main = pageMain(test()->actingAs($admin)->get(route('admin.rfqs.index'))->assertOk());
+    $row = fn (string $number) => Str::before(Str::after($main, $number), '</tr>');
+
+    expect($row('RFQ5009'))->toContain('data-deadline-state="late"')
+        ->toContain('title="Sourcing · Finished 30m late"')
+        ->toContain('Finished late')
+        ->not->toContain('data-target-state')
+        // Overdue now, nothing finished late.
+        ->and($row('RFQ5001'))->toContain('data-target-state="overdue"')
+        ->not->toContain('Finished late');
+
+    // Deadline exceeded: overdue now, or a step finished late — the Time Spent report's tab exactly.
+    $exceeded = listedWithStatus($admin, ['state' => 'exceeded']);
+    $timeSpentTab = test()->actingAs($admin)->get(route('admin.reports.time-spent', ['tab' => 'exceeded']))->assertOk()->viewData('rfqs')->pluck('rfq_number')->sort()->values()->all();
+
+    expect($exceeded)->toBe(['RFQ5001', 'RFQ5009'])
+        ->and($timeSpentTab)->toBe($exceeded);
+
+    test()->actingAs($admin)->get(route('admin.rfqs.index', ['state' => 'exceeded']))->assertOk()
+        ->assertSee('<option value="exceeded" selected>Status: Deadline exceeded</option>', false)
+        ->assertSeeInOrder(['RFQs with status', 'Deadline exceeded', 'a step finished late', '2 RFQs.'], false);
+
+    // Not a card on Senior Operations' dashboard.
+    expect(collect(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->viewData('overview')['statuses'])->pluck('key')->all())
+        ->toBe(array_keys(Rfq::STATUS_FILTERS));
+});
+
 it('gives the Status filter to everyone with All RFQs, and keeps it off every other list', function () {
     everyStatus();
 
