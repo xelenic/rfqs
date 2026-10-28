@@ -38,8 +38,8 @@
                     <i class="bi bi-grid-1x2"></i> Dashboard
                 </a>
                 {{-- The list of every RFQ, whatever its status or where it is —
-                     the RFQ list with no status or role asked for: Admin's and
-                     the General Manager's (User::ALL_RFQS_ROLES). --}}
+                     the RFQ list with no status or role asked for: Admin's, the
+                     General Manager's and Senior Operations' (User::ALL_RFQS_ROLES). --}}
                 @if (auth()->user()->canListAllRfqs())
                     <a href="{{ route('admin.rfqs.index') }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && ! request()->filled('status') && ! request()->filled('role') ? 'active' : '' }}">
                         <i class="bi bi-collection"></i> All RFQs

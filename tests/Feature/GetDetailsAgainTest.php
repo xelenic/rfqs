@@ -2,6 +2,7 @@
 
 use App\Models\Rfq;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -51,16 +52,27 @@ it('sends the RFQ to Business Development\'s Returns page with the reason', func
         ->assertSee($ops->name);
 });
 
-it('marks it as with Business Development on the Unassigned queue, without the button, until they update it', function () {
+it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with Business Development, until they update it', function () {
     $ops = userWithRole('Senior Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001']);
+    $returnsUrl = route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.request-details', $rfq), ['reason' => 'Need the site address']);
 
-    test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()
-        ->assertSee('With Business Development: Need the site address')
-        ->assertDontSee('data-action="'.route('admin.rfqs.request-details', $rfq).'"', false);
+    expect(test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()->viewData('rfqs')->pluck('rfq_number')->all())->toBe([])
+        ->and(Rfq::queueCounts()['unassigned'])->toBe(0)
+        // Waiting on Business Development, not on them: no Returns badge.
+        ->and(Rfq::seniorOpsReturnsCount())->toBe(0);
+
+    $returns = test()->actingAs($ops)->get($returnsUrl)->assertOk()
+        ->assertSee('Sent back to Business Development for details by '.$ops->name.': Need the site address')
+        ->assertSee('Waiting on Business Development', false)
+        ->getContent();
+    $row = Str::betweenFirst($returns, '<td class="text-nowrap">RFQ2001</td>', '</tr>');
+    expect($row)->toContain('Business Development')
+        ->not->toContain('data-action="'.route('admin.rfqs.assign', $rfq).'"')
+        ->not->toContain('forward-back');
 
     test()->actingAs($bd)->put(route('admin.rfqs.update', $rfq), [
         'wc_number' => $rfq->wc_number,
@@ -71,9 +83,26 @@ it('marks it as with Business Development on the Unassigned queue, without the b
         'subject' => 'Now with the site address',
     ])->assertSessionHasNoErrors();
 
+    // Fixed: back on Unassigned for them to assign, and off their Returns.
     test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()
         ->assertDontSee('With Business Development:')
         ->assertSee('data-action="'.route('admin.rfqs.request-details', $rfq).'"', false);
+    expect(test()->actingAs($ops)->get($returnsUrl)->viewData('rfqs')->pluck('rfq_number')->all())->toBe([]);
+});
+
+it('keeps an RFQ a reviewer rejected back to Business Development off Senior Operations\' Unassigned too, till it\'s fixed', function () {
+    $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2002', 'stage' => 'senior_ops_review']);
+
+    test()->actingAs(userWithRole('Senior Operations'))
+        ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'business_development', 'reason' => 'Wrong client'])
+        ->assertSessionHasNoErrors();
+
+    expect(Rfq::awaitingAssignment()->pluck('rfq_number')->all())->toBe([])
+        ->and(Rfq::withBusinessDevelopmentForDetails()->count())->toBe(0);
+
+    $rfq->refresh()->resolveBusinessDevelopmentReturn();
+
+    expect(Rfq::awaitingAssignment()->pluck('rfq_number')->all())->toBe(['RFQ2002']);
 });
 
 it('refuses a reason left empty, changing nothing', function () {

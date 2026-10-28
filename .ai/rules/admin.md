@@ -55,3 +55,12 @@ Since 2026-10-25, Messages → Groups (third tab, messages/_tabs). Tables: messa
 
 ## Sourcing and Data Entry people are tagged with job categories
 Since 2026-10-25, adding or editing a user asks which job categories they take on: job_categories[] on users/_form. The picker only shows while a User::JOB_CATEGORY_TAG_ROLES role (Sourcing, Data Entry) is ticked (admin.js syncJobCategoryTags), and the Edit buttons carry data-categories. Since 2026-10-26, at the user's request, it is a text field, not checkboxes (.js-category-tag-picker). Typing drops down the matching categories from the .js-category-tag-options JSON (names starting with the text come first). Picking one adds a chip holding a hidden job_categories[] id. × or Backspace removes it. Edit rebuilds the chips from data-categories (setCategoryTags), and old() refills them in the order picked. Tags are stored in the job_category_user pivot (User::jobCategories(), JobCategory::users()), by id, so a category rename carries over and deleting a category drops its tags (cascade). UserController::syncJobCategories() saves them only for someone holding one of those roles; anyone else, or someone whose role is taken off, is synced to none. The tags show on the Users list and on the person's page. job_category_user is in LiveVersion::IGNORED_TABLES, like users.
+
+## All RFQs' Status filter (?state=) and Senior Operations' access
+Since 2026-10-28, All RFQs has a Status select (?state=, Rfq::STATUS_FILTERS: pending, overdue, due_soon, on_hold, cancelled, closed) beside Show; the two combine. Rfq::scopeInStatusFilter() is the only definition of each status:
+- pending is rfqs.status Pending.
+- overdue and due_soon are Pending with DashboardController::targetStatesByRfq() saying so: a running Sourcing, Data Entry, Finalize or GM Assistant task past its target, or under a quarter of it left. Overdue wins.
+- on_hold and cancelled use stoppedAs(), as their own pages do, so a part stopped on its own counts.
+- closed is status Completed.
+
+It's read only on the All RFQs page ($isAllRfqsPage); every other list ignores ?state=. That page's rows (_rfq_row $targetStates) show Overdue or Due soon badges, with the tasks on hover. Senior Operations was added to User::ALL_RFQS_ROLES the same day, at the user's choice, so their dashboard cards have somewhere to open. Never put a status threshold in a view.

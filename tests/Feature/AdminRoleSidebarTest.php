@@ -394,8 +394,8 @@ it('gives Admin an All RFQs link, to every RFQ whatever its status', function ()
     test()->actingAs($admin)->get(indexUrl(['status' => 'Pending', 'role' => 'sourcing']))->assertOk()
         ->assertSee($link.' "', false);
 
-    // Admin's and the General Manager's (below) alone.
-    foreach (['Senior Operations', 'Sourcing', 'Data Entry', 'Business Development', 'Head of Business Development', 'GM Assistant'] as $role) {
+    // Admin's, the General Manager's (below) and Senior Operations' (RfqStatusFilterTest) alone.
+    foreach (['Sourcing', 'Data Entry', 'Business Development', 'Head of Business Development', 'GM Assistant'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()
             ->assertDontSee('All RFQs');
     }

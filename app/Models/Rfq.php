@@ -85,6 +85,24 @@ class Rfq extends Model
     public const LIST_STATUSES = ['Pending', 'Completed', self::ON_HOLD, self::CANCELLED];
 
     /**
+     * What All RFQs' Status filter (?state=, scopeInStatusFilter()) can
+     * narrow it to, and what it calls each — where Senior Operations'
+     * dashboard cards lead. Overdue and Due soon are the pending RFQs with a
+     * task running past its target, or with under a quarter of it left
+     * (DashboardController::targetStatesByRfq()).
+     *
+     * @var array<string, string>
+     */
+    public const STATUS_FILTERS = [
+        'pending' => 'Pending',
+        'overdue' => 'Overdue',
+        'due_soon' => 'Due soon',
+        'on_hold' => 'On Hold',
+        'cancelled' => 'Cancelled',
+        'closed' => 'Closed',
+    ];
+
+    /**
      * Prefix, zero-padding width, and the sequence auto-generated RFQ
      * numbers count on from until an Admin says where they start
      * (Setting::rfqNumberStart()), e.g. "RFQ1001", "RFQ1002". See
@@ -1225,15 +1243,34 @@ class Rfq extends Model
     /**
      * Senior Operations' Unassigned queue: Pending RFQs with a Sourcing part
      * nobody holds (scopeNeedingSourcing()) — but not one sent back to their
-     * assignment step ('operations'), which is on their Returns page
-     * (scopeReturnedToSeniorOperations()), and only there, until it's assigned
-     * again. Since 2026-10-24, at the user's request.
+     * assignment step ('operations'), which is on their Returns or Rejected
+     * page (scopeReturnedToSeniorOperations()), and only there, until it's
+     * assigned again (since 2026-10-24); nor, since 2026-10-28, one sent back
+     * to Business Development and still with them — it's theirs to fix first
+     * (their Returns or Rejected page; Senior Operations' Get Details Again
+     * also on Senior Operations' Returns, scopeWithBusinessDevelopmentForDetails()),
+     * and it's back here once they have (resolveBusinessDevelopmentReturn()).
+     * Both at the user's request.
      */
     public function scopeAwaitingAssignment(Builder $query): void
     {
         $query->where('rfqs.status', 'Pending')->needingSourcing()->where(fn (Builder $q) => $q
             ->whereNull('rfqs.reject_target_stage')
-            ->orWhere('rfqs.reject_target_stage', '!=', 'operations'));
+            ->orWhereNotIn('rfqs.reject_target_stage', ['operations', 'business_development']));
+    }
+
+    /**
+     * The RFQs Senior Operations sent back to Business Development for
+     * details (Get Details Again — rejectToStage() from 'operations') and
+     * still with them: on Senior Operations' Returns page, marked as with
+     * Business Development, so they can follow them — not on Unassigned
+     * (scopeAwaitingAssignment()) till Business Development has fixed them.
+     */
+    public function scopeWithBusinessDevelopmentForDetails(Builder $query): void
+    {
+        $query->where('rfqs.status', 'Pending')
+            ->where('rfqs.reject_target_stage', 'business_development')
+            ->where('rfqs.reject_from_stage', 'operations');
     }
 
     /**
@@ -1409,6 +1446,29 @@ class Rfq extends Model
             ->orWhere(fn (Builder $withPart) => $withPart
                 ->where('rfqs.status', 'Pending')
                 ->whereHas('assignees', fn (Builder $parts) => $parts->where('rfq_user.status', $status))));
+    }
+
+    /**
+     * The RFQs with one of STATUS_FILTERS ($filter): pending, overdue or due
+     * soon — pending, with $targetStates (DashboardController::
+     * targetStatesByRfq(), by RFQ id) saying it's that — on hold or
+     * cancelled, as their own pages list them (scopeStoppedAs()), or closed.
+     * All RFQs' Status filter and Senior Operations' dashboard cards both
+     * count through here, so the two always agree.
+     *
+     * @param  Builder<self>  $query
+     * @param  Collection<int, array{state: string, tasks: array<int, string>}>  $targetStates
+     */
+    public function scopeInStatusFilter(Builder $query, string $filter, Collection $targetStates): void
+    {
+        match ($filter) {
+            'pending' => $query->where('rfqs.status', 'Pending'),
+            'overdue', 'due_soon' => $query->where('rfqs.status', 'Pending')
+                ->whereIn('rfqs.id', $targetStates->where('state', $filter)->keys()->all()),
+            'on_hold' => $query->stoppedAs(self::ON_HOLD),
+            'cancelled' => $query->stoppedAs(self::CANCELLED),
+            'closed' => $query->where('rfqs.status', 'Completed'),
+        };
     }
 
     /**

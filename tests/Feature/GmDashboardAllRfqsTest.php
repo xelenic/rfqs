@@ -140,6 +140,6 @@ it('gives Admin the views too, as the General Manager\'s — and keeps the other
     }
 
     // Nor does ?show= do anything on their lists.
-    expect(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['show' => 'closed']))->assertOk()->getContent())
+    expect(test()->actingAs(userWithRole('Head of Business Development'))->get(route('admin.rfqs.index', ['show' => 'closed']))->assertOk()->getContent())
         ->not->toContain('data-all-rfqs-view');
 });

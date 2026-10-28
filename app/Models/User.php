@@ -134,11 +134,13 @@ class User extends Authenticatable
     /**
      * The roles with "All RFQs" in their sidebar — the RFQ list with no
      * status or role asked for: every RFQ, whatever its status or where it
-     * is. The General Manager's since 2026-10-21, beside their Review queue.
+     * is. The General Manager's since 2026-10-21, beside their Review queue;
+     * Senior Operations' since 2026-10-28, where their dashboard's status
+     * cards lead.
      *
      * @var array<int, string>
      */
-    public const ALL_RFQS_ROLES = ['Admin', 'General Manager'];
+    public const ALL_RFQS_ROLES = ['Admin', 'General Manager', 'Senior Operations'];
 
     /**
      * The roles that fill in and submit the daily attendance sheet.

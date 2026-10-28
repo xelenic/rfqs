@@ -77,7 +77,9 @@ it('gives Business Development a dashboard of its own', function () {
 });
 
 it('keeps the general dashboard for everyone else, and Admin\'s own for Admin', function () {
-    foreach (['Senior Operations'] as $role) {
+    // Senior Operations has its own since 2026-10-28 (RfqStatusFilterTest); a
+    // role with RFQs and no dashboard of its own gets the general one.
+    foreach (['Auditor'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()

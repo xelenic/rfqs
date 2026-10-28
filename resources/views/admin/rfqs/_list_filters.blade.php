@@ -12,18 +12,21 @@
     On Senior Operations' Unassigned page, whose own filters have the dates
     and priority, it's the search alone. On All RFQs, what to show
     (?show=, RfqController::ALL_RFQS_VIEWS) — where the General Manager's
-    dashboard cards lead — keeping the card's dates (?show_from, ?show_to).
+    dashboard cards lead — keeping the card's dates (?show_from, ?show_to) —
+    and its status (?state=, Rfq::STATUS_FILTERS: pending, overdue, due soon,
+    on hold, cancelled, closed), where Senior Operations' dashboard cards lead.
 
     Expects: $statusFilter, $lensRole, $opsFilters, $listRange, $listPriority,
     $search, $scopedToDataEntry, $dataEntryTab, $canGroup, $groupBy,
-    $allRfqsViews and $allRfqsView (null but on All RFQs).
+    $allRfqsViews, $allRfqsView, $allRfqsStatuses and $allRfqsStatus (null but
+    on All RFQs).
 --}}
 @php
     $filterToday = now(\App\Models\Setting::timezone())->toDateString();
     $isCustomRange = $listRange && $listRange['range'] === 'custom';
     $rangeLabels = ['all' => 'All time'] + \App\Http\Controllers\Admin\RfqController::LIST_RANGES + ['custom' => 'Custom'];
     // Senior Operations' own filters have their Clear, which keeps the search.
-    $isFiltered = ($listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== [])) || ($allRfqsView ?? null) !== null;
+    $isFiltered = ($listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== [])) || ($allRfqsView ?? null) !== null || ($allRfqsStatus ?? null) !== null;
 @endphp
 <form method="GET" action="{{ route('admin.rfqs.index') }}" id="rfqListFilterForm" class="list-filter js-period-filter"
       data-period-field="range" data-period-default="all" data-today="{{ $filterToday }}">
@@ -103,6 +106,19 @@
         @endif
     @endif
 
+    {{-- All RFQs: their status — overdue and due soon by the tasks running now. --}}
+    @if ($allRfqsStatuses ?? null)
+        <label class="list-filter-group" title="Status">
+            <i class="bi bi-flag" aria-hidden="true"></i>
+            <select name="state" class="form-select form-select-sm" aria-label="Status">
+                <option value="">Status: All</option>
+                @foreach ($allRfqsStatuses as $value => $label)
+                    <option value="{{ $value }}" @selected($allRfqsStatus === $value)>Status: {{ $label }}</option>
+                @endforeach
+            </select>
+        </label>
+    @endif
+
     @if ($canGroup)
         <label class="list-filter-group" title="Group the list">
             <i class="bi bi-collection" aria-hidden="true"></i>
@@ -116,7 +132,7 @@
     @endif
 
     @if ($isFiltered)
-        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'show', 'show_from', 'show_to', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
+        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'show', 'show_from', 'show_to', 'state', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
             <i class="bi bi-x-circle"></i> Clear
         </a>
     @endif

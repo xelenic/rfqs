@@ -15,16 +15,22 @@
     Optional: $showToFinalize — All RFQs' "Not finalized by Sourcing", where
     each part still to finalize is noted under the subject: who has it and
     where it stands, or that nobody does yet (Rfq::partsToFinalizeBySourcing()).
+    Optional: $targetStates — All RFQs, where an RFQ with a task running past
+    its target, or with under a quarter of it left, is marked Overdue or Due
+    soon beside its status, the tasks behind it on hover
+    (DashboardController::targetStatesByRfq()).
     Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
     an RFQ can be sent back to Business Development for details
-    (_request_details_modal.blade.php) — or, once it has been, is marked as
-    being with them.
+    (_request_details_modal.blade.php). Once it has been, it's off that queue
+    till they've fixed it (Rfq::scopeAwaitingAssignment()) — on Senior
+    Operations' Returns, marked as with them.
     A part of a split stopped on its own (Rfq::changePartStatus()) is noted
     under the subject, with its own Resume or Reopen for Senior Operations —
     except on a row heading its parts, whose own lines show it.
 --}}
 @php
     $stoppedParts = $rfq->assignees->filter(fn ($assignee) => $assignee->pivot->isStopped());
+    $targetState = isset($targetStates) ? $targetStates->get($rfq->id) : null;
 @endphp
 <tr @class(['rfq-group-head' => $groupedParts ?? false])>
     <td class="fw-semibold">
@@ -64,7 +70,16 @@
     </td>
     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
     @unless ($statusFilter)
-        <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
+        <td>
+            <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
+            @if ($targetState)
+                <span class="badge {{ $targetState['state'] === 'overdue' ? 'badge-soft-danger' : 'badge-soft-warning' }}"
+                      data-target-state="{{ $targetState['state'] }}" title="{{ implode("\n", $targetState['tasks']) }}">
+                    <i class="bi {{ $targetState['state'] === 'overdue' ? 'bi-alarm' : 'bi-clock-history' }}" aria-hidden="true"></i>
+                    {{ \App\Models\Rfq::STATUS_FILTERS[$targetState['state']] }}
+                </span>
+            @endif
+        </td>
     @endunless
     <td>
         {{ $rfq->subject }}
@@ -98,12 +113,6 @@
                     {{ match (true) { $rfq->isSplit() => $toFinalize['number'].' — ', $holder !== null => 'Not finalized — ', default => '' } }}{{ $standing }}
                 </div>
             @endforeach
-        @endif
-        @if (($canRequestDetails ?? false) && $rfq->isReturnedToBusinessDevelopment())
-            <div class="rfq-list-subnote rfq-list-subnote-returned">
-                <i class="bi bi-arrow-counterclockwise"></i>
-                With Business Development: {{ $rfq->reject_reason }}
-            </div>
         @endif
     </td>
     @if ($showCreated ?? true)

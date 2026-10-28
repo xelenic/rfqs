@@ -100,22 +100,37 @@
         </div>
 
         {{-- All RFQs narrowed to what a dashboard card counted (?show=,
-             RfqController::ALL_RFQS_VIEWS): what, over which dates, how many. --}}
-        @if ($allRfqsView)
+             RfqController::ALL_RFQS_VIEWS) and/or to a status (?state=,
+             Rfq::STATUS_FILTERS): what, over which dates, how many. --}}
+        @if ($allRfqsView || $allRfqsStatus)
             @php
                 $viewDay = fn (string $date) => \Carbon\CarbonImmutable::parse($date)->format('M j, Y');
                 $viewDates = match (true) {
+                    $allRfqsView === null => '',
                     $allRfqsView['from'] !== null && $allRfqsView['from'] === $allRfqsView['to'] => ' on '.$viewDay($allRfqsView['from']),
                     $allRfqsView['from'] !== null && $allRfqsView['to'] !== null => ' from '.$viewDay($allRfqsView['from']).' to '.$viewDay($allRfqsView['to']),
                     $allRfqsView['from'] !== null => ' since '.$viewDay($allRfqsView['from']),
                     $allRfqsView['to'] !== null => ' up to '.$viewDay($allRfqsView['to']),
                     default => '',
                 };
+                // What Overdue and Due soon go by.
+                $statusHint = match ($allRfqsStatus) {
+                    'overdue' => ' (a task running past its target)',
+                    'due_soon' => ' (a task with under a quarter of its target left)',
+                    default => '',
+                };
+                $listedCount = $rfqs->total().' '.($rfqs->total() === 1 ? 'RFQ' : 'RFQs');
             @endphp
-            <div class="list-view-note" data-all-rfqs-view="{{ $allRfqsView['show'] }}">
+            <div class="list-view-note" @if ($allRfqsView) data-all-rfqs-view="{{ $allRfqsView['show'] }}" @endif @if ($allRfqsStatus) data-all-rfqs-status="{{ $allRfqsStatus }}" @endif>
                 <i class="bi bi-funnel-fill" aria-hidden="true"></i>
-                <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }} — {{ $rfqs->total() }} {{ $rfqs->total() === 1 ? 'RFQ' : 'RFQs' }}.</span>
-                <a href="{{ request()->fullUrlWithoutQuery(['show', 'show_from', 'show_to', 'page']) }}" class="ms-auto">Show all RFQs</a>
+                @if ($allRfqsStatus === null)
+                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }} — {{ $listedCount }}.</span>
+                @elseif ($allRfqsView === null)
+                    <span>Showing RFQs with status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }} — {{ $listedCount }}.</span>
+                @else
+                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }}, status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }} — {{ $listedCount }}.</span>
+                @endif
+                <a href="{{ request()->fullUrlWithoutQuery(['show', 'show_from', 'show_to', 'state', 'page']) }}" class="ms-auto">Show all RFQs</a>
             </div>
         @endif
 
@@ -1052,7 +1067,11 @@
                  Rfq::scopeReturnedToSeniorOperations(), RfqController::index()
                  ($scopedToSeniorOpsReturns). What a reviewer rejected back is
                  on their Rejected page ($onRejectedPage) instead, laid out the
-                 same; Returns keeps a Sourcing part sent back to them. --}}
+                 same; Returns keeps a Sourcing part sent back to them — and
+                 what they sent back to Business Development for details (Get
+                 Details Again), marked as with Business Development, just to
+                 follow: it's back on Unassigned once Business Development has
+                 fixed it (Rfq::scopeWithBusinessDevelopmentForDetails()). --}}
             @php
                 $reviewPageUrl = route('admin.rfqs.index', array_filter([
                     'status' => 'Pending',
@@ -1076,6 +1095,7 @@
                     <tbody>
                         @forelse ($rfqs as $rfq)
                             @php
+                                $withBusinessDevelopment = $rfq->reject_target_stage === 'business_development';
                                 $backToAssignment = $rfq->reject_target_stage === 'operations';
                                 $passBackTo = $backToAssignment ? $rfq->previousHoldersOfOpenParts() : [];
                                 $passBackNames = collect($passBackTo)->pluck('name')->unique()->join(', ', ' and ');
@@ -1087,15 +1107,28 @@
                                     {{ $rfq->subject }}
                                     <div class="rfq-list-subnote rfq-list-subnote-returned">
                                         <i class="bi bi-arrow-counterclockwise"></i>
-                                        {{ $onRejectedPage ? 'Rejected' : 'Sent back' }} by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                        @if ($withBusinessDevelopment)
+                                            Sent back to Business Development for details{{ $rfq->rejectedBy ? ' by '.$rfq->rejectedBy->name : '' }}: {{ $rfq->reject_reason }}
+                                        @else
+                                            {{ $onRejectedPage ? 'Rejected' : 'Sent back' }} by {{ \App\Models\Rfq::stageLabel($rfq->reject_from_stage) }}{{ $rfq->rejectedBy ? ' ('.$rfq->rejectedBy->name.')' : '' }}: {{ $rfq->reject_reason }}
+                                        @endif
                                     </div>
+                                    @if ($withBusinessDevelopment)
+                                        <div class="rfq-list-subnote" data-with-business-development>
+                                            <i class="bi bi-hourglass-split"></i> Waiting on Business Development — it's back on Unassigned once they've fixed it.
+                                        </div>
+                                    @endif
                                     @if ($rfq->latestRejection)
                                         @include('admin.rfqs._comment_attachments', ['comment' => $rfq->latestRejection])
                                     @endif
                                 </td>
                                 <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                 <td>
-                                    <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
+                                    @if ($withBusinessDevelopment)
+                                        <span class="badge badge-soft-secondary">Business Development</span>
+                                    @else
+                                        <span class="badge badge-soft-danger">{{ $backToAssignment ? 'Assignment' : '2nd review' }}</span>
+                                    @endif
                                 </td>
                                 <td class="text-muted-soft">{{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                 <td class="text-end text-nowrap">
@@ -1103,11 +1136,15 @@
                                         <i class="bi bi-eye"></i>
                                     </a>
                                     {{-- Straight back to the reviewer who sent it, skipping the steps between. --}}
-                                    @foreach ($rfq->openReturnsTo($rfq->reject_target_stage ?? '') as $returnsFrom)
-                                        @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => $returnsFrom, 'part' => null])
-                                    @endforeach
+                                    @unless ($withBusinessDevelopment)
+                                        @foreach ($rfq->openReturnsTo($rfq->reject_target_stage ?? '') as $returnsFrom)
+                                            @include('admin.rfqs._forward_back_button', ['rfq' => $rfq, 'returns' => $returnsFrom, 'part' => null])
+                                        @endforeach
+                                    @endunless
+                                    {{-- With Business Development: nothing to do here till they've fixed it. --}}
                                     @can('rfqs.edit')
-                                        @if ($backToAssignment)
+                                        @if ($withBusinessDevelopment)
+                                        @elseif ($backToAssignment)
                                             {{-- Each freed part straight back to whoever had it — see
                                                  RfqController::passBackToSourcing(). --}}
                                             @if ($passBackTo !== [])
@@ -1820,12 +1857,12 @@
                                      Business Development closes it (see Rfq::closePart()). --}}
                                 @include('admin.rfqs._closed_part_rows', ['rfq' => $rfq, 'bdClosedNames' => $bdClosedNames, 'onlyHeldBy' => $scopedToMyClosed ? auth()->id() : null, 'showCreatedAndClosed' => ! $hidesCreatedAndClosed])
                             @else
-                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed, 'showToFinalize' => ($allRfqsView['show'] ?? null) === 'not_finalized'])
+                                @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'showClosed' => $statusFilter === 'Completed' && ! $hidesCreatedAndClosed, 'showCreated' => ! $hidesCreatedAndClosed, 'showToFinalize' => ($allRfqsView['show'] ?? null) === 'not_finalized', 'targetStates' => $targetStates])
                             @endif
                         @empty
                             <tr>
                                 <td colspan="{{ $listColumns }}" class="text-center text-muted-soft py-4">
-                                    No {{ $statusFilter ? strtolower($statusFilter).' ' : '' }}RFQs found.
+                                    No {{ match (true) { (bool) $statusFilter => strtolower($statusFilter).' ', (bool) $allRfqsStatus => strtolower($allRfqsStatuses[$allRfqsStatus]).' ', default => '' } }}RFQs found.
                                 </td>
                             </tr>
                         @endforelse

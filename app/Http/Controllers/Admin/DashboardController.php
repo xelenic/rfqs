@@ -177,6 +177,21 @@ class DashboardController extends Controller
             ]);
         }
 
+        // Senior Operations' is where every RFQ stands: by status — pending,
+        // overdue, due soon, on hold, cancelled, closed — each leading to All
+        // RFQs with that Status filter; the RFQs created over time; and the
+        // latest RFQs.
+        if ($canViewRfqs && $user->hasRole('Senior Operations') && ! $user->hasRole('Admin')) {
+            $overview = $this->seniorOperationsOverview($user);
+
+            return view('admin.dashboard.senior-operations', [
+                'overview' => $overview,
+                'rfqActivity' => $this->rfqActivity($request->integer('range', 7)),
+                'recentRfqs' => Rfq::query()->visibleTo($user)->with('assignees')->latest()->limit(6)->get(),
+                'notifications' => $this->notifications($request),
+            ]);
+        }
+
         // HR Executive's is about people: today's attendance sheet, what's
         // waiting on their approval, how attendance has gone over the period,
         // and the team.
@@ -309,6 +324,77 @@ class DashboardController extends Controller
             return $dashboard->ongoingTasks($now)->where('state', 'overdue')->count()
                 + $dashboard->dataEntryFloor($now, $now->setTimezone(Setting::timezone())->startOfDay())['idleCount'];
         });
+    }
+
+    /**
+     * Where each pending RFQ with a timed task running stands against its
+     * target, by RFQ id — judged as Admin's dashboard and the Critical
+     * monitor judge it (ongoingTasks(), timeAgainstTarget()): overdue when
+     * any of its tasks is past its target, else due soon when one has under a
+     * quarter of it left. RFQs on track, or with nothing timed running,
+     * aren't in it. With each, the tasks behind it ("Sourcing · RFQ1001-P2 ·
+     * 30m over"). For All RFQs' Status filter (Rfq::scopeInStatusFilter())
+     * and its rows, and Senior Operations' dashboard.
+     *
+     * @return Collection<int, array{state: string, tasks: array<int, string>}>
+     */
+    public static function targetStatesByRfq(): Collection
+    {
+        return app(static::class)->ongoingTasks(CarbonImmutable::now())
+            ->whereIn('state', ['overdue', 'due_soon'])
+            ->groupBy(fn (array $task) => $task['rfq']->id)
+            ->map(fn (Collection $tasks) => [
+                'state' => $tasks->contains('state', 'overdue') ? 'overdue' : 'due_soon',
+                'tasks' => $tasks->map(fn (array $task) => $task['task'].' · '.$task['label'].' · '.($task['remaining'] < 0
+                    ? Setting::durationLabel(-$task['remaining']).' over'
+                    : Setting::durationLabel($task['remaining']).' left'))->values()->all(),
+            ]);
+    }
+
+    /**
+     * What Senior Operations' dashboard shows: a card for each of All RFQs'
+     * Status filters (Rfq::STATUS_FILTERS) — how many RFQs have it now,
+     * counted as the list counts them (Rfq::scopeInStatusFilter()), and the
+     * list it opens — and where each RFQ stands against its target
+     * (targetStatesByRfq()), for the latest RFQs.
+     *
+     * @return array{statuses: array<int, array{key: string, label: string, value: int, caption: string, icon: string, tone: string, alert: bool, url: string}>, targetStates: Collection<int, array{state: string, tasks: array<int, string>}>}
+     */
+    protected function seniorOperationsOverview(User $user): array
+    {
+        $targetStates = self::targetStatesByRfq();
+        $today = CarbonImmutable::now(Setting::timezone())->startOfDay()->setTimezone(config('app.timezone'));
+        $count = fn (string $filter) => Rfq::query()->visibleTo($user)->inStatusFilter($filter, $targetStates)->count();
+        $urgent = Rfq::query()->visibleTo($user)->inStatusFilter('pending', $targetStates)->whereIn('priority_level', Rfq::URGENT_PRIORITIES)->count();
+        $closedToday = Rfq::query()->visibleTo($user)->inStatusFilter('closed', $targetStates)->where('bd_closed_at', '>=', $today)->count();
+
+        $cards = [
+            'pending' => ['icon' => 'bi-hourglass-split', 'tone' => '', 'caption' => $urgent > 0 ? $urgent.' urgent' : 'None urgent', 'alert' => $urgent > 0],
+            'overdue' => ['icon' => 'bi-alarm', 'tone' => 'danger', 'caption' => 'A task past its target', 'alert' => null],
+            'due_soon' => ['icon' => 'bi-clock-history', 'tone' => 'warning', 'caption' => 'Under a quarter of the target left', 'alert' => false],
+            'on_hold' => ['icon' => 'bi-pause-circle', 'tone' => 'teal', 'caption' => 'Whole, or a part', 'alert' => false],
+            'cancelled' => ['icon' => 'bi-x-circle', 'tone' => 'violet', 'caption' => 'Whole, or a part', 'alert' => false],
+            'closed' => ['icon' => 'bi-check2-circle', 'tone' => 'success', 'caption' => $closedToday.' closed today', 'alert' => false],
+        ];
+
+        return [
+            'statuses' => collect($cards)->map(function (array $card, string $filter) use ($count) {
+                $value = $count($filter);
+
+                return [
+                    'key' => $filter,
+                    'label' => Rfq::STATUS_FILTERS[$filter],
+                    'value' => $value,
+                    'caption' => $card['caption'],
+                    'icon' => $card['icon'],
+                    'tone' => $card['tone'],
+                    // Overdue's is red whenever there's any.
+                    'alert' => $card['alert'] ?? $value > 0,
+                    'url' => route('admin.rfqs.index', ['state' => $filter]),
+                ];
+            })->values()->all(),
+            'targetStates' => $targetStates,
+        ];
     }
 
     /**

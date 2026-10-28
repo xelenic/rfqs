@@ -331,6 +331,12 @@ class RfqController extends Controller implements HasMiddleware
         $isAllRfqsPage = $status === null && $lensRole === null && $user->canListAllRfqs();
         $allRfqsView = $isAllRfqsPage ? $this->allRfqsView($request, $user) : null;
 
+        // All RFQs' Status filter (?state=, Rfq::STATUS_FILTERS), where Senior
+        // Operations' dashboard cards lead — and where each RFQ stands against
+        // its target, for it and for the rows' Overdue / Due soon badges.
+        $allRfqsStatus = $isAllRfqsPage && array_key_exists((string) $request->query('state'), Rfq::STATUS_FILTERS) ? (string) $request->query('state') : null;
+        $targetStates = $isAllRfqsPage ? DashboardController::targetStatesByRfq() : null;
+
         $applySearch = function ($query) use ($search, $listRange, $listPriority) {
             $query->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -419,7 +425,13 @@ class RfqController extends Controller implements HasMiddleware
             ->when($scopedToGmReview, fn ($query) => $query->awaitingGmApproval()->notHeldOnAReturnsPage()->rejectedToGm($onRejectedPage))
             ->when($scopedToBdClosing, fn ($query) => $query->awaitingBdClosing())
             ->when($scopedToBdReturns, fn ($query) => $query->where('reject_target_stage', 'business_development')->rejectedByAReviewer($onRejectedPage))
-            ->when($scopedToSeniorOpsReturns, fn ($query) => $query->returnedToSeniorOperations()->rejectedByAReviewer($onRejectedPage))
+            // Their Returns also has what they sent back to Business Development
+            // for details, still with them (Rfq::scopeWithBusinessDevelopmentForDetails()).
+            ->when($scopedToSeniorOpsReturns, fn ($query) => $onRejectedPage
+                ? $query->returnedToSeniorOperations()->rejectedByAReviewer()
+                : $query->where(fn ($returns) => $returns
+                    ->where(fn ($toThem) => $toThem->returnedToSeniorOperations()->rejectedByAReviewer(false))
+                    ->orWhere(fn ($forDetails) => $forDetails->withBusinessDevelopmentForDetails())))
             ->when($scopedToHeadOfBdReturns, fn ($query) => $query->returnedToHeadOfBd())
             ->when($scopedToGmAssistantReturns, fn ($query) => $query->returnedToGmAssistant())
             ->when($scopedToMyClosed, fn ($query) => $query->where(fn ($mine) => $mine
@@ -428,6 +440,7 @@ class RfqController extends Controller implements HasMiddleware
                     ->whereHas('assignees', fn ($parts) => $parts->whereKey($user->id)))
                 ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
             ->when($allRfqsView, fn ($query, array $view) => $this->applyAllRfqsView($query, $view))
+            ->when($allRfqsStatus, fn ($query, string $filter) => $query->inStatusFilter($filter, $targetStates))
             ->when($groupBy, fn ($query, string $group) => $query->orderByRaw($this->listGroupOrder($group)))
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters));
@@ -648,6 +661,9 @@ class RfqController extends Controller implements HasMiddleware
             'groupTotals' => $groupTotals,
             'allRfqsViews' => $isAllRfqsPage ? $this->allRfqsViewLabels($user) : null,
             'allRfqsView' => $allRfqsView,
+            'allRfqsStatuses' => $isAllRfqsPage ? Rfq::STATUS_FILTERS : null,
+            'allRfqsStatus' => $allRfqsStatus,
+            'targetStates' => $targetStates,
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,

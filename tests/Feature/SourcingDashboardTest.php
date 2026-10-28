@@ -44,7 +44,9 @@ it('gives Sourcing a dashboard of its own', function () {
 });
 
 it('leaves the other roles with the general dashboard, and Admin with its own', function () {
-    foreach (['Senior Operations'] as $role) {
+    // Senior Operations has its own since 2026-10-28 (RfqStatusFilterTest); a
+    // role with RFQs and no dashboard of its own gets the general one.
+    foreach (['Auditor'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(route('admin.dashboard'))
             ->assertOk()

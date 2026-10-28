@@ -1,4 +1,9 @@
-{{-- The latest RFQs, company-wide. Expects: $recentRfqs. --}}
+{{--
+    The latest RFQs, company-wide. Expects: $recentRfqs.
+    Optional: $targetStates — Senior Operations' dashboard, where an RFQ with
+    a task past its target, or nearly, is marked Overdue or Due soon beside
+    its status (DashboardController::targetStatesByRfq()).
+--}}
 <div class="card">
     <div class="card-header d-flex align-items-center justify-content-between">
         <span>Recent RFQs</span>
@@ -24,7 +29,16 @@
                             <td class="fw-semibold">{{ $rfq->wc_number }}</td>
                             <td>{{ $rfq->subject }}</td>
                             <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
-                            <td><span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span></td>
+                            <td>
+                                <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
+                                @php $targetState = isset($targetStates) ? $targetStates->get($rfq->id) : null; @endphp
+                                @if ($targetState)
+                                    <span class="badge {{ $targetState['state'] === 'overdue' ? 'badge-soft-danger' : 'badge-soft-warning' }}"
+                                          data-target-state="{{ $targetState['state'] }}" title="{{ implode("\n", $targetState['tasks']) }}">
+                                        {{ \App\Models\Rfq::STATUS_FILTERS[$targetState['state']] }}
+                                    </span>
+                                @endif
+                            </td>
                             <td class="text-muted-soft text-nowrap">{{ $rfq->created_at->toBusinessTimezone()->format('M d, Y g:i A') }}</td>
                             <td class="text-end">
                                 <a href="{{ route('admin.rfqs.show', $rfq) }}" class="btn btn-sm btn-outline-secondary" title="View details">
