@@ -3,8 +3,10 @@
     (DashboardController::seniorOperationsOverview()): a card for each
     status — pending, overdue, due soon, on hold, cancelled, closed — each
     opening All RFQs with that Status filter (?state=, Rfq::STATUS_FILTERS),
-    counted as the list counts them; the RFQs created over time; the latest
-    RFQs, marked Overdue or Due soon where a task is; and their alerts.
+    counted as the list counts them; every task someone's on right now,
+    overdue first, against its target, as on Admin's (_ongoing_tasks); the
+    RFQs created over time; the latest RFQs, marked Overdue or Due soon
+    where a task is; and their alerts.
 
     Expects: $overview, $rfqActivity, $recentRfqs, $notifications.
 --}}
@@ -32,6 +34,9 @@
             </div>
         @endforeach
     </div>
+
+    {{-- What's running now, overdue first — the whole width, so every column shows. --}}
+    @include('admin.dashboard._ongoing_tasks', ['ongoing' => $overview['ongoing']])
 
     <div class="row g-3">
         <div class="col-lg-8">

@@ -5,6 +5,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 uses(LazilyRefreshDatabase::class);
@@ -182,6 +183,28 @@ it('gives Senior Operations a dashboard of RFQs by status, each card opening All
     $recent = Str::after($response->getContent(), 'Recent RFQs');
 
     expect(Str::before(Str::after($recent, 'Fire pump'), '</tr>'))->toContain('data-target-state="overdue"');
+});
+
+it('shows Senior Operations every task running now, overdue first, as Admin\'s dashboard does', function () {
+    everyStatus();
+
+    $response = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk();
+    $tasks = Str::betweenFirst($response->getContent(), 'id="ongoing-tasks"', '</table>');
+
+    expect($tasks)->toContain("Today's ongoing tasks")
+        ->and(substr_count($tasks, 'class="task-sheet-task"'))->toBe(3);
+
+    // The Urgent part past its 4 hours, the one nearly there, then the one on track.
+    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))
+        ->assertSeeInOrder(['id="ongoing-tasks"', 'RFQ5001', 'Sourcing · Fire pump', '30m over 4h', 'Overdue', 'RFQ5002', 'Due soon', 'RFQ5003', 'On track', 'RFQ Activity'], false);
+
+    // They can't open Users, so the names aren't links; for someone who can, they are.
+    $admin = userWithRole('Admin');
+    $admin->givePermissionTo(Permission::findOrCreate('users.view'));
+
+    expect($tasks)->not->toContain('/admin/users/');
+    expect(Str::betweenFirst(test()->actingAs($admin)->get(route('admin.dashboard'))->getContent(), 'id="ongoing-tasks"', '</table>'))
+        ->toContain('/admin/users/');
 });
 
 it('counts on each card just what its list shows', function () {

@@ -334,13 +334,15 @@ class DashboardController extends Controller
      * quarter of it left. RFQs on track, or with nothing timed running,
      * aren't in it. With each, the tasks behind it ("Sourcing · RFQ1001-P2 ·
      * 30m over"). For All RFQs' Status filter (Rfq::scopeInStatusFilter())
-     * and its rows, and Senior Operations' dashboard.
+     * and its rows, and Senior Operations' dashboard — from $ongoing, when
+     * the page has worked them out already.
      *
+     * @param  Collection<int, array<string, mixed>>|null  $ongoing
      * @return Collection<int, array{state: string, tasks: array<int, string>}>
      */
-    public static function targetStatesByRfq(): Collection
+    public static function targetStatesByRfq(?Collection $ongoing = null): Collection
     {
-        return app(static::class)->ongoingTasks(CarbonImmutable::now())
+        return ($ongoing ?? app(static::class)->ongoingTasks(CarbonImmutable::now()))
             ->whereIn('state', ['overdue', 'due_soon'])
             ->groupBy(fn (array $task) => $task['rfq']->id)
             ->map(fn (Collection $tasks) => [
@@ -355,14 +357,16 @@ class DashboardController extends Controller
      * What Senior Operations' dashboard shows: a card for each of All RFQs'
      * Status filters (Rfq::STATUS_FILTERS) — how many RFQs have it now,
      * counted as the list counts them (Rfq::scopeInStatusFilter()), and the
-     * list it opens — and where each RFQ stands against its target
-     * (targetStatesByRfq()), for the latest RFQs.
+     * list it opens; every task someone's on right now, overdue first, as
+     * Admin's dashboard has them (ongoingTasks()); and where each RFQ stands
+     * against its target (targetStatesByRfq()), for the latest RFQs.
      *
-     * @return array{statuses: array<int, array{key: string, label: string, value: int, caption: string, icon: string, tone: string, alert: bool, url: string}>, targetStates: Collection<int, array{state: string, tasks: array<int, string>}>}
+     * @return array{statuses: array<int, array{key: string, label: string, value: int, caption: string, icon: string, tone: string, alert: bool, url: string}>, ongoing: Collection<int, array<string, mixed>>, targetStates: Collection<int, array{state: string, tasks: array<int, string>}>}
      */
     protected function seniorOperationsOverview(User $user): array
     {
-        $targetStates = self::targetStatesByRfq();
+        $ongoing = $this->ongoingTasks(CarbonImmutable::now());
+        $targetStates = self::targetStatesByRfq($ongoing);
         $today = CarbonImmutable::now(Setting::timezone())->startOfDay()->setTimezone(config('app.timezone'));
         $count = fn (string $filter) => Rfq::query()->visibleTo($user)->inStatusFilter($filter, $targetStates)->count();
         $urgent = Rfq::query()->visibleTo($user)->inStatusFilter('pending', $targetStates)->whereIn('priority_level', Rfq::URGENT_PRIORITIES)->count();
@@ -393,6 +397,7 @@ class DashboardController extends Controller
                     'url' => route('admin.rfqs.index', ['state' => $filter]),
                 ];
             })->values()->all(),
+            'ongoing' => $ongoing,
             'targetStates' => $targetStates,
         ];
     }
