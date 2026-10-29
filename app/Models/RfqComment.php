@@ -38,6 +38,15 @@ class RfqComment extends Model
     ];
 
     /**
+     * How a reviewer's Return reads — a 'rejected' comment marked returned
+     * (Rfq::rejectToStage() with $asReturn, RETURNABLE_STAGES): sent back
+     * for changes, not rejected.
+     *
+     * @var array{label: string, icon: string, tone: string}
+     */
+    public const REVIEWER_RETURN = ['label' => 'Returned', 'icon' => 'bi-arrow-return-left', 'tone' => 'danger'];
+
+    /**
      * How far apart, in seconds, two records of one action can be — written
      * in the one request, by the one person, with the one reason — and still
      * be told as the one action (isSameActionAs()).
@@ -68,7 +77,27 @@ class RfqComment extends Model
      */
     public function actionLabel(): ?string
     {
-        return self::ACTIONS[$this->action]['label'] ?? null;
+        return $this->actionLook()['label'] ?? null;
+    }
+
+    /**
+     * Whether this records a reviewer's Return rather than a Reject — a
+     * 'rejected' comment marked returned (REVIEWER_RETURN).
+     */
+    public function isReviewerReturn(): bool
+    {
+        return $this->action === 'rejected' && ! empty($this->meta['returned']);
+    }
+
+    /**
+     * How its action reads (ACTIONS), a reviewer's Return its own way —
+     * null for an ordinary comment.
+     *
+     * @return array{label: string, icon: string, tone: string}|null
+     */
+    private function actionLook(): ?array
+    {
+        return $this->isReviewerReturn() ? self::REVIEWER_RETURN : (self::ACTIONS[$this->action] ?? null);
     }
 
     /**
@@ -77,7 +106,7 @@ class RfqComment extends Model
      */
     public function actionIcon(): string
     {
-        return self::ACTIONS[$this->action]['icon'] ?? 'bi-chat-left-text';
+        return $this->actionLook()['icon'] ?? 'bi-chat-left-text';
     }
 
     /**
@@ -85,7 +114,7 @@ class RfqComment extends Model
      */
     public function actionTone(): string
     {
-        return self::ACTIONS[$this->action]['tone'] ?? 'primary';
+        return $this->actionLook()['tone'] ?? 'primary';
     }
 
     /**

@@ -146,7 +146,10 @@
                 <div class="card mb-4" id="{{ $a }}-returns">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <span>Sent back to you <span class="badge badge-soft-danger ms-1">{{ $returnedToMe->count() }}</span></span>
-                        <a href="{{ $stage['returnsUrl'] }}" class="small">Your Rejected page <i class="bi bi-arrow-right"></i></a>
+                        <span class="small">
+                            <a href="{{ $stage['returnsUrl'] }}">Returns</a> ·
+                            <a href="{{ $stage['rejectedUrl'] }}">Rejected <i class="bi bi-arrow-right"></i></a>
+                        </span>
                     </div>
                     @if ($returnedToMe->isEmpty())
                         <div class="card-body">
@@ -170,6 +173,7 @@
                                             <td class="text-truncate" style="max-width: 220px;">{{ $rfq->subject }}</td>
                                             <td class="text-truncate small" style="max-width: 260px;" title="{{ $rfq->reject_reason }}">{{ $rfq->reject_reason }}</td>
                                             <td class="text-nowrap text-muted-soft small">
+                                                <span class="badge {{ $rfq->wasReturnedNotRejected() ? 'badge-soft-warning' : 'badge-soft-danger' }}">{{ $rfq->wasReturnedNotRejected() ? 'Returned' : 'Rejected' }}</span>
                                                 {{ $rfq->rejected_at?->toBusinessTimezone()->format('M d, g:i A') }}
                                                 @if ($rfq->rejectedBy)
                                                     <div>by {{ $rfq->rejectedBy->name }}</div>

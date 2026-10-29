@@ -46,7 +46,7 @@
             'role' => 'Business Development', 'badge' => ['closing', 'bd_returns', 'bd_rejected'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => null, 'hint' => ''],
-                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'bd_returns', 'hint' => 'sent back by Senior Operations'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'bd_returns', 'hint' => 'sent back by Senior Operations, or returned by a reviewer'],
                 ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'bd_rejected', 'hint' => 'rejected back by a reviewer'],
                 ['label' => 'Ready to Close', 'icon' => 'bi-flag', 'status' => 'Pending', 'view' => 'closing', 'count' => 'closing', 'hint' => 'approved by the General Manager, waiting to be closed'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
@@ -59,7 +59,7 @@
                 ['label' => 'Review', 'icon' => 'bi-clipboard2-check', 'status' => 'Pending', 'view' => 'review', 'count' => 'ops_review', 'hint' => 'awaiting second review'],
                 // Not in the heading's badge: every one of these is already
                 // counted in Unassigned or Review above.
-                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'Sourcing parts sent back'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'ops_returns', 'hint' => 'Sourcing parts sent back, or returned by a reviewer'],
                 ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'ops_rejected', 'hint' => 'rejected back by a reviewer'],
                 ['label' => 'On Hold', 'icon' => 'bi-pause-circle', 'status' => \App\Models\Rfq::ON_HOLD, 'view' => null, 'count' => 'on_hold', 'hint' => 'on hold'],
                 ['label' => 'Cancelled', 'icon' => 'bi-x-circle', 'status' => \App\Models\Rfq::CANCELLED, 'view' => null, 'count' => 'cancelled', 'hint' => 'cancelled'],
@@ -70,32 +70,35 @@
             'role' => 'Sourcing', 'badge' => ['sourcing_pending', 'sourcing_returns', 'sourcing_rejected'],
             'links' => [
                 ['label' => 'Pending RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'sourcing_pending', 'hint' => 'parts to complete or finalize'],
-                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'sourcing_returns', 'hint' => 'parts sent back by Data Entry, or returned by a reviewer'],
                 ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'sourcing_rejected', 'hint' => 'parts rejected back by a reviewer'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
-            'role' => 'Data Entry', 'badge' => ['data_entry', 'data_entry_rejected'],
+            'role' => 'Data Entry', 'badge' => ['data_entry', 'data_entry_returns', 'data_entry_rejected'],
             'links' => [
                 ['label' => 'Ready for Data Entry', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'data_entry', 'hint' => 'parts not marked complete'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'data_entry_returns', 'hint' => 'parts returned by a reviewer'],
                 ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'data_entry_rejected', 'hint' => 'parts rejected back by a reviewer'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
-            'role' => 'Head of Business Development', 'badge' => ['head_of_bd', 'head_of_bd_returns'],
+            'role' => 'Head of Business Development', 'badge' => ['head_of_bd', 'head_of_bd_returns', 'head_of_bd_rejected'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'head_of_bd', 'hint' => 'awaiting approval'],
-                ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'head_of_bd_returns', 'hint' => 'rejected back to their review'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'head_of_bd_returns', 'hint' => 'returned to their review by the General Manager'],
+                ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'head_of_bd_rejected', 'hint' => 'rejected back to their review'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],
         [
-            'role' => 'GM Assistant', 'badge' => ['gm_assistant', 'gm_assistant_returns'],
+            'role' => 'GM Assistant', 'badge' => ['gm_assistant', 'gm_assistant_returns', 'gm_assistant_rejected'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting submit'],
-                ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'gm_assistant_returns', 'hint' => 'rejected back by the General Manager'],
+                ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'gm_assistant_returns', 'hint' => 'returned by the General Manager'],
+                ['label' => 'Rejected', 'icon' => 'bi-x-octagon', 'status' => 'Pending', 'view' => 'rejected', 'count' => 'gm_assistant_rejected', 'hint' => 'rejected back by the General Manager'],
                 ['label' => 'Closed RFQs', 'icon' => 'bi-check2-circle', 'status' => 'Completed', 'view' => null, 'count' => null, 'hint' => ''],
             ],
         ],

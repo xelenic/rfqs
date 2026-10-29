@@ -266,7 +266,8 @@ class DashboardController extends Controller
             ]);
 
         $queues = Rfq::queueCounts();
-        // Each role's Returns (sent back by a co-worker) and Rejected (by a
+        // Each role's Returns (sent back by a co-worker, or Returned by the Head
+        // of Business Development or the General Manager) and Rejected (by a
         // reviewer) pages.
         $returnsPage = fn (string $role, string $view = 'returns') => $isAdmin
             ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => $view, 'role' => $role])
@@ -278,9 +279,12 @@ class DashboardController extends Controller
             ['label' => 'Senior Operations · Rejected', 'count' => $queues['ops_rejected'], 'url' => $returnsPage('senior-operations', 'rejected')],
             ['label' => 'Sourcing · Returns', 'count' => $queues['sourcing_returns'], 'url' => $returnsPage('sourcing')],
             ['label' => 'Sourcing · Rejected', 'count' => $queues['sourcing_rejected'], 'url' => $returnsPage('sourcing', 'rejected')],
+            ['label' => 'Data Entry · Returns', 'count' => $queues['data_entry_returns'], 'url' => $returnsPage('data-entry')],
             ['label' => 'Data Entry · Rejected', 'count' => $queues['data_entry_rejected'], 'url' => $returnsPage('data-entry', 'rejected')],
-            ['label' => 'Head of Business Development · Rejected', 'count' => $queues['head_of_bd_returns'], 'url' => $returnsPage('head-of-business-development', 'rejected')],
-            ['label' => 'GM Assistant · Rejected', 'count' => $queues['gm_assistant_returns'], 'url' => $returnsPage('gm-assistant', 'rejected')],
+            ['label' => 'Head of Business Development · Returns', 'count' => $queues['head_of_bd_returns'], 'url' => $returnsPage('head-of-business-development')],
+            ['label' => 'Head of Business Development · Rejected', 'count' => $queues['head_of_bd_rejected'], 'url' => $returnsPage('head-of-business-development', 'rejected')],
+            ['label' => 'GM Assistant · Returns', 'count' => $queues['gm_assistant_returns'], 'url' => $returnsPage('gm-assistant')],
+            ['label' => 'GM Assistant · Rejected', 'count' => $queues['gm_assistant_rejected'], 'url' => $returnsPage('gm-assistant', 'rejected')],
             ['label' => 'General Manager · Rejected', 'count' => $queues['gm_rejected'], 'url' => $returnsPage('general-manager', 'rejected')],
         ]);
 
@@ -479,10 +483,11 @@ class DashboardController extends Controller
             ['label' => 'Sent back to Sourcing', 'role' => 'Sourcing', 'count' => $queues['sourcing_returns'], 'tone' => 'danger', 'url' => $page('sourcing', 'returns')],
             ['label' => 'Rejected back to Sourcing', 'role' => 'Sourcing', 'count' => $queues['sourcing_rejected'], 'tone' => 'danger', 'url' => $page('sourcing', 'rejected')],
             ['label' => 'With Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry'], 'tone' => 'primary', 'url' => $page('data-entry')],
+            ['label' => 'Sent back to Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry_returns'], 'tone' => 'danger', 'url' => $page('data-entry', 'returns')],
             ['label' => 'Rejected back to Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry_rejected'], 'tone' => 'danger', 'url' => $page('data-entry', 'rejected')],
             ['label' => 'Senior Operations review', 'role' => 'Senior Operations', 'count' => $queues['ops_review'], 'tone' => 'violet', 'url' => $page('senior-operations', 'review')],
-            ['label' => 'Head of Business Development', 'role' => 'Head of Business Development', 'count' => $queues['head_of_bd'] + $queues['head_of_bd_returns'], 'tone' => 'violet', 'url' => $page('head-of-business-development')],
-            ['label' => 'GM Assistant', 'role' => 'GM Assistant', 'count' => $queues['gm_assistant'] + $queues['gm_assistant_returns'], 'tone' => 'violet', 'url' => $page('gm-assistant')],
+            ['label' => 'Head of Business Development', 'role' => 'Head of Business Development', 'count' => $queues['head_of_bd'] + $queues['head_of_bd_returns'] + $queues['head_of_bd_rejected'], 'tone' => 'violet', 'url' => $page('head-of-business-development')],
+            ['label' => 'GM Assistant', 'role' => 'GM Assistant', 'count' => $queues['gm_assistant'] + $queues['gm_assistant_returns'] + $queues['gm_assistant_rejected'], 'tone' => 'violet', 'url' => $page('gm-assistant')],
             ['label' => 'General Manager', 'role' => 'General Manager', 'count' => $queues['gm_review'] + $queues['gm_rejected'], 'tone' => 'violet', 'url' => $page('general-manager')],
             ['label' => 'Ready to close', 'role' => 'Business Development', 'count' => $queues['closing'], 'tone' => 'success', 'url' => $page('business-development', 'closing')],
             ['label' => 'Sent back to Business Development', 'role' => 'Business Development', 'count' => $queues['bd_returns'], 'tone' => 'danger', 'url' => $page('business-development', 'returns')],
@@ -1619,7 +1624,7 @@ class DashboardController extends Controller
      * where their step has a target, and how their step reads — approving,
      * or (GM Assistant's) submitting.
      *
-     * @return array{role: string, from: string, since: string, by: string, at: string, rfqBy: string, rfqAt: string, waiting: Closure, awaits: Closure, returns: ?Closure, returnsUrl: ?string, countdown: ?Closure, countdownStep: ?string, anchor: string, words: array<string, string>}
+     * @return array{role: string, from: string, since: string, by: string, at: string, rfqBy: string, rfqAt: string, waiting: Closure, awaits: Closure, returns: ?Closure, returnsUrl: ?string, rejectedUrl: ?string, countdown: ?Closure, countdownStep: ?string, anchor: string, words: array<string, string>}
      */
     protected function approverStage(string $role): array
     {
@@ -1650,7 +1655,8 @@ class DashboardController extends Controller
                 'waiting' => fn ($rfqs) => $rfqs->awaitingGmAssistant()->notHeldOnAReturnsPage(),
                 'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsGmAssistant($part),
                 'returns' => fn () => Rfq::query()->returnedToGmAssistant()->with('rejectedBy')->latest('rejected_at')->get(),
-                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']),
+                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']),
+                'rejectedUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']),
                 // Their step has a target (Settings → GM Assistant Time).
                 'countdown' => fn (Rfq $rfq, int $part) => $rfq->gmAssistantCountdown($part),
                 'countdownStep' => 'gm_assistant',
@@ -1681,7 +1687,8 @@ class DashboardController extends Controller
                 'waiting' => fn ($rfqs) => $rfqs->awaitingHeadOfBdReview()->notHeldOnAReturnsPage(),
                 'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsHeadOfBdReview($part),
                 'returns' => fn () => Rfq::query()->returnedToHeadOfBd()->with('rejectedBy')->latest('rejected_at')->get(),
-                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']),
+                'returnsUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']),
+                'rejectedUrl' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']),
                 'countdown' => null,
                 'countdownStep' => null,
                 'anchor' => 'hbd',
@@ -1699,6 +1706,7 @@ class DashboardController extends Controller
                 'awaits' => fn (Rfq $rfq, int $part) => $rfq->partAwaitsGmApproval($part),
                 'returns' => null,
                 'returnsUrl' => null,
+                'rejectedUrl' => null,
                 'countdown' => null,
                 'countdownStep' => null,
                 'anchor' => 'gm',
@@ -1863,12 +1871,15 @@ class DashboardController extends Controller
         $notifications = [];
 
         if ($overview['returnedToMe']->isNotEmpty()) {
+            // On their Returns page if the General Manager Returned any, else their Rejected page.
+            $onReturns = $overview['returnedToMe']->contains(fn (Rfq $rfq) => $rfq->wasReturnedNotRejected());
+
             $notifications[] = [
                 'type' => 'danger',
                 'icon' => 'bi-arrow-counterclockwise',
                 'title' => trans_choice('1 RFQ sent back to you|:count RFQs sent back to you', $overview['returnedToMe']->count(), ['count' => $overview['returnedToMe']->count()]),
-                'description' => 'By the General Manager — on your Returns page.',
-                'url' => $stage['returnsUrl'],
+                'description' => 'By the General Manager — on your '.($onReturns ? 'Returns' : 'Rejected').' page.',
+                'url' => $onReturns ? $stage['returnsUrl'] : $stage['rejectedUrl'],
             ];
         }
 

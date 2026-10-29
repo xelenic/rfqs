@@ -81,7 +81,7 @@ it('lists an RFQ rejected back to their assignment step on Rejected, with who, w
         ->and(pageMain(test()->actingAs($ops)->get(opsRejectedUrl())->assertOk()))->not->toContain('RFQ2001');
 });
 
-it('lists an RFQ rejected back to their second review on Rejected, with a link to Review — until they approve it again', function () {
+it('lists an RFQ rejected back to their second review on Rejected alone, with Approve and Reject right there — until they approve it again', function () {
     ['ops' => $ops, 'head' => $head, 'rfq' => $rfq] = atHeadOfBdReview();
 
     test()->actingAs($head)
@@ -92,7 +92,14 @@ it('lists an RFQ rejected back to their second review on Rejected, with a link t
         ->assertSee('RFQ2001')
         ->assertSee('Check the totals again')
         ->assertSee('2nd review')
-        ->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review'])).'"', false);
+        ->assertSee('data-action="'.route('admin.rfqs.approve-senior-ops-part', $rfq).'"', false)
+        ->assertSee('data-action="'.route('admin.rfqs.reject-senior-ops', $rfq).'"', false)
+        ->assertSee('id="seniorOpsApproveModal"', false)
+        ->assertSee('id="rejectRfqModal"', false);
+
+    // Not on their Review page as well (since 2026-10-30).
+    expect(Rfq::seniorOpsReviewCount())->toBe(0)
+        ->and(test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->viewData('seniorOpsReviewRfqs')->pluck('rfq_number')->all())->toBe([]);
 
     $rfq->refresh()->completeSeniorOpsReview($ops);
 

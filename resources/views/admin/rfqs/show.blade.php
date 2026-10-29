@@ -647,6 +647,7 @@
                         @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
+                @include('admin.rfqs._return_button', ['rfq' => $rfq, 'action' => route('admin.rfqs.reject-head-of-bd', $rfq), 'part' => $pagePart])
             @endif
             @if ($canSubmitGmAssistantDetails)
                 {{-- Part by part: Start, then Pause or Submit (_gm_assistant_actions);
@@ -689,6 +690,7 @@
                         @if ($pagePart) data-part="{{ $pagePart }}" data-label="{{ $rfq->partNumberLabel($pagePart) }}" @endif>
                     <i class="bi bi-arrow-counterclockwise"></i> Reject
                 </button>
+                @include('admin.rfqs._return_button', ['rfq' => $rfq, 'action' => route('admin.rfqs.reject-gm', $rfq), 'part' => $pagePart])
             @endif
             @if (auth()->user()->canChangeRfqStatus() && $rfq->status !== 'Completed' && $pagePart !== null)
                 {{-- On one part: stopping it alone, or setting it going again (Rfq::changePartStatus()). --}}

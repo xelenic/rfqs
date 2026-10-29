@@ -61,7 +61,7 @@ it('lists what the General Manager sent back to GM Assistant, with who and why, 
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->stage)->toBe('gm_assistant')
-        ->and(Rfq::gmAssistantReturnsCount())->toBe(1)
+        ->and(Rfq::gmAssistantReturnsCount(rejected: true))->toBe(1)
         ->and(Rfq::gmAssistantReviewCount())->toBe(0)
         ->and(Rfq::gmReviewCount())->toBe(0);
 
@@ -101,7 +101,7 @@ it('goes on to the General Manager once it\'s submitted again from Returns, and 
     expect($rfq->refresh())
         ->stage->toBe('gm_review')
         ->reject_target_stage->toBeNull()
-        ->and(Rfq::gmAssistantReturnsCount())->toBe(0)
+        ->and(Rfq::gmAssistantReturnsCount(rejected: true))->toBe(0)
         ->and(Rfq::gmReviewCount())->toBe(1);
 
     test()->actingAs($gm)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
@@ -131,7 +131,7 @@ it('holds a split\'s other parts off the General Manager\'s page until GM Assist
         ->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1])
         ->assertSessionHasNoErrors();
 
-    expect(Rfq::gmAssistantReturnsCount())->toBe(0)
+    expect(Rfq::gmAssistantReturnsCount(rejected: true))->toBe(0)
         ->and(Rfq::gmReviewCount())->toBe(2);
 });
 
@@ -141,8 +141,8 @@ it('leaves out what the General Manager sends back to anyone else', function () 
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'For the Head'])
         ->assertSessionHasNoErrors();
 
-    expect(Rfq::gmAssistantReturnsCount())->toBe(0)
-        ->and(Rfq::headOfBdReturnsCount())->toBe(1);
+    expect(Rfq::gmAssistantReturnsCount(rejected: true))->toBe(0)
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(1);
     test()->actingAs($assistant)->get(gmAssistantReturnsUrl())->assertOk()->assertDontSee('>RFQ5001', false);
 });
 
@@ -150,7 +150,7 @@ it('shows Admin GM Assistant\'s Rejected page, counted on the grouped sidebar', 
     ['gm' => $gm, 'rfq' => $rfq] = throughToGm();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'gm_assistant', 'reason' => 'Payment terms should be 45 days']);
 
-    expect(Rfq::queueCounts()['gm_assistant_returns'])->toBe(1);
+    expect(Rfq::queueCounts()['gm_assistant_rejected'])->toBe(1);
 
     test()->actingAs(userWithRole('Admin'))->get(gmAssistantReturnsUrl(['role' => 'gm-assistant']))->assertOk()
         ->assertSee('Rejected · GM Assistant')

@@ -2268,20 +2268,32 @@ function rfqmsBoot() {
     // Head of Business Development's Reject modal — one shared modal,
     // populated per-row with which RFQ it's actually rejecting, and which part
     // of it when it's one part that's being sent back (none for a whole RFQ).
+    // The Head's and the General Manager's Return (_return_button,
+    // data-as-return) opens it as a Return: the same send-back, on the
+    // receiving role's Returns page rather than its Rejected page.
     document.querySelectorAll('.js-reject-rfq').forEach(function (button) {
         button.addEventListener('click', function () {
             var form = document.getElementById('rejectRfqForm');
             if (!form) return;
 
             var isPart = !!button.dataset.part;
+            var asReturn = button.dataset.asReturn === '1';
             form.action = button.dataset.action;
             form.querySelector('[name="reject_rfq_id"]').value = button.dataset.rfqId || '';
             form.querySelector('[name="part"]').value = button.dataset.part || '';
             form.querySelector('[name="reject_label"]').value = button.dataset.label || '';
+            form.querySelector('[name="as_return"]').value = asReturn ? '1' : '';
             document.getElementById('rejectRfqTarget').textContent = button.dataset.label || '';
-            form.dataset.confirm = isPart
-                ? 'Send this part back? Any approval already given for it is undone.'
-                : 'Send this RFQ back? Any approval already given for it is undone.';
+            document.getElementById('rejectRfqModalLabel').textContent = asReturn ? 'Return' : 'Reject & Return';
+            document.getElementById('reject-kind-note').textContent = asReturn
+                ? 'Sent back for changes, not rejected \u2014 it goes on their Returns page.'
+                : 'A rejection \u2014 it goes on their Rejected page.';
+            var submit = document.getElementById('reject-submit');
+            submit.textContent = asReturn ? 'Return' : 'Send back';
+            submit.classList.toggle('btn-primary', asReturn);
+            submit.classList.toggle('btn-danger', !asReturn);
+            form.dataset.confirm = (asReturn ? 'Return this ' : 'Send this ') + (isPart ? 'part' : 'RFQ')
+                + (asReturn ? '' : ' back') + '? Any approval already given for it is undone.';
         });
     });
 

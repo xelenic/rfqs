@@ -201,7 +201,7 @@ it('lets Business Development send a whole RFQ ready to close back to the Head\'
     expect($rfq->refresh())
         ->stage->toBe('head_of_bd_review')
         ->reject_target_stage->toBe('head_of_bd_review')
-        ->and(Rfq::headOfBdReturnsCount())->toBe(1);
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(1);
 });
 
 // ---- Senior Operations passes a freed part straight back -------------------

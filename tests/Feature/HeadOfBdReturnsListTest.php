@@ -56,7 +56,7 @@ it('lists what the General Manager sent back to their review, with who and why, 
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'Margin is too thin'])
         ->assertSessionHasNoErrors();
 
-    expect(Rfq::headOfBdReturnsCount())->toBe(1);
+    expect(Rfq::headOfBdReturnsCount(rejected: true))->toBe(1);
 
     test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()
         ->assertSee('RFQ2001')
@@ -104,7 +104,7 @@ it('moves on to GM Assistant when approved from Returns, and off the list', func
         ->assertRedirect(headOfBdReturnsUrl());
 
     expect($rfq->refresh()->stage)->toBe('gm_assistant')
-        ->and(Rfq::headOfBdReturnsCount())->toBe(0)
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(0)
         ->and(pageMain(test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()))->not->toContain('RFQ2001');
 });
 
@@ -115,7 +115,7 @@ it('leaves out what the General Manager sends back to anyone else', function (st
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => $target, 'reason' => 'Not for the Head'])
         ->assertSessionHasNoErrors();
 
-    expect(Rfq::headOfBdReturnsCount())->toBe(0);
+    expect(Rfq::headOfBdReturnsCount(rejected: true))->toBe(0);
     test()->actingAs($head)->get(headOfBdReturnsUrl())->assertOk()->assertDontSee('RFQ2001');
 })->with(['senior_ops_review', 'gm_assistant', 'business_development']);
 
@@ -128,7 +128,7 @@ it('drops off once the Head sends it further back', function () {
         ->assertSessionHasNoErrors();
 
     // A rejection again, on to Senior Operations' Rejected page.
-    expect(Rfq::headOfBdReturnsCount())->toBe(0)
+    expect(Rfq::headOfBdReturnsCount(rejected: true))->toBe(0)
         ->and(Rfq::seniorOpsReturnsCount(rejected: true))->toBe(1);
 });
 
@@ -136,7 +136,7 @@ it('shows Admin the Head\'s Rejected page, linked from the grouped sidebar', fun
     ['gm' => $gm, 'rfq' => $rfq] = atGmReview();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'Margin is too thin']);
 
-    expect(Rfq::queueCounts()['head_of_bd_returns'])->toBe(1);
+    expect(Rfq::queueCounts()['head_of_bd_rejected'])->toBe(1);
 
     test()->actingAs(userWithRole('Admin'))->get(headOfBdReturnsUrl(['role' => 'head-of-business-development']))->assertOk()
         ->assertSee('Rejected · Head of Business Development')
@@ -182,7 +182,7 @@ it('keeps an RFQ returned to the Head off every other role\'s review page, other
 
     // Left at the Head's review — every part is past Senior Operations.
     expect($rfq->refresh()->stage)->toBe('head_of_bd_review')
-        ->and(Rfq::headOfBdReturnsCount())->toBe(1)
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(1)
         ->and(Rfq::seniorOpsReviewCount())->toBe(0)
         ->and(Rfq::headOfBdReviewCount())->toBe(0)
         ->and(Rfq::gmAssistantReviewCount())->toBe(0)
@@ -211,7 +211,7 @@ it('keeps an RFQ returned to the Head off every other role\'s review page, other
     // Once the Head approves it, both parts are back where they belong.
     test()->actingAs($head)->patch(route('admin.rfqs.approve-head-of-bd-part', $rfq), ['part' => 1, 'finalized_line_items' => [1 => 12]])->assertSessionHasNoErrors();
 
-    expect(Rfq::headOfBdReturnsCount())->toBe(0)
+    expect(Rfq::headOfBdReturnsCount(rejected: true))->toBe(0)
         ->and(Rfq::gmAssistantReviewCount())->toBe(1)
         ->and(Rfq::gmReviewCount())->toBe(1);
 
@@ -244,7 +244,7 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
     // Nothing of it left for the Head, so it's no longer held — P2 can carry
     // on to Senior Operations' review as normal.
     expect($rfq->refresh()->reject_target_stage)->toBeNull()
-        ->and(Rfq::headOfBdReturnsCount())->toBe(0);
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(0);
 
     $rfq->refresh()->completeSourcingPart(2);
     $rfq->refresh()->completeDataEntryPart(2, userWithRole('Data Entry'));
@@ -255,12 +255,12 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
         ->assertSee('RFQ6001-P2 of P2');
 });
 
-it('still opens their Rejected page from the Returns address it had before', function () {
+it('keeps the General Manager\'s rejection off their Returns page, which is for what the General Manager Returned (since 2026-10-30)', function () {
     ['head' => $head, 'gm' => $gm, 'rfq' => $rfq] = atGmReview();
     test()->actingAs($gm)->patch(route('admin.rfqs.reject-gm', $rfq), ['target_stage' => 'head_of_bd_review', 'reason' => 'Margin is too thin']);
 
     test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
-        ->assertSee('<title>Rejected', false)
-        ->assertSee('RFQ2001')
-        ->assertSee('Margin is too thin');
+        ->assertSee('<title>Returns', false)
+        ->assertDontSee('Margin is too thin')
+        ->assertSee('Nothing\'s been returned to the Head of Business Development.', false);
 });

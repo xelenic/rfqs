@@ -131,17 +131,17 @@ it('counts what was sent back on the Returns link, and leaves it out of the pend
 
     expect($html)->toContain($badge(1, 'to complete or finalize'))
         ->toContain('<span class="nav-link-label">Returns</span>')
-        ->toContain($badge(2, 'sent back by Data Entry'));
+        ->toContain($badge(2, 'sent back by Data Entry or returned by a reviewer'));
 
     // Sam's own, and only his.
     $samsHtml = test()->actingAs($sam)->get(myPendingUrl())->assertOk()->getContent();
 
-    expect($samsHtml)->toContain($badge(1, 'sent back by Data Entry'))
+    expect($samsHtml)->toContain($badge(1, 'sent back by Data Entry or returned by a reviewer'))
         // Nothing left to complete, so no pending badge.
         ->not->toContain('to complete or finalize');
 
     // The badge is on every page, so it's seen wherever they are.
-    test()->actingAs($riley)->get(myReturnsUrl())->assertOk()->assertSee($badge(2, 'sent back by Data Entry'), false);
+    test()->actingAs($riley)->get(myReturnsUrl())->assertOk()->assertSee($badge(2, 'sent back by Data Entry or returned by a reviewer'), false);
 });
 
 it('drops the Returns count away when there is nothing sent back', function () {
@@ -151,7 +151,7 @@ it('drops the Returns count away when there is nothing sent back', function () {
     $html = test()->actingAs($riley)->get(myPendingUrl())->assertOk()->getContent();
 
     expect($html)->toContain('<span class="nav-link-label">Returns</span>')
-        ->not->toContain('sent back by Data Entry')
+        ->not->toContain('sent back by Data Entry or returned by a reviewer')
         ->toContain('title="1 to complete or finalize"');
 });
 

@@ -221,9 +221,12 @@ class RfqController extends Controller implements HasMiddleware
         // Development, a Sourcing part sent back to Senior Operations). A part
         // carries its own record of it (RfqAssignment::isRejectedTo()); a
         // send-back to Senior Operations or Business Development, which frees
-        // the parts, is told by the RFQ's (reject_from_stage). Everything sent
-        // back to the Head of Business Development or GM Assistant is a
-        // rejection, so their Returns page is their Rejected page.
+        // the parts, is told by the RFQ's (reject_from_stage). Since
+        // 2026-10-30 the Head of Business Development and the General Manager
+        // can Return as well as Reject (Rfq::RETURNABLE_STAGES): a Return is on
+        // the receiving role's Returns, not its Rejected page — Data Entry's,
+        // the Head's and GM Assistant's included ($onDataEntryReturnsPage,
+        // $scopedToHeadOfBdReturns, $scopedToGmAssistantReturns).
         $onRejectedPage = $status === 'Pending' && $request->query('view') === 'rejected';
         $scopedToReturns = $actsAs('Sourcing') && in_array($request->query('view'), ['returns', 'rejected'], true);
         $scopedToMe = $status === 'Pending' && $actsAs('Sourcing') && ! $scopedToReturns;
@@ -232,6 +235,10 @@ class RfqController extends Controller implements HasMiddleware
         // handed off — RFQs still with Operations or in progress with
         // Sourcing aren't theirs to act on yet.
         $scopedToDataEntry = $status === 'Pending' && $actsAs('Data Entry');
+
+        // Data Entry's Returns page (?view=returns): what a reviewer Returned
+        // to them — the Ready table alone, as their Rejected page is.
+        $onDataEntryReturnsPage = $scopedToDataEntry && $request->query('view') === 'returns';
 
         // Senior Operations' second review — one row per part that is both
         // Sourcing- and Data-Entry-complete, whether that's every part of an
@@ -258,11 +265,11 @@ class RfqController extends Controller implements HasMiddleware
         // the red count badge in the sidebar (layouts/app.blade.php).
         $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
 
-        // Head of Business Development's Returns page — RFQs the General
-        // Manager sent back to their review, while still waiting on it
-        // (Rfq::scopeReturnedToHeadOfBd()), decided right there and listed
-        // only there, not on their Review page as well. A second lens on
-        // their Pending status via ?view=returns.
+        // Head of Business Development's Returns and Rejected pages — RFQs the
+        // General Manager Returned (?view=returns) or Rejected (?view=rejected)
+        // to their review, while still waiting on it (Rfq::scopeReturnedToHeadOfBd(),
+        // scopeRejectedByAReviewer()), decided right there and listed only
+        // there, not on their Review page as well.
         $scopedToHeadOfBdReturns = $status === 'Pending' && $actsAs('Head of Business Development') && in_array($request->query('view'), ['returns', 'rejected'], true);
 
         // Head of Business Development's Pending list — one row per part
@@ -272,10 +279,10 @@ class RfqController extends Controller implements HasMiddleware
         // their Returns (above).
         $scopedToHeadOfBdReview = $status === 'Pending' && $actsAs('Head of Business Development') && ! $scopedToHeadOfBdReturns;
 
-        // GM Assistant's Returns page — RFQs the General Manager sent back to
-        // their step, while still waiting on them (Rfq::scopeReturnedToGmAssistant()),
-        // dealt with right there and listed only there. A second lens on their
-        // Pending status via ?view=returns, same as the Head's.
+        // GM Assistant's Returns and Rejected pages — RFQs the General Manager
+        // Returned or Rejected to their step, while still waiting on them
+        // (Rfq::scopeReturnedToGmAssistant()), dealt with right there and
+        // listed only there — the same as the Head's.
         $scopedToGmAssistantReturns = $status === 'Pending' && $actsAs('GM Assistant') && in_array($request->query('view'), ['returns', 'rejected'], true);
 
         // GM Assistant's Pending list — one row per part Head of Business
@@ -439,8 +446,8 @@ class RfqController extends Controller implements HasMiddleware
                 : $query->where(fn ($returns) => $returns
                     ->where(fn ($toThem) => $toThem->returnedToSeniorOperations()->rejectedByAReviewer(false))
                     ->orWhere(fn ($forDetails) => $forDetails->withBusinessDevelopmentForDetails())))
-            ->when($scopedToHeadOfBdReturns, fn ($query) => $query->returnedToHeadOfBd())
-            ->when($scopedToGmAssistantReturns, fn ($query) => $query->returnedToGmAssistant())
+            ->when($scopedToHeadOfBdReturns, fn ($query) => $query->returnedToHeadOfBd()->rejectedByAReviewer($onRejectedPage))
+            ->when($scopedToGmAssistantReturns, fn ($query) => $query->returnedToGmAssistant()->rejectedByAReviewer($onRejectedPage))
             ->when($scopedToMyClosed, fn ($query) => $query->where(fn ($mine) => $mine
                 ->where(fn ($closedWhole) => $closedWhole
                     ->where('rfqs.status', 'Completed')
@@ -490,10 +497,14 @@ class RfqController extends Controller implements HasMiddleware
                 // And only theirs: given to them by name, or to anyone in Data
                 // Entry — Admin's view of the page, everyone's.
                 // The parts a reviewer rejected back to them are on their
-                // Rejected page, and only there.
+                // Rejected page, and only there; those Returned, on their Returns.
                 ->whereHas('assignees', fn ($q) => $q->whereNull('rfq_user.status')->whereNotNull('rfq_user.completed_at')->whereNull('rfq_user.data_entry_completed_at')
                     ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $dataEntryFor))
-                    ->tap(fn ($parts) => $onRejectedPage ? RfqAssignment::whereRejectedTo($parts, 'data_entry') : RfqAssignment::whereNotRejectedTo($parts, 'data_entry')))
+                    ->tap(fn ($parts) => match (true) {
+                        $onRejectedPage => RfqAssignment::whereRejectedTo($parts, 'data_entry'),
+                        $onDataEntryReturnsPage => RfqAssignment::whereReturnedTo($parts, 'data_entry'),
+                        default => RfqAssignment::whereNotSentBackTo($parts, 'data_entry'),
+                    }))
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(self::PER_PAGE, ['*'], 'sourcing_page')
@@ -526,7 +537,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->where('rfqs.status', 'Pending')->tap($applySearch))
                 ->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')
                 ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $dataEntryFor))
-                ->tap(fn ($parts) => RfqAssignment::whereNotRejectedTo($parts, 'data_entry'))
+                ->tap(fn ($parts) => RfqAssignment::whereNotSentBackTo($parts, 'data_entry'))
                 ->count(),
             'completed' => DB::table('rfq_user')
                 ->whereIn('rfq_id', Rfq::query()->select('rfqs.id')->tap($applySearch))
@@ -622,6 +633,8 @@ class RfqController extends Controller implements HasMiddleware
                 ->with(['assignees', 'creator', 'operationsAssignee', 'dataEntryCompletedBy'])
                 ->awaitingSeniorOpsReview()
                 ->notHeldOnAReturnsPage()
+                // What's been sent back to their review is on their Returns or Rejected page, only.
+                ->notSentBackToSeniorOpsReview()
                 ->tap($applyCommonFilters)
                 ->latest()
                 ->paginate(self::PER_PAGE, ['*'], 'review_page')
@@ -685,6 +698,7 @@ class RfqController extends Controller implements HasMiddleware
             'scopedToMyClosed' => $scopedToMyClosed,
             'scopedToReturns' => $scopedToReturns,
             'onRejectedPage' => $onRejectedPage,
+            'onDataEntryReturnsPage' => $onDataEntryReturnsPage,
             'scopedToSeniorOpsReview' => $scopedToSeniorOpsReview,
             'scopedToDataEntry' => $scopedToDataEntry,
             'scopedToUnassigned' => $scopedToUnassigned,
@@ -1143,8 +1157,9 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         // Which of their lists it comes off: Rejected, for a reviewer's
-        // rejection; Returns, for Senior Operations' Get Details Again.
-        $bdList = in_array($rfq->reject_from_stage, Rfq::REJECTABLE_STAGES, true) ? 'Rejected' : 'Returns';
+        // rejection; Returns, for Senior Operations' Get Details Again or a
+        // reviewer's Return.
+        $bdList = in_array($rfq->reject_from_stage, Rfq::REJECTABLE_STAGES, true) && ! $rfq->reject_is_return ? 'Rejected' : 'Returns';
 
         if ($resolvesBdReturn) {
             $rfq->resolveBusinessDevelopmentReturn($request->user());
@@ -2269,7 +2284,8 @@ class RfqController extends Controller implements HasMiddleware
      * part, just that part) back to an earlier stage with a reason. With a
      * part, just that one part goes back — see Rfq::rejectPartToStage() —
      * otherwise the whole RFQ, which has to be at their review stage — see
-     * Rfq::rejectToStage().
+     * Rfq::rejectToStage(). With as_return, it's a Return rather than a
+     * Reject (Rfq::RETURNABLE_STAGES): on the receiving role's Returns page.
      */
     public function rejectHeadOfBd(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -2281,7 +2297,8 @@ class RfqController extends Controller implements HasMiddleware
      * part) back to an earlier stage with a reason, all the way back
      * through Business Development itself. With a part, just that one part
      * goes back — see Rfq::rejectPartToStage() — otherwise the whole RFQ,
-     * which has to be at their review stage — see Rfq::rejectToStage().
+     * which has to be at their review stage — see Rfq::rejectToStage(). With
+     * as_return, a Return rather than a Reject, as the Head's.
      */
     public function rejectGm(Request $request, Rfq $rfq): RedirectResponse
     {
@@ -2384,10 +2401,17 @@ class RfqController extends Controller implements HasMiddleware
      * rejectGm()/rejectBd(): the stages that send an RFQ back with Reject &
      * Return (see Rfq::REJECTABLE_STAGES) all work the same way, only
      * $fromStage and $roleName differ — and where each can send it,
-     * Rfq::RETURN_TARGETS.
+     * Rfq::RETURN_TARGETS. The Head of Business Development and the General
+     * Manager can send it as a Return instead (as_return,
+     * Rfq::RETURNABLE_STAGES): the same send-back, on the receiving role's
+     * Returns page rather than its Rejected page.
      */
     private function reject(Request $request, Rfq $rfq, string $fromStage, string $roleName): RedirectResponse
     {
+        $asReturn = $request->boolean('as_return');
+
+        abort_if($asReturn && ! in_array($fromStage, Rfq::RETURNABLE_STAGES, true), 422, "{$roleName} can only reject, not return.");
+
         abort_unless(
             $request->user()->hasAnyRole([$roleName, 'Admin']),
             403,
@@ -2421,15 +2445,18 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        if ($part === null) {
-            RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage));
+        $sent = $asReturn ? 'Returned' : 'Sent';
+        $to = $asReturn ? ' to ' : ' back to ';
 
-            return redirect()->back()->with('status', 'Sent back to '.Rfq::stageLabel($validated['target_stage']).'.');
+        if ($part === null) {
+            RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage($validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage, $asReturn));
+
+            return redirect()->back()->with('status', ($asReturn ? 'Returned to ' : 'Sent back to ').Rfq::stageLabel($validated['target_stage']).'.');
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectPartToStage($part, $validated['target_stage'], $validated['reason'], $this->doneBy($request, $roleName), $fromStage, $asReturn));
 
-        return redirect()->back()->with('status', "Sent {$rfq->partNumberLabel($part)} back to ".Rfq::stageLabel($validated['target_stage']).'.');
+        return redirect()->back()->with('status', "{$sent} {$rfq->partNumberLabel($part)}{$to}".Rfq::stageLabel($validated['target_stage']).'.');
     }
 
     /**

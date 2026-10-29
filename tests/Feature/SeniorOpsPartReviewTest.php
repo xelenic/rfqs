@@ -364,13 +364,17 @@ it('takes back a part\'s approval when it is sent back, and every part\'s when t
 
     $rfq->rejectToStage('senior_ops_review', 'Look again', $head);
 
-    // Back on the Review page, each part up for approval again.
+    // Back with Senior Operations, each part up for approval again — on their
+    // Rejected page, and only there (since 2026-10-30), not on Review.
     expect($rfq->refresh()->stage)->toBe('senior_ops_review')
         ->and($rfq->assignees->every(fn (User $assignee) => $assignee->pivot->senior_ops_reviewed_at === null))->toBeTrue();
 
     test()->actingAs($ops)->get(reviewUrl())
-        ->assertSee('RFQ1001-P1 of P2')
-        ->assertSee('RFQ1001-P2 of P2');
+        ->assertDontSee('RFQ1001-P1 of P2')
+        ->assertDontSee('RFQ1001-P2 of P2');
+    test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
+        ->assertSee('data-review-part="1"', false)
+        ->assertSee('data-review-part="2"', false);
 });
 
 it('records each part\'s approval on a split\'s timeline, and none for an RFQ kept whole', function () {

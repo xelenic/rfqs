@@ -53,6 +53,12 @@
         default => false,
     };
 
+    // The Head of Business Development's or the General Manager's Return
+    // (Rfq::RETURNABLE_STAGES) reads as one, not as a rejection.
+    if ($entry['type'] === 'rejected' && ($entry['returned'] ?? false)) {
+        [$icon, $title] = ['bi-arrow-return-left', 'Returned'];
+    }
+
     // Sourcing never learns exactly who in Data Entry touched a split —
     // same as the return-reason banner elsewhere, which names the role,
     // not the person.

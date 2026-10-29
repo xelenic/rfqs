@@ -144,8 +144,9 @@ it('isn\'t offered when nothing would be skipped, or once the part has moved on'
 
     // Back to Senior Operations' review: their Approve goes straight to the Head anyway.
     test()->actingAs($people['head'])->patch(route('admin.rfqs.reject-head-of-bd', $rfq), ['part' => 2, 'target_stage' => 'senior_ops_review', 'reason' => 'Check again']);
+    // (Its Reject popup, there to decide it, has a "Send back to" field of its own.)
     expect($rfq->refresh()->openReturns())->toBeEmpty()
-        ->and(returnsPage($people['ops']))->not->toContain('Send back to');
+        ->and(returnsPage($people['ops']))->not->toContain(route('admin.rfqs.forward-back', $rfq));
 
     // Back to Sourcing, but done again the usual way.
     test()->actingAs($people['head'])->patch(route('admin.rfqs.reject-head-of-bd', $rfq), ['part' => 1, 'target_stage' => 'sourcing', 'reason' => 'Wrong supplier']);

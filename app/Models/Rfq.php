@@ -244,6 +244,17 @@ class Rfq extends Model
     public const REJECTABLE_STAGES = ['senior_ops_review', 'head_of_bd_review', 'gm_assistant', 'gm_review', 'bd_closing'];
 
     /**
+     * The reviews that can Return as well as Reject (since 2026-10-30, at the
+     * user's request): the same send-back, to the same steps (RETURN_TARGETS),
+     * but recorded as a Return (rfqs.reject_is_return, rfq_user.part_reject_is_return)
+     * — so it lands on the receiving role's Returns page, not its Rejected
+     * page (scopeRejectedByAReviewer(), RfqAssignment::isRejectedTo()).
+     *
+     * @var array<int, string>
+     */
+    public const RETURNABLE_STAGES = ['head_of_bd_review', 'gm_review'];
+
+    /**
      * The workflow in order, every step that can be skipped when something
      * sent back is sent straight back to whoever sent it (forwardBack()) —
      * Sourcing's Finalize included, between Data Entry and Senior Operations'
@@ -310,7 +321,7 @@ class Rfq extends Model
         'finalized_by', 'finalized_at', 'senior_ops_reviewed_by', 'senior_ops_reviewed_at',
         'head_of_bd_approved_by', 'head_of_bd_approved_at', 'gm_assistant_completed_by', 'gm_assistant_completed_at',
         'gm_approved_by', 'gm_approved_at',
-        'rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage',
+        'rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage', 'reject_is_return',
     ];
 
     /**
@@ -386,6 +397,7 @@ class Rfq extends Model
         'reject_reason',
         'reject_from_stage',
         'reject_target_stage',
+        'reject_is_return',
         'bd_return_count',
         'bd_fixed_at',
         'bd_fixed_by',
@@ -429,6 +441,7 @@ class Rfq extends Model
             'senior_ops_reviewed_at' => 'datetime',
             'head_of_bd_approved_at' => 'datetime',
             'rejected_at' => 'datetime',
+            'reject_is_return' => 'boolean',
             'gm_assistant_completed_at' => 'datetime',
             'gm_approved_at' => 'datetime',
             'bd_closed_at' => 'datetime',
@@ -919,7 +932,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'pending_reason', 'pending_reason_by', 'pending_reason_at', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'pending_reason', 'pending_reason_by', 'pending_reason_at', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'part_reject_is_return', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1586,17 +1599,29 @@ class Rfq extends Model
     }
 
     /**
-     * The RFQs sent back to Senior Operations or Business Development by a
-     * reviewer's Reject & Return (reject_from_stage one of REJECTABLE_STAGES)
-     * — their Rejected page — or, with $rejected false, by a co-worker: their
-     * Returns (a Sourcing part sent back to Senior Operations, Senior
-     * Operations' Get Details Again to Business Development).
+     * The RFQs sent back by a reviewer's Reject (reject_from_stage one of
+     * REJECTABLE_STAGES, not a Return) — the receiving role's Rejected page
+     * — or, with $rejected false, the rest: their Returns. That's a
+     * co-worker's send-back (a Sourcing part sent back to Senior Operations,
+     * Senior Operations' Get Details Again to Business Development) or, since
+     * 2026-10-30, a reviewer's Return (reject_is_return, RETURNABLE_STAGES).
      */
     public function scopeRejectedByAReviewer(Builder $query, bool $rejected = true): void
     {
         $rejected
-            ? $query->whereIn('rfqs.reject_from_stage', self::REJECTABLE_STAGES)
-            : $query->where(fn (Builder $q) => $q->whereNull('rfqs.reject_from_stage')->orWhereNotIn('rfqs.reject_from_stage', self::REJECTABLE_STAGES));
+            ? $query->whereIn('rfqs.reject_from_stage', self::REJECTABLE_STAGES)->where('rfqs.reject_is_return', false)
+            : $query->where(fn (Builder $q) => $q->whereNull('rfqs.reject_from_stage')
+                ->orWhereNotIn('rfqs.reject_from_stage', self::REJECTABLE_STAGES)
+                ->orWhere('rfqs.reject_is_return', true));
+    }
+
+    /**
+     * Whether this RFQ's latest send-back was a reviewer's Return, not a
+     * Reject (RETURNABLE_STAGES) — "Returned by …" rather than "Rejected by …".
+     */
+    public function wasReturnedNotRejected(): bool
+    {
+        return $this->reject_from_stage !== null && $this->reject_is_return;
     }
 
     /**
@@ -1628,6 +1653,28 @@ class Rfq extends Model
     public function scopeNotHeldOnAReturnsPage(Builder $query): void
     {
         static::excludeHeldOnAReturnsPage($query);
+    }
+
+    /**
+     * Leaves out what's been sent back to Senior Operations' second review —
+     * Returned or Rejected there by the Head of Business Development or the
+     * General Manager: it's on their Returns or Rejected page
+     * (scopeReturnedToSeniorOperations()), approved or sent on back from
+     * there, and not on their Review page as well (since 2026-10-30, at the
+     * user's request).
+     */
+    public function scopeNotSentBackToSeniorOpsReview(Builder $query): void
+    {
+        static::excludeSentBackToSeniorOpsReview($query);
+    }
+
+    /**
+     * The condition behind scopeNotSentBackToSeniorOpsReview(), for
+     * seniorOpsReviewCount()'s plain rfq_user query too.
+     */
+    private static function excludeSentBackToSeniorOpsReview(Builder|QueryBuilder $query): void
+    {
+        $query->where(fn ($q) => $q->whereNull('rfqs.reject_target_stage')->orWhere('rfqs.reject_target_stage', '<>', 'senior_ops_review'));
     }
 
     /**
@@ -2371,7 +2418,13 @@ class Rfq extends Model
 
         if ($this->allSeniorOpsPartsReviewed()) {
             $this->completeSeniorOpsReview($reviewer);
+
+            return;
         }
+
+        // What was sent back to their review, approved: off their Returns,
+        // whatever else of it comes to their Review later.
+        $this->resolveReturnOnceDealtWith('senior_ops_review');
     }
 
     /**
@@ -2628,7 +2681,7 @@ class Rfq extends Model
      * means whatever it was rejected over, by whichever of the three, no
      * longer needs saying.
      *
-     * @return array<string, null>
+     * @return array<string, null|false>
      */
     private function clearedRejectRecord(): array
     {
@@ -2638,6 +2691,7 @@ class Rfq extends Model
             'reject_reason' => null,
             'reject_from_stage' => null,
             'reject_target_stage' => null,
+            'reject_is_return' => false,
         ];
     }
 
@@ -2687,11 +2741,15 @@ class Rfq extends Model
      * then it's freed with the rest. Also posts a comment recording the
      * rejection, same convention as returnSourcingPart().
      *
+     * $asReturn — a Return rather than a Reject (RETURNABLE_STAGES): the
+     * same send-back, recorded as one (reject_is_return), so it's on the
+     * receiving role's Returns page rather than its Rejected page.
+     *
      * Caller is responsible for verifying $fromStage is one of
-     * REJECTABLE_STAGES, stage === $fromStage, and $targetStage is one of
-     * rejectTargetStages($fromStage).
+     * REJECTABLE_STAGES (RETURNABLE_STAGES for a Return), stage ===
+     * $fromStage, and $targetStage is one of rejectTargetStages($fromStage).
      */
-    public function rejectToStage(string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
+    public function rejectToStage(string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review', bool $asReturn = false): void
     {
         // Who it's going back to, as they are before it goes — Sourcing hear
         // of it part by part (returnSourcingPart()).
@@ -2714,6 +2772,7 @@ class Rfq extends Model
             'reject_reason' => $reason,
             'reject_from_stage' => $fromStage,
             'reject_target_stage' => $targetStage,
+            'reject_is_return' => $asReturn,
             'stage' => in_array($targetStage, self::STAGES, true) ? $targetStage : null,
         ]);
 
@@ -2745,10 +2804,10 @@ class Rfq extends Model
 
         $this->recordPartRejections(
             $openParts->reject(fn (User $assignee) => $assignee->pivot->isCancelled())->map(fn (User $assignee) => $assignee->pivot->part_number)->all(),
-            $targetStage, $fromStage, $rejectedBy, $reason,
+            $targetStage, $fromStage, $rejectedBy, $reason, $asReturn,
         );
 
-        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)]);
+        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + ($asReturn ? ['returned' => true] : []));
 
         $this->syncSteps();
 
@@ -2766,16 +2825,19 @@ class Rfq extends Model
      * leave it. Also posts a comment recording the rejection, naming the
      * part.
      *
+     * $asReturn — a Return rather than a Reject, as for rejectToStage().
+     *
      * Caller is responsible for verifying $fromStage is one of
-     * REJECTABLE_STAGES, the part actually awaits $fromStage's review, and
-     * $targetStage is one of rejectTargetStages($fromStage).
+     * REJECTABLE_STAGES (RETURNABLE_STAGES for a Return), the part actually
+     * awaits $fromStage's review, and $targetStage is one of
+     * rejectTargetStages($fromStage).
      *
      * 'business_development' behaves the same as 'operations' here — just
      * this part is freed. Unlike the whole-RFQ rejectToStage(), it doesn't
      * clear who in Operations is routing the RFQ: that's a whole-RFQ fact,
      * and any other part of a split may still legitimately be theirs.
      */
-    public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review'): void
+    public function rejectPartToStage(int $part, string $targetStage, string $reason, User $rejectedBy, string $fromStage = 'head_of_bd_review', bool $asReturn = false): void
     {
         // Who it's going back to, as they are before it goes — Sourcing hear
         // of it from returnSourcingPart().
@@ -2836,12 +2898,13 @@ class Rfq extends Model
             'reject_reason' => $reason,
             'reject_from_stage' => $fromStage,
             'reject_target_stage' => $targetStage,
+            'reject_is_return' => $asReturn,
             'stage' => $this->stageEveryPartHasReached(),
         ]);
 
-        $this->recordPartRejections([$part], $targetStage, $fromStage, $rejectedBy, $reason);
+        $this->recordPartRejections([$part], $targetStage, $fromStage, $rejectedBy, $reason, $asReturn);
 
-        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part));
+        $comment = $this->postActionComment($rejectedBy, 'rejected', $reason, ['stage' => self::stageLabel($targetStage)] + $this->partContext($part) + ($asReturn ? ['returned' => true] : []));
 
         $this->syncSteps();
 
@@ -2854,7 +2917,7 @@ class Rfq extends Model
      * which isn't a rejection: it goes on the step's Returns, or its queue,
      * not its Rejected page.
      *
-     * @var array<string, null>
+     * @var array<string, null|false>
      */
     private const CLEARED_PART_REJECTION = [
         'part_rejected_to' => null,
@@ -2862,6 +2925,7 @@ class Rfq extends Model
         'part_rejected_by' => null,
         'part_rejected_at' => null,
         'part_reject_reason' => null,
+        'part_reject_is_return' => false,
     ];
 
     /**
@@ -2882,7 +2946,8 @@ class Rfq extends Model
      * Records on $parts that a reviewer's Reject & Return ($fromStage, one of
      * REJECTABLE_STAGES) sent them back to $targetStage — where to, from
      * which review, by whom, when and why (part_rejected_*): what lists each
-     * on that step's Rejected page while it's waiting there. Each part keeps
+     * on that step's Rejected page while it's waiting there — or, a Return
+     * ($asReturn, part_reject_is_return), on its Returns. Each part keeps
      * its own, as a split's parts can each be rejected to a different step.
      * Nothing for anyone else's send-back (Senior Operations' Get Details
      * Again, a Sourcing part sent back to them), nor for a part that's been
@@ -2890,7 +2955,7 @@ class Rfq extends Model
      *
      * @param  array<int, int>  $parts
      */
-    private function recordPartRejections(array $parts, string $targetStage, string $fromStage, User $rejectedBy, string $reason): void
+    private function recordPartRejections(array $parts, string $targetStage, string $fromStage, User $rejectedBy, string $reason, bool $asReturn = false): void
     {
         if ($parts === [] || ! in_array($fromStage, self::REJECTABLE_STAGES, true)) {
             return;
@@ -2902,6 +2967,7 @@ class Rfq extends Model
             'part_rejected_by' => $rejectedBy->id,
             'part_rejected_at' => now(),
             'part_reject_reason' => $reason,
+            'part_reject_is_return' => $asReturn,
         ]);
         $this->load('assignees');
     }
@@ -3076,7 +3142,7 @@ class Rfq extends Model
             $this->update($before);
         } else {
             $this->update($this->recordsEveryPartStandsBy($before) + ['stage' => $this->stageEveryPartHasReached()]
-                + ($isItsReject && ! $batchLeft ? collect($before)->only(['rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage'])->all() : []));
+                + ($isItsReject && ! $batchLeft ? collect($before)->only(['rejected_by', 'rejected_at', 'reject_reason', 'reject_from_stage', 'reject_target_stage', 'reject_is_return'])->all() : []));
         }
 
         $skipped = collect($first->skippedStages())->map(fn (string $stage) => self::stageLabel($stage))->join(', ', ' and ');
@@ -4552,8 +4618,9 @@ class Rfq extends Model
     }
 
     /**
-     * An RFQ held on $stage's Returns page (RETURNS_PAGE_STAGES) is resolved
-     * once that stage has nothing of it left to deal with — every part it
+     * An RFQ held on $stage's Returns page (RETURNS_PAGE_STAGES, and Senior
+     * Operations' second review's — scopeNotSentBackToSeniorOpsReview()) is
+     * resolved once that stage has nothing of it left to deal with — every part it
      * was sent back for is through again — even while other parts are still
      * on their way: it comes off that Returns page, and back onto everyone
      * else's review pages. Without this it would stay held until the whole
@@ -4564,6 +4631,7 @@ class Rfq extends Model
     private function resolveReturnOnceDealtWith(string $stage): void
     {
         $stillWaiting = match ($stage) {
+            'senior_ops_review' => fn (User $assignee) => $assignee->pivot->isAwaitingSeniorOpsReview() && ! $assignee->pivot->isStopped(),
             'head_of_bd_review' => fn (User $assignee) => $assignee->pivot->isAwaitingHeadOfBdReview() && ! $assignee->pivot->isStopped(),
             'gm_assistant' => fn (User $assignee) => $assignee->pivot->isAwaitingGmAssistant() && ! $assignee->pivot->isStopped(),
         };
@@ -4972,6 +5040,8 @@ class Rfq extends Model
                 'comment' => null,
                 'reason' => $this->reject_reason,
                 'part' => isset($recordedBy?->meta['part']) ? (int) $recordedBy->meta['part'] : null,
+                // A Return rather than a Reject (RETURNABLE_STAGES), told as one.
+                'returned' => $this->wasReturnedNotRejected(),
             ];
         }
 
@@ -5245,6 +5315,7 @@ class Rfq extends Model
             ->whereNull('rfq_user.status')
             ->where(fn ($query) => $query->whereNull('rfqs.stage')->orWhere('rfqs.stage', 'senior_ops_review'))
             ->tap(fn ($query) => static::excludeHeldOnAReturnsPage($query))
+            ->tap(fn ($query) => static::excludeSentBackToSeniorOpsReview($query))
             ->whereNotNull('rfq_user.completed_at')
             ->whereNotNull('rfq_user.data_entry_completed_at')
             ->whereNotNull('rfq_user.finalized_at')
@@ -5254,6 +5325,7 @@ class Rfq extends Model
         $wholeRfqs = static::where('status', 'Pending')
             ->where('stage', 'senior_ops_review')
             ->notHeldOnAReturnsPage()
+            ->notSentBackToSeniorOpsReview()
             ->whereDoesntHave('assignees', fn (Builder $assignees) => RfqAssignment::whereAwaitingSeniorOpsReview($assignees))
             ->count();
 
@@ -5414,6 +5486,25 @@ class Rfq extends Model
     }
 
     /**
+     * How many parts are on Data Entry's Returns page — Returned to them by a
+     * reviewer (RfqAssignment::whereReturnedTo()) and not yet sent on — of
+     * those for $userId, as dataEntryRejectedCount(). What the badge on their
+     * sidebar's Returns link counts.
+     */
+    public static function dataEntryReturnsCount(?int $userId): int
+    {
+        return DB::table('rfq_user')
+            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
+            ->where('rfqs.status', 'Pending')
+            ->whereNull('rfq_user.status')
+            ->whereNotNull('rfq_user.completed_at')
+            ->whereNull('rfq_user.data_entry_completed_at')
+            ->tap(fn ($parts) => RfqAssignment::whereForDataEntryUser($parts, $userId))
+            ->tap(fn ($parts) => RfqAssignment::whereReturnedTo($parts, 'data_entry'))
+            ->count();
+    }
+
+    /**
      * How many parts are on Sourcing's Rejected page — rejected back to them
      * by a reviewer and not yet completed again — of $userId's (null:
      * everyone's, Admin's view). What the badge on their sidebar's Rejected
@@ -5464,22 +5555,25 @@ class Rfq extends Model
 
     /**
      * How many RFQs are sitting on the Head of Business Development's Returns
-     * page — see scopeReturnedToHeadOfBd(). What the badge on their
-     * sidebar's Returns link counts. A flat count, same as bdReturnsCount().
+     * page — what the General Manager Returned to them — or, with $rejected,
+     * their Rejected page (scopeReturnedToHeadOfBd(), scopeRejectedByAReviewer()).
+     * What the badge on their sidebar's link counts. A flat count, same as
+     * bdReturnsCount().
      */
-    public static function headOfBdReturnsCount(): int
+    public static function headOfBdReturnsCount(bool $rejected = false): int
     {
-        return static::returnedToHeadOfBd()->count();
+        return static::returnedToHeadOfBd()->rejectedByAReviewer($rejected)->count();
     }
 
     /**
-     * How many RFQs are sitting on GM Assistant's Returns page — see
-     * scopeReturnedToGmAssistant(). What the badge on their sidebar's Returns
+     * How many RFQs are sitting on GM Assistant's Returns page — what the
+     * General Manager Returned to them — or, with $rejected, their Rejected
+     * page (scopeReturnedToGmAssistant()). What the badge on their sidebar's
      * link counts. A flat count, same as bdReturnsCount().
      */
-    public static function gmAssistantReturnsCount(): int
+    public static function gmAssistantReturnsCount(bool $rejected = false): int
     {
-        return static::returnedToGmAssistant()->count();
+        return static::returnedToGmAssistant()->rejectedByAReviewer($rejected)->count();
     }
 
     /**
@@ -5549,12 +5643,15 @@ class Rfq extends Model
             'sourcing_pending' => $sourcingParts()->whereNull('rfq_user.returned_at')->count() + static::awaitingFinalizeCount(),
             'sourcing_returns' => $sourcingParts()->whereNotNull('rfq_user.returned_at')->tap(fn ($parts) => RfqAssignment::whereNotRejectedTo($parts, 'sourcing'))->count(),
             'sourcing_rejected' => static::sourcingRejectedCount(null),
-            'data_entry' => DB::table('rfq_user')->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->tap(fn ($parts) => RfqAssignment::whereNotRejectedTo($parts, 'data_entry'))->count(),
+            'data_entry' => DB::table('rfq_user')->whereNull('status')->whereNotNull('completed_at')->whereNull('data_entry_completed_at')->tap(fn ($parts) => RfqAssignment::whereNotSentBackTo($parts, 'data_entry'))->count(),
+            'data_entry_returns' => static::dataEntryReturnsCount(null),
             'data_entry_rejected' => static::dataEntryRejectedCount(null),
             'head_of_bd' => static::headOfBdReviewCount(),
             'head_of_bd_returns' => static::headOfBdReturnsCount(),
+            'head_of_bd_rejected' => static::headOfBdReturnsCount(rejected: true),
             'gm_assistant' => static::gmAssistantReviewCount(),
             'gm_assistant_returns' => static::gmAssistantReturnsCount(),
+            'gm_assistant_rejected' => static::gmAssistantReturnsCount(rejected: true),
             'gm_review' => static::gmReviewCount(),
             'gm_rejected' => static::gmRejectedCount(),
             // Senior Operations' stopped RFQs, and RFQs with a part stopped —

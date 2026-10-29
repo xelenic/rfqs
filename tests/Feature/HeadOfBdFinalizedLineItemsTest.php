@@ -192,7 +192,8 @@ it('keeps timing by them when the General Manager sends the part back to GM Assi
 
     expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(3600)
         ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 120, 'seconds' => 3600, 'source' => 'finalized']);
-    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+    // A rejection: on their Rejected page (their Returns is for the General Manager's Returns).
+    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
         ->assertSeeText('30 Finalized Line Items × 2 min a line item = 1h');
 });
 

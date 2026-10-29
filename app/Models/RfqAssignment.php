@@ -70,21 +70,33 @@ class RfqAssignment extends Pivot
             'bd_closed_at' => 'datetime',
             'status_changed_at' => 'datetime',
             'part_rejected_at' => 'datetime',
+            'part_reject_is_return' => 'boolean',
             'pending_reason_by' => 'integer',
             'pending_reason_at' => 'datetime',
         ];
     }
 
     /**
-     * Whether a reviewer's Reject & Return last sent this part back to
-     * $stage — what puts it on that step's Rejected page while it's waiting
-     * there, rather than on the step's own queue or its Returns (a
-     * co-worker's send-back clears it: Rfq::returnSourcingPart(),
-     * returnToDataEntry()).
+     * Whether a reviewer's Reject last sent this part back to $stage — what
+     * puts it on that step's Rejected page while it's waiting there, rather
+     * than on the step's own queue or its Returns (a co-worker's send-back
+     * clears it: Rfq::returnSourcingPart(), returnToDataEntry()). Not a
+     * reviewer's Return (part_reject_is_return), which is on its Returns
+     * (isReturnedTo()).
      */
     public function isRejectedTo(string $stage): bool
     {
-        return $this->part_rejected_to === $stage;
+        return $this->part_rejected_to === $stage && ! $this->part_reject_is_return;
+    }
+
+    /**
+     * Whether a reviewer's Return — the Head of Business Development's or the
+     * General Manager's (Rfq::RETURNABLE_STAGES) — last sent this part back to
+     * $stage: on that step's Returns page while it's waiting there.
+     */
+    public function isReturnedTo(string $stage): bool
+    {
+        return $this->part_rejected_to === $stage && $this->part_reject_is_return;
     }
 
     /**
@@ -95,16 +107,42 @@ class RfqAssignment extends Pivot
      */
     public static function whereRejectedTo(Builder|QueryBuilder $query, string $stage): void
     {
-        $query->where('rfq_user.part_rejected_to', $stage);
+        $query->where('rfq_user.part_rejected_to', $stage)->where('rfq_user.part_reject_is_return', false);
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts a reviewer last
+     * Returned to $stage — the SQL twin of isReturnedTo().
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function whereReturnedTo(Builder|QueryBuilder $query, string $stage): void
+    {
+        $query->where('rfq_user.part_rejected_to', $stage)->where('rfq_user.part_reject_is_return', true);
     }
 
     /**
      * Narrows a query over the rfq_user rows to the parts not last rejected
-     * back to $stage — what stays on the step's own queue, or its Returns.
+     * back to $stage — what stays on the step's own queue, or its Returns: a
+     * reviewer's Return counts as a return.
      *
      * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
     public static function whereNotRejectedTo(Builder|QueryBuilder $query, string $stage): void
+    {
+        $query->where(fn ($parts) => $parts->whereNull('rfq_user.part_rejected_to')
+            ->orWhere('rfq_user.part_rejected_to', '<>', $stage)
+            ->orWhere('rfq_user.part_reject_is_return', true));
+    }
+
+    /**
+     * Narrows a query over the rfq_user rows to the parts no reviewer last
+     * sent back to $stage, by a Reject or a Return — what's on a step's own
+     * queue when both have pages of their own (Data Entry's Ready).
+     *
+     * @param  Builder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function whereNotSentBackTo(Builder|QueryBuilder $query, string $stage): void
     {
         $query->where(fn ($parts) => $parts->whereNull('rfq_user.part_rejected_to')->orWhere('rfq_user.part_rejected_to', '<>', $stage));
     }

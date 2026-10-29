@@ -35,7 +35,7 @@
             ->whereNotNull('completed_at')
             ->whereNull('data_entry_completed_at')
             ->tap(fn ($parts) => \App\Models\RfqAssignment::whereForDataEntryUser($parts, auth()->id()))
-            ->tap(fn ($parts) => \App\Models\RfqAssignment::whereNotRejectedTo($parts, 'data_entry'))
+            ->tap(fn ($parts) => \App\Models\RfqAssignment::whereNotSentBackTo($parts, 'data_entry'))
             ->count(),
         auth()->user()->hasRole('Head of Business Development') => \App\Models\Rfq::headOfBdReviewCount(),
         auth()->user()->hasRole('GM Assistant') => \App\Models\Rfq::gmAssistantReviewCount(),
@@ -89,7 +89,7 @@
         <i class="bi bi-arrow-counterclockwise"></i>
         <span class="nav-link-label">Returns</span>
         @if ($returnedCount > 0)
-            <span class="nav-link-count" title="{{ $returnedCount }} sent back by Data Entry">{{ $returnedCount }}</span>
+            <span class="nav-link-count" title="{{ $returnedCount }} sent back by Data Entry or returned by a reviewer">{{ $returnedCount }}</span>
         @endif
     </a>
     {{-- Their parts a reviewer rejected back — on their Rejected page, and only there. --}}
@@ -102,7 +102,18 @@
     </a>
 @endif
 @if (auth()->user()->hasRole('Data Entry'))
-    @php $dataEntryRejectedCount = \App\Models\Rfq::dataEntryRejectedCount(auth()->id()); @endphp
+    @php
+        $dataEntryReturnsCount = \App\Models\Rfq::dataEntryReturnsCount(auth()->id());
+        $dataEntryRejectedCount = \App\Models\Rfq::dataEntryRejectedCount(auth()->id());
+    @endphp
+    {{-- Parts the Head of Business Development or the General Manager Returned to Data Entry — off Ready for Data Entry, on here. --}}
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($dataEntryReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $dataEntryReturnsCount }} returned by a reviewer">{{ $dataEntryReturnsCount }}</span>
+        @endif
+    </a>
     {{-- Parts a reviewer rejected back to Data Entry — off Ready for Data Entry, on here. --}}
     <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'rejected' ? 'active' : '' }}">
         <i class="bi bi-x-octagon"></i>
@@ -123,7 +134,7 @@
             <span class="nav-link-count" title="{{ $reviewCount }} awaiting your approval">{{ $reviewCount }}</span>
         @endif
     </a>
-    {{-- RFQs sent back to them — a Sourcing part — still waiting on them, one
+    {{-- RFQs sent back to them — a Sourcing part, or a reviewer's Return — still waiting on them, one
          per row on the Returns page, as a red count, like the queues above. --}}
     @php
         $opsReturnsCount = \App\Models\Rfq::seniorOpsReturnsCount();
@@ -158,28 +169,48 @@
     @endforeach
 @endif
 @if (auth()->user()->hasRole('Head of Business Development'))
-    {{-- RFQs rejected back to their review, still waiting on it — one per row
-         on the Rejected page — as a red count, like the queue above.
-         Everything sent back to them is a rejection, so this is all of it. --}}
-    @php $headOfBdReturnsCount = \App\Models\Rfq::headOfBdReturnsCount(); @endphp
-    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && in_array(request('view'), ['returns', 'rejected'], true) ? 'active' : '' }}">
+    {{-- RFQs the General Manager Returned, or Rejected, to their review, still
+         waiting on it — one per row on each page — as red counts, like the
+         queue above. --}}
+    @php
+        $headOfBdReturnsCount = \App\Models\Rfq::headOfBdReturnsCount();
+        $headOfBdRejectedCount = \App\Models\Rfq::headOfBdReturnsCount(rejected: true);
+    @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($headOfBdReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $headOfBdReturnsCount }} returned to you">{{ $headOfBdReturnsCount }}</span>
+        @endif
+    </a>
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'rejected' ? 'active' : '' }}">
         <i class="bi bi-x-octagon"></i>
         <span class="nav-link-label">Rejected</span>
-        @if ($headOfBdReturnsCount > 0)
-            <span class="nav-link-count" title="{{ $headOfBdReturnsCount }} rejected back to you">{{ $headOfBdReturnsCount }}</span>
+        @if ($headOfBdRejectedCount > 0)
+            <span class="nav-link-count" title="{{ $headOfBdRejectedCount }} rejected back to you">{{ $headOfBdRejectedCount }}</span>
         @endif
     </a>
 @endif
 @if (auth()->user()->hasRole('GM Assistant'))
-    {{-- RFQs the General Manager rejected back to them, still waiting on them
-         — one per row on the Rejected page — as a red count, like the queue
-         above. Everything sent back to them is a rejection. --}}
-    @php $gmAssistantReturnsCount = \App\Models\Rfq::gmAssistantReturnsCount(); @endphp
-    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && in_array(request('view'), ['returns', 'rejected'], true) ? 'active' : '' }}">
+    {{-- RFQs the General Manager Returned, or Rejected, to them, still waiting
+         on them — one per row on each page — as red counts, like the queue
+         above. --}}
+    @php
+        $gmAssistantReturnsCount = \App\Models\Rfq::gmAssistantReturnsCount();
+        $gmAssistantRejectedCount = \App\Models\Rfq::gmAssistantReturnsCount(rejected: true);
+    @endphp
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'returns' ? 'active' : '' }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <span class="nav-link-label">Returns</span>
+        @if ($gmAssistantReturnsCount > 0)
+            <span class="nav-link-count" title="{{ $gmAssistantReturnsCount }} returned by the General Manager">{{ $gmAssistantReturnsCount }}</span>
+        @endif
+    </a>
+    <a href="{{ route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']) }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && request('view') === 'rejected' ? 'active' : '' }}">
         <i class="bi bi-x-octagon"></i>
         <span class="nav-link-label">Rejected</span>
-        @if ($gmAssistantReturnsCount > 0)
-            <span class="nav-link-count" title="{{ $gmAssistantReturnsCount }} rejected back by the General Manager">{{ $gmAssistantReturnsCount }}</span>
+        @if ($gmAssistantRejectedCount > 0)
+            <span class="nav-link-count" title="{{ $gmAssistantRejectedCount }} rejected back by the General Manager">{{ $gmAssistantRejectedCount }}</span>
         @endif
     </a>
 @endif
@@ -206,7 +237,7 @@
         <i class="bi bi-arrow-counterclockwise"></i>
         <span class="nav-link-label">Returns</span>
         @if ($bdReturnsCount > 0)
-            <span class="nav-link-count" title="{{ $bdReturnsCount }} sent back by Senior Operations">{{ $bdReturnsCount }}</span>
+            <span class="nav-link-count" title="{{ $bdReturnsCount }} sent back by Senior Operations or returned by a reviewer">{{ $bdReturnsCount }}</span>
         @endif
     </a>
     {{-- What a reviewer rejected all the way back to them. --}}
