@@ -1700,6 +1700,76 @@ function rfqmsBoot() {
         });
     })();
 
+    // A Sourcing member's Pending reason asks why the part is still pending
+    // (_pending_reason_modal.blade.php): every Pending reason button
+    // (.js-pending-reason) opens the one popup, pointed at its part and filled
+    // with what they last said. From inside a quick-detail modal, Cancel goes
+    // back to it.
+    (function () {
+        var modalEl = document.getElementById('pendingReasonModal');
+        if (!modalEl || modalEl.dataset.bound) return;
+        modalEl.dataset.bound = '1';
+
+        var form = document.getElementById('pendingReasonForm');
+        var reason = document.getElementById('pending-reason-text');
+        var count = document.getElementById('pending-reason-count');
+        var error = document.getElementById('pending-reason-error');
+        var cancel = document.getElementById('pending-reason-cancel');
+        var submit = document.getElementById('pending-reason-submit');
+
+        function showError(message) {
+            error.textContent = message;
+            error.classList.toggle('d-none', !message);
+            reason.classList.toggle('is-invalid', !!message);
+        }
+
+        modalEl.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            if (!button || !button.classList.contains('js-pending-reason')) return;
+
+            form.action = button.dataset.action;
+            form.elements.part.value = button.dataset.part;
+            document.getElementById('pending-reason-subtitle').textContent = button.dataset.rfqNumber + ' \u2014 ' + button.dataset.subject;
+            reason.value = button.dataset.reason || '';
+            count.textContent = reason.value.length + ' / ' + reason.maxLength;
+            showError('');
+            submit.disabled = false;
+            submit.innerHTML = '<i class="bi bi-check2"></i> Save reason';
+
+            if (button.dataset.backModal) {
+                cancel.removeAttribute('data-bs-dismiss');
+                cancel.setAttribute('data-bs-toggle', 'modal');
+                cancel.setAttribute('data-bs-target', '#' + button.dataset.backModal);
+            } else {
+                cancel.removeAttribute('data-bs-toggle');
+                cancel.removeAttribute('data-bs-target');
+                cancel.setAttribute('data-bs-dismiss', 'modal');
+            }
+        });
+
+        modalEl.addEventListener('shown.bs.modal', function () {
+            reason.focus();
+        });
+
+        reason.addEventListener('input', function () {
+            count.textContent = reason.value.length + ' / ' + reason.maxLength;
+            if (reason.value.trim()) showError('');
+        });
+
+        form.addEventListener('submit', function (event) {
+            if (!reason.value.trim()) {
+                event.preventDefault();
+                showError('Say why it\'s still pending.');
+                reason.focus();
+                return;
+            }
+
+            // One click, one save.
+            submit.disabled = true;
+            submit.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Saving\u2026';
+        });
+    })();
+
     // The hover card behind every name marked .js-user-card (see
     // layouts/_user_card.blade.php): hover — or focus, or tap — a person's name
     // on a comment for their details and a Private message button, which opens

@@ -7102,6 +7102,46 @@ a.critical-row:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Why an RFQ is still pending, on hovering its status (rfqs/_pending_reason_badge) ---- */
+
+.pending-reason-trigger {
+  display: inline-block;
+  border-radius: 999px;
+}
+
+.pending-reason-trigger:focus-visible {
+  outline: 2px solid var(--rfq-primary);
+  outline-offset: 2px;
+}
+
+.pending-reason-trigger .badge i {
+  margin-left: 0.15rem;
+}
+
+.pending-reason-text {
+  margin: 0.15rem 0 0.35rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.pending-reason-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pending-reason-by .assignee-avatar {
+  margin-left: 0;
+}
+
+/* Sourcing's own note of what they said, on their Pending for Sourcing list. */
+.rfq-list-subnote-pending,
+:root[data-theme="dark"] .rfq-list-subnote-pending {
+  color: var(--rfq-text-muted);
+}
+
 /* ---- Attendance: a row that opens its sheet (admin.js, [data-row-href]) ---- */
 
 .is-clickable-row {

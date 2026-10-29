@@ -1498,6 +1498,15 @@
                                                 </div>
                                             @endif
                                         @endif
+                                        {{-- Why they said it's still pending — what hovering its
+                                             Pending status shows (_pending_reason_badge). --}}
+                                        @if ($myAssignment->pivot->pendingReason())
+                                            <div class="rfq-list-subnote rfq-list-subnote-pending" data-pending-reason-note>
+                                                <i class="bi bi-hourglass-split"></i>
+                                                Pending: {{ $myAssignment->pivot->pendingReason() }}
+                                                · {{ $myAssignment->pivot->pending_reason_at?->toBusinessTimezone()->format('M d, g:i A') }}
+                                            </div>
+                                        @endif
                                     </td>
                                     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
                                     <td class="text-nowrap">
@@ -1518,6 +1527,10 @@
                                     </td>
                                     <td class="text-muted-soft">{{ $myAssignment->pivot->created_at?->toBusinessTimezone()->format('M d, Y g:i A') ?? '—' }}</td>
                                     <td class="text-end text-nowrap">
+                                        {{-- Why it's still pending (_pending_reason_modal). --}}
+                                        @if ($rfq->canGivePendingReason(auth()->user(), $myPart))
+                                            @include('admin.rfqs._pending_reason_button', ['rfq' => $rfq, 'part' => $myPart, 'label' => 'Pending reason'])
+                                        @endif
                                         @if (! $iHaveCompletedMyPart)
                                             @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
                                                 @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $myPart, 'kind' => 'sourcing_to_ops'])
@@ -1949,6 +1962,9 @@
     @endif
     @if ($scopedToBdClosing)
         @include('admin.rfqs._close_modal')
+    @endif
+    @if ($scopedToMe)
+        @include('admin.rfqs._pending_reason_modal')
     @endif
     @if ($scopedToUnassigned || $scopedToSeniorOpsReturns)
         @include('admin.rfqs._request_details_modal')

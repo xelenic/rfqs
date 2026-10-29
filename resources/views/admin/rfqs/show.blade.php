@@ -55,6 +55,16 @@
         ? (auth()->user()->hasRole('Admin') ? $pageAssignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped())
         : collect();
 
+    // This Sourcing viewer's parts still pending with them, to say why
+    // (_pending_reason_button) — and why the RFQ is still pending, on
+    // hovering its status (_pending_reason_badge): the parts on the page,
+    // and for Sourcing, who doesn't see the other members, only their own.
+    $pendingReasonParts = $myParts->filter(fn ($assignee) => $rfq->canGivePendingReason(auth()->user(), $assignee->pivot->part_number));
+    $pagePendingReasons = $rfq->status === 'Pending'
+        ? $rfq->pendingReasons()->filter(fn (array $pending) => ($pagePart === null || $pending['part'] === $pagePart)
+            && (! $restrictSourcingView || $myParts->contains(fn ($assignee) => $assignee->pivot->part_number === $pending['part'])))->values()
+        : collect();
+
     // Sourcing never gets access to the assign controls at all — it's a
     // receiving role, not an assigning one — enforced server-side too, see
     // RfqController::assign()/assignOperations().
@@ -584,6 +594,13 @@
         </a>
 
         <div class="d-flex gap-2">
+            @foreach ($pendingReasonParts as $pendingPart)
+                @include('admin.rfqs._pending_reason_button', [
+                    'rfq' => $rfq,
+                    'part' => $pendingPart->pivot->part_number,
+                    'label' => 'Pending reason'.($rfq->isSplit() ? ' P'.$pendingPart->pivot->part_number : ''),
+                ])
+            @endforeach
             @foreach ($myOpenParts as $myPart)
                 @include('admin.rfqs._complete_button', [
                     'rfq' => $rfq,
@@ -1345,7 +1362,14 @@
                 <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span>{{ $rfq->subject }}</span>
                     <div class="d-flex gap-2">
-                        <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
+                        @include('admin.rfqs._pending_reason_badge', [
+                            'rfq' => $rfq,
+                            'id' => 'pending-reason-'.$rfq->id,
+                            'reasons' => $pagePendingReasons,
+                            'badgeClass' => $rfq->statusBadgeClass(),
+                            'label' => $rfq->statusLabel(),
+                            'hideNames' => $restrictAssignment,
+                        ])
                         <span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }} priority</span>
                     </div>
                 </div>
@@ -1600,6 +1624,9 @@
     @endif
     @if ($finalizableParts->isNotEmpty())
         @include('admin.rfqs._finalize_modal')
+    @endif
+    @if ($pendingReasonParts->isNotEmpty())
+        @include('admin.rfqs._pending_reason_modal')
     @endif
     @if (auth()->user()->hasAnyRole(['Data Entry', 'GM Assistant', 'Admin']))
         @include('admin.rfqs._pause_data_entry_modal')

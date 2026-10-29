@@ -14,6 +14,9 @@
     whatever step it's got to, its progress kept (Replace, _reassign_modal,
     Rfq::canReplaceSourcing()) — not once it's closed or cancelled.
 
+    A part still pending with its Sourcing member says why on hovering its
+    badge, if they've said (_pending_reason_badge).
+
     Expects: $rfq (with its assignees), $columns (the table's column count).
 --}}
 @php
@@ -46,7 +49,13 @@
                     </span>
 
                     <span class="rfq-part-status">
-                        <span class="badge {{ $pivot->progressBadgeClass() }}">{{ $pivot->progressLabel() }}</span>
+                        @include('admin.rfqs._pending_reason_badge', [
+                            'rfq' => $rfq,
+                            'id' => 'pending-reason-'.$rfq->id.'-p'.$part['part'],
+                            'reasons' => $rfq->status === 'Pending' ? $rfq->pendingReasons()->where('part', $part['part'])->values() : collect(),
+                            'badgeClass' => $pivot->progressBadgeClass(),
+                            'label' => $pivot->progressLabel(),
+                        ])
                         @switch ($pivot->progressState())
                             @case ('finalized')
                                 <span class="rfq-part-detail">

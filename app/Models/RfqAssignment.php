@@ -70,6 +70,8 @@ class RfqAssignment extends Pivot
             'bd_closed_at' => 'datetime',
             'status_changed_at' => 'datetime',
             'part_rejected_at' => 'datetime',
+            'pending_reason_by' => 'integer',
+            'pending_reason_at' => 'datetime',
         ];
     }
 
@@ -150,6 +152,40 @@ class RfqAssignment extends Pivot
     public static function whereActive(Builder $query): void
     {
         $query->whereNull('rfq_user.status');
+    }
+
+    /**
+     * Whether this part is on its Sourcing member's Pending for Sourcing list:
+     * theirs to complete — not sent back, which is on their Returns — or
+     * sent to them to finalize; and not stopped. What they can say why it's
+     * still pending for (Rfq::recordPendingReason()).
+     */
+    public function isPendingWithSourcing(): bool
+    {
+        if ($this->isStopped()) {
+            return false;
+        }
+
+        return $this->completed_at === null ? $this->returned_at === null : $this->isAwaitingFinalize();
+    }
+
+    /**
+     * Why its Sourcing member says it's still pending (rfq_user.pending_reason)
+     * — only while it's on their Pending list, so a reason never outlives
+     * where it was given — else null.
+     */
+    public function pendingReason(): ?string
+    {
+        return $this->isPendingWithSourcing() && filled($this->pending_reason) ? $this->pending_reason : null;
+    }
+
+    /**
+     * Who said why it's pending (pending_reason_by) — its Sourcing member, or
+     * an Admin for them.
+     */
+    public function pendingReasonBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pending_reason_by');
     }
 
     /**

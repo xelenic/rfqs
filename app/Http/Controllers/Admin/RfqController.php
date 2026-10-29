@@ -380,7 +380,8 @@ class RfqController extends Controller implements HasMiddleware
             : null;
 
         $rfqsQuery = Rfq::query()
-            ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy', 'bdClosedBy'])
+            // Their roles, for who said why a part's pending (_pending_reason_badge).
+            ->with(['assignees.roles', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'seniorOpsReviewedBy', 'headOfBdApprovedBy', 'gmAssistantCompletedBy', 'gmApprovedBy', 'bdClosedBy'])
             // The quick-detail modal (Data Entry's "By Sourcing" list and
             // Sourcing's own "My Pending RFQs") shows a comment thread
             // scoped to one assignee — only worth the extra eager load on
@@ -600,7 +601,7 @@ class RfqController extends Controller implements HasMiddleware
         // but is still Pending overall.
         $assignedRfqs = $scopedToUnassigned
             ? Rfq::query()
-                ->with(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
+                ->with(['assignees.roles', 'creator', 'operationsAssignee', 'sourcingCompletedBy'])
                 ->fullySourced()
                 ->tap($applyCommonFilters)
                 ->latest()
@@ -1012,7 +1013,7 @@ class RfqController extends Controller implements HasMiddleware
         }
 
         return view('admin.rfqs.show', [
-            'rfq' => $rfq->load(['assignees', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments', 'steps']),
+            'rfq' => $rfq->load(['assignees.roles', 'creator', 'operationsAssignee', 'sourcingCompletedBy', 'dataEntryCompletedBy', 'comments.author.roles', 'comments.replies.author.roles', 'comments.attachments', 'comments.replies.attachments', 'steps']),
             'priorities' => Rfq::PRIORITIES,
             'statuses' => Rfq::STATUSES,
             'statusFilter' => $status,
@@ -1725,6 +1726,36 @@ class RfqController extends Controller implements HasMiddleware
         RfqComment::attachingFiles($rfq, $files, fn () => $rfq->returnSourcingPart((int) $validated['part'], $reason, $this->doneBy($request, 'Data Entry'), (int) $lineItemsAdded->validated()['entries']));
 
         return redirect()->back()->with('status', "Sent {$assignee->name}'s part back to Sourcing.");
+    }
+
+    /**
+     * A Sourcing member says why a part on their Pending for Sourcing list is
+     * still pending (Rfq::recordPendingReason()): posted to the RFQ's thread,
+     * and shown to whoever hovers its Pending status. Only the part's own
+     * member, while it's there (Rfq::canGivePendingReason()).
+     */
+    public function pendingReason(Request $request, Rfq $rfq): RedirectResponse
+    {
+        $validated = $request->validate([
+            'part' => ['required', 'integer'],
+        ]);
+        $part = (int) $validated['part'];
+
+        abort_unless(
+            $rfq->canGivePendingReason($request->user(), $part),
+            403,
+            'Only the Sourcing member with this part can say why it\'s pending, while it\'s on their Pending list.'
+        );
+
+        $reason = $this->requiredComment($request, 'pending_reason', 'Say why it\'s still pending.', 1000);
+
+        if ($reason instanceof RedirectResponse) {
+            return $reason;
+        }
+
+        $rfq->recordPendingReason($part, $request->user(), $reason);
+
+        return back()->with('status', "Saved why {$rfq->partNumberLabel($part)} is pending — it shows when someone hovers its Pending status.");
     }
 
     /**

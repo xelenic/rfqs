@@ -21,6 +21,8 @@
     (DashboardController::targetStatesByRfq()). $finishedLate — All RFQs
     too: a step finished past its target marks it Finished late, which and
     by how much on hover (Rfq::deadlines()), as the Time Spent report says.
+    A Pending status says, on hover, why it's still pending — as its parts'
+    Sourcing members said (_pending_reason_badge, Rfq::pendingReasons()).
     Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
     an RFQ can be sent back to Business Development for details
     (_request_details_modal.blade.php). Once it has been, it's off that queue
@@ -74,7 +76,14 @@
     <td><span class="badge {{ $rfq->priorityBadgeClass() }}">{{ $rfq->priorityLabel() }}</span></td>
     @unless ($statusFilter)
         <td>
-            <span class="badge {{ $rfq->statusBadgeClass() }}">{{ $rfq->statusLabel() }}</span>
+            @include('admin.rfqs._pending_reason_badge', [
+                'rfq' => $rfq,
+                'id' => 'pending-reason-'.$rfq->id,
+                'reasons' => $rfq->status === 'Pending' ? $rfq->pendingReasons() : collect(),
+                'badgeClass' => $rfq->statusBadgeClass(),
+                'label' => $rfq->statusLabel(),
+                'hideNames' => $restrictAssignment,
+            ])
             @if ($targetState)
                 <span class="badge {{ $targetState['state'] === 'overdue' ? 'badge-soft-danger' : 'badge-soft-warning' }}"
                       data-target-state="{{ $targetState['state'] }}" title="{{ implode("\n", $targetState['tasks']) }}">

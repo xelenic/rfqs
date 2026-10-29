@@ -281,7 +281,7 @@ class Rfq extends Model
             'bd_closed_by', 'status_changed_by',
         ],
         'rfq_user' => [
-            'user_id', 'returned_by', 'data_entry_assigned_to', 'data_entry_started_by', 'data_entry_completed_by',
+            'user_id', 'returned_by', 'pending_reason_by', 'data_entry_assigned_to', 'data_entry_started_by', 'data_entry_completed_by',
             'finalized_by', 'senior_ops_reviewed_by', 'head_of_bd_approved_by', 'gm_assistant_started_by',
             'gm_assistant_completed_by', 'gm_approved_by', 'bd_closed_by', 'status_changed_by',
         ],
@@ -919,7 +919,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'pending_reason', 'pending_reason_by', 'pending_reason_at', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1796,7 +1796,7 @@ class Rfq extends Model
         DB::table('rfq_user')
             ->where('rfq_id', $this->id)
             ->where('part_number', $part)
-            ->update(['user_id' => $to->id, 'updated_at' => now()]);
+            ->update(self::CLEARED_PENDING_REASON + ['user_id' => $to->id, 'updated_at' => now()]);
 
         $this->returns()->where('part_number', $part)->whereNull('forwarded_at')->where('user_id', $from->id)->update(['user_id' => $to->id]);
 
@@ -1809,6 +1809,75 @@ class Rfq extends Model
 
         TaskMessages::send($this, $by, [$to], "Gave you {$this->partNumberLabel($part)} in Sourcing — it was {$from->name}'s", $reason, $comment);
         TaskMessages::send($this, $by, [$from], "Gave {$this->partNumberLabel($part)} to {$to->name} — it's no longer yours", $reason, $comment);
+    }
+
+    /**
+     * Whether $user can say why $part is still pending: they're its Sourcing
+     * member, the RFQ is Pending, and the part is on their Pending for
+     * Sourcing list (RfqAssignment::isPendingWithSourcing()).
+     */
+    public function canGivePendingReason(User $user, int $part): bool
+    {
+        $assignee = $this->assigneeForPart($part);
+
+        return $this->status === 'Pending'
+            && $assignee?->is($user) === true
+            && $user->hasRole('Sourcing')
+            && $assignee->pivot->isPendingWithSourcing();
+    }
+
+    /**
+     * $by says why $part is still pending with them ($reason): kept on the
+     * part — the latest only — for hovering the RFQ's Pending status
+     * (pendingReasons()), and posted to the RFQ's thread as theirs. Cleared
+     * once the part moves on (CLEARED_PENDING_REASON). The same reason sent
+     * again (a double click, a retry) is saved once. Returns whether it was
+     * saved now.
+     *
+     * Caller is responsible for verifying it's allowed (canGivePendingReason()).
+     */
+    public function recordPendingReason(int $part, User $by, string $reason): bool
+    {
+        $assignee = $this->assigneeForPart($part);
+        $reason = trim($reason);
+
+        if (! $assignee?->pivot->isPendingWithSourcing()
+            || ($assignee->pivot->pending_reason === $reason && $assignee->pivot->pending_reason_by === $by->id)) {
+            return false;
+        }
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+            'pending_reason' => $reason,
+            'pending_reason_by' => $by->id,
+            'pending_reason_at' => now(),
+        ]);
+        $this->load('assignees');
+
+        $this->postActionComment($by, 'pending_reason', $reason, $this->partContext($part));
+
+        return true;
+    }
+
+    /**
+     * Why each of its parts still with Sourcing is pending, as last said
+     * (RfqAssignment::pendingReason()), part by part: the part, its number,
+     * the reason, who gave it and when. What hovering the RFQ's Pending
+     * status shows (_pending_reason_badge).
+     *
+     * @return Collection<int, array{part: int, label: string, reason: string, by: ?User, at: ?CarbonInterface}>
+     */
+    public function pendingReasons(): Collection
+    {
+        return $this->assignees
+            ->filter(fn (User $assignee) => $assignee->pivot->pendingReason() !== null)
+            ->map(fn (User $assignee) => [
+                'part' => $assignee->pivot->part_number,
+                'label' => $this->partNumberLabel($assignee->pivot->part_number),
+                'reason' => $assignee->pivot->pendingReason(),
+                'by' => $assignee->pivot->pending_reason_by === $assignee->id ? $assignee : $assignee->pivot->pendingReasonBy,
+                'at' => $assignee->pivot->pending_reason_at,
+            ])
+            ->values();
     }
 
     /**
@@ -1837,7 +1906,7 @@ class Rfq extends Model
 
         // Only while it's still not completed — a second request at the same
         // moment finds it done, and leaves it be.
-        $completed = $this->assignees()->wherePivot('part_number', $part)->wherePivotNull('completed_at')->updateExistingPivot($assignee->id, [
+        $completed = $this->assignees()->wherePivot('part_number', $part)->wherePivotNull('completed_at')->updateExistingPivot($assignee->id, self::CLEARED_PENDING_REASON + [
             'completed_at' => now(),
             'returned_at' => null,
             'return_reason' => null,
@@ -1916,7 +1985,7 @@ class Rfq extends Model
             return;
         }
 
-        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, self::CLEARED_PART_REJECTION + [
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, self::CLEARED_PART_REJECTION + self::CLEARED_PENDING_REASON + [
             'completed_at' => null,
             'returned_at' => now(),
             'return_reason' => $reason,
@@ -2169,7 +2238,7 @@ class Rfq extends Model
 
         $assignee = $this->assigneeForPart($part);
 
-        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, [
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, self::CLEARED_PENDING_REASON + [
             'finalized_at' => now(),
             'finalized_by' => $assignee->id,
             'submitted_line_items' => $submittedLineItems,
@@ -2210,7 +2279,7 @@ class Rfq extends Model
         // Whoever did its Data Entry — it's back with them.
         $dataEntry = $this->dataEntryPeopleOf(collect([$assignee]));
 
-        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, self::CLEARED_PART_REJECTION + [
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($assignee->id, self::CLEARED_PART_REJECTION + self::CLEARED_PENDING_REASON + [
             'data_entry_completed_at' => null,
             'data_entry_completed_by' => null,
             'data_entry_started_at' => null,
@@ -2793,6 +2862,20 @@ class Rfq extends Model
         'part_rejected_by' => null,
         'part_rejected_at' => null,
         'part_reject_reason' => null,
+    ];
+
+    /**
+     * A part's pending reason cleared, once it's off its Sourcing member's
+     * Pending list — assigned to Data Entry, finalized, returned to Data
+     * Entry, sent back to Sourcing, or given to someone else — so it's said
+     * afresh the next time it's pending (recordPendingReason()).
+     *
+     * @var array<string, null>
+     */
+    private const CLEARED_PENDING_REASON = [
+        'pending_reason' => null,
+        'pending_reason_by' => null,
+        'pending_reason_at' => null,
     ];
 
     /**

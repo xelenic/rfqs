@@ -14,7 +14,8 @@
     @mention autocomplete, Data Entry/Admin can open the full RFQ page.
 
     Actions shown depend on who's looking, and sit together in the footer: the
-    part's assignee themselves gets Mark Complete (if it's not done yet);
+    part's assignee themselves gets Mark Complete (if it's not done yet), and
+    Pending reason while it's pending with them (_pending_reason_button);
     Data Entry/Admin get Return to Sourcing next to Mark Complete (once
     Sourcing's done, until Data Entry has been).
 
@@ -133,13 +134,21 @@
                      there comes back here. --}}
                 @if ($canCompleteAsSourcing)
                     <div class="d-flex gap-2">
+                        @if ($rfq->canGivePendingReason(auth()->user(), $part))
+                            @include('admin.rfqs._pending_reason_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId, 'label' => 'Pending reason'])
+                        @endif
                         @if (auth()->user()->canSendSourcingPartsBackToSeniorOps())
                             @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'kind' => 'sourcing_to_ops', 'backModal' => $modalId])
                         @endif
                         @include('admin.rfqs._complete_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
                     </div>
                 @elseif ($canFinalize)
-                    @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
+                    <div class="d-flex gap-2">
+                        @if ($rfq->canGivePendingReason(auth()->user(), $part))
+                            @include('admin.rfqs._pending_reason_button', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId, 'label' => 'Pending reason'])
+                        @endif
+                        @include('admin.rfqs._finalize_actions', ['rfq' => $rfq, 'part' => $part, 'backModal' => $modalId])
+                    </div>
                 @elseif ($canCompleteAsDataEntry)
                     {{-- Only this one part — see RfqController::completeDataEntry()
                          and returnSourcing(), which never touch any other part on the

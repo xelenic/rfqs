@@ -130,6 +130,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('rfqs/{rfq}/status', [RfqController::class, 'changeStatus'])->name('rfqs.change-status');
     Route::patch('rfqs/{rfq}/complete-sourcing', [RfqController::class, 'completeSourcing'])->name('rfqs.complete-sourcing');
     Route::patch('rfqs/{rfq}/return-sourcing', [RfqController::class, 'returnSourcing'])->name('rfqs.return-sourcing');
+    Route::patch('rfqs/{rfq}/pending-reason', [RfqController::class, 'pendingReason'])->name('rfqs.pending-reason');
     Route::patch('rfqs/{rfq}/complete-data-entry', [RfqController::class, 'completeDataEntry'])->name('rfqs.complete-data-entry');
     Route::patch('rfqs/{rfq}/finalize', [RfqController::class, 'finalize'])->name('rfqs.finalize');
     Route::patch('rfqs/{rfq}/return-data-entry', [RfqController::class, 'returnDataEntry'])->name('rfqs.return-data-entry');
