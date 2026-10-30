@@ -1819,8 +1819,12 @@ class Rfq extends Model
      * on that (RfqReturn) — and everything done on it so far stands. The time
      * the member who had it put in stays theirs; a Sourcing countdown starts
      * afresh with $to, while Data Entry's or GM Assistant's carries on as it
-     * was. The thread says who it went from and to (and why, if given),
-     * naming the part. A no-op if nobody holds it, or $to already does.
+     * was. It's assigned to $to from now (rfq_user.created_at — their
+     * "Assigned At"); the thread says who it went from and to (and why, if
+     * given), naming the part, and keeps who had it and since when
+     * (meta from_id, from_assigned_at), so the timeline still shows that
+     * assignment (activityTimeline()). A no-op if nobody holds it, or $to
+     * already does.
      *
      * Caller is responsible for verifying it's allowed (canReplaceSourcing()),
      * and that $to holds the Sourcing role.
@@ -1840,17 +1844,22 @@ class Rfq extends Model
         $openStretches()->whereIn('step', RfqStep::ROLE_STEPS['Sourcing'])->whereNull('worked_by')->update(['worked_by' => $from->id]);
         $openStretches()->whereNotIn('step', RfqStep::ROLE_STEPS['Sourcing'])->update(['assignee_id' => $to->id]);
 
+        $fromAssignedAt = $from->pivot->created_at;
+
         DB::table('rfq_user')
             ->where('rfq_id', $this->id)
             ->where('part_number', $part)
-            ->update(self::CLEARED_PENDING_REASON + ['user_id' => $to->id, 'updated_at' => now()]);
+            ->update(self::CLEARED_PENDING_REASON + ['user_id' => $to->id, 'created_at' => now(), 'updated_at' => now()]);
 
         $this->returns()->where('part_number', $part)->whereNull('forwarded_at')->where('user_id', $from->id)->update(['user_id' => $to->id]);
 
         $this->load('assignees');
         $this->unsetRelation('returns');
 
-        $comment = $this->postActionComment($by, 'reassigned', trim("Sourcing replaced: from {$from->name} to {$to->name}. ".($reason ?? '')), $this->partContext($part));
+        $comment = $this->postActionComment($by, 'reassigned', trim("Sourcing replaced: from {$from->name} to {$to->name}. ".($reason ?? '')), $this->partContext($part) + [
+            'from_id' => $from->id,
+            'from_assigned_at' => $fromAssignedAt?->toIso8601String(),
+        ]);
 
         $this->syncSteps();
 
@@ -4854,6 +4863,31 @@ class Rfq extends Model
             ];
         }
 
+        // Whoever had a part before it was given to someone else
+        // (replaceSourcingPart()), and since when: the part's own assigned
+        // time moved on to whoever has it now.
+        $replacements = $this->comments->filter(fn (RfqComment $comment) => $comment->action === 'reassigned'
+            && isset($comment->meta['from_id'], $comment->meta['from_assigned_at']));
+        $previousHolders = $replacements->isEmpty() ? collect() : User::query()->whereIn('id', $replacements->pluck('meta.from_id'))->get()->keyBy('id');
+
+        foreach ($replacements as $replacement) {
+            $previous = $previousHolders->get($replacement->meta['from_id']);
+
+            if ($previous === null) {
+                continue;
+            }
+
+            $entries[] = [
+                'type' => 'sourcing_assigned',
+                'at' => Carbon::parse($replacement->meta['from_assigned_at']),
+                'actor' => $previous,
+                'related' => $previous,
+                'detail' => $this->partNumberLabel((int) ($replacement->meta['part'] ?? 1)),
+                'comment' => null,
+                'part' => isset($replacement->meta['part']) ? (int) $replacement->meta['part'] : null,
+            ];
+        }
+
         foreach ($this->assignees as $assignee) {
             $entries[] = [
                 'type' => 'sourcing_assigned',
@@ -5233,7 +5267,8 @@ class Rfq extends Model
         $part = match ($entry['type']) {
             'comment' => $entry['comment']->meta['part'] ?? null,
             'notification', 'rejected' => $entry['part'] ?? null,
-            default => $entry['related']?->pivot?->part_number,
+            // An earlier holder's assignment carries its part (activityTimeline()).
+            default => $entry['part'] ?? $entry['related']?->pivot?->part_number,
         };
 
         return $part !== null ? (int) $part : null;

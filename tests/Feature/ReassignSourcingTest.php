@@ -3,6 +3,7 @@
 use App\Models\Rfq;
 use App\Models\RfqStep;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -190,4 +191,62 @@ it('hands a send-straight-back waiting on the part to whoever takes it over', fu
     test()->actingAs($sam)->patch(route('admin.rfqs.forward-back', $rfq), ['part' => 1, 'target' => 'sourcing', 'from' => 'head_of_bd_review'])
         ->assertSessionHas('status');
     expect($rfq->refresh()->partAwaitsHeadOfBdReview(1))->toBeTrue();
+});
+
+it('assigns the part to whoever takes it over from then — their Assigned At, and the timeline, keeping who had it before', function () {
+    $ops = userWithRole('Senior Operations');
+    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
+
+    test()->travelTo(now()->setDate(2026, 10, 28)->setTime(11, 1));
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ18010']), [1 => $riley, 2 => userWithRole('Sourcing')]);
+    $firstAssigned = $rfq->assigneeForPart(1)->pivot->created_at;
+
+    test()->travelTo(now()->setDate(2026, 10, 30)->setTime(9, 37));
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])->assertSessionHasNoErrors();
+
+    $pivot = $rfq->refresh()->assigneeForPart(1)->pivot;
+    $comment = $rfq->comments->firstWhere('action', 'reassigned');
+
+    expect($pivot->created_at->equalTo(now()))->toBeTrue()
+        ->and($comment->meta)->toMatchArray(['part' => 1, 'from_id' => $riley->id])
+        ->and(Carbon::parse($comment->meta['from_assigned_at'])->equalTo($firstAssigned))->toBeTrue();
+
+    // Sam's list: assigned now, not when Riley was.
+    test()->actingAs($sam)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+        ->assertSee($pivot->created_at->toBusinessTimezone()->format('M d, Y g:i A'));
+
+    // The timeline: Riley's assignment, then Sam's, each when it was.
+    $assigned = collect($rfq->activityTimelineFor($ops, 1))->where('type', 'sourcing_assigned')
+        ->map(fn (array $entry) => [$entry['actor']->id, $entry['at']->toDateTimeString()])->values()->all();
+
+    expect($assigned)->toBe([
+        [$riley->id, $firstAssigned->toDateTimeString()],
+        [$sam->id, $pivot->created_at->toDateTimeString()],
+    ]);
+
+    $timeline = preg_replace('/\s+/', ' ', Str::after(test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent(), 'Activity Timeline'));
+    $entry = fn (string $name, $at) => '<span class="fw-semibold">'.e($name).'</span> &middot; '.$at->toBusinessTimezone()->format('M d, Y g:i A');
+
+    expect($timeline)->toContain($entry($riley->name, $firstAssigned))
+        ->toContain($entry($sam->name, $pivot->created_at));
+});
+
+it('moves the assigned time of a part replaced before, and gives its comment who had it', function () {
+    $ops = userWithRole('Senior Operations');
+    [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
+
+    test()->travelTo(now()->setDate(2026, 10, 28)->setTime(11, 1));
+    $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
+    $firstAssigned = $rfq->assigneeForPart(1)->pivot->created_at->toDateTimeString();
+
+    // A Replace as it was before: the part's assigned time left as it was, nothing in the comment's meta.
+    test()->travelTo(now()->setDate(2026, 10, 30)->setTime(9, 37));
+    DB::table('rfq_user')->where('rfq_id', $rfq->id)->update(['user_id' => $sam->id]);
+    $comment = $rfq->comments()->create(['user_id' => $ops->id, 'action' => 'reassigned', 'body' => "Sourcing replaced: from {$riley->name} to {$sam->name}."]);
+
+    (require database_path('migrations/2026_10_30_063457_move_replaced_parts_assigned_time.php'))->up();
+
+    expect(DB::table('rfq_user')->where('rfq_id', $rfq->id)->value('created_at'))->toBe($comment->created_at->toDateTimeString())
+        ->and($comment->refresh()->meta['from_id'])->toBe($riley->id)
+        ->and(Carbon::parse($comment->meta['from_assigned_at'])->toDateTimeString())->toBe($firstAssigned);
 });
