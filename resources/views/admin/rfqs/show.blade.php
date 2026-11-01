@@ -55,6 +55,13 @@
         ? (auth()->user()->hasRole('Admin') ? $pageAssignees : $myParts)->filter(fn ($assignee) => $assignee->pivot->isAwaitingFinalize() && ! $assignee->pivot->isStopped())
         : collect();
 
+    // Senior Operations' Reassign (and Admin's): each part on the page that can
+    // go to someone else (_reassign_button) — one button for one part, a menu
+    // for several.
+    $reassignableParts = auth()->user()->hasAnyRole(['Senior Operations', 'Admin'])
+        ? $pageAssignees->filter(fn ($assignee) => $rfq->canReplaceSourcing($assignee->pivot->part_number))
+        : collect();
+
     // This Sourcing viewer's parts still pending with them, to say why
     // (_pending_reason_button) — and why the RFQ is still pending, on
     // hovering its status (_pending_reason_badge): the parts on the page,
@@ -594,6 +601,27 @@
         </a>
 
         <div class="d-flex gap-2">
+            @if ($reassignableParts->count() === 1)
+                @include('admin.rfqs._reassign_button', ['rfq' => $rfq, 'assignee' => $reassignableParts->first()])
+            @elseif ($reassignableParts->isNotEmpty())
+                <div class="dropdown" data-reassign-menu>
+                    <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-gear"></i> Reassign
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        @foreach ($reassignableParts as $reassignablePart)
+                            <li>
+                                @include('admin.rfqs._reassign_button', [
+                                    'rfq' => $rfq,
+                                    'assignee' => $reassignablePart,
+                                    'buttonClass' => 'dropdown-item',
+                                    'buttonText' => 'P'.$reassignablePart->pivot->part_number.' — '.$reassignablePart->name,
+                                ])
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             @foreach ($pendingReasonParts as $pendingPart)
                 @include('admin.rfqs._pending_reason_button', [
                     'rfq' => $rfq,
@@ -1005,8 +1033,8 @@
                     @if ($rfq->assignees->isEmpty() && $rfq->split_count === null)
                         <p class="text-muted-soft mb-0">Not yet assigned.</p>
                     @else
-                        {{-- Senior Operations (and Admin) replace a part's Sourcing
-                             member from here, at whatever step it's at — see
+                        {{-- Senior Operations (and Admin) reassign a part from here, at
+                             whatever step it's at — see _reassign_button,
                              Rfq::canReplaceSourcing(). --}}
                         @php $canReplaceSourcing = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']); @endphp
                         <div class="table-responsive">
@@ -1017,7 +1045,7 @@
                                         <th>Split</th>
                                         <th>Status</th>
                                         @if ($canReplaceSourcing)
-                                            <th class="text-end"><span class="visually-hidden">Replace</span></th>
+                                            <th class="text-end"><span class="visually-hidden">Reassign</span></th>
                                         @endif
                                     </tr>
                                 </thead>
@@ -1047,17 +1075,7 @@
                                             @if ($canReplaceSourcing)
                                                 <td class="text-end">
                                                     @if ($tabAssignee && $rfq->canReplaceSourcing($part['part']))
-                                                        <button type="button" class="btn btn-sm btn-outline-primary js-reassign-part"
-                                                                data-bs-toggle="modal" data-bs-target="#reassignModal"
-                                                                data-action="{{ route('admin.rfqs.reassign-sourcing', $rfq) }}"
-                                                                data-rfq-id="{{ $rfq->id }}"
-                                                                data-part="{{ $part['part'] }}"
-                                                                data-label="{{ $rfq->isSplit() ? $part['number'] : $rfq->rfq_number }}"
-                                                                data-current-id="{{ $tabAssignee->id }}"
-                                                                data-current-name="{{ $tabAssignee->name }}"
-                                                                title="Give this part to another Sourcing member — its progress kept">
-                                                            <i class="bi bi-person-gear"></i> Replace
-                                                        </button>
+                                                        @include('admin.rfqs._reassign_button', ['rfq' => $rfq, 'assignee' => $tabAssignee])
                                                     @endif
                                                 </td>
                                             @endif

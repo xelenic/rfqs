@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
  * they act (Rfq::assignSourcingParts(), completeSourcingPart(),
  * completeDataEntryPart(), returnSourcingPart(), returnToDataEntry(),
  * rejectToStage(), rejectPartToStage(), replaceSourcingPart(),
- * forwardBack()). Never to whoever did it, nor to a deactivated account.
+ * replaceDataEntryPart(), forwardBack()). Never to whoever did it, nor to a deactivated account.
  */
 final class TaskMessages
 {

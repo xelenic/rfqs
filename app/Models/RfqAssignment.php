@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
@@ -52,6 +53,7 @@ class RfqAssignment extends Pivot
             'data_entry_completed_at' => 'datetime',
             'data_entry_entries' => 'integer',
             'data_entry_assigned_to' => 'integer',
+            'data_entry_reassigned_at' => 'datetime',
             'line_items_to_add' => 'integer',
             'return_line_items' => 'integer',
             'verified_line_items' => 'integer',
@@ -795,6 +797,26 @@ class RfqAssignment extends Pivot
         $query->when($userId !== null, fn ($theirs) => $theirs->where(fn ($forThem) => $forThem
             ->whereNull('rfq_user.data_entry_assigned_to')
             ->orWhere('rfq_user.data_entry_assigned_to', $userId)));
+    }
+
+    /**
+     * Whether Senior Operations named who in Data Entry has this part
+     * (Rfq::replaceDataEntryPart()) — which stands, whatever Sourcing would
+     * pick (Rfq::completeSourcingPart()), till they change it.
+     */
+    public function isDataEntryChosenByOperations(): bool
+    {
+        return $this->data_entry_assigned_to !== null && $this->data_entry_reassigned_at !== null;
+    }
+
+    /**
+     * When Senior Operations gave this part to someone else in Data Entry,
+     * if that's since Sourcing last handed it over: named ahead of that, it's
+     * simply assigned.
+     */
+    public function dataEntryReassignedAt(): ?CarbonInterface
+    {
+        return $this->data_entry_reassigned_at?->greaterThan($this->completed_at) ? $this->data_entry_reassigned_at : null;
     }
 
     /**

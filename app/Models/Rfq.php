@@ -932,7 +932,7 @@ class Rfq extends Model
         return $this->belongsToMany(User::class)
             ->using(RfqAssignment::class)
             ->withTimestamps()
-            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'pending_reason', 'pending_reason_by', 'pending_reason_at', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'part_reject_is_return', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
+            ->withPivot(['part_number', 'completed_at', 'returned_at', 'return_reason', 'return_line_items', 'pending_reason', 'pending_reason_by', 'pending_reason_at', 'returned_by', 'part_rejected_to', 'part_rejected_from', 'part_rejected_by', 'part_rejected_at', 'part_reject_reason', 'part_reject_is_return', 'data_entry_completed_at', 'data_entry_completed_by', 'data_entry_entries', 'data_entry_started_at', 'data_entry_started_by', 'data_entry_paused_at', 'data_entry_pause_reason', 'data_entry_pause_reference', 'data_entry_assigned_to', 'data_entry_reassigned_at', 'line_items_to_add', 'finalized_at', 'finalized_by', 'submitted_line_items', 'data_entry_returned_at', 'data_entry_return_reason', 'senior_ops_reviewed_at', 'senior_ops_reviewed_by', 'verified_line_items', 'head_of_bd_approved_at', 'head_of_bd_approved_by', 'finalized_line_items', 'gm_assistant_started_at', 'gm_assistant_started_by', 'gm_assistant_paused_at', 'gm_assistant_pause_reason', 'gm_assistant_pause_reference', 'gm_assistant_completed_at', 'gm_assistant_completed_by', 'gm_approved_at', 'gm_approved_by', 'bd_closed_at', 'bd_closed_by', 'bd_reference_code', 'status', 'status_reason', 'status_changed_by', 'status_changed_at'])
             ->orderBy('rfq_user.part_number')
             ->orderBy('rfq_user.id');
     }
@@ -1868,6 +1868,147 @@ class Rfq extends Model
     }
 
     /**
+     * Whether Senior Operations can choose who has $part in Data Entry
+     * (replaceDataEntryPart()): it can have its Sourcing replaced
+     * (canReplaceSourcing()), and it hasn't been sent to finalize — it's with
+     * Data Entry, or still to come to them.
+     */
+    public function canReplaceDataEntry(int $part): bool
+    {
+        return $this->canReplaceSourcing($part)
+            && $this->assigneeForPart($part)->pivot->data_entry_completed_at === null;
+    }
+
+    /**
+     * Who has $part in Data Entry, as Senior Operations' Reassign goes by it:
+     * whoever's on it, or it was given to. Till it's handed over, only someone
+     * they named: whoever had it before it came back to Sourcing is just who
+     * Sourcing's picker starts on.
+     */
+    public function dataEntryHolderId(int $part): ?int
+    {
+        $holder = $this->assigneeForPart($part)?->pivot;
+
+        if ($holder?->completed_at === null) {
+            return $holder?->isDataEntryChosenByOperations() ? $holder->data_entry_assigned_to : null;
+        }
+
+        return $this->dataEntryPersonFor($part);
+    }
+
+    /**
+     * Where $part stands with Data Entry, for Senior Operations' Reassign
+     * (_reassign_button): whether it can be chosen now, whether Sourcing has
+     * handed it over, whose it is (null: nobody by name), and how that reads.
+     *
+     * @return array{can_replace: bool, handed_over: bool, current_id: ?int, label: string}
+     */
+    public function dataEntryStanding(int $part): array
+    {
+        $holder = $this->assigneeForPart($part)?->pivot;
+        $personId = $this->dataEntryHolderId($part);
+        $name = $personId !== null ? self::peopleNames()->get($personId, 'Someone no longer here') : null;
+
+        return [
+            'can_replace' => $this->canReplaceDataEntry($part),
+            'handed_over' => $holder?->completed_at !== null,
+            'current_id' => $personId,
+            'label' => match (true) {
+                $holder?->completed_at === null => $name !== null
+                    ? "{$name} — named, for when Sourcing hands it over"
+                    : 'Nobody named — Sourcing picks who when they hand it over',
+                $holder->data_entry_completed_at !== null => 'Finished — '.($name ?? 'Data Entry').' sent it to finalize.',
+                $holder->isDataEntryPaused() => "{$name} — paused ".$holder->data_entry_paused_at->toBusinessTimezone()->format('M d, g:i A'),
+                $holder->hasDataEntryStarted() => "{$name} — started ".$holder->data_entry_started_at->toBusinessTimezone()->format('M d, g:i A'),
+                $name !== null => "{$name} — not started",
+                default => 'Anyone in Data Entry — not started',
+            },
+        ];
+    }
+
+    /**
+     * Everyone's name by id — looked up once per request, for lists of
+     * parts (dataEntryStanding()).
+     *
+     * @return Collection<int, string>
+     */
+    private static function peopleNames(): Collection
+    {
+        $request = request();
+
+        if (! $request->attributes->has('people_names')) {
+            $request->attributes->set('people_names', User::query()->pluck('name', 'id'));
+        }
+
+        return $request->attributes->get('people_names');
+    }
+
+    /**
+     * Senior Operations gives $part to $to in Data Entry — or, with null, to
+     * anyone there, whoever starts it first — whether or not it's been
+     * started. If someone was on it, the time they put in stays theirs and
+     * their stretch ends here, not as finished; the part waits for a Start
+     * again (DATA_ENTRY_START_COLUMNS), so they're free to start another, and
+     * $to's countdown starts afresh from their own Start.
+     *
+     * Still with Sourcing, $to is named for when it's handed over, and stays
+     * so (RfqAssignment::isDataEntryChosenByOperations(),
+     * completeSourcingPart()); null takes that back, for Sourcing to pick.
+     *
+     * The thread says who it went from and to (and why, if given), and they're
+     * told. Returns whether it changed anything: nothing once the part's been
+     * sent to finalize (canReplaceDataEntry()), or if it's already theirs.
+     */
+    public function replaceDataEntryPart(int $part, ?User $to, User $by, ?string $reason = null): bool
+    {
+        $fromId = $this->dataEntryHolderId($part);
+
+        if (! $this->canReplaceDataEntry($part) || $fromId === $to?->id) {
+            return false;
+        }
+
+        $from = $fromId !== null ? User::query()->find($fromId) : null;
+        $label = $this->partNumberLabel($part);
+        $handedOver = $this->assigneeForPart($part)->pivot->completed_at !== null;
+
+        $this->assignees()->wherePivot('part_number', $part)->updateExistingPivot($this->assigneeForPart($part)->id, self::DATA_ENTRY_START_COLUMNS + [
+            'data_entry_assigned_to' => $to?->id,
+            'data_entry_reassigned_at' => $handedOver || $to !== null ? now() : null,
+        ]);
+        $this->load('assignees');
+
+        $what = match (true) {
+            $handedOver => 'Data Entry replaced: from '.($from?->name ?? 'anyone there').' to '.($to?->name ?? 'anyone there').'.',
+            $to === null => "Data Entry left to Sourcing to pick: {$from?->name} is no longer named.",
+            $from !== null => "Data Entry replaced: from {$from->name} to {$to->name}, for when Sourcing hands it over.",
+            default => "Data Entry assigned: {$to->name}, for when Sourcing hands it over.",
+        };
+        $comment = $this->postActionComment($by, 'reassigned', trim($what.' '.($reason ?? '')), $this->partContext($part));
+
+        $this->syncSteps();
+
+        if (! $handedOver) {
+            TaskMessages::send($this, $by, [$to], "Named you for {$label} in Data Entry — it comes to you once Sourcing hands it over", $reason, $comment);
+            TaskMessages::send($this, $by, [$from], $to !== null
+                ? "Gave {$label} to {$to->name} in Data Entry — it's no longer yours"
+                : "Took you off {$label} in Data Entry — Sourcing will pick who has it", $reason, $comment);
+
+            return true;
+        }
+
+        if ($to === null) {
+            TaskMessages::send($this, $by, User::query()->holdingRole('Data Entry')->get(), "Left {$label} with anyone in Data Entry — anyone there can start it", $reason, $comment);
+
+            return true;
+        }
+
+        TaskMessages::send($this, $by, [$to], "Gave you {$label} in Data Entry".($from !== null ? " — it was {$from->name}'s" : ''), $reason, $comment);
+        TaskMessages::send($this, $by, [$from], "Gave {$label} to {$to->name} in Data Entry — it's no longer yours", $reason, $comment);
+
+        return true;
+    }
+
+    /**
      * Whether $user can say why $part is still pending: they're its Sourcing
      * member, the RFQ is Pending, and the part is on their Pending for
      * Sourcing list (RfqAssignment::isPendingWithSourcing()).
@@ -1939,7 +2080,9 @@ class Rfq extends Model
     /**
      * Marks one Sourcing part done — assigned to Data Entry: to $dataEntry,
      * if they named someone there, else to anyone in Data Entry, whoever
-     * starts it first (rfq_user.data_entry_assigned_to) — with how many line
+     * starts it first (rfq_user.data_entry_assigned_to), unless Senior
+     * Operations has named someone, who it goes to whatever's picked
+     * (replaceDataEntryPart()) — with how many line
      * items Data Entry has to add ($lineItems). Idempotent —
      * completing an already-completed part is a no-op. Once every part is
      * assigned and completed, the RFQ itself is marked handed off to Data
@@ -1960,6 +2103,10 @@ class Rfq extends Model
             return false;
         }
 
+        // Whoever Senior Operations named stands over what was picked here.
+        $namedByOperations = $assignee->pivot->isDataEntryChosenByOperations();
+        $dataEntry = $namedByOperations ? User::query()->find($assignee->pivot->data_entry_assigned_to) ?? $dataEntry : $dataEntry;
+
         // Only while it's still not completed — a second request at the same
         // moment finds it done, and leaves it be.
         $completed = $this->assignees()->wherePivot('part_number', $part)->wherePivotNull('completed_at')->updateExistingPivot($assignee->id, self::CLEARED_PENDING_REASON + [
@@ -1969,6 +2116,7 @@ class Rfq extends Model
             'return_line_items' => null,
             'returned_by' => null,
             'data_entry_assigned_to' => $dataEntry?->id,
+            'data_entry_reassigned_at' => $namedByOperations ? $assignee->pivot->data_entry_reassigned_at : null,
             'line_items_to_add' => $lineItems,
         ]);
         $this->load('assignees');
@@ -3434,8 +3582,8 @@ class Rfq extends Model
 
     /**
      * When each part waiting for Data Entry to start came in — handed over by
-     * Sourcing, sent back from Finalize, set going again, or rejected back —
-     * on a Pending RFQ: what Data Entry's idle alert counts from
+     * Sourcing, sent back from Finalize, set going again, rejected back, or
+     * given to someone else there (replaceDataEntryPart()) — on a Pending RFQ: what Data Entry's idle alert counts from
      * (User::dataEntryIdleness()). With $forUser, only the parts that are
      * theirs to start: assigned to them, or to anyone in Data Entry.
      *
@@ -3453,7 +3601,7 @@ class Rfq extends Model
             ->whereNotNull('rfq_user.completed_at')
             ->whereNull('rfq_user.data_entry_completed_at')
             ->whereNull('rfq_user.data_entry_started_at')
-            ->get(['rfq_user.completed_at', 'rfq_user.data_entry_returned_at', 'rfq_user.status_changed_at', 'rfqs.rejected_at'])
+            ->get(['rfq_user.completed_at', 'rfq_user.data_entry_returned_at', 'rfq_user.data_entry_reassigned_at', 'rfq_user.status_changed_at', 'rfqs.rejected_at'])
             ->map(fn (object $part) => collect((array) $part)->filter()->map(fn (string $at) => CarbonImmutable::parse($at))->max());
     }
 

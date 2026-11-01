@@ -1526,15 +1526,21 @@ function rfqmsBoot() {
             document.getElementById('complete-audience').textContent = button.dataset.audience;
 
             // Assign to Data Entry: whom there it's for — who it was given
-            // to before, if it's been with them.
+            // to before, if it's been with them; someone Senior Operations
+            // named can't be changed.
             var dataEntryBox = document.getElementById('complete-data-entry');
             if (dataEntryBox) {
                 var picksDataEntry = (button.dataset.kind || 'sourcing') === 'sourcing';
                 var dataEntrySelect = document.getElementById('complete-data-entry-select');
+                var namedByOperations = picksDataEntry ? (button.dataset.deNamed || '') : '';
+                var namedNote = document.getElementById('complete-data-entry-named');
                 dataEntryBox.classList.toggle('d-none', !picksDataEntry);
-                dataEntrySelect.disabled = !picksDataEntry;
+                dataEntrySelect.disabled = !picksDataEntry || namedByOperations !== '';
                 dataEntrySelect.value = picksDataEntry ? (button.dataset.deAssignee || '') : '';
                 if (dataEntrySelect.selectedIndex === -1) dataEntrySelect.value = '';
+                namedNote.textContent = namedByOperations ? 'Senior Operations named ' + namedByOperations + ' for this part, so it goes to them.' : '';
+                namedNote.classList.toggle('d-none', !namedByOperations);
+                document.getElementById('complete-data-entry-hint').classList.toggle('d-none', !!namedByOperations);
             }
 
             if (lineItemsBox) {
@@ -2630,8 +2636,10 @@ function rfqmsBoot() {
         });
     }
 
-    // Senior Operations' Reassign on a part still with Sourcing: the popup is
-    // pointed at the part, says who has it, and won't offer them again.
+    // Senior Operations' Reassign on a part: the popup is pointed at the part,
+    // says who has it in Sourcing and Data Entry, and won't offer them again.
+    // Data Entry can be chosen till the part's sent to finalize: named ahead
+    // while it's still with Sourcing, whose choice "nobody by name" gives back.
     var reassignModal = document.getElementById('reassignModal');
     if (reassignModal) {
         reassignModal.addEventListener('show.bs.modal', function (event) {
@@ -2640,16 +2648,32 @@ function rfqmsBoot() {
 
             var form = document.getElementById('reassignForm');
             var select = form.querySelector('[name="user_id"]');
-            var target = button.dataset.label + ' \u2014 with ' + button.dataset.currentName;
+            var dataEntry = form.querySelector('[name="data_entry_user_id"]');
+            var canReplaceDataEntry = button.dataset.deCanReplace === '1';
+            var handedOver = button.dataset.deHanded === '1';
+            var dataEntryNow = button.dataset.deCurrentId || '';
+            var target = button.dataset.label;
 
             form.action = button.dataset.action;
             form.querySelector('[name="reassign_rfq_id"]').value = button.dataset.rfqId || '';
             form.querySelector('[name="part"]').value = button.dataset.part || '';
             form.querySelector('[name="reassign_target"]').value = target;
             document.getElementById('reassignTarget').textContent = target;
+            document.getElementById('reassign-sourcing-now').textContent = button.dataset.currentName;
+            document.getElementById('reassign-de-now').textContent = button.dataset.deNow;
+            document.getElementById('reassign-de-field').classList.toggle('d-none', !canReplaceDataEntry);
+            document.getElementById('reassign-de-hint-handed').classList.toggle('d-none', !handedOver);
+            document.getElementById('reassign-de-hint-ahead').classList.toggle('d-none', handedOver);
+            dataEntry.querySelector('option[value="anyone"]').textContent = handedOver ? 'Anyone in Data Entry \u2014 whoever starts it first' : 'Nobody by name \u2014 Sourcing picks who';
 
             select.value = '';
             select.classList.remove('is-invalid');
+            dataEntry.value = '';
+            dataEntry.disabled = !canReplaceDataEntry;
+            dataEntry.classList.remove('is-invalid');
+            Array.prototype.forEach.call(dataEntry.options, function (option) {
+                option.disabled = option.value === 'anyone' ? dataEntryNow === '' : option.value !== '' && option.value === dataEntryNow;
+            });
             var reason = form.querySelector('[name="reason"]');
             if (reason) reason.value = '';
             Array.prototype.forEach.call(select.options, function (option) {

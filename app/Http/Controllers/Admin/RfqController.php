@@ -1524,22 +1524,27 @@ class RfqController extends Controller implements HasMiddleware
     }
 
     /**
-     * Senior Operations replaces a part's Sourcing member with another, at
-     * whatever step the part has got to — from the Assigned tab or the RFQ's
-     * page — with a reason if they like. The part keeps its progress
-     * (Rfq::replaceSourcingPart()). Not a closed or cancelled one. Admin can
-     * too, as one of Senior Operations (doneBy()).
+     * Senior Operations' Reassign on a part — from the Assigned tab or the
+     * RFQ's page, with a reason if they like: its Sourcing member replaced by
+     * another (user_id), at whatever step it's got to, its progress kept
+     * (Rfq::replaceSourcingPart()), and/or, till it's sent to finalize, who
+     * has it in Data Entry (data_entry_user_id: someone by name, or 'anyone' —
+     * Rfq::replaceDataEntryPart()), named ahead while it's still with
+     * Sourcing. Everything's checked before either is done, so a refusal
+     * changes nothing. Not a closed or cancelled part.
+     * Admin can too, as one of Senior Operations (doneBy()).
      */
-    public function reassignSourcing(Request $request, Rfq $rfq): RedirectResponse
+    public function reassign(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can replace Sourcing.');
+        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can reassign.');
 
         $validated = $request->validateWithBag('reassign', [
             'part' => ['required', 'integer'],
-            'user_id' => ['required', 'integer'],
+            'user_id' => ['nullable', 'integer'],
+            'data_entry_user_id' => ['nullable', 'regex:/^(anyone|\d+)$/'],
             'reason' => ['nullable', 'string', 'max:1000'],
         ], [
-            'user_id.required' => 'Pick who takes it over.',
+            'data_entry_user_id.regex' => 'Pick someone from Data Entry.',
             'reason.max' => 'Keep the reason under 1000 characters.',
         ]);
 
@@ -1547,20 +1552,71 @@ class RfqController extends Controller implements HasMiddleware
         $current = $rfq->assigneeForPart($part);
 
         abort_unless($current, 404, 'That part is not assigned on this RFQ.');
-        abort_unless($rfq->canReplaceSourcing($part), 422, 'This part is closed or cancelled — its Sourcing can\'t be replaced now.');
+        abort_unless($rfq->canReplaceSourcing($part), 422, 'This part is closed or cancelled — it can\'t be reassigned now.');
 
-        $to = User::role('Sourcing')->active()->find($validated['user_id']);
+        $refuse = fn (string $field, string $message) => back()->withInput()->withErrors([$field => $message], 'reassign');
+        $newSourcing = filled($validated['user_id'] ?? null);
+        $newDataEntry = filled($validated['data_entry_user_id'] ?? null);
 
-        if ($to === null || $to->id === $current->id) {
-            return back()->withInput()->withErrors([
-                'user_id' => $to === null ? 'Pick someone from Sourcing.' : 'They already have it — pick someone else.',
-            ], 'reassign');
+        if (! $newSourcing && ! $newDataEntry) {
+            return $refuse('user_id', 'Pick who takes over Sourcing or Data Entry.');
+        }
+
+        $sourcingTo = $newSourcing ? User::role('Sourcing')->active()->find($validated['user_id']) : null;
+
+        if ($newSourcing && ($sourcingTo === null || $sourcingTo->id === $current->id)) {
+            return $refuse('user_id', $sourcingTo === null ? 'Pick someone from Sourcing.' : 'They already have it — pick someone else.');
+        }
+
+        $dataEntryTo = null;
+
+        if ($newDataEntry) {
+            abort_unless($rfq->canReplaceDataEntry($part), 422, 'This part has already been through Data Entry.');
+
+            $toAnyone = $validated['data_entry_user_id'] === 'anyone';
+            $dataEntryTo = $toAnyone ? null : User::query()->holdingRole('Data Entry')->find((int) $validated['data_entry_user_id']);
+
+            if (! $toAnyone && $dataEntryTo === null) {
+                return $refuse('data_entry_user_id', 'Pick someone from Data Entry.');
+            }
+
+            if ($rfq->dataEntryHolderId($part) === $dataEntryTo?->id) {
+                return $refuse('data_entry_user_id', $toAnyone ? 'It\'s already with anyone in Data Entry.' : 'They already have it — pick someone else.');
+            }
         }
 
         $reason = trim((string) ($validated['reason'] ?? ''));
-        $rfq->replaceSourcingPart($part, $to, $this->doneBy($request, 'Senior Operations'), $reason !== '' ? $reason : null);
+        $reason = $reason !== '' ? $reason : null;
+        $by = $this->doneBy($request, 'Senior Operations');
+        $label = $rfq->partNumberLabel($part);
+        $done = [];
 
-        return redirect()->back()->with('status', "Replaced Sourcing on {$rfq->partNumberLabel($part)}: {$current->name} → {$to->name}.");
+        if ($newSourcing) {
+            $rfq->replaceSourcingPart($part, $sourcingTo, $by, $reason);
+            $done[] = "Replaced Sourcing on {$label}: {$current->name} → {$sourcingTo->name}.";
+        }
+
+        if ($newDataEntry) {
+            $dataEntryFrom = $rfq->dataEntryHolderId($part);
+            $names = User::query()->whereKey(array_filter([$dataEntryFrom]))->pluck('name', 'id');
+            $handedOver = $rfq->dataEntryStanding($part)['handed_over'];
+
+            if ($rfq->replaceDataEntryPart($part, $dataEntryTo, $by, $reason)) {
+                $done[] = match (true) {
+                    $handedOver => "Replaced Data Entry on {$label}: ".($names->get($dataEntryFrom) ?? 'anyone there').' → '.($dataEntryTo?->name ?? 'anyone there').'.',
+                    $dataEntryTo !== null => "Named {$dataEntryTo->name} for Data Entry on {$label} — it goes to them once Sourcing hands it over.",
+                    default => "Sourcing picks who has {$label} in Data Entry again.",
+                };
+
+                // Once it's theirs to start, they're told in their bell, as
+                // when Sourcing names them; named ahead, the alert comes with it.
+                if ($handedOver) {
+                    $dataEntryTo?->notify(new DataEntryAssigned($rfq->refresh(), $part, $by));
+                }
+            }
+        }
+
+        return redirect()->back()->with('status', implode(' ', $done));
     }
 
     /**
@@ -1667,8 +1723,10 @@ class RfqController extends Controller implements HasMiddleware
             return $this->redirectAfterSave($request, $rfq)->with('status', 'This part is already assigned to Data Entry.');
         }
 
-        // They're told, in their bell.
-        $dataEntry?->notify(new DataEntryAssigned($rfq->refresh(), (int) $validated['part'], $assignee));
+        // Whoever it went to — Senior Operations' named person, if they named
+        // one (Rfq::completeSourcingPart()) — is told, in their bell.
+        $dataEntry = $rfq->refresh()->assigneeForPart((int) $validated['part'])?->pivot->dataEntryAssignee;
+        $dataEntry?->notify(new DataEntryAssigned($rfq, (int) $validated['part'], $assignee));
 
         $status = $dataEntry !== null
             ? "Assigned to {$dataEntry->name} in Data Entry."

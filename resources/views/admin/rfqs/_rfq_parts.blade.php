@@ -10,9 +10,11 @@
     once it has been, set going again — until it's closed; an RFQ kept whole
     is put on hold or cancelled from its one line, the whole RFQ with it.
 
-    A part's Sourcing member can be replaced by another from its line, at
-    whatever step it's got to, its progress kept (Replace, _reassign_modal,
-    Rfq::canReplaceSourcing()) — not once it's closed or cancelled.
+    A part can be given to someone else from its line (Reassign,
+    _reassign_button, _reassign_modal): its Sourcing member, at whatever step
+    it's got to, its progress kept, and who has it in Data Entry till it's
+    sent to finalize (Rfq::canReplaceSourcing(), canReplaceDataEntry()) — not
+    once it's closed or cancelled.
 
     A part still pending with its Sourcing member says why on hovering its
     badge, if they've said (_pending_reason_badge).
@@ -70,7 +72,10 @@
                                 </span>
                                 @break
                             @case ('with_data_entry')
-                                <span class="rfq-part-detail">Sourcing done {{ $pivot->completed_at->toBusinessTimezone()->format('M d, g:i A') }}</span>
+                                <span class="rfq-part-detail">
+                                    Sourcing done {{ $pivot->completed_at->toBusinessTimezone()->format('M d, g:i A') }}
+                                    · Data Entry: {{ $rfq->dataEntryStanding($part['part'])['label'] }}
+                                </span>
                                 @break
                             @case ('returned')
                                 <span class="rfq-part-detail rfq-part-detail-returned">
@@ -78,6 +83,10 @@
                                 </span>
                                 @break
                         @endswitch
+                        {{-- Named ahead by Senior Operations, while it's still with Sourcing. --}}
+                        @if ($pivot->completed_at === null && $pivot->isDataEntryChosenByOperations())
+                            <span class="rfq-part-detail" data-data-entry-named>Data Entry: {{ $rfq->dataEntryStanding($part['part'])['label'] }}</span>
+                        @endif
                         @if ($pivot->isStopped())
                             <span class="rfq-part-detail rfq-part-detail-stopped">
                                 <span class="badge {{ $pivot->isOnHold() ? 'badge-soft-info' : 'badge-soft-secondary' }}">
@@ -96,17 +105,7 @@
                     @if ($canReassign || $canChangeThisStatus)
                         <span class="rfq-part-actions">
                             @if ($canReassign)
-                                <button type="button" class="btn btn-sm btn-outline-primary js-reassign-part"
-                                        data-bs-toggle="modal" data-bs-target="#reassignModal"
-                                        data-action="{{ route('admin.rfqs.reassign-sourcing', $rfq) }}"
-                                        data-rfq-id="{{ $rfq->id }}"
-                                        data-part="{{ $part['part'] }}"
-                                        data-label="{{ $isSplit ? $part['number'] : $rfq->rfq_number }}"
-                                        data-current-id="{{ $assignee->id }}"
-                                        data-current-name="{{ $assignee->name }}"
-                                        title="Give this part to another Sourcing member — its progress kept">
-                                    <i class="bi bi-person-gear"></i> Replace
-                                </button>
+                                @include('admin.rfqs._reassign_button', ['rfq' => $rfq, 'assignee' => $assignee])
                             @endif
                             @if ($canChangeThisStatus && ! $isSplit)
                                 @include('admin.rfqs._status_options', [

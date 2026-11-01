@@ -242,7 +242,7 @@
                                                 @if ($assignee->pivot->data_entry_assigned_to)
                                                     <div class="rfq-list-subnote rfq-list-subnote-assigned">
                                                         <i class="bi bi-person-check"></i>
-                                                        {{ (int) $assignee->pivot->data_entry_assigned_to === auth()->id() ? 'Assigned to you' : 'Assigned to '.($assignee->pivot->dataEntryAssignee?->name ?? 'someone in Data Entry') }}
+                                                        {{ $assignee->pivot->dataEntryReassignedAt() ? 'Reassigned' : 'Assigned' }} to {{ (int) $assignee->pivot->data_entry_assigned_to === auth()->id() ? 'you' : ($assignee->pivot->dataEntryAssignee?->name ?? 'someone in Data Entry') }}@if ($assignee->pivot->dataEntryReassignedAt()) · {{ $assignee->pivot->dataEntryReassignedAt()->toBusinessTimezone()->format('M d, g:i A') }}@endif
                                                     </div>
                                                 @endif
                                                 @if ($assignee->pivot->hasDataEntryStarted())

@@ -37,9 +37,11 @@
 
     // Assign to Data Entry picks, to begin with, whoever in Data Entry had
     // the part last — else the Sourcing member's usual person there
-    // (User::defaultDataEntryUser()), else anyone.
+    // (User::defaultDataEntryUser()), else anyone. Someone Senior Operations
+    // named can't be changed here (Rfq::replaceDataEntryPart()).
     $partHolder = $kind === 'sourcing' ? $rfq->assigneeForPart((int) $part) : null;
     $deAssignee = $partHolder?->pivot->data_entry_assigned_to ?? $partHolder?->default_data_entry_user_id;
+    $deNamed = $partHolder?->pivot->isDataEntryChosenByOperations() ? $partHolder->pivot->dataEntryAssignee?->name : null;
 
     [$route, $audience, $heading, $hint, $placeholder, $defaultLabel, $defaultClass, $icon] = match ($kind) {
         'return' => [
@@ -111,6 +113,7 @@
         data-subject="{{ $rfq->subject }}"
         data-items="{{ $kind === 'data_entry' ? $rfq->number_of_items : '' }}"
         data-de-assignee="{{ $kind === 'sourcing' ? $deAssignee : '' }}"
+        data-de-named="{{ $deNamed }}"
         data-line-items="{{ in_array($kind, ['sourcing', 'data_entry', 'return'], true) ? $rfq->assigneeForPart((int) $part)?->pivot->line_items_to_add : '' }}"
         data-who="{{ $who ?? $forAssignee?->name ?? '' }}"
         data-audience="{{ $audience }}"

@@ -62,21 +62,6 @@
                      with what's already theirs. Shown, and sent, for that action
                      alone (admin.js). See RfqController::completeSourcing(). --}}
                 @if (auth()->user()->hasAnyRole(['Sourcing', 'Admin']))
-                    @php
-                        $dataEntryPeople = \App\Models\User::query()->holdingRole('Data Entry')->orderBy('name')->get();
-                        $waitingFor = \Illuminate\Support\Facades\DB::table('rfq_user')
-                            ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
-                            ->where('rfqs.status', 'Pending')
-                            ->whereNull('rfq_user.status')
-                            ->whereNotNull('rfq_user.completed_at')
-                            ->whereNull('rfq_user.data_entry_completed_at')
-                            ->whereNull('rfq_user.data_entry_started_at')
-                            ->whereNotNull('rfq_user.data_entry_assigned_to')
-                            ->groupBy('rfq_user.data_entry_assigned_to')
-                            ->selectRaw('rfq_user.data_entry_assigned_to as person, count(*) as total')
-                            ->pluck('total', 'person');
-                        $runningFor = \App\Models\RfqStep::query()->where('step', 'data_entry')->whereNull('ended_at')->pluck('worked_by')->countBy();
-                    @endphp
                     {{-- How many line items Data Entry has to add — asked, and sent,
                          for Assign to Data Entry alone (admin.js). --}}
                     <div class="mb-3 d-none" id="complete-line-items">
@@ -97,17 +82,11 @@
                         <label class="form-label" for="complete-data-entry-select">Data Entry person</label>
                         <select name="data_entry_user_id" id="complete-data-entry-select" class="form-select" disabled>
                             <option value="">Anyone in Data Entry — whoever starts it first</option>
-                            @foreach ($dataEntryPeople as $person)
-                                @php
-                                    $load = collect([
-                                        ($waitingFor[$person->id] ?? 0) > 0 ? $waitingFor[$person->id].' waiting' : null,
-                                        ($runningFor[$person->id] ?? 0) > 0 ? 'on a part now' : null,
-                                    ])->filter()->join(' · ');
-                                @endphp
-                                <option value="{{ $person->id }}">{{ $person->name }}{{ $load !== '' ? ' — '.$load : ' — free' }}</option>
-                            @endforeach
+                            @include('admin.rfqs._data_entry_person_options')
                         </select>
-                        <div class="form-text">Someone by name sees it on their list, gets an alert, and is the one to start it.</div>
+                        <div class="form-text" id="complete-data-entry-hint">Someone by name sees it on their list, gets an alert, and is the one to start it.</div>
+                        {{-- Named by Senior Operations: shown, not theirs to change (admin.js). --}}
+                        <div class="form-text fw-semibold d-none" id="complete-data-entry-named"></div>
                     </div>
                 @endif
 

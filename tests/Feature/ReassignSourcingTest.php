@@ -27,7 +27,7 @@ it('offers Replace on the Assigned tab for each part, whatever step it\'s at', f
 
     expect($partLine('RFQ18001-P1 of P2'))->toContain('js-reassign-part')
         ->toContain('data-current-id="'.$riley->id.'"')
-        ->toContain('<i class="bi bi-person-gear"></i> Replace')
+        ->toContain('<i class="bi bi-person-gear"></i> Reassign')
         // Gone on to Data Entry: still replaceable.
         ->and($partLine('RFQ18001-P2 of P2'))->toContain('data-current-id="'.$sam->id.'"')
         ->and($assignedTab)->toContain('id="reassignModal"')
@@ -39,7 +39,7 @@ it('gives a part still with Sourcing to another member — off the first one\'s 
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ18002']), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('status', "Replaced Sourcing on RFQ18002-P1 of P2: {$riley->name} → {$sam->name}.");
 
@@ -66,7 +66,7 @@ it('can replace Sourcing on a part Data Entry sent back for rework', function ()
 
     expect($rfq->refresh()->canReplaceSourcing(1))->toBeTrue();
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)?->id)->toBe($sam->id);
@@ -77,19 +77,19 @@ it('refuses to replace Sourcing on a closed or cancelled part, or with whoever h
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $riley->id])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $riley->id])
         ->assertSessionHasErrorsIn('reassign', ['user_id' => 'They already have it — pick someone else.']);
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => userWithRole('Data Entry')->id])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => userWithRole('Data Entry')->id])
         ->assertSessionHasErrorsIn('reassign', ['user_id' => 'Pick someone from Sourcing.']);
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1])
-        ->assertSessionHasErrorsIn('reassign', ['user_id' => 'Pick who takes it over.']);
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1])
+        ->assertSessionHasErrorsIn('reassign', ['user_id' => 'Pick who takes over Sourcing or Data Entry.']);
 
     // Closed by Business Development, or cancelled: done with.
     DB::table('rfq_user')->where('rfq_id', $rfq->id)->where('part_number', 1)->update(['bd_closed_at' => now()]);
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertStatus(422);
     $rfq->refresh()->changePartStatus(2, Rfq::CANCELLED, $ops, 'Client dropped it');
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 2, 'user_id' => $sam->id])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 2, 'user_id' => $sam->id])
         ->assertStatus(422);
 
     expect($rfq->refresh()->assigneeForPart(1)?->id)->toBe($riley->id);
@@ -100,12 +100,12 @@ it('lets only Senior Operations and Admin replace Sourcing', function () {
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
     foreach (['Sourcing', 'Business Development', 'Data Entry'] as $role) {
-        test()->actingAs(userWithRole($role))->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])
+        test()->actingAs(userWithRole($role))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
             ->assertForbidden();
     }
 
     $ops = userWithRole('Senior Operations');
-    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id, 'acting_user_id' => $ops->id])
+    test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id, 'acting_user_id' => $ops->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)?->id)->toBe($sam->id)
@@ -117,16 +117,16 @@ it('reopens the popup against the same part when no one\'s picked', function () 
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $assignedUrl = route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'assigned']);
 
-    test()->actingAs($ops)->from($assignedUrl)->patch(route('admin.rfqs.reassign-sourcing', $rfq), [
+    test()->actingAs($ops)->from($assignedUrl)->patch(route('admin.rfqs.reassign', $rfq), [
         'part' => 1, 'reassign_rfq_id' => $rfq->id, 'reassign_target' => 'RFQ — with Riley',
     ])->assertRedirect($assignedUrl);
 
     $html = test()->actingAs($ops)->get($assignedUrl)->assertOk()
-        ->assertSee('Pick who takes it over.')
+        ->assertSee('Pick who takes over Sourcing or Data Entry.')
         ->assertSee('getElementById(\'reassignModal\')).show()', false)
         ->getContent();
 
-    expect($html)->toMatch('/id="reassignForm"[^>]*action="'.preg_quote(route('admin.rfqs.reassign-sourcing', $rfq), '/').'"/');
+    expect($html)->toMatch('/id="reassignForm"[^>]*action="'.preg_quote(route('admin.rfqs.reassign', $rfq), '/').'"/');
 });
 
 it('replaces Sourcing on a part past Sourcing, keeping everything done on it — and Data Entry\'s time running on', function () {
@@ -139,7 +139,7 @@ it('replaces Sourcing on a part past Sourcing, keeping everything done on it —
     $running = RfqStep::query()->where('step', 'data_entry')->whereNull('ended_at')->sole();
     $completedAt = $rfq->assigneeForPart(1)->pivot->completed_at;
 
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id, 'reason' => 'Riley is on leave this week.'])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id, 'reason' => 'Riley is on leave this week.'])
         ->assertSessionHasNoErrors();
 
     $part = $rfq->refresh()->assigneeForPart(1);
@@ -184,7 +184,7 @@ it('hands a send-straight-back waiting on the part to whoever takes it over', fu
     $rfq->refresh()->rejectPartToStage(1, 'sourcing', 'Fresh quote please', $head, 'head_of_bd_review');
     expect($rfq->refresh()->openReturnFor(1))->not->toBeNull();
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->openReturnFor(1))->not->toBeNull();
@@ -202,7 +202,7 @@ it('assigns the part to whoever takes it over from then — their Assigned At, a
     $firstAssigned = $rfq->assigneeForPart(1)->pivot->created_at;
 
     test()->travelTo(now()->setDate(2026, 10, 30)->setTime(9, 37));
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id])->assertSessionHasNoErrors();
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])->assertSessionHasNoErrors();
 
     $pivot = $rfq->refresh()->assigneeForPart(1)->pivot;
     $comment = $rfq->comments->firstWhere('action', 'reassigned');

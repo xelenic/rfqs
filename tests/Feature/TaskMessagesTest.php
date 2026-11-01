@@ -159,7 +159,7 @@ it('tells both Sourcing members when a part changes hands', function () {
     $sam = taskPerson('Sam Rivera', 'Sourcing');
     $rfq->assignSourcingParts([1 => $riley->id]);
 
-    test()->actingAs($ops)->patch(route('admin.rfqs.reassign-sourcing', $rfq), ['part' => 1, 'user_id' => $sam->id, 'reason' => 'Riley is on leave'])
+    test()->actingAs($ops)->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id, 'reason' => 'Riley is on leave'])
         ->assertSessionHasNoErrors();
 
     expect(lastMessageTo($sam)->body)->toBe("Gave you RFQ7001 in Sourcing — it was Riley Chen's — Valves:\nRiley is on leave")
