@@ -1783,7 +1783,7 @@
                             </thead>
                             <tbody>
                                 @forelse ($rfqs as $rfq)
-                                    @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'canRequestDetails' => true])
+                                    @include('admin.rfqs._rfq_row', ['rfq' => $rfq, 'statusFilter' => $statusFilter, 'restrictAssignment' => $restrictAssignment, 'canSeeAssignOperationsButton' => $canSeeAssignOperationsButton, 'canSeeAssignButtons' => $canSeeAssignButtons, 'canRequestDetails' => true, 'showNote' => true])
                                 @empty
                                     <tr>
                                         <td colspan="6" class="text-center text-muted-soft py-4">

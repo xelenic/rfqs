@@ -59,3 +59,6 @@ Since 2026-11-02, at the user's request, Replace is Reassign: _reassign_button o
 - data_entry_reassigned_at feeds their idle alert (dataEntryWaitingSince()) and "Reassigned to … · date" on their list. completeSourcingPart() clears it.
 - It posts a 'reassigned' comment without from_id, so the timeline adds no Sourcing assignment for it. TaskMessages and DataEntryAssigned tell them.
 The button's data-de-* come from Rfq::dataEntryStanding(), which also reads on the part's line. The Data Entry picker's options are shared with _complete_modal (_data_entry_person_options).
+
+## An RFQ's note shows on Senior Operations' Unassigned list
+Since 2026-11-02, at the user's request, the Note on the Add RFQ form (rfqs.description, labelled Description when editing) shows under the subject on the Unassigned tab (_rfq_row $showNote): up to three lines, with all of it on hover and on the RFQ page. Only that tab passes $showNote; other lists using _rfq_row don't show it.

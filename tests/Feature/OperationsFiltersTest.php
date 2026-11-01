@@ -303,3 +303,19 @@ it('gives Admin the same filters on Senior Operations\' page', function () {
         // The filter form stays on the role page.
         ->and($page)->toContain('<input type="hidden" name="role" value="senior-operations">');
 });
+
+it('shows the note an RFQ came in with under its subject on Unassigned — escaped, and not on the Assigned tab', function () {
+    Rfq::factory()->create(['rfq_number' => 'RFQ7301', 'description' => "Client needs it by Friday.\n<b>Call first</b>"]);
+    Rfq::factory()->create(['rfq_number' => 'RFQ7302', 'description' => '   ']);
+    Rfq::factory()->create(['rfq_number' => 'RFQ7303', 'description' => null]);
+    $assigned = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ7304', 'description' => 'Note on an assigned one']), [1 => userWithRole('Sourcing')]);
+
+    [$unassignedTab, $assignedTab] = operationsTabs();
+
+    expect($unassignedTab)->toContain('Client needs it by Friday.')
+        ->toContain('&lt;b&gt;Call first&lt;/b&gt;')
+        ->not->toContain('<b>Call first</b>')
+        ->and(substr_count($unassignedTab, 'data-rfq-note'))->toBe(1)
+        ->and($assignedTab)->toContain('RFQ7304')
+        ->not->toContain('data-rfq-note');
+});

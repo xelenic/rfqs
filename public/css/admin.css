@@ -7136,6 +7136,22 @@ a.critical-row:hover {
   margin-left: 0;
 }
 
+/* The note an RFQ came in with, on Senior Operations' Unassigned list (_rfq_row $showNote): up to three lines. */
+.rfq-list-subnote-note,
+:root[data-theme="dark"] .rfq-list-subnote-note {
+  color: var(--rfq-text-muted);
+}
+
+.rfq-list-subnote-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-weight: 400;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 /* Sourcing's own note of what they said, on their Pending for Sourcing list. */
 .rfq-list-subnote-pending,
 :root[data-theme="dark"] .rfq-list-subnote-pending {

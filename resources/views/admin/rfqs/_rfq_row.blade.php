@@ -23,6 +23,9 @@
     by how much on hover (Rfq::deadlines()), as the Time Spent report says.
     A Pending status says, on hover, why it's still pending — as its parts'
     Sourcing members said (_pending_reason_badge, Rfq::pendingReasons()).
+    Optional: $showNote — Senior Operations' Unassigned queue, where the note
+    an RFQ came in with (Add RFQ's Note, rfqs.description) shows under its
+    subject: up to three lines, all of it on hover.
     Optional: $canRequestDetails — Senior Operations' Unassigned queue, where
     an RFQ can be sent back to Business Development for details
     (_request_details_modal.blade.php). Once it has been, it's off that queue
@@ -102,6 +105,9 @@
     @endunless
     <td>
         {{ $rfq->subject }}
+        @if (($showNote ?? false) && filled($rfq->description))
+            <div class="rfq-list-subnote rfq-list-subnote-note" data-rfq-note title="{{ trim($rfq->description) }}"><i class="bi bi-sticky" aria-hidden="true"></i> {{ trim($rfq->description) }}</div>
+        @endif
         @if ($rfq->isStopped() && $rfq->status_reason)
             <div class="rfq-list-subnote">
                 <i class="bi {{ $rfq->status === \App\Models\Rfq::ON_HOLD ? 'bi-pause-circle' : 'bi-x-circle' }}"></i>
