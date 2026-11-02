@@ -5,6 +5,7 @@
 @php
     $reports = [
         'admin.reports.sourcing-daily' => ['Sourcing · Daily', 'bi-calendar-day'],
+        'admin.reports.sourcing-summary' => ['Sourcing · Summary', 'bi-clipboard-data'],
         'admin.reports.data-entry-daily' => ['Data Entry · Daily', 'bi-keyboard'],
         'admin.reports.sourcing-monthly' => ['Sourcing · Monthly', 'bi-calendar3'],
         'admin.reports.rfq-tracking' => ['RFQ Tracking Sheet', 'bi-table'],

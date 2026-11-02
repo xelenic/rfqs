@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\RfqController;
 use App\Http\Controllers\Admin\RfqDiscussionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SourcingDayFigureController;
 use App\Http\Controllers\Admin\TimeSpentReportController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\UserPhotoController;
@@ -77,6 +78,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
     Route::get('reports/sourcing-daily', [PerformanceReportController::class, 'sourcingDaily'])->name('reports.sourcing-daily');
+    Route::get('reports/sourcing-summary', [PerformanceReportController::class, 'sourcingSummary'])->name('reports.sourcing-summary');
+    Route::put('reports/sourcing-summary', [SourcingDayFigureController::class, 'updateForDay'])->name('reports.sourcing-summary.update');
+    Route::patch('sourcing-calls', [SourcingDayFigureController::class, 'updateOwnCalls'])->name('sourcing-calls.update');
     Route::get('reports/data-entry-daily', [PerformanceReportController::class, 'dataEntryDaily'])->name('reports.data-entry-daily');
     Route::get('reports/sourcing-monthly', [PerformanceReportController::class, 'sourcingMonthly'])->name('reports.sourcing-monthly');
     Route::get('reports/rfq-tracking', [PerformanceReportController::class, 'rfqTracking'])->name('reports.rfq-tracking');

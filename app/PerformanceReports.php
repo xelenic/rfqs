@@ -4,6 +4,7 @@ namespace App;
 
 use App\Models\RfqStep;
 use App\Models\Setting;
+use App\Models\SourcingDayFigure;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -167,6 +168,43 @@ class PerformanceReports
             'people' => $summaries,
             'total' => $figures($union('finalized'), ['pending' => $union('pending'), 'customer' => $union('customer')]),
             'asOf' => $asOf,
+        ];
+    }
+
+    /**
+     * The Sourcing Summary: one row a person over the days from $from to $to —
+     * sourcingDaily()'s figures across the range (pending and waiting as at
+     * its last day), the RFQs they received, and what's typed in by hand
+     * (SourcingDayFigure), added up — null where nothing was given. With the
+     * total: each RFQ once, and the typed-in figures added up.
+     *
+     * @param  Collection<int, User>  $people
+     * @return array{rows: Collection<int, array<string, mixed>>, total: array<string, mixed>, asOf: string}
+     */
+    public function sourcingSummary(Collection $people, string $from, string $to): array
+    {
+        $ids = $people->pluck('id')->all();
+        $daily = $this->sourcingDaily($people, $from, $to);
+        $parts = $this->parts(fn ($query) => $query->whereIn('rfq_user.user_id', $ids));
+        $receipts = $this->receipts($ids, $parts);
+        [$start] = $this->dayBounds($from);
+        [, $end] = $this->dayBounds($daily['asOf']);
+        $typedIn = SourcingDayFigure::query()->whereIn('user_id', $ids)->where('day', '>=', $from)->where('day', '<=', $to)->get()->groupBy('user_id');
+        $fields = [...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'];
+        $added = fn (Collection $rows, string $field) => $rows->whereNotNull($field)->isEmpty() ? null : (int) $rows->sum($field);
+
+        $rows = $daily['people']->map(fn (array $summary) => $summary + [
+            'received' => $receipts
+                ->filter(fn (array $receipt) => $receipt['user_id'] === $summary['user']->id && $receipt['at']->between($start, $end))
+                ->pluck('rfq_id')->unique()->count(),
+        ] + collect($fields)->mapWithKeys(fn (string $field) => [
+            $field => $added($typedIn->get($summary['user']->id, collect()), $field),
+        ])->all())->values();
+
+        return [
+            'rows' => $rows,
+            'total' => $daily['total'] + collect($fields)->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
+            'asOf' => $daily['asOf'],
         ];
     }
 

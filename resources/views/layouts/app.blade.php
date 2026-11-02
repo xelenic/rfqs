@@ -97,6 +97,7 @@
                     @if (auth()->user()->canViewPerformanceReports())
                         @foreach ([
                             'admin.reports.sourcing-daily' => ['Sourcing Daily', 'bi-calendar-day'],
+                            'admin.reports.sourcing-summary' => ['Sourcing Summary', 'bi-clipboard-data'],
                             'admin.reports.sourcing-monthly' => ['Sourcing Monthly', 'bi-calendar3'],
                             'admin.reports.data-entry-daily' => ['Data Entry Daily', 'bi-keyboard'],
                             'admin.reports.rfq-tracking' => ['RFQ Tracking Sheet', 'bi-table'],

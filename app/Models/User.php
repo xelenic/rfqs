@@ -132,6 +132,15 @@ class User extends Authenticatable
     public const PERFORMANCE_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
 
     /**
+     * Who sets expected RFQs and corrects supplier calls on the Sourcing
+     * Summary report (SourcingDayFigure). HR Executive sees the report, and
+     * doesn't change it.
+     *
+     * @var array<int, string>
+     */
+    public const SOURCING_FIGURES_ROLES = ['Admin', 'Senior Operations'];
+
+    /**
      * The roles with "All RFQs" in their sidebar — the RFQ list with no
      * status or role asked for: every RFQ, whatever its status or where it
      * is. The General Manager's since 2026-10-21, beside their Review queue;
@@ -435,6 +444,15 @@ class User extends Authenticatable
     public function canViewPerformanceReports(): bool
     {
         return $this->hasAnyRole(self::PERFORMANCE_REPORT_ROLES);
+    }
+
+    /**
+     * Whether this person can change the Sourcing Summary report's typed-in
+     * figures — see SOURCING_FIGURES_ROLES.
+     */
+    public function canEditSourcingFigures(): bool
+    {
+        return $this->hasAnyRole(self::SOURCING_FIGURES_ROLES);
     }
 
     /**

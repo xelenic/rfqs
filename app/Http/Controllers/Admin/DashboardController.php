@@ -10,6 +10,7 @@ use App\Models\RfqAssignment;
 use App\Models\RfqComment;
 use App\Models\RfqStep;
 use App\Models\Setting;
+use App\Models\SourcingDayFigure;
 use App\Models\User;
 use App\Notifications\DataEntryIdle;
 use Carbon\CarbonImmutable;
@@ -170,8 +171,15 @@ class DashboardController extends Controller
         // come back, what's with Data Entry, and what they were given last.
         if ($canViewRfqs && $user->hasRole('Sourcing') && ! $user->hasRole('Admin')) {
             $overview = $this->sourcingOverview($user);
+            // Which day's supplier calls their card is on: today, unless they
+            // picked an earlier one to fill in.
+            $callsDay = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('calls_date')) && $request->query('calls_date') <= Setting::today()
+                ? $request->query('calls_date')
+                : Setting::today();
 
             return view('admin.dashboard.sourcing', [
+                'callsDay' => $callsDay,
+                'callsFigure' => SourcingDayFigure::query()->where('user_id', $user->id)->where('day', $callsDay)->first(),
                 'overview' => $overview,
                 'notifications' => $this->sourcingNotifications($overview),
             ]);

@@ -65,7 +65,13 @@ Since 2026-10-19, reports for Admin, HR Executive and (since 2026-10-20) Senior 
 - Finalized and quotation completed are rfq_user.finalized_at / finalized_by. Data Entry completed is data_entry_completed_at / by.
 - Pending is received and not yet finalized at the end of the day, excluding cancelled parts and those waiting for customer clarification, which are counted apart.
 - Hold state on a past day is rebuilt from put_on_hold / cancelled / resumed / reopened comments (meta.part, meta.customer_clarification), never from the current status.
-Change a definition here, not in a view, so all four reports stay consistent.
+Change a definition here, not in a view, so all the reports stay consistent.
+
+## The Sourcing Summary report mixes worked-out and typed-in figures (SourcingDayFigure)
+Since 2026-11-02, at the user's request, reports/sourcing-summary follows the business's sheet: one row a person over a day or range, plus a Total. Its white columns are App\PerformanceReports figures, reused from sourcingDaily() (received comes from receipts()). Its yellow columns aren't recorded anywhere else, so they're typed in, one sourcing_day_figures row per person per day, and added up over a range; null means not given, not 0:
+- Supplier calls (CALL_FIELDS): each Sourcing member enters their own, on their dashboard (updateOwnCalls()), today or an earlier day.
+- Expected RFQs: only Senior Operations and Admin (User::SOURCING_FIGURES_ROLES), right in the report, on a single day (updateForDay(); inputs show only when from = to). They can correct calls there too. HR Executive only sees it.
+A member's save never touches expected_rfqs. `day` is a plain "Y-m-d" string with no date cast, so string comparison works on SQLite and MySQL. The table has no rfq_id, so Clear RFQ data keeps it.
 
 ## Roles are looked up by name: HR Manager is now HR Executive
 Since 2026-10-19, the HR role is "HR Executive" (formerly HR Manager). The migration rename_hr_manager_role_to_hr_executive renames the role, or folds HR Manager into an existing HR Executive, and older migrations still say HR Manager as history. Access is checked by role name (hasRole, hasAnyRole, User::*_ROLES constants, Rfq::WORKFLOW_ROLES), so renaming a role on the Roles page silently removes its access everywhere. That happened here: the role was renamed in the UI before the code was. A role rename needs a code change and a migration, not only the Roles page.

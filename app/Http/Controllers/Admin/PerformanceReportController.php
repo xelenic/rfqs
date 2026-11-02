@@ -20,7 +20,8 @@ use Illuminate\View\View;
  * items), Data Entry's daily report (RFQs completed, their items, the time
  * spent), Sourcing's monthly evaluation (RFQs received, quotations
  * completed, the average time to complete one, items) and the RFQ tracking
- * sheet. The person reports take one person, several or everyone, and a day
+ * sheet, and the Sourcing Summary (one row a person, as the business's sheet
+ * has it). The person reports take one person, several or everyone, and a day
  * range or a month; each has its totals at the bottom and sorts by name,
  * date, RFQ count or item count. The figures come from App\PerformanceReports.
  */
@@ -68,6 +69,32 @@ class PerformanceReportController extends Controller
             'clamped' => $clamped,
             'sort' => $sort,
             'descending' => $descending,
+        ]);
+    }
+
+    /**
+     * The Sourcing Summary: one row a person over a day or a range, as the
+     * business's sheet has it — what the workflow knows, and the supplier
+     * calls and expected RFQs typed in by hand (SourcingDayFigure). On one
+     * day, Senior Operations and Admin can change those right there
+     * (SourcingDayFigureController::updateForDay()).
+     */
+    public function sourcingSummary(Request $request): View
+    {
+        $this->authorizeReports($request);
+
+        $everyone = PerformanceReports::people('Sourcing');
+        [$from, $to, $clamped] = $this->dayRange($request);
+        $people = $this->chosen($request, $everyone);
+
+        return view('admin.reports.performance.sourcing_summary', [
+            'report' => (new PerformanceReports)->sourcingSummary($people, $from, $to),
+            'everyone' => $everyone,
+            'chosen' => $people->pluck('id')->all(),
+            'from' => $from,
+            'to' => $to,
+            'clamped' => $clamped,
+            'canEditFigures' => $from === $to && $request->user()->canEditSourcingFigures(),
         ]);
     }
 

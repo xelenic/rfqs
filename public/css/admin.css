@@ -7531,6 +7531,23 @@ tr.is-deactivated > td:not(:last-child) {
   border-top: 2px solid var(--rfq-primary);
 }
 
+/* The figures typed in by hand on the Sourcing Summary (SourcingDayFigure): yellow, as on the business's sheet. */
+.table .report-typed-in {
+  --bs-table-bg-state: #fff7c2;
+  background-color: #fff7c2;
+}
+
+:root[data-theme="dark"] .table .report-typed-in {
+  --bs-table-bg-state: rgba(250, 204, 21, 0.14);
+  background-color: rgba(250, 204, 21, 0.14);
+}
+
+.report-typed-in-input {
+  width: 5.5rem;
+  margin-left: auto;
+  text-align: right;
+}
+
 /* Print the report alone: no sidebar, filters or tabs. */
 @media print {
   .sidebar,
@@ -7544,6 +7561,16 @@ tr.is-deactivated > td:not(:last-child) {
 
   .main-col {
     margin-left: 0 !important;
+  }
+
+  .report-save {
+    display: none !important;
+  }
+
+  .report-typed-in-input {
+    border: 0;
+    background: transparent;
+    appearance: textfield;
   }
 }
 
