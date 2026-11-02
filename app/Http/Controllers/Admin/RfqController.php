@@ -2365,8 +2365,8 @@ class RfqController extends Controller implements HasMiddleware
 
     /**
      * GM Assistant sends the RFQ (or, with a part, just that part) back to
-     * Senior Operations, Sourcing or Data Entry instead of adding their
-     * details — see Rfq::RETURN_TARGETS.
+     * Sourcing or Senior Operations instead of submitting it — see
+     * Rfq::RETURN_TARGETS.
      */
     public function rejectGmAssistant(Request $request, Rfq $rfq): RedirectResponse
     {

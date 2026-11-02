@@ -100,6 +100,11 @@
             <span class="nav-link-count" title="{{ $sourcingRejectedCount }} rejected back by a reviewer">{{ $sourcingRejectedCount }}</span>
         @endif
     </a>
+    {{-- Their supplier calls, day by day, for the Sourcing Summary. --}}
+    <a href="{{ route('admin.sourcing-calls.index') }}" class="nav-link {{ request()->routeIs('admin.sourcing-calls.index') ? 'active' : '' }}">
+        <i class="bi bi-telephone"></i>
+        <span class="nav-link-label">Daily Summary</span>
+    </a>
 @endif
 @if (auth()->user()->hasRole('Data Entry'))
     @php

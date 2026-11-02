@@ -173,9 +173,7 @@ class DashboardController extends Controller
             $overview = $this->sourcingOverview($user);
             // Which day's supplier calls their card is on: today, unless they
             // picked an earlier one to fill in.
-            $callsDay = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->query('calls_date')) && $request->query('calls_date') <= Setting::today()
-                ? $request->query('calls_date')
-                : Setting::today();
+            $callsDay = SourcingDayFigure::dayAsked($request->query('calls_date'));
 
             return view('admin.dashboard.sourcing', [
                 'callsDay' => $callsDay,

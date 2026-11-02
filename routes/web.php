@@ -78,9 +78,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
 
     Route::get('reports/time-spent', TimeSpentReportController::class)->name('reports.time-spent');
     Route::get('reports/sourcing-daily', [PerformanceReportController::class, 'sourcingDaily'])->name('reports.sourcing-daily');
-    Route::get('reports/sourcing-summary', [PerformanceReportController::class, 'sourcingSummary'])->name('reports.sourcing-summary');
-    Route::put('reports/sourcing-summary', [SourcingDayFigureController::class, 'updateForDay'])->name('reports.sourcing-summary.update');
+    Route::get('reports/sourcing-summary', [PerformanceReportController::class, 'sourcingSummaryDays'])->name('reports.sourcing-summary');
+    Route::get('reports/sourcing-summary/sheet', [PerformanceReportController::class, 'sourcingSummary'])->name('reports.sourcing-summary.sheet');
+    Route::put('reports/sourcing-summary/sheet', [SourcingDayFigureController::class, 'updateForDay'])->name('reports.sourcing-summary.update');
+    Route::delete('reports/sourcing-summary/{day}', [SourcingDayFigureController::class, 'destroyDay'])->where('day', '\d{4}-\d{2}-\d{2}')->name('reports.sourcing-summary.destroy');
+    Route::get('sourcing-calls', [SourcingDayFigureController::class, 'index'])->name('sourcing-calls.index');
     Route::patch('sourcing-calls', [SourcingDayFigureController::class, 'updateOwnCalls'])->name('sourcing-calls.update');
+    Route::delete('sourcing-calls/{day}', [SourcingDayFigureController::class, 'destroyOwnCalls'])->where('day', '\d{4}-\d{2}-\d{2}')->name('sourcing-calls.destroy');
     Route::get('reports/data-entry-daily', [PerformanceReportController::class, 'dataEntryDaily'])->name('reports.data-entry-daily');
     Route::get('reports/sourcing-monthly', [PerformanceReportController::class, 'sourcingMonthly'])->name('reports.sourcing-monthly');
     Route::get('reports/rfq-tracking', [PerformanceReportController::class, 'rfqTracking'])->name('reports.rfq-tracking');

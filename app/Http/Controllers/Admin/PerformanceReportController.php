@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Rfq;
 use App\Models\Setting;
+use App\Models\SourcingDayFigure;
 use App\Models\User;
 use App\PerformanceReports;
 use Carbon\CarbonImmutable;
@@ -73,7 +74,31 @@ class PerformanceReportController extends Controller
     }
 
     /**
-     * The Sourcing Summary: one row a person over a day or a range, as the
+     * The Sourcing Summary, day by day: a line for each day anyone's figures
+     * were typed in (SourcingDayFigure), latest first, each opening that day's
+     * sheet (sourcingSummary()).
+     */
+    public function sourcingSummaryDays(Request $request): View
+    {
+        $this->authorizeReports($request);
+
+        $days = SourcingDayFigure::query()
+            ->select('day')
+            ->selectRaw('count(*) as people, sum(successful_calls) as successful_calls, sum(unanswered_calls) as unanswered_calls, sum(unattended_calls) as unattended_calls, sum(expected_rfqs) as expected_rfqs')
+            ->groupBy('day')
+            ->orderByDesc('day')
+            ->paginate(SourcingDayFigureController::DAYS_PER_PAGE)
+            ->withQueryString();
+
+        return view('admin.reports.performance.sourcing_summary_days', [
+            'days' => $days,
+            'received' => (new PerformanceReports)->receivedOn($days->pluck('day')->all()),
+            'canEditFigures' => $request->user()->canEditSourcingFigures(),
+        ]);
+    }
+
+    /**
+     * The Sourcing Summary's sheet: one row a person over a day or a range, as the
      * business's sheet has it — what the workflow knows, and the supplier
      * calls and expected RFQs typed in by hand (SourcingDayFigure). On one
      * day, Senior Operations and Admin can change those right there

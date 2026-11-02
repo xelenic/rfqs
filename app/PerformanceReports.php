@@ -209,6 +209,25 @@ class PerformanceReports
     }
 
     /**
+     * How many RFQs first reached someone in Sourcing on each of $days
+     * ("Y-m-d") — each RFQ once, however many people got a part of it that
+     * day. For the Sourcing Summary's list of days.
+     *
+     * @param  array<int, string>  $days
+     * @return Collection<string, int>
+     */
+    public function receivedOn(array $days): Collection
+    {
+        $ids = self::people('Sourcing')->pluck('id')->all();
+        $parts = $this->parts(fn ($query) => $query->whereIn('rfq_user.user_id', $ids));
+
+        return $this->receipts($ids, $parts)
+            ->groupBy(fn (array $receipt) => $receipt['at']->setTimezone(Setting::timezone())->toDateString())
+            ->only($days)
+            ->map(fn (Collection $receipts) => $receipts->pluck('rfq_id')->unique()->count());
+    }
+
+    /**
      * Data Entry's daily report: for each of $people on each day from $from
      * to $to that was a working day for them (or they sent something to
      * finalize on), the RFQs they sent to finalize, those RFQs' items, the

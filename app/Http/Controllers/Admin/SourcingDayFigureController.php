@@ -9,15 +9,40 @@ use App\PerformanceReports;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 /**
  * The Sourcing Summary report's typed-in figures (SourcingDayFigure): a
- * Sourcing member's own supplier calls, from their dashboard; and, from the
- * report, on one day, everyone's calls and expected RFQs — by Senior Operations
- * and Admin alone (User::canEditSourcingFigures()).
+ * Sourcing member's own supplier calls, day by day, from their Daily Summary or
+ * their dashboard; and, from the report, everyone's calls and expected RFQs —
+ * by Senior Operations and Admin alone (User::canEditSourcingFigures()).
  */
 class SourcingDayFigureController extends Controller
 {
+    /**
+     * How many days a list shows a page.
+     */
+    public const DAYS_PER_PAGE = 31;
+
+    /**
+     * A Sourcing member's Daily Summary: the day picked (today unless they
+     * pick another), how it went for them, and their days, latest first.
+     */
+    public function index(Request $request): View
+    {
+        abort_unless($request->user()->hasRole('Sourcing'), 403, 'Only someone in Sourcing has a Daily Summary of their own.');
+
+        $user = $request->user();
+        $day = SourcingDayFigure::dayAsked($request->query('calls_date'));
+
+        return view('admin.sourcing_calls.index', [
+            'days' => SourcingDayFigure::query()->where('user_id', $user->id)->orderByDesc('day')->paginate(self::DAYS_PER_PAGE)->withQueryString(),
+            'callsDay' => $day,
+            'callsFigure' => SourcingDayFigure::query()->where('user_id', $user->id)->where('day', $day)->first(),
+            'summary' => (new PerformanceReports)->sourcingSummary(collect([$user]), $day, $day)['rows']->first(),
+        ]);
+    }
+
     /**
      * A Sourcing member enters their own supplier calls for a day, today or
      * earlier. Never anyone else's, nor their expected RFQs.
@@ -39,6 +64,32 @@ class SourcingDayFigureController extends Controller
         SourcingDayFigure::record($request->user()->id, $validated['day'], $this->numbers($validated, array_keys(SourcingDayFigure::CALL_FIELDS)));
 
         return back()->with('status', 'Saved your supplier calls for '.CarbonImmutable::parse($validated['day'])->format('M d, Y').'.');
+    }
+
+    /**
+     * A Sourcing member deletes their own supplier calls for a day. What Senior
+     * Operations expected of them that day stays.
+     */
+    public function destroyOwnCalls(Request $request, string $day): RedirectResponse
+    {
+        abort_unless($request->user()->hasRole('Sourcing'), 403, 'Only someone in Sourcing has calls of their own to delete.');
+
+        SourcingDayFigure::record($request->user()->id, $day, array_fill_keys(array_keys(SourcingDayFigure::CALL_FIELDS), null));
+
+        return back()->with('status', 'Deleted your supplier calls for '.CarbonImmutable::parse($day)->format('M d, Y').'.');
+    }
+
+    /**
+     * Senior Operations or Admin deletes a day's typed-in figures, everyone's.
+     * What's worked out from the RFQs isn't touched.
+     */
+    public function destroyDay(Request $request, string $day): RedirectResponse
+    {
+        abort_unless($request->user()->canEditSourcingFigures(), 403, 'Only Senior Operations and Admin can delete these figures.');
+
+        SourcingDayFigure::query()->where('day', $day)->delete();
+
+        return back()->with('status', 'Deleted the typed-in figures for '.CarbonImmutable::parse($day)->format('M d, Y').'.');
     }
 
     /**

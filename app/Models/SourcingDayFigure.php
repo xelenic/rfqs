@@ -61,21 +61,47 @@ class SourcingDayFigure extends Model
     }
 
     /**
+     * The day asked for ("Y-m-d"), if it's today or earlier — else today.
+     */
+    public static function dayAsked(mixed $asked): string
+    {
+        return is_string($asked) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $asked) === 1 && $asked <= Setting::today()
+            ? $asked
+            : Setting::today();
+    }
+
+    /**
      * Sets $figures on $userId's $day, leaving its other figures as they are.
-     * Writes nothing when there's nothing to change, nor a row of nothing but
-     * blanks.
+     * Writes nothing when there's nothing to change. A day left with nothing
+     * but blanks isn't kept, so it's not listed.
      *
      * @param  array<string, int|null>  $figures
      */
     public static function record(int $userId, string $day, array $figures): void
     {
-        $row = static::query()->firstOrNew(['user_id' => $userId, 'day' => $day]);
+        $row = static::query()->firstOrNew(['user_id' => $userId, 'day' => $day])->fill($figures);
 
-        if (! $row->exists && array_filter($figures, fn (?int $figure) => $figure !== null) === []) {
-            return;
+        if ($row->hasFigures()) {
+            $row->save();
+        } elseif ($row->exists) {
+            $row->delete();
         }
+    }
 
-        $row->fill($figures)->save();
+    /**
+     * Whether anything's been given for this day.
+     */
+    public function hasFigures(): bool
+    {
+        return $this->hasCalls() || $this->expected_rfqs !== null;
+    }
+
+    /**
+     * Whether its Sourcing member's calls have been given.
+     */
+    public function hasCalls(): bool
+    {
+        return collect(array_keys(self::CALL_FIELDS))->contains(fn (string $field) => $this->{$field} !== null);
     }
 
     public function user(): BelongsTo

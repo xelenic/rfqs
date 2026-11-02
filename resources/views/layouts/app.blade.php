@@ -102,7 +102,7 @@
                             'admin.reports.data-entry-daily' => ['Data Entry Daily', 'bi-keyboard'],
                             'admin.reports.rfq-tracking' => ['RFQ Tracking Sheet', 'bi-table'],
                         ] as $reportRoute => [$reportLabel, $reportIcon])
-                            <a href="{{ route($reportRoute) }}" class="nav-link {{ request()->routeIs($reportRoute) ? 'active' : '' }}">
+                            <a href="{{ route($reportRoute) }}" class="nav-link {{ request()->routeIs($reportRoute, $reportRoute.'.*') ? 'active' : '' }}">
                                 <i class="bi {{ $reportIcon }}"></i> {{ $reportLabel }}
                             </a>
                         @endforeach

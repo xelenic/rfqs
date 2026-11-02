@@ -214,12 +214,13 @@ class Rfq extends Model
      *   a reject).
      * - The Head of Business Development: Business Development, Senior
      *   Operations (its assignment or its review), Sourcing, Data Entry.
-     * - GM Assistant: Senior Operations (its assignment or its review),
-     *   Sourcing — not Data Entry.
+     * - GM Assistant: Sourcing, which their popup opens on, then Senior
+     *   Operations (its assignment or its review) — not Data Entry.
      * - The General Manager: every stage before their own.
      *
      * Senior Operations' assignment step ('operations') frees the part for
-     * them to assign again. See rejectTargetStages(), rejectToStage(),
+     * them to assign again. The popup lists each stage's in this order, and
+     * opens on the first. See rejectTargetStages(), rejectToStage(),
      * rejectPartToStage().
      *
      * @var array<string, array<int, string>>
@@ -228,7 +229,7 @@ class Rfq extends Model
         'sourcing' => ['operations'],
         'senior_ops_review' => ['business_development', 'sourcing', 'data_entry'],
         'head_of_bd_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'],
-        'gm_assistant' => ['operations', 'sourcing', 'senior_ops_review'],
+        'gm_assistant' => ['sourcing', 'operations', 'senior_ops_review'],
         'gm_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'],
         'bd_closing' => ['head_of_bd_review', 'gm_review'],
     ];

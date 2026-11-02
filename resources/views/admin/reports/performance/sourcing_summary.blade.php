@@ -1,5 +1,6 @@
 {{--
-    The Sourcing Summary, laid out as the business's sheet (see
+    One day's Sourcing Summary (or a range's), opened from its list of days
+    (sourcing_summary_days), laid out as the business's sheet (see
     Admin\PerformanceReportController::sourcingSummary(), App\PerformanceReports::
     sourcingSummary()): for each person picked, over a day or a range, the RFQs
     they finalized and still have pending, with their items, those waiting for
@@ -18,6 +19,8 @@
 @section('content')
     @include('admin.reports.performance._nav')
 
+    <a href="{{ route('admin.reports.sourcing-summary') }}" class="btn btn-sm btn-outline-secondary mb-3 report-save"><i class="bi bi-arrow-left"></i> All days</a>
+
     @php
         $dayLabel = fn (string $day) => \Carbon\CarbonImmutable::parse($day)->format('d-m-Y');
         $isRange = $from !== $to;
@@ -25,11 +28,11 @@
     @endphp
 
     <div class="card mb-3">
-        <form method="GET" action="{{ route('admin.reports.sourcing-summary') }}" class="ops-filters report-filters">
+        <form method="GET" action="{{ route('admin.reports.sourcing-summary.sheet') }}" class="ops-filters report-filters">
             <div class="ops-filters-head">
                 <span class="ops-filters-title"><i class="bi bi-funnel"></i> Sourcing summary</span>
                 @if (request()->hasAny(['people', 'from', 'to']))
-                    <a href="{{ route('admin.reports.sourcing-summary') }}" class="ops-filters-clear"><i class="bi bi-x-circle"></i> Clear filters</a>
+                    <a href="{{ route('admin.reports.sourcing-summary.sheet') }}" class="ops-filters-clear"><i class="bi bi-x-circle"></i> Clear filters</a>
                 @endif
             </div>
             @include('admin.reports.performance._people_filter', ['role' => 'Sourcing'])

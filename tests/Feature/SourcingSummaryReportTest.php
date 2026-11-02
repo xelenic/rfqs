@@ -23,7 +23,7 @@ beforeEach(function () {
 
 function summaryUrl(array $query = []): string
 {
-    return route('admin.reports.sourcing-summary', $query);
+    return route('admin.reports.sourcing-summary.sheet', $query);
 }
 
 /**
@@ -97,7 +97,7 @@ it('is for those who see the performance reports, and on their sidebar and tabs'
 
     foreach (['Admin', 'Senior Operations', 'HR Executive'] as $role) {
         test()->actingAs(userWithRole($role))->get(summaryUrl())->assertOk()
-            ->assertSee('href="'.summaryUrl().'"', false);
+            ->assertSee('href="'.route('admin.reports.sourcing-summary').'"', false);
     }
 });
 
@@ -269,4 +269,131 @@ it('writes nothing for a member who saves blanks, and nothing when nothing chang
     SourcingDayFigure::record($riley->id, '2026-10-05', ['successful_calls' => 4]);
 
     expect(SourcingDayFigure::query()->sole()->updated_at->equalTo($updatedAt))->toBeTrue();
+});
+
+it('lists the Sourcing Summary one line a day, latest first, added up, with View — and Delete for Senior Operations and Admin', function () {
+    ['riley' => $riley, 'sam' => $sam, 'ops' => $ops] = summaryDay();
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-05', 'successful_calls' => 7, 'unanswered_calls' => 2, 'unattended_calls' => null, 'expected_rfqs' => 4]);
+    SourcingDayFigure::factory()->create(['user_id' => $sam->id, 'day' => '2026-10-05', 'successful_calls' => 3, 'unanswered_calls' => null, 'unattended_calls' => null, 'expected_rfqs' => 1]);
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-02', 'successful_calls' => 5, 'unanswered_calls' => 1, 'unattended_calls' => 0, 'expected_rfqs' => null]);
+
+    $page = test()->actingAs($ops)->get(route('admin.reports.sourcing-summary'))->assertOk();
+    $html = $page->getContent();
+    $line = fn (string $day) => array_slice(array_map(
+        fn (string $cell) => trim(strip_tags($cell)),
+        preg_match_all('/<td[^>]*>(.*?)<\/td>/s', Str::betweenFirst($html, 'data-day="'.$day.'"', '</tr>'), $cells) ? $cells[1] : [],
+    ), 1, 6);
+
+    expect($page->viewData('days')->pluck('day')->all())->toBe(['2026-10-05', '2026-10-02'])
+        // People, the calls, expected, and the 3 RFQs that reached them that Monday (RFQ8103 once).
+        ->and($line('2026-10-05'))->toBe(['2', '10', '2', '—', '5', '3'])
+        ->and($line('2026-10-02'))->toBe(['1', '5', '1', '0', '—', '0'])
+        ->and($html)->toContain('href="'.e(summaryUrl(['from' => '2026-10-05', 'to' => '2026-10-05'])).'"')
+        ->toContain('action="'.route('admin.reports.sourcing-summary.destroy', '2026-10-05').'"')
+        ->toContain('Add or open a day');
+
+    // HR Executive sees it, and can't delete.
+    test()->actingAs(userWithRole('HR Executive'))->get(route('admin.reports.sourcing-summary'))->assertOk()
+        ->assertSee('data-day="2026-10-05"', false)
+        ->assertDontSee(route('admin.reports.sourcing-summary.destroy', '2026-10-05'), false);
+
+    // Nobody else does.
+    test()->actingAs($riley)->get(route('admin.reports.sourcing-summary'))->assertForbidden();
+});
+
+it('lets Senior Operations and Admin delete a day\'s typed-in figures, that day\'s alone, leaving what the RFQs say', function () {
+    ['riley' => $riley, 'sam' => $sam, 'ops' => $ops] = summaryDay();
+    $list = route('admin.reports.sourcing-summary');
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-05']);
+    SourcingDayFigure::factory()->create(['user_id' => $sam->id, 'day' => '2026-10-05']);
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-02']);
+    $finalizedBefore = DB::table('rfq_user')->whereNotNull('finalized_at')->count();
+
+    foreach ([userWithRole('HR Executive'), $riley, userWithRole('Data Entry')] as $person) {
+        test()->actingAs($person)->delete(route('admin.reports.sourcing-summary.destroy', '2026-10-05'))->assertForbidden();
+    }
+    expect(SourcingDayFigure::query()->count())->toBe(3);
+
+    test()->actingAs($ops)->from($list)->delete(route('admin.reports.sourcing-summary.destroy', '2026-10-05'))
+        ->assertRedirect($list)
+        ->assertSessionHas('status', 'Deleted the typed-in figures for Oct 05, 2026.');
+
+    expect(SourcingDayFigure::query()->pluck('day')->all())->toBe(['2026-10-02'])
+        ->and(DB::table('rfq_user')->whereNotNull('finalized_at')->count())->toBe($finalizedBefore);
+
+    // Its sheet still opens, worked out from the RFQs.
+    $html = test()->actingAs($ops)->get(summaryUrl(['from' => '2026-10-05', 'to' => '2026-10-05']))->assertOk()->getContent();
+    expect(array_slice(summaryCells($html, 'data-sourcing-summary', 'Riley Chen'), 0, 5))->toBe(['1', '10', '1', '8', '1']);
+
+    test()->actingAs(userWithRole('Admin'))->delete(route('admin.reports.sourcing-summary.destroy', '2026-10-02'))->assertSessionHasNoErrors();
+    expect(SourcingDayFigure::query()->count())->toBe(0);
+
+    test()->actingAs($ops)->delete('/admin/reports/sourcing-summary/not-a-day')->assertNotFound();
+});
+
+it('drops a day from the list once its figures are all cleared', function () {
+    ['riley' => $riley, 'ops' => $ops] = summaryDay();
+    SourcingDayFigure::record($riley->id, '2026-10-05', ['expected_rfqs' => 3]);
+
+    test()->actingAs($ops)->put(route('admin.reports.sourcing-summary.update'), [
+        'day' => '2026-10-05',
+        'figures' => [$riley->id => ['expected_rfqs' => '', 'successful_calls' => '', 'unanswered_calls' => '', 'unattended_calls' => '']],
+    ])->assertSessionHasNoErrors();
+
+    expect(SourcingDayFigure::query()->count())->toBe(0);
+});
+
+it('gives a Sourcing member their Daily Summary: their own days, each to view or delete', function () {
+    ['riley' => $riley, 'sam' => $sam, 'ops' => $ops] = summaryDay();
+    $page = route('admin.sourcing-calls.index');
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-05', 'successful_calls' => 7, 'unanswered_calls' => 2, 'unattended_calls' => null, 'expected_rfqs' => 4]);
+    SourcingDayFigure::factory()->create(['user_id' => $riley->id, 'day' => '2026-10-02', 'successful_calls' => 5, 'unanswered_calls' => 1, 'unattended_calls' => 0, 'expected_rfqs' => null]);
+    SourcingDayFigure::factory()->create(['user_id' => $sam->id, 'day' => '2026-10-01', 'successful_calls' => 9]);
+
+    $list = test()->actingAs($riley)->get($page)->assertOk()
+        ->assertSee('<span class="nav-link-label">Daily Summary</span>', false)
+        ->assertSee('id="supplier-calls"', false)
+        ->assertSee('action="'.route('admin.sourcing-calls.destroy', '2026-10-05').'"', false);
+
+    // Theirs alone, latest first — and today's worked-out figures with what's expected.
+    expect($list->viewData('days')->pluck('day')->all())->toBe(['2026-10-05', '2026-10-02'])
+        ->and($list->viewData('summary'))->toMatchArray(['finalized' => 1, 'finalized_items' => 10, 'pending' => 1, 'pending_items' => 8, 'customer' => 1, 'received' => 3, 'expected_rfqs' => 4]);
+
+    // View: that day, loaded to update.
+    $earlier = test()->actingAs($riley)->get(route('admin.sourcing-calls.index', ['calls_date' => '2026-10-02']))->assertOk()
+        ->assertSee('name="day" value="2026-10-02"', false)
+        ->assertSee('value="5"', false);
+    expect($earlier->viewData('summary')['finalized'])->toBe(0);
+
+    // Updating it stays on the one line.
+    test()->actingAs($riley)->from($page)->patch(route('admin.sourcing-calls.update'), ['day' => '2026-10-02', 'successful_calls' => '6'])->assertRedirect($page);
+    expect(SourcingDayFigure::query()->where('user_id', $riley->id)->where('day', '2026-10-02')->sole()->successful_calls)->toBe(6);
+
+    // Delete: their calls go; what Senior Operations expected stays, with nothing left to delete.
+    test()->actingAs($riley)->from($page)->delete(route('admin.sourcing-calls.destroy', '2026-10-05'))
+        ->assertRedirect($page)
+        ->assertSessionHas('status', 'Deleted your supplier calls for Oct 05, 2026.');
+    expect(SourcingDayFigure::query()->where('user_id', $riley->id)->where('day', '2026-10-05')->sole())
+        ->successful_calls->toBeNull()
+        ->unanswered_calls->toBeNull()
+        ->expected_rfqs->toBe(4);
+    test()->actingAs($riley)->get($page)->assertDontSee('action="'.route('admin.sourcing-calls.destroy', '2026-10-05').'"', false);
+
+    // With nothing expected, the day goes altogether — and never someone else's.
+    test()->actingAs($riley)->delete(route('admin.sourcing-calls.destroy', '2026-10-02'));
+    test()->actingAs($riley)->delete(route('admin.sourcing-calls.destroy', '2026-10-01'));
+    expect(SourcingDayFigure::query()->where('day', '2026-10-02')->exists())->toBeFalse()
+        ->and(SourcingDayFigure::query()->where('user_id', $sam->id)->sole()->successful_calls)->toBe(9);
+
+    // Only Sourcing has one.
+    test()->actingAs($ops)->get($page)->assertForbidden();
+    test()->actingAs($ops)->delete(route('admin.sourcing-calls.destroy', '2026-10-05'))->assertForbidden();
+});
+
+it('links from the dashboard card to all their days, without leaving the card behind', function () {
+    ['riley' => $riley] = summaryDay();
+
+    test()->actingAs($riley)->get(route('admin.dashboard'))->assertOk()
+        ->assertSee('id="supplier-calls"', false)
+        ->assertSee('href="'.route('admin.sourcing-calls.index').'" class="small fw-semibold"', false);
 });

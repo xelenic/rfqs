@@ -15,7 +15,7 @@
     <ul class="nav nav-tabs flex-grow-1" aria-label="Performance reports">
         @foreach ($reports as $route => [$label, $icon])
             <li class="nav-item">
-                <a href="{{ route($route) }}" @class(['nav-link', 'active' => request()->routeIs($route)]) @if (request()->routeIs($route)) aria-current="page" @endif>
+                <a href="{{ route($route) }}" @class(['nav-link', 'active' => request()->routeIs($route, $route.'.*')]) @if (request()->routeIs($route, $route.'.*')) aria-current="page" @endif>
                     <i class="bi {{ $icon }}"></i> {{ $label }}
                 </a>
             </li>
