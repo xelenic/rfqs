@@ -1,7 +1,8 @@
 {{--
     The Sourcing Summary, day by day — one line for each day anyone's figures
     were typed in (SourcingDayFigure), latest first: the calls and expected RFQs
-    added up, and the RFQs received that day, each once. View opens that day's
+    added up, and the RFQs received from Sourcing that day — those finalized,
+    each once. View opens that day's
     sheet (sourcing_summary). Senior Operations and Admin can delete a day's
     typed-in figures; what's worked out from the RFQs stays. Any day can be opened,
     which is also how they add one. See
@@ -86,7 +87,7 @@
 
     @include('admin.reports.performance._how_counted', ['points' => [
         'A day is listed once anyone\'s figures have been typed in for it: a Sourcing member\'s supplier calls, or expected RFQs set by Senior Operations.',
-        'Received: the RFQs that first reached someone in Sourcing that day — each RFQ once.',
+        'Received: the RFQs Senior Operations received from Sourcing that day — the ones finalized, each RFQ once — as on the day\'s sheet.',
         'Yellow figures are added up across the people who entered them. A dash means nobody entered that one.',
         'View opens the day\'s full sheet, worked out from the RFQs. Deleting a day removes only its typed-in figures.',
     ]])

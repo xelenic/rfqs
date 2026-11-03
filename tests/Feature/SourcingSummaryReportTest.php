@@ -79,9 +79,9 @@ it('shows each person\'s day as the sheet does, worked out from the RFQs, with t
     // Finalized 1 (10 items), pending 1 (8 items), waiting 1, then the calls.
     expect(summaryCells($html, 'data-sourcing-summary', 'Riley Chen'))->toBe(['1', '10', '1', '8', '1', '7', '2', '1'])
         ->and(summaryCells($html, 'data-sourcing-summary', 'Sam Rivera'))->toBe(['0', '0', '1', '8', '0', '3', '—', '—'])
-        // Expected, received.
-        ->and(summaryCells($html, 'data-sourcing-expected', 'Riley Chen'))->toBe(['4', '3'])
-        ->and(summaryCells($html, 'data-sourcing-expected', 'Sam Rivera'))->toBe(['—', '1']);
+        // Expected, received: received is what they finalized.
+        ->and(summaryCells($html, 'data-sourcing-expected', 'Riley Chen'))->toBe(['4', '1'])
+        ->and(summaryCells($html, 'data-sourcing-expected', 'Sam Rivera'))->toBe(['—', '0']);
 
     // RFQ8103 is pending once in the total, though both have a part of it.
     expect($report->viewData('report')['total'])->toMatchArray([
@@ -192,13 +192,27 @@ it('narrows to the people picked', function () {
         ->assertDontSee('<td class="fw-semibold text-nowrap">Sam Rivera</td>', false);
 });
 
-it('counts a part as received when it first reached them, not before', function () {
-    ['riley' => $riley, 'ops' => $ops] = summaryDay();
+it('counts as received what each person finalized — the same as RFQ Finalized Successfully, on any day or range', function () {
+    ['riley' => $riley, 'sam' => $sam, 'ops' => $ops] = summaryDay();
 
-    // Yesterday: nothing had reached anyone.
-    $yesterday = test()->actingAs($ops)->get(summaryUrl(['from' => '2026-10-04', 'to' => '2026-10-04']))->assertOk()->viewData('report');
+    // Sam finalizes his part of RFQ8103 the next day.
+    $shared = Rfq::query()->where('rfq_number', 'RFQ8103')->sole();
+    test()->travelTo(CarbonImmutable::parse('2026-10-06 10:00', Setting::DEFAULT_TIMEZONE));
+    $shared->completeSourcingPart(2);
+    $shared->refresh()->completeDataEntryPart(2, userWithRole('Data Entry'));
+    $shared->refresh()->finalizePart(2);
 
-    expect($yesterday['rows']->firstWhere('user.id', $riley->id)['received'])->toBe(0);
+    foreach ([['2026-10-04', '2026-10-04'], ['2026-10-05', '2026-10-05'], ['2026-10-06', '2026-10-06'], ['2026-10-01', '2026-10-06']] as [$from, $to]) {
+        $report = test()->actingAs($ops)->get(summaryUrl(['from' => $from, 'to' => $to]))->assertOk()->viewData('report');
+
+        foreach ($report['rows'] as $row) {
+            expect($row['received'])->toBe($row['finalized']);
+        }
+        expect($report['total']['received'])->toBe($report['total']['finalized']);
+    }
+
+    expect($report['rows']->firstWhere('user.id', $riley->id)['received'])->toBe(1)
+        ->and($report['rows']->firstWhere('user.id', $sam->id)['received'])->toBe(1);
 });
 
 it('lets a Sourcing member enter their own calls on their dashboard, today or an earlier day', function () {
@@ -285,8 +299,8 @@ it('lists the Sourcing Summary one line a day, latest first, added up, with View
     ), 1, 6);
 
     expect($page->viewData('days')->pluck('day')->all())->toBe(['2026-10-05', '2026-10-02'])
-        // People, the calls, expected, and the 3 RFQs that reached them that Monday (RFQ8103 once).
-        ->and($line('2026-10-05'))->toBe(['2', '10', '2', '—', '5', '3'])
+        // People, the calls, expected, and received: the 1 RFQ finalized that Monday, as the day's sheet totals it.
+        ->and($line('2026-10-05'))->toBe(['2', '10', '2', '—', '5', '1'])
         ->and($line('2026-10-02'))->toBe(['1', '5', '1', '0', '—', '0'])
         ->and($html)->toContain('href="'.e(summaryUrl(['from' => '2026-10-05', 'to' => '2026-10-05'])).'"')
         ->toContain('action="'.route('admin.reports.sourcing-summary.destroy', '2026-10-05').'"')
@@ -357,7 +371,7 @@ it('gives a Sourcing member their Daily Summary: their own days, each to view or
 
     // Theirs alone, latest first — and today's worked-out figures with what's expected.
     expect($list->viewData('days')->pluck('day')->all())->toBe(['2026-10-05', '2026-10-02'])
-        ->and($list->viewData('summary'))->toMatchArray(['finalized' => 1, 'finalized_items' => 10, 'pending' => 1, 'pending_items' => 8, 'customer' => 1, 'received' => 3, 'expected_rfqs' => 4]);
+        ->and($list->viewData('summary'))->toMatchArray(['finalized' => 1, 'finalized_items' => 10, 'pending' => 1, 'pending_items' => 8, 'customer' => 1, 'received' => 1, 'expected_rfqs' => 4]);
 
     // View: that day, loaded to update.
     $earlier = test()->actingAs($riley)->get(route('admin.sourcing-calls.index', ['calls_date' => '2026-10-02']))->assertOk()

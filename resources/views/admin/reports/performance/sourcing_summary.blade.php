@@ -5,7 +5,8 @@
     sourcingSummary()): for each person picked, over a day or a range, the RFQs
     they finalized and still have pending, with their items, those waiting for
     the customer's clarification and the supplier calls they entered, with a
-    total; then the RFQs expected of them and those they received. The figures
+    total; then the RFQs expected of them and those received from them (the
+    ones they finalized). The figures
     typed in by hand are yellow, as on the sheet (SourcingDayFigure). On one day,
     Senior Operations and Admin can change them right here ($canEditFigures).
 
@@ -166,7 +167,7 @@
         'An RFQ counts once for each person who had a part of it, and once in the total — its items are the RFQ\'s number of items.',
         'Finalized: the RFQs the person finalized (Sourcing\'s Finalize) in these dates.',
         'Pending: at the end of the last day, the RFQs they\'d been given and not yet finalized — those waiting for the customer\'s clarification are left out and counted on their own, and cancelled ones aren\'t counted.',
-        'Received: the RFQs that first reached them in these dates.',
+        'Received: the RFQs Senior Operations received from them — the ones they finalized, so it\'s the same as RFQ Finalized Successfully.',
         'Yellow figures are typed in, not worked out: each Sourcing member enters their supplier calls on their dashboard, and Senior Operations sets the expected RFQs here. A dash means nothing has been entered.',
     ]])
 @endsection

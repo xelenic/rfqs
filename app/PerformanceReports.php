@@ -174,9 +174,11 @@ class PerformanceReports
     /**
      * The Sourcing Summary: one row a person over the days from $from to $to —
      * sourcingDaily()'s figures across the range (pending and waiting as at
-     * its last day), the RFQs they received, and what's typed in by hand
-     * (SourcingDayFigure), added up — null where nothing was given. With the
-     * total: each RFQ once, and the typed-in figures added up.
+     * its last day), and what's typed in by hand (SourcingDayFigure), added
+     * up — null where nothing was given. Its "received" is what Senior
+     * Operations received from them: the RFQs they finalized, the same figure
+     * (since 2026-11-03, at the user's request). With the total: each RFQ once,
+     * and the typed-in figures added up.
      *
      * @param  Collection<int, User>  $people
      * @return array{rows: Collection<int, array<string, mixed>>, total: array<string, mixed>, asOf: string}
@@ -185,33 +187,28 @@ class PerformanceReports
     {
         $ids = $people->pluck('id')->all();
         $daily = $this->sourcingDaily($people, $from, $to);
-        $parts = $this->parts(fn ($query) => $query->whereIn('rfq_user.user_id', $ids));
-        $receipts = $this->receipts($ids, $parts);
-        [$start] = $this->dayBounds($from);
-        [, $end] = $this->dayBounds($daily['asOf']);
         $typedIn = SourcingDayFigure::query()->whereIn('user_id', $ids)->where('day', '>=', $from)->where('day', '<=', $to)->get()->groupBy('user_id');
         $fields = [...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'];
         $added = fn (Collection $rows, string $field) => $rows->whereNotNull($field)->isEmpty() ? null : (int) $rows->sum($field);
 
         $rows = $daily['people']->map(fn (array $summary) => $summary + [
-            'received' => $receipts
-                ->filter(fn (array $receipt) => $receipt['user_id'] === $summary['user']->id && $receipt['at']->between($start, $end))
-                ->pluck('rfq_id')->unique()->count(),
+            'received' => $summary['finalized'],
         ] + collect($fields)->mapWithKeys(fn (string $field) => [
             $field => $added($typedIn->get($summary['user']->id, collect()), $field),
         ])->all())->values();
 
         return [
             'rows' => $rows,
-            'total' => $daily['total'] + collect($fields)->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
+            'total' => $daily['total'] + ['received' => $daily['total']['finalized']] + collect($fields)->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
             'asOf' => $daily['asOf'],
         ];
     }
 
     /**
-     * How many RFQs first reached someone in Sourcing on each of $days
-     * ("Y-m-d") — each RFQ once, however many people got a part of it that
-     * day. For the Sourcing Summary's list of days.
+     * How many RFQs Senior Operations received from Sourcing on each of $days
+     * ("Y-m-d"): those someone in Sourcing finalized that day — each RFQ once,
+     * however many of its parts were finalized. The same figure as the day's
+     * sheet's Total of RFQs finalized. For the Sourcing Summary's list of days.
      *
      * @param  array<int, string>  $days
      * @return Collection<string, int>
@@ -219,12 +216,12 @@ class PerformanceReports
     public function receivedOn(array $days): Collection
     {
         $ids = self::people('Sourcing')->pluck('id')->all();
-        $parts = $this->parts(fn ($query) => $query->whereIn('rfq_user.user_id', $ids));
 
-        return $this->receipts($ids, $parts)
-            ->groupBy(fn (array $receipt) => $receipt['at']->setTimezone(Setting::timezone())->toDateString())
+        return $this->parts(fn ($query) => $query->where(fn ($q) => $q->whereIn('rfq_user.user_id', $ids)->orWhereIn('rfq_user.finalized_by', $ids)))
+            ->filter(fn (object $part) => $part->finalized_at !== null && in_array((int) ($part->finalized_by ?? $part->user_id), $ids, true))
+            ->groupBy(fn (object $part) => $part->finalized_at->setTimezone(Setting::timezone())->toDateString())
             ->only($days)
-            ->map(fn (Collection $receipts) => $receipts->pluck('rfq_id')->unique()->count());
+            ->map(fn (Collection $parts) => $parts->pluck('rfq_id')->unique()->count());
     }
 
     /**
