@@ -14,19 +14,21 @@
     (?show=, RfqController::ALL_RFQS_VIEWS) — where the General Manager's
     dashboard cards lead — keeping the card's dates (?show_from, ?show_to) —
     and its status (?state=, Rfq::STATUS_FILTERS: pending, overdue, due soon,
-    on hold, cancelled, closed), where Senior Operations' dashboard cards lead.
+    on hold, cancelled, closed), where Senior Operations' dashboard cards lead,
+    and who made it (?creator=: anyone in Business Development or Admin, or
+    one person — RfqController::allRfqsCreators()).
 
     Expects: $statusFilter, $lensRole, $opsFilters, $listRange, $listPriority,
     $search, $scopedToDataEntry, $dataEntryTab, $canGroup, $groupBy,
-    $allRfqsViews, $allRfqsView, $allRfqsStatuses and $allRfqsStatus (null but
-    on All RFQs).
+    $allRfqsViews, $allRfqsView, $allRfqsStatuses, $allRfqsStatus,
+    $allRfqsCreators and $allRfqsCreator (null but on All RFQs).
 --}}
 @php
     $filterToday = now(\App\Models\Setting::timezone())->toDateString();
     $isCustomRange = $listRange && $listRange['range'] === 'custom';
     $rangeLabels = ['all' => 'All time'] + \App\Http\Controllers\Admin\RfqController::LIST_RANGES + ['custom' => 'Custom'];
     // Senior Operations' own filters have their Clear, which keeps the search.
-    $isFiltered = ($listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== [])) || ($allRfqsView ?? null) !== null || ($allRfqsStatus ?? null) !== null;
+    $isFiltered = ($listRange && ($search !== '' || $listRange['range'] !== 'all' || $listPriority !== [])) || ($allRfqsView ?? null) !== null || ($allRfqsStatus ?? null) !== null || ($allRfqsCreator ?? null) !== null;
 @endphp
 <form method="GET" action="{{ route('admin.rfqs.index') }}" id="rfqListFilterForm" class="list-filter js-period-filter"
       data-period-field="range" data-period-default="all" data-today="{{ $filterToday }}">
@@ -119,6 +121,23 @@
         </label>
     @endif
 
+    {{-- All RFQs: who made it — anyone in Business Development or Admin, or one person. --}}
+    @if ($allRfqsCreators ?? null)
+        <label class="list-filter-group" title="Created by">
+            <i class="bi bi-person" aria-hidden="true"></i>
+            <select name="creator" class="form-select form-select-sm" aria-label="Created by">
+                <option value="">Created by: Anyone</option>
+                @foreach ($allRfqsCreators as $creatorGroup => $creatorOptions)
+                    <optgroup label="{{ $creatorGroup }}">
+                        @foreach ($creatorOptions as $value => $label)
+                            <option value="{{ $value }}" @selected((string) $allRfqsCreator === (string) $value)>Created by: {{ $label }}</option>
+                        @endforeach
+                    </optgroup>
+                @endforeach
+            </select>
+        </label>
+    @endif
+
     @if ($canGroup)
         <label class="list-filter-group" title="Group the list">
             <i class="bi bi-collection" aria-hidden="true"></i>
@@ -132,7 +151,7 @@
     @endif
 
     @if ($isFiltered)
-        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'show', 'show_from', 'show_to', 'state', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
+        <a href="{{ request()->fullUrlWithoutQuery(['search', 'range', 'from', 'to', 'priority', 'show', 'show_from', 'show_to', 'state', 'creator', 'page', 'sourcing_page', 'completed_page', 'assigned_page', 'review_page']) }}" class="list-filter-clear">
             <i class="bi bi-x-circle"></i> Clear
         </a>
     @endif

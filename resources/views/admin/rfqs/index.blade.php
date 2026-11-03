@@ -101,9 +101,10 @@
         </div>
 
         {{-- All RFQs narrowed to what a dashboard card counted (?show=,
-             RfqController::ALL_RFQS_VIEWS) and/or to a status (?state=,
-             Rfq::STATUS_FILTERS): what, over which dates, how many. --}}
-        @if ($allRfqsView || $allRfqsStatus)
+             RfqController::ALL_RFQS_VIEWS), to a status (?state=,
+             Rfq::STATUS_FILTERS) and/or to who made them (?creator=): what,
+             over which dates, by whom, how many. --}}
+        @if ($allRfqsView || $allRfqsStatus || $allRfqsCreator)
             @php
                 $viewDay = fn (string $date) => \Carbon\CarbonImmutable::parse($date)->format('M j, Y');
                 $viewDates = match (true) {
@@ -123,16 +124,18 @@
                 };
                 $listedCount = $rfqs->total().' '.($rfqs->total() === 1 ? 'RFQ' : 'RFQs');
             @endphp
-            <div class="list-view-note" @if ($allRfqsView) data-all-rfqs-view="{{ $allRfqsView['show'] }}" @endif @if ($allRfqsStatus) data-all-rfqs-status="{{ $allRfqsStatus }}" @endif>
+            <div class="list-view-note" @if ($allRfqsView) data-all-rfqs-view="{{ $allRfqsView['show'] }}" @endif @if ($allRfqsStatus) data-all-rfqs-status="{{ $allRfqsStatus }}" @endif @if ($allRfqsCreator) data-all-rfqs-creator="{{ $allRfqsCreator }}" @endif>
                 <i class="bi bi-funnel-fill" aria-hidden="true"></i>
-                @if ($allRfqsStatus === null)
-                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }} — {{ $listedCount }}.</span>
+                @if ($allRfqsView === null && $allRfqsStatus === null)
+                    <span>Showing RFQs created by <strong>{{ $allRfqsCreatorLabel }}</strong> — {{ $listedCount }}.</span>
+                @elseif ($allRfqsStatus === null)
+                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }}@if ($allRfqsCreator), created by <strong>{{ $allRfqsCreatorLabel }}</strong>@endif — {{ $listedCount }}.</span>
                 @elseif ($allRfqsView === null)
-                    <span>Showing RFQs with status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }} — {{ $listedCount }}.</span>
+                    <span>Showing RFQs with status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }}@if ($allRfqsCreator), created by <strong>{{ $allRfqsCreatorLabel }}</strong>@endif — {{ $listedCount }}.</span>
                 @else
-                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }}, status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }} — {{ $listedCount }}.</span>
+                    <span>Showing <strong>{{ $allRfqsView['label'] }}</strong>{{ $viewDates }}, status <strong>{{ $allRfqsStatuses[$allRfqsStatus] }}</strong>{{ $statusHint }}@if ($allRfqsCreator), created by <strong>{{ $allRfqsCreatorLabel }}</strong>@endif — {{ $listedCount }}.</span>
                 @endif
-                <a href="{{ request()->fullUrlWithoutQuery(['show', 'show_from', 'show_to', 'state', 'page']) }}" class="ms-auto">Show all RFQs</a>
+                <a href="{{ request()->fullUrlWithoutQuery(['show', 'show_from', 'show_to', 'state', 'creator', 'page']) }}" class="ms-auto">Show all RFQs</a>
             </div>
         @endif
 

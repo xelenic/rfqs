@@ -256,6 +256,14 @@ class Rfq extends Model
     public const RETURNABLE_STAGES = ['head_of_bd_review', 'gm_review'];
 
     /**
+     * The roles that make RFQs, by the value All RFQs' Created by filter sends
+     * for "anyone in it" (?creator=, scopeCreatedByFilter()).
+     *
+     * @var array<string, string>
+     */
+    public const CREATOR_ROLES = ['business-development' => 'Business Development', 'admin' => 'Admin'];
+
+    /**
      * The workflow in order, every step that can be skipped when something
      * sent back is sent straight back to whoever sent it (forwardBack()) —
      * Sourcing's Finalize included, between Data Entry and Senior Operations'
@@ -1564,6 +1572,17 @@ class Rfq extends Model
                     ->whereNull('rfqs.reject_target_stage')
                     ->orWhere('rfqs.reject_target_stage', '<>', 'business_development'))
                 ->needingSourcing()));
+    }
+
+    /**
+     * The RFQs All RFQs' Created by filter asks for: made by everyone in one
+     * of CREATOR_ROLES (its key), or by one person (their id).
+     */
+    public function scopeCreatedByFilter(Builder $query, string $creator): void
+    {
+        array_key_exists($creator, self::CREATOR_ROLES)
+            ? $query->whereHas('creator', fn (Builder $people) => $people->whereHas('roles', fn (Builder $roles) => $roles->where('name', self::CREATOR_ROLES[$creator])))
+            : $query->where('rfqs.created_by', (int) $creator);
     }
 
     /**

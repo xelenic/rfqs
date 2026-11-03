@@ -346,6 +346,14 @@ class RfqController extends Controller implements HasMiddleware
         // late, worked out only when it's asked for.
         $allRfqsStatus = $isAllRfqsPage && array_key_exists((string) $request->query('state'), Rfq::ALL_RFQS_STATUS_FILTERS) ? (string) $request->query('state') : null;
         $targetStates = $isAllRfqsPage ? DashboardController::targetStatesByRfq() : null;
+
+        // All RFQs' Created by filter (?creator=): everyone in Business
+        // Development or Admin, or one person, from allRfqsCreators().
+        $allRfqsCreators = $isAllRfqsPage ? $this->allRfqsCreators() : null;
+        $allRfqsCreatorLabel = $allRfqsCreators !== null
+            ? collect($allRfqsCreators)->reduce(fn (array $all, array $options) => $all + $options, [])[(string) $request->query('creator')] ?? null
+            : null;
+        $allRfqsCreator = $allRfqsCreatorLabel !== null ? (string) $request->query('creator') : null;
         $finishedLateIds = $allRfqsStatus === 'exceeded' ? Rfq::idsWithAStepFinishedLate() : [];
 
         $applySearch = function ($query) use ($search, $listRange, $listPriority) {
@@ -455,6 +463,7 @@ class RfqController extends Controller implements HasMiddleware
                 ->orWhereHas('assignees', fn ($parts) => $parts->whereKey($user->id)->whereNotNull('rfq_user.bd_closed_at'))))
             ->when($allRfqsView, fn ($query, array $view) => $this->applyAllRfqsView($query, $view))
             ->when($allRfqsStatus, fn ($query, string $filter) => $query->inStatusFilter($filter, $targetStates, $finishedLateIds))
+            ->when($allRfqsCreator, fn ($query, string $creator) => $query->createdByFilter($creator))
             ->when($groupBy, fn ($query, string $group) => $query->orderByRaw($this->listGroupOrder($group)))
             ->latest()
             ->when($opsFilters, fn ($query) => $this->applyOperationsFilters($query, $opsFilters));
@@ -689,6 +698,9 @@ class RfqController extends Controller implements HasMiddleware
             'allRfqsView' => $allRfqsView,
             'allRfqsStatuses' => $isAllRfqsPage ? Rfq::ALL_RFQS_STATUS_FILTERS : null,
             'allRfqsStatus' => $allRfqsStatus,
+            'allRfqsCreators' => $allRfqsCreators,
+            'allRfqsCreator' => $allRfqsCreator,
+            'allRfqsCreatorLabel' => $allRfqsCreatorLabel,
             'targetStates' => $targetStates,
             'finishedLate' => $finishedLate,
             'priorities' => Rfq::PRIORITIES,
@@ -789,6 +801,39 @@ class RfqController extends Controller implements HasMiddleware
             'tab' => $request->query('tab') === 'assigned' ? 'assigned' : 'unassigned',
             'count' => (int) ($range !== 'all') + (int) ($priority !== []) + (int) ($category !== null) + (int) ($member !== null) + (int) ($partStatus !== null),
         ];
+    }
+
+    /**
+     * What All RFQs' Created by filter offers, by role (Rfq::CREATOR_ROLES):
+     * everyone in it, then each person holding it by name — deactivated ones
+     * too, marked, for the RFQs they made — and, under Other, anyone else
+     * who's made an RFQ. Value => label.
+     *
+     * @return array<string, array<int|string, string>>
+     */
+    private function allRfqsCreators(): array
+    {
+        $people = User::query()
+            ->where(fn ($anyone) => $anyone
+                ->whereHas('roles', fn ($roles) => $roles->whereIn('name', Rfq::CREATOR_ROLES))
+                ->orWhereIn('id', Rfq::query()->whereNotNull('created_by')->select('created_by')))
+            ->with('roles')
+            ->orderBy('name')
+            ->get();
+        $nameOf = fn (User $person) => $person->name.($person->isDeactivated() ? ' (deactivated)' : '');
+        $groups = [];
+
+        foreach (Rfq::CREATOR_ROLES as $value => $role) {
+            $holders = $people->filter(fn (User $person) => $person->roles->contains('name', $role));
+            $people = $people->diff($holders);
+            $groups[$role] = [$value => $role === 'Admin' ? 'Any Admin' : "Anyone in {$role}"] + $holders->mapWithKeys(fn (User $person) => [$person->id => $nameOf($person)])->all();
+        }
+
+        if ($people->isNotEmpty()) {
+            $groups['Other'] = $people->mapWithKeys(fn (User $person) => [$person->id => $nameOf($person)])->all();
+        }
+
+        return $groups;
     }
 
     /**
