@@ -35,7 +35,7 @@ function finalizedForCheck(?int $toAdd = 24, ?int $added = 22, bool $split = fal
         $rfq->refresh()->finalizePart($part, $submitted);
     }
 
-    return ['rfq' => $rfq->refresh(), 'ops' => userWithRole('Senior Operations')];
+    return ['rfq' => $rfq->refresh(), 'ops' => userWithRole('HBDs Operations')];
 }
 
 it('opens a check of the line items from Approve, on the review list — added, submitted and the difference', function () {
@@ -146,7 +146,7 @@ it('lets Admin verify on Senior Operations\' behalf', function () {
     ['rfq' => $rfq, 'ops' => $ops] = finalizedForCheck();
     $admin = userWithRole('Admin');
 
-    test()->actingAs($admin)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review', 'role' => 'senior-operations']))->assertOk()
+    test()->actingAs($admin)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review', 'role' => 'hbds-operations']))->assertOk()
         ->assertSee('id="senior-ops-approve-acting-as"', false);
 
     test()->actingAs($admin)->patch(route('admin.rfqs.approve-senior-ops-part', $rfq), ['part' => 1, 'actual_line_items' => [1 => 22], 'acting_user_id' => $ops->id])

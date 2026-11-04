@@ -35,7 +35,7 @@ it('offers Replace on the Assigned tab for each part, whatever step it\'s at', f
 });
 
 it('gives a part still with Sourcing to another member — off the first one\'s list, onto the other\'s, their countdown afresh', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ18002']), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
@@ -66,14 +66,14 @@ it('can replace Sourcing on a part Data Entry sent back for rework', function ()
 
     expect($rfq->refresh()->canReplaceSourcing(1))->toBeTrue();
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)?->id)->toBe($sam->id);
 });
 
 it('refuses to replace Sourcing on a closed or cancelled part, or with whoever has it, or anyone outside Sourcing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
@@ -104,7 +104,7 @@ it('lets only Senior Operations and Admin replace Sourcing', function () {
             ->assertForbidden();
     }
 
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id, 'acting_user_id' => $ops->id])
         ->assertSessionHasNoErrors();
 
@@ -113,7 +113,7 @@ it('lets only Senior Operations and Admin replace Sourcing', function () {
 });
 
 it('reopens the popup against the same part when no one\'s picked', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $assignedUrl = route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'assigned']);
 
@@ -130,7 +130,7 @@ it('reopens the popup against the same part when no one\'s picked', function () 
 });
 
 it('replaces Sourcing on a part past Sourcing, keeping everything done on it — and Data Entry\'s time running on', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ18010']), [1 => $riley]);
@@ -164,7 +164,7 @@ it('offers Replace on the RFQ\'s own page to Senior Operations — not to others
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $rfq->refresh()->completeSourcingPart(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('data-current-id="'.$riley->id.'"', false)
         ->assertSee('id="reassignModal"', false);
 
@@ -180,11 +180,11 @@ it('hands a send-straight-back waiting on the part to whoever takes it over', fu
     startDataEntryOn($rfq, 1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
     $rfq->refresh()->rejectPartToStage(1, 'sourcing', 'Fresh quote please', $head, 'head_of_bd_review');
     expect($rfq->refresh()->openReturnFor(1))->not->toBeNull();
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.rfqs.reassign', $rfq), ['part' => 1, 'user_id' => $sam->id])
         ->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->openReturnFor(1))->not->toBeNull();
@@ -194,7 +194,7 @@ it('hands a send-straight-back waiting on the part to whoever takes it over', fu
 });
 
 it('assigns the part to whoever takes it over from then — their Assigned At, and the timeline, keeping who had it before', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
 
     test()->travelTo(now()->setDate(2026, 10, 28)->setTime(11, 1));
@@ -232,7 +232,7 @@ it('assigns the part to whoever takes it over from then — their Assigned At, a
 });
 
 it('moves the assigned time of a part replaced before, and gives its comment who had it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
 
     test()->travelTo(now()->setDate(2026, 10, 28)->setTime(11, 1));

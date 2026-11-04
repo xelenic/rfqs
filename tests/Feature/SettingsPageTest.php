@@ -46,7 +46,7 @@ it('is open to every role, with the Application settings for an Admin alone', fu
 })->with([
     'Admin' => ['Admin', true],
     'Business Development' => ['Business Development', false],
-    'Senior Operations' => ['Senior Operations', false],
+    'HBDs Operations' => ['HBDs Operations', false],
     'Sourcing' => ['Sourcing', false],
     'Data Entry' => ['Data Entry', false],
     'General Manager' => ['General Manager', false],
@@ -86,7 +86,7 @@ it('keeps everyone else\'s name and email for them — shown, not changed', func
     test()->actingAs($user)->patch(route('admin.settings.profile'), ['name' => 'Riley Chen', 'email' => 'riley@example.test'])->assertForbidden();
 
     expect($user->refresh()->only(['name', 'email']))->toBe($before);
-})->with(['Sourcing', 'Data Entry', 'Senior Operations', 'General Manager']);
+})->with(['Sourcing', 'Data Entry', 'HBDs Operations', 'General Manager']);
 
 it('lets you keep your own email, but not take somebody else\'s', function () {
     $user = userWithRole('HR Executive');
@@ -269,7 +269,7 @@ it('refuses the application settings to anyone but an Admin', function (string $
         ->assertForbidden();
 
     expect(Setting::query()->count())->toBe(0);
-})->with(['Business Development', 'Senior Operations', 'Sourcing', 'General Manager']);
+})->with(['Business Development', 'HBDs Operations', 'Sourcing', 'General Manager']);
 
 // ---- the settings themselves -----------------------------------------------
 

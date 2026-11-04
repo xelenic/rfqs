@@ -27,9 +27,9 @@ function forwardPeople(): array
         'sourcing' => userWithRole('Sourcing'),
         'sourcing2' => userWithRole('Sourcing'),
         'dataEntry' => userWithRole('Data Entry'),
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
         'bd' => userWithRole('Business Development'),
     ];

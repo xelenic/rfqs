@@ -208,7 +208,7 @@ it('lets an Admin give a role its own hours on Settings → Role Hours, from tod
 
     test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'role-hours']))->assertOk()
         ->assertSee('class="tab-pane fade show active" id="settings-pane-role-hours"', false)
-        ->assertSeeInOrder(['Business Development', 'Senior Operations', 'Sourcing', 'Data Entry', 'Head of Business Development'])
+        ->assertSeeInOrder(['Business Development', 'HBDs Operations', 'Sourcing', 'Data Entry', 'Head of Business Development'])
         ->assertSee('Company hours')
         ->assertSee('id="roleHoursModal-'.$dataEntry->id.'"', false)
         ->assertSee('Nobody — everyone works their role\'s hours or the company\'s.', false);
@@ -277,7 +277,7 @@ it('keeps role and personal hours to Admin and HR Executive', function () {
     $morgan = userWithRole('Data Entry');
     $form = hoursForm(hoursWeek('07:00', '16:00'));
 
-    foreach ([userWithRole('Senior Operations'), userWithRole('Sourcing')] as $neither) {
+    foreach ([userWithRole('HBDs Operations'), userWithRole('Sourcing')] as $neither) {
         test()->actingAs($neither)->put(route('admin.settings.role-hours.update', $dataEntry), $form)->assertForbidden();
         test()->actingAs($neither)->delete(route('admin.settings.role-hours.destroy', $dataEntry))->assertForbidden();
         test()->actingAs($neither)->put(route('admin.settings.user-hours.update', $morgan), $form)->assertForbidden();
@@ -384,7 +384,7 @@ it('opens someone\'s hours window again when what was sent doesn\'t go in', func
 
 it('shows someone\'s working week read-only to whoever can see their page but can\'t change hours', function () {
     $riley = userWithRole('Sourcing');
-    $viewer = userWithRole('Senior Operations')->givePermissionTo('users.view');
+    $viewer = userWithRole('HBDs Operations')->givePermissionTo('users.view');
 
     test()->actingAs($viewer)->get(route('admin.users.show', [$riley, 'tab' => 'working-hours']))->assertOk()
         ->assertSee('The working hours')

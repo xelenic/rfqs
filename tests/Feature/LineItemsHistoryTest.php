@@ -36,7 +36,7 @@ function lineItemsStory(): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $dana = tap(userWithRole('Data Entry'))->update(['name' => 'Dana Perera']);
-    $ops = tap(userWithRole('Senior Operations'))->update(['name' => 'Olivia Park']);
+    $ops = tap(userWithRole('HBDs Operations'))->update(['name' => 'Olivia Park']);
 
     historyAt('08:30');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9501', 'subject' => 'Life jackets', 'priority_level' => 'High']), [1 => $riley]);
@@ -93,7 +93,7 @@ it('adds Senior Operations\' verified count once they\'ve approved it, and what 
 
     expect(collect($rfq->refresh()->lineItemsHistory(1))->last())->toMatchArray([
         'kind' => 'verified',
-        'role' => 'Senior Operations',
+        'role' => 'HBDs Operations',
         'who' => 'Olivia Park',
         'title' => 'Actual line items — verified',
         'count' => 23,

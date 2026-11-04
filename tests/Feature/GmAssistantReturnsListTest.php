@@ -26,7 +26,7 @@ function gmAssistantReturnsUrl(array $query = []): string
  */
 function throughToGm(int $parts = 1): array
 {
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $gm = userWithRole('General Manager');
     $sourcing = userWithRole('Sourcing');
 
@@ -35,7 +35,7 @@ function throughToGm(int $parts = 1): array
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $rfq->refresh()->finalizePart($part);
-        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
         $rfq->refresh()->recordGmAssistantPart($part, $assistant);
     }
@@ -152,8 +152,8 @@ it('shows Admin GM Assistant\'s Rejected page, counted on the grouped sidebar', 
 
     expect(Rfq::queueCounts()['gm_assistant_rejected'])->toBe(1);
 
-    test()->actingAs(userWithRole('Admin'))->get(gmAssistantReturnsUrl(['role' => 'gm-assistant']))->assertOk()
-        ->assertSee('Rejected · GM Assistant')
+    test()->actingAs(userWithRole('Admin'))->get(gmAssistantReturnsUrl(['role' => 'gms-operations']))->assertOk()
+        ->assertSee('Rejected · GMs Operations')
         ->assertSee('>RFQ5001', false)
         ->assertSee('action="'.route('admin.rfqs.start-gm-assistant', $rfq).'"', false)
         ->assertSee('title="1 rejected back by the General Manager"', false);

@@ -44,7 +44,7 @@ function readyForGmAssistant(string $number = 'RFQ9401', int $parts = 1): Rfq
         startDataEntryOn($rfq, $part, $dataEntry);
         $rfq->refresh()->completeDataEntryPart($part, $dataEntry, 'Entered', 2);
         $rfq->refresh()->finalizePart($part);
-        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
     }
 
     gmsClock('09:00');
@@ -86,7 +86,7 @@ it('offers Start on a part that\'s reached GM Assistant — not Submit — its w
     readyForGmAssistant();
 
     gmsClock('09:30');
-    [, $row] = gmAssistantRow(userWithRole('GM Assistant'));
+    [, $row] = gmAssistantRow(userWithRole('GMs Operations'));
 
     expect($row)->toContain('<i class="bi bi-play-fill"></i> Start')
         ->not->toContain('js-gm-assistant-submit')
@@ -97,7 +97,7 @@ it('offers Start on a part that\'s reached GM Assistant — not Submit — its w
 
 it('times a part only from GM Assistant\'s Start, credited to whoever started it', function () {
     $rfq = readyForGmAssistant();
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     expect($rfq->gmAssistantCountdown(1))->toBeNull()
@@ -123,7 +123,7 @@ it('times a part only from GM Assistant\'s Start, credited to whoever started it
 it('lets GM Assistant work one part at a time', function () {
     $first = readyForGmAssistant('RFQ9401');
     $second = readyForGmAssistant('RFQ9402');
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $first);
@@ -137,13 +137,13 @@ it('lets GM Assistant work one part at a time', function () {
     expect($row)->toContain('data-busy-hint="You&#039;re already on RFQ9401')->toContain('disabled');
 
     // Someone else in GM Assistant still can.
-    gmAssistantDoes(userWithRole('GM Assistant'), 'start', $second)->assertSessionHas('status');
+    gmAssistantDoes(userWithRole('GMs Operations'), 'start', $second)->assertSessionHas('status');
 });
 
 it('pauses a part with why — its clock stops where it is, the thread is told, and another can start', function () {
     $rfq = readyForGmAssistant();
     $other = readyForGmAssistant('RFQ9402');
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $rfq);
@@ -179,7 +179,7 @@ it('pauses a part with why — its clock stops where it is, the thread is told, 
 
 it('asks why it\'s paused, and only pauses a part that\'s running', function () {
     $rfq = readyForGmAssistant();
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     // Nobody's started it: it isn't theirs to pause — nor running, for Admin.
@@ -195,7 +195,7 @@ it('asks why it\'s paused, and only pauses a part that\'s running', function () 
 it('resumes where it stopped — not while they\'ve another running', function () {
     $rfq = readyForGmAssistant();
     $other = readyForGmAssistant('RFQ9402');
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $rfq);
@@ -217,7 +217,7 @@ it('resumes where it stopped — not while they\'ve another running', function (
 
 it('submits only once it\'s started, and not while it\'s paused', function () {
     $rfq = readyForGmAssistant();
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
     $submit = fn () => test()->actingAs($casey)->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
 
     gmsClock('09:30');
@@ -238,12 +238,12 @@ it('submits only once it\'s started, and not while it\'s paused', function () {
 
 it('lets only whoever started it pause or resume it — or Admin for them', function () {
     $rfq = readyForGmAssistant();
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $rfq);
 
-    gmAssistantDoes(userWithRole('GM Assistant'), 'pause', $rfq)->assertForbidden();
+    gmAssistantDoes(userWithRole('GMs Operations'), 'pause', $rfq)->assertForbidden();
     gmAssistantDoes(userWithRole('Data Entry'), 'pause', $rfq)->assertForbidden();
     gmAssistantDoes(userWithRole('Data Entry'), 'start', readyForGmAssistant('RFQ9402'))->assertForbidden();
 
@@ -254,7 +254,7 @@ it('lets only whoever started it pause or resume it — or Admin for them', func
 
 it('starts afresh when the General Manager sends a part back to GM Assistant', function () {
     $rfq = readyForGmAssistant();
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $rfq);
@@ -271,7 +271,7 @@ it('starts afresh when the General Manager sends a part back to GM Assistant', f
 
 it('puts Start, Pause and Submit on the RFQ\'s own page, part by part', function () {
     $rfq = readyForGmAssistant(parts: 2);
-    $casey = userWithRole('GM Assistant');
+    $casey = userWithRole('GMs Operations');
 
     gmsClock('09:30');
     gmAssistantDoes($casey, 'start', $rfq, 1);

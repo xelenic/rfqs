@@ -132,7 +132,7 @@ it('lets only the part\'s own member, or Admin as them, send it back', function 
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = sentToFinalize([1 => $riley, 2 => $sam]);
 
-    foreach ([$sam, userWithRole('Data Entry'), userWithRole('Senior Operations')] as $someoneElse) {
+    foreach ([$sam, userWithRole('Data Entry'), userWithRole('HBDs Operations')] as $someoneElse) {
         returnsToDataEntry($someoneElse, $rfq, ['part' => 1, 'reason' => 'Not mine'])->assertForbidden();
     }
 

@@ -31,7 +31,7 @@ function opsRejectedUrl(array $query = []): string
  */
 function atHeadOfBdReview(): array
 {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $head = userWithRole('Head of Business Development');
     $riley = userWithRole('Sourcing');
 
@@ -48,7 +48,7 @@ function atHeadOfBdReview(): array
 it('shows the empty state until something is sent back to Senior Operations', function () {
     atHeadOfBdReview();
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(opsReturnsUrl())->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(opsReturnsUrl())->assertOk()
         ->assertSee('<title>Returns', false)
         ->assertDontSee('RFQ2001')
         ->assertSee('Nothing\'s been sent back to Senior Operations.', false);
@@ -120,7 +120,7 @@ it('leaves out what\'s sent back to anyone else', function (string $target) {
 })->with(['business_development', 'sourcing', 'data_entry']);
 
 it('keeps the Unassigned page as it was, with its own tabs', function () {
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('<title>Unassigned RFQs', false)
         ->assertSee('id="rfq-ops-unassigned"', false)
@@ -138,7 +138,7 @@ it('counts Senior Operations\' Rejected badge, on their own sidebar and Admin\'s
 
     expect(Rfq::queueCounts())->ops_rejected->toBe(1)->ops_returns->toBe(0);
 
-    test()->actingAs(userWithRole('Admin'))->get(opsRejectedUrl(['role' => 'senior-operations']))->assertOk()
+    test()->actingAs(userWithRole('Admin'))->get(opsRejectedUrl(['role' => 'hbds-operations']))->assertOk()
         ->assertSee('RFQ2001')
         ->assertSee('Split it by floor instead');
 });
@@ -159,7 +159,7 @@ it('keeps an RFQ rejected back to their assignment step off the Unassigned page 
         ->and(test()->actingAs($ops)->get(opsRejectedUrl())->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2001']);
 
     // Admin's grouped sidebar, and their view of the Unassigned page, agree.
-    expect(test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations']))
+    expect(test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'hbds-operations']))
         ->viewData('rfqs')->pluck('rfq_number')->all())->toBe(['RFQ2002']);
 
     // Assigned again, it's on neither: with Sourcing.
@@ -170,7 +170,7 @@ it('keeps an RFQ rejected back to their assignment step off the Unassigned page 
 });
 
 it('keeps a part an Admin sends back to Senior Operations on Returns, not Unassigned', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2003']), [1 => userWithRole('Sourcing')]);
 
     test()->actingAs(userWithRole('Admin'))

@@ -264,5 +264,5 @@ it('frees Data Entry to start another once the running part leaves them some oth
     expect($second->refresh()->assigneeForPart(1)->pivot->data_entry_started_by)->toBe($morgan->id);
 })->with([
     'sent back to Sourcing' => [fn (Rfq $rfq, $morgan) => $rfq->returnSourcingPart(1, 'Wrong supplier', $morgan)],
-    'put on hold' => [fn (Rfq $rfq) => $rfq->changePartStatus(1, Rfq::ON_HOLD, userWithRole('Senior Operations'), 'Client paused it')],
+    'put on hold' => [fn (Rfq $rfq) => $rfq->changePartStatus(1, Rfq::ON_HOLD, userWithRole('HBDs Operations'), 'Client paused it')],
 ]);

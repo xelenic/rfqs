@@ -66,7 +66,7 @@ it('refuses a target that isn\'t sensible', function (mixed $urgent, string $mes
 ]);
 
 it('keeps the targets to an Admin', function () {
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.settings.edit'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.settings.edit'))->assertOk()
         ->assertDontSee('Sourcing Targets');
 
     test()->actingAs(userWithRole('Sourcing'))
@@ -210,7 +210,7 @@ it('gives the browser the working periods ahead to tick against', function () {
         ]);
 
     // Nobody else's list has one.
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))
         ->assertDontSee('id="countdown-schedule"', false);
 });
 
@@ -254,7 +254,7 @@ it('starts a part afresh with whoever it\'s reassigned to', function () {
 
     // Riley has it three hours; then it's Sam's.
     test()->travelTo(inColombo('2026-10-05 12:00'));
-    $rfq->refresh()->replaceSourcingPart(1, $sam, userWithRole('Senior Operations'), 'Riley is away');
+    $rfq->refresh()->replaceSourcingPart(1, $sam, userWithRole('HBDs Operations'), 'Riley is away');
 
     // Sam's hour and a half since (lunch aside) — not Riley's three as well.
     test()->travelTo(inColombo('2026-10-05 14:30'));

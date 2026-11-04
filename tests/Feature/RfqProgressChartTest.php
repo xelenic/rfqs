@@ -8,7 +8,7 @@ use Spatie\Permission\Models\Role;
 uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
-    foreach (['Sourcing', 'Senior Operations', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager', 'Business Development', 'Admin'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Data Entry', 'Head of Business Development', 'GMs Operations', 'General Manager', 'Business Development', 'Admin'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -21,10 +21,10 @@ beforeEach(function () {
 function progressPeople(): array
 {
     return [
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'dataEntry' => userWithRole('Data Entry'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
         'closer' => userWithRole('Business Development'),
         'sourcing' => userWithRole('Sourcing'),
@@ -43,7 +43,7 @@ function rfqThroughDataEntry(array $holders, User $dataEntry): Rfq
     // Assigned by Operations, as any RFQ that's got this far has been.
     $rfq = splitAmong(Rfq::factory()->create([
         'rfq_number' => 'RFQ1001',
-        'operations_assigned_by' => userWithRole('Senior Operations')->id,
+        'operations_assigned_by' => userWithRole('HBDs Operations')->id,
         'operations_assigned_at' => now(),
     ]), $holders);
 

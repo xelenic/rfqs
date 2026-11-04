@@ -24,7 +24,7 @@
 @php
     $isSplit = $rfq->splitTotal() > 1;
     $canChangeStatus = $rfq->status === 'Pending' && auth()->user()->canChangeRfqStatus();
-    $canReassignSourcing = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
+    $canReassignSourcing = auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']);
 @endphp
 @foreach ($rfq->sourcingParts() as $part)
     @php

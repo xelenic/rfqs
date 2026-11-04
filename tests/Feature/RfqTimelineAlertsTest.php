@@ -33,7 +33,7 @@ function timelineCast(): array
         'rfq' => splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8501', 'subject' => 'Valves']), [1 => $riley]),
         'riley' => $riley,
         'morgan' => tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']),
-        'ops' => tap(userWithRole('Senior Operations'))->update(['name' => 'Olivia Park']),
+        'ops' => tap(userWithRole('HBDs Operations'))->update(['name' => 'Olivia Park']),
         'gm' => tap(userWithRole('General Manager'))->update(['name' => 'Quinn Alder']),
     ];
 }

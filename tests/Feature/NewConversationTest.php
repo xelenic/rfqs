@@ -24,7 +24,7 @@ function messenger(string $name, string $role): User
 }
 
 it('offers New message on Messages — everyone active to pick from, with their roles, but not themselves', function () {
-    $olivia = messenger('Olivia Park', 'Senior Operations');
+    $olivia = messenger('Olivia Park', 'HBDs Operations');
     $riley = messenger('Riley Chen', 'Sourcing');
     messenger('Pat Gone', 'Data Entry')->forceFill(['deactivated_at' => now()])->save();
     $hr = tap(User::factory()->create(['name' => 'Harper Hr']))->assignRole(Role::findOrCreate('HR Executive'));
@@ -46,7 +46,7 @@ it('offers New message on Messages — everyone active to pick from, with their 
 });
 
 it('starts a conversation with whoever they pick, and opens it', function () {
-    $olivia = messenger('Olivia Park', 'Senior Operations');
+    $olivia = messenger('Olivia Park', 'HBDs Operations');
     $riley = messenger('Riley Chen', 'Sourcing');
 
     test()->actingAs($olivia)->from(route('admin.messages.index'))
@@ -68,7 +68,7 @@ it('starts a conversation with whoever they pick, and opens it', function () {
 });
 
 it('carries on a conversation there already', function () {
-    $olivia = messenger('Olivia Park', 'Senior Operations');
+    $olivia = messenger('Olivia Park', 'HBDs Operations');
     $riley = messenger('Riley Chen', 'Sourcing');
     $riley->sentMessages()->create(['recipient_id' => $olivia->id, 'body' => 'Morning!']);
 
@@ -80,7 +80,7 @@ it('carries on a conversation there already', function () {
 });
 
 it('reopens New message saying what\'s wrong, with what they wrote', function (Closure $payload, string $message) {
-    $olivia = messenger('Olivia Park', 'Senior Operations');
+    $olivia = messenger('Olivia Park', 'HBDs Operations');
     $riley = messenger('Riley Chen', 'Sourcing');
 
     test()->actingAs($olivia)->from(route('admin.messages.index'))

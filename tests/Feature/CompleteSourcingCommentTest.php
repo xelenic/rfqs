@@ -9,7 +9,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Data Entry');
 });
 
@@ -131,7 +131,7 @@ it('goes back to the list, the RFQ or the dashboard it was done from', function 
 it('gives Sourcing a Mark Complete that asks, and no comment box of their own, on My Pending RFQs', function () {
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001']), [1 => $riley, 2 => $riley]);
-    $rfq->comments()->create(['user_id' => userWithRole('Senior Operations')->id, 'body' => 'Please be quick on this one']);
+    $rfq->comments()->create(['user_id' => userWithRole('HBDs Operations')->id, 'body' => 'Please be quick on this one']);
 
     $response = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk();
     $html = $response->getContent();
@@ -192,7 +192,7 @@ it('shows it on the activity timeline as "Assigned to Data Entry"', function () 
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $sam]);
     $rfq->completeSourcingPart(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSee('<div class="rfq-timeline-title">Assigned to Data Entry</div>', false)
         ->assertDontSee('Marked Complete by Sourcing');
 });

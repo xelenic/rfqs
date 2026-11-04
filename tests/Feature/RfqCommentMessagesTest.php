@@ -59,7 +59,7 @@ function rfqWithPeople(): array
 {
     $people = [
         'ben' => commenter('Ben Dev', 'Business Development'),
-        'olivia' => commenter('Olivia Park', 'Senior Operations'),
+        'olivia' => commenter('Olivia Park', 'HBDs Operations'),
         'riley' => commenter('Riley Chen', 'Sourcing'),
         'dana' => commenter('Dana Entry', 'Data Entry'),
     ];
@@ -82,7 +82,7 @@ it('sends a comment on an RFQ to everyone involved in it, in their Messages — 
     $rfq->comments()->create(['user_id' => $morgan->id, 'body' => 'Any update?']);
     // Not involved: another Sourcing member, another Senior Operations.
     commenter('Sam Rivera', 'Sourcing');
-    commenter('Omar Ops', 'Senior Operations');
+    commenter('Omar Ops', 'HBDs Operations');
 
     postComment($people['riley'], $rfq, 'Supplier quotes are in.')
         ->assertRedirect(route('admin.rfqs.show', $rfq))
@@ -130,7 +130,7 @@ it('sends someone it @mentions the mention only, and says a reply was one — to
 
 it('sends it to whoever the RFQ is waiting with — Senior Operations before it\'s assigned, a review stage\'s people', function () {
     $ben = commenter('Ben Dev', 'Business Development');
-    $operations = [commenter('Olivia Park', 'Senior Operations'), commenter('Omar Ops', 'Senior Operations')];
+    $operations = [commenter('Olivia Park', 'HBDs Operations'), commenter('Omar Ops', 'HBDs Operations')];
     $heads = [commenter('Hana Head', 'Head of Business Development'), commenter('Hugo Head', 'Head of Business Development')];
     $unassigned = Rfq::factory()->create(['created_by' => $ben->id]);
     $inReview = Rfq::factory()->create(['created_by' => $ben->id, 'stage' => 'head_of_bd_review', 'status' => 'Completed']);

@@ -35,7 +35,7 @@ class UserSeeder extends Seeder
                 ['name' => 'Riley Chen', 'email' => 'sourcing2@rfqms.test'],
                 ['name' => 'Priya Desai', 'email' => 'sourcing3@rfqms.test'],
             ],
-            'Senior Operations' => [
+            'HBDs Operations' => [
                 ['name' => 'Casey Patel', 'email' => 'operations@rfqms.test'],
                 ['name' => 'Drew Nakamura', 'email' => 'operations2@rfqms.test'],
             ],
@@ -47,7 +47,7 @@ class UserSeeder extends Seeder
                 ['name' => 'Morgan Ito', 'email' => 'data.entry@rfqms.test'],
                 ['name' => 'Casey Brooks', 'email' => 'data.entry2@rfqms.test'],
             ],
-            'GM Assistant' => [
+            'GMs Operations' => [
                 ['name' => 'Harper Collins', 'email' => 'gm.assistant@rfqms.test'],
                 ['name' => 'Devon Marsh', 'email' => 'gm.assistant2@rfqms.test'],
             ],

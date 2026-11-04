@@ -194,7 +194,7 @@ it('refuses extra hours that don\'t make sense, and keeps them to an Admin', fun
 it('keeps people\'s working hours to an Admin', function () {
     $riley = userWithRole('Sourcing');
 
-    foreach (['HR Executive', 'Senior Operations', 'Sourcing'] as $role) {
+    foreach (['HR Executive', 'HBDs Operations', 'Sourcing'] as $role) {
         test()->actingAs(userWithRole($role))->post(route('admin.settings.extra-hours.store'), [
             'user_id' => $riley->id, 'days' => ['monday'], 'start' => '19:00', 'end' => '20:00', 'starts_on' => '2026-10-05',
         ])->assertForbidden();

@@ -32,7 +32,7 @@ it('puts the WC number search on every dashboard', function (string $role) {
         ->assertSee('data-suggest-url="'.route('admin.rfqs.suggest').'"', false)
         ->assertSee('role="combobox"', false)
         ->assertSee('js/wc-search.js', false);
-})->with(['Admin', 'Business Development', 'Sourcing', 'Senior Operations', 'Data Entry']);
+})->with(['Admin', 'Business Development', 'Sourcing', 'HBDs Operations', 'Data Entry']);
 
 it('leaves it off for those who can\'t open RFQs, and turns their requests down', function () {
     $hr = User::factory()->create()->assignRole('HR Executive');

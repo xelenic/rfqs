@@ -93,7 +93,7 @@ function splitAmong(Rfq $rfq, array $holders): Rfq
  */
 function operationsTabs(array $query = [], ?string $role = null): array
 {
-    $user = $role ? userWithRole('Admin') : userWithRole('Senior Operations');
+    $user = $role ? userWithRole('Admin') : userWithRole('HBDs Operations');
 
     $html = test()->actingAs($user)
         ->get(route('admin.rfqs.index', array_filter(['status' => 'Pending', 'role' => $role]) + $query))
@@ -123,7 +123,7 @@ function startDataEntryOn(Rfq $rfq, int $part, ?User $by = null): Rfq
  */
 function startGmAssistantOn(Rfq $rfq, int $part, ?User $by = null): Rfq
 {
-    $rfq->refresh()->startGmAssistantPart($part, $by ?? userWithRole('GM Assistant'));
+    $rfq->refresh()->startGmAssistantPart($part, $by ?? userWithRole('GMs Operations'));
 
     return $rfq->refresh();
 }

@@ -38,7 +38,7 @@ function withGmAssistant(bool $started = true): Rfq
     startDataEntryOn($rfq, 1, $dataEntry);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry, 'Entered', 2);
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     gmaClock('10:00');
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
@@ -60,7 +60,7 @@ it('counts a part down to GM Assistant\'s target on their list', function () {
     gmaClock('10:20');
     expect($rfq->gmAssistantCountdown(1))->toBe(['target' => 3600, 'remaining' => 2400]);
 
-    $html = test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+    $html = test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     $row = Str::betweenFirst($html, '<td class="text-nowrap">RFQ9301</td>', '</tr>');
 
     expect($html)->toContain('>Time Left</th>')
@@ -75,7 +75,7 @@ it('goes overdue past its target, and stops once it\'s submitted', function () {
     gmaClock('11:15');
     expect($rfq->gmAssistantCountdown(1)['remaining'])->toBe(-900);
 
-    $rfq->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->recordGmAssistantPart(1, userWithRole('GMs Operations'));
     expect($rfq->refresh()->gmAssistantCountdown(1))->toBeNull();
 });
 
@@ -98,7 +98,7 @@ it('keeps GM Assistant\'s per-priority targets off the page — their tab is GM 
         ->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '6', 'Medium' => 'soon', 'High' => '1', 'Urgent' => '0.1', 'Critical' => '0.25']])
         ->assertSessionHasErrorsIn('gm_assistant_targets', ['targets.Medium', 'targets.Urgent']);
 
-    test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1', 'Critical' => '0.25']])
+    test()->actingAs(userWithRole('GMs Operations'))->patch(route('admin.settings.gm-assistant-targets'), ['targets' => ['Trivial' => '8', 'Minimal' => '6', 'Low' => '1', 'Medium' => '1', 'High' => '1', 'Urgent' => '1', 'Critical' => '0.25']])
         ->assertForbidden();
 });
 
@@ -139,7 +139,7 @@ it('counts the list down from the line items, the formula on hover', function ()
     gmaClock('10:15');
     expect($rfq->refresh()->gmAssistantCountdown(1))->toBe(['target' => 2700, 'remaining' => 1800]);
 
-    $html = test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+    $html = test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     $row = Str::betweenFirst($html, '<td class="text-nowrap">RFQ9301</td>', '</tr>');
     expect($row)
         ->toContain('data-hover-card="gma-time-'.$rfq->id.'-p1"')
@@ -164,6 +164,6 @@ it('lets an Admin switch it on and set the time a line item takes', function () 
         ->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '1', 'minutes' => '0.3'])
         ->assertSessionHasErrorsIn('gm_assistant_per_item', ['minutes']);
 
-    test()->actingAs(userWithRole('GM Assistant'))->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '0', 'minutes' => '1'])
+    test()->actingAs(userWithRole('GMs Operations'))->patch(route('admin.settings.gm-assistant-per-item'), ['enabled' => '0', 'minutes' => '1'])
         ->assertForbidden();
 });

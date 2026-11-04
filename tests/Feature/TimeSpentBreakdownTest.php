@@ -73,7 +73,7 @@ it('breaks each role\'s time down stretch by stretch, adding up to its figure', 
         ])
         ->and($breakdown['Data Entry'][1]['elapsed'])->toBe(3 * 3600)
         ->and($breakdown['Data Entry'][1]['hours'])->toBe('the company\'s working hours')
-        ->and($breakdown['GM Assistant'])->toBe([]);
+        ->and($breakdown['GMs Operations'])->toBe([]);
 
     foreach (['Sourcing', 'Data Entry'] as $role) {
         expect(collect($breakdown[$role])->sum('counted'))->toBe($time['roles'][$role]['seconds']);

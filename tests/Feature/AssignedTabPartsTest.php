@@ -10,7 +10,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
 });
 
 it('groups each assigned RFQ with a line per part, naming who holds it and where it stands', function () {
@@ -90,7 +90,7 @@ it('says so, without the fold-all button, when nothing has been assigned', funct
 it('shows Admin the same groups on Senior Operations\' page', function () {
     splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
 
-    [, $assigned] = operationsTabs([], 'senior-operations');
+    [, $assigned] = operationsTabs([], 'hbds-operations');
 
     expect($assigned)->toContain('RFQ1001-P1 of P2')->toContain('RFQ1001-P2 of P2');
 });

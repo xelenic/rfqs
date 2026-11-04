@@ -54,7 +54,7 @@ it('takes only someone in Data Entry, and only for someone in Sourcing', functio
     $riley = userWithRole('Sourcing');
 
     test()->actingAs($admin)->from(route('admin.users.show', $riley))
-        ->patch(route('admin.users.default-data-entry', $riley), ['data_entry_user_id' => userWithRole('Senior Operations')->id])
+        ->patch(route('admin.users.default-data-entry', $riley), ['data_entry_user_id' => userWithRole('HBDs Operations')->id])
         ->assertSessionHasErrorsIn('default_data_entry', ['data_entry_user_id' => 'Pick someone in Data Entry from the list.']);
 
     test()->actingAs($admin)->patch(route('admin.users.default-data-entry', userWithRole('Data Entry')), ['data_entry_user_id' => userWithRole('Data Entry')->id])

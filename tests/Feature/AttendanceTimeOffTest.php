@@ -175,7 +175,7 @@ it('shows the time off of anyone off on the attendance list, and of everyone in 
         ->and(substr_count($html, '<template id="time-off-'.$riley->id.'">'))->toBe(1);
 
     // Senior Operations, marking a sheet, sees it for everyone in the popup.
-    $popup = Str::betweenFirst(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.attendance.index'))->assertOk()->getContent(), 'id="attendanceModal"', '</form>');
+    $popup = Str::betweenFirst(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.attendance.index'))->assertOk()->getContent(), 'id="attendanceModal"', '</form>');
     expect($popup)->toContain('data-hover-card="time-off-'.$riley->id.'">Riley Sourcing</span>')
         ->toContain('data-hover-card="time-off-'.$morgan->id.'">Morgan Entry</span>');
 });

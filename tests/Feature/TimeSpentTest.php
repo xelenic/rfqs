@@ -97,7 +97,7 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     test()->travelTo(colombo('2026-10-06 10:30'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     test()->travelTo(colombo('2026-10-06 11:00'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
@@ -105,7 +105,7 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     // GM Assistant: from their Start, 11:00–15:00 less lunch.
     test()->travelTo(colombo('2026-10-06 15:00'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     expect($rfq->refresh()->steps->map(fn (RfqStep $step) => [$step->step, $step->assignee_id, $step->ended_at !== null])->all())->toBe([
         ['sourcing', $riley->id, true],
@@ -118,7 +118,7 @@ it('logs each role\'s stretch on a part as it moves along, and adds them up', fu
 
     expect($time['roles']['Sourcing'])->toMatchArray(['minutes' => 150, 'parts' => [1 => 150], 'rounds' => 1, 'reworks' => 0, 'ongoing' => false])
         ->and($time['roles']['Data Entry']['minutes'])->toBe(390)
-        ->and($time['roles']['GM Assistant']['minutes'])->toBe(180)
+        ->and($time['roles']['GMs Operations']['minutes'])->toBe(180)
         ->and($time['minutes'])->toBe(720);
 });
 
@@ -180,7 +180,7 @@ it('keeps each part\'s time on a split apart, and in all', function () {
 });
 
 it('pauses GM Assistant\'s clock while the RFQ is held on the Head\'s Returns page', function () {
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $head = userWithRole('Head of Business Development');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
 
@@ -189,7 +189,7 @@ it('pauses GM Assistant\'s clock while the RFQ is held on the Head\'s Returns pa
         startDataEntryOn($rfq, $part);
         $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $rfq->refresh()->finalizePart($part);
-        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
         startGmAssistantOn($rfq, $part, $assistant);
     }
@@ -216,7 +216,7 @@ it('ends a part\'s stretch when it\'s taken off its member, and every stretch on
     $rfq->assignSourcingParts([1 => userWithRole('Sourcing')->id]);
     expect(RfqStep::query()->whereNull('ended_at')->count())->toBe(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.request-details', $rfq), ['reason' => 'Need the site address'])
         ->assertSessionHasNoErrors();
     expect(RfqStep::query()->whereNull('ended_at')->count())->toBe(0);
@@ -284,7 +284,7 @@ it('reports every role\'s time per RFQ and on average, for Admin and Senior Oper
             ->assertDontSee(route('admin.reports.time-spent'));
     }
 
-    foreach (['Admin', 'Senior Operations'] as $role) {
+    foreach (['Admin', 'HBDs Operations'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()
             ->assertSee(route('admin.reports.time-spent'));
         test()->actingAs(userWithRole($role))->get(route('admin.reports.time-spent'))->assertOk()
@@ -407,7 +407,7 @@ it('doesn\'t flag a step ended at night by something else — the part freed, or
     $freed->planSplit(2);
     $freed->assignSourcingParts([1 => userWithRole('Sourcing')->id]);
     test()->travelTo(colombo('2026-10-05 21:00'));
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.request-details', $freed), ['reason' => 'Need the site address'])
         ->assertSessionHasNoErrors();
 
@@ -425,11 +425,11 @@ it('doesn\'t flag a step ended at night by something else — the part freed, or
         startDataEntryOn($held, $part);
         $held->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $held->refresh()->finalizePart($part);
-        $held->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $held->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
         $held->refresh()->approveHeadOfBdPart($part, $head);
         startGmAssistantOn($held, $part);
     }
-    $held->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $held->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     test()->travelTo(colombo('2026-10-05 22:00'));
     $held->refresh()->rejectPartToStage(1, 'head_of_bd_review', 'Check P1', userWithRole('General Manager'), 'gm_review');
@@ -437,7 +437,7 @@ it('doesn\'t flag a step ended at night by something else — the part freed, or
     $paused = $held->refresh()->steps->where('step', 'gm_assistant')->firstWhere('part_number', 2);
     expect($paused->ended_at)->not->toBeNull()
         ->and($paused->ended_by_role)->toBeFalse()
-        ->and($held->timeSpent()['roles']['GM Assistant']['out_of_hours_count'])->toBe(0);
+        ->and($held->timeSpent()['roles']['GMs Operations']['out_of_hours_count'])->toBe(0);
 });
 
 it('highlights out-of-hours work on the report and the RFQ\'s page, and lists it on its own', function () {
@@ -572,7 +572,7 @@ it('shows each RFQ\'s deadline in its row', function () {
 
 it('marks overdue just what the dashboards do — at any step, not only Sourcing\'s', function () {
     $sourcing = userWithRole('Sourcing');
-    $gmAssistant = userWithRole('GM Assistant');
+    $gmAssistant = userWithRole('GMs Operations');
 
     // Sourcing on time; GM Assistant on it since 09:00 against an Urgent 30m.
     test()->travelTo(colombo('2026-10-05 08:30'));
@@ -582,12 +582,12 @@ it('marks overdue just what the dashboards do — at any step, not only Sourcing
     startDataEntryOn($rfq, 1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
     startGmAssistantOn($rfq, 1, $gmAssistant);
     test()->travelTo(colombo('2026-10-05 11:00'));
 
-    $dashboard = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk();
+    $dashboard = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk();
     $overdueOnDashboard = collect($dashboard->viewData('overview')['statuses'])->firstWhere('key', 'overdue')['value'];
 
     $sheet = test()->actingAs(userWithRole('Admin'))->get(route('admin.reports.time-spent', ['tab' => 'exceeded']))->assertOk();
@@ -605,7 +605,7 @@ it('marks overdue just what the dashboards do — at any step, not only Sourcing
 it('opens the report to Senior Operations, without the Admin-only link to the working hours', function () {
     deadlineSpread();
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.reports.time-spent', ['tab' => 'exceeded']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.reports.time-spent', ['tab' => 'exceeded']))->assertOk()
         ->assertSee('RFQ9301')
         ->assertDontSee(route('admin.settings.edit', ['tab' => 'working-hours']));
 

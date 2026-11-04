@@ -33,7 +33,7 @@
                 @include('admin.rfqs._attachments_input', ['attachmentsId' => 'gm-assistant-attachments'])
 
                 <div class="mt-3">
-                    @include('admin.rfqs._acting_as', ['role' => 'GM Assistant', 'id' => 'gm-assistant-acting-as', 'label' => 'Submitted by'])
+                    @include('admin.rfqs._acting_as', ['role' => 'GMs Operations', 'id' => 'gm-assistant-acting-as', 'label' => 'Submitted by'])
                 </div>
             </div>
 

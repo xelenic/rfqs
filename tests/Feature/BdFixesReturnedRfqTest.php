@@ -24,14 +24,14 @@ beforeEach(function () {
 function returnedToBd(): array
 {
     JobCategory::query()->firstOrCreate(['name' => 'Electrical Works']);
-    $priya = userWithRole('Senior Operations');
+    $priya = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $riley = userWithRole('Sourcing');
 
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'subject' => 'Wrong building entirely', 'stage' => 'senior_ops_review']);
     $rfq->update(['operations_assigned_by' => $priya->id, 'operations_assigned_at' => now()]);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'business_development', 'reason' => 'Confirm the site with the client']);
 
     return ['bd' => $bd, 'priya' => $priya, 'riley' => $riley, 'rfq' => $rfq->refresh()];
@@ -205,7 +205,7 @@ it('leaves a returned RFQ for Senior Operations to re-assign', function () {
 
 it('refuses Business Development assigning an RFQ that hasn\'t been sent back to them', function () {
     $bd = userWithRole('Business Development');
-    $priya = userWithRole('Senior Operations');
+    $priya = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $rfq = Rfq::factory()->create();
 

@@ -37,9 +37,9 @@ function atTheGm(string $number, string $priority = 'Medium'): Rfq
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     return $rfq->refresh();
 }
@@ -107,7 +107,7 @@ it('counts their approvals and send-backs over the period, how long an approval 
         'approvedRfqs' => 1,
         'returned' => 1,
         'average' => 3600,
-        'returnedTo' => ['GM Assistant' => 1],
+        'returnedTo' => ['GMs Operations' => 1],
     ])
         ->and($overview['waiting'])->toHaveCount(1)
         ->and(collect($overview['decisions']['series'])->pluck('key')->all())->toBe(['approved', 'returned'])

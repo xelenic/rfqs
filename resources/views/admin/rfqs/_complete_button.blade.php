@@ -69,7 +69,7 @@
         // Back to Senior Operations, who frees the part to assign again.
         'sourcing_to_ops' => [
             route('admin.rfqs.return-senior-ops', $rfq),
-            'Senior Operations',
+            'HBDs Operations',
             'Tell Senior Operations what\'s wrong',
             'Sent back to Senior Operations to assign again. Your reason is posted to the RFQ\'s comments and shown with it on their Returns page.',
             'Why should Senior Operations look at this part again?',

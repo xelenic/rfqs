@@ -58,7 +58,7 @@
     // Senior Operations' Reassign (and Admin's): each part on the page that can
     // go to someone else (_reassign_button) — one button for one part, a menu
     // for several.
-    $reassignableParts = auth()->user()->hasAnyRole(['Senior Operations', 'Admin'])
+    $reassignableParts = auth()->user()->hasAnyRole(['HBDs Operations', 'Admin'])
         ? $pageAssignees->filter(fn ($assignee) => $rfq->canReplaceSourcing($assignee->pivot->part_number))
         : collect();
 
@@ -82,7 +82,7 @@
     // it (see RfqController::assign()), so just the one button is shown.
     // Admin isn't offered it either: it's only a way to name someone in
     // Operations, which is Operations' own call.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']);
 
     // Senior Operations' second review — only shown while the RFQ is
     // actually sitting in that stage, same as it only appears on the
@@ -93,7 +93,7 @@
     // meanwhile (RfqController::abortIfPartOnHold()).
     $hasPartOnHold = $rfq->partsOnHold() !== [];
 
-    $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->stage === 'senior_ops_review' && ! $hasPartOnHold;
+    $canApproveSeniorOpsReview = auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']) && $rfq->stage === 'senior_ops_review' && ! $hasPartOnHold;
     $canRejectSeniorOps = $canApproveSeniorOpsReview;
 
     // Head of Business Development's own review — same "only while it's
@@ -103,7 +103,7 @@
 
     // GM Assistant's own turn — same rule again. See
     // Rfq::recordGmAssistantDetails().
-    $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->stage === 'gm_assistant' && ! $hasPartOnHold;
+    $canSubmitGmAssistantDetails = auth()->user()->hasAnyRole(['GMs Operations', 'Admin']) && $rfq->stage === 'gm_assistant' && ! $hasPartOnHold;
 
     // General Manager's final approval — same rule again. See
     // Rfq::approveByGm() / rejectToStage().
@@ -120,9 +120,9 @@
     if ($pagePart !== null) {
         $viewer = auth()->user();
         $partDecision = match (true) {
-            $viewer->hasAnyRole(['Senior Operations', 'Admin']) && $rfq->partAwaitsSeniorOpsReview($pagePart) => 'senior_ops_review',
+            $viewer->hasAnyRole(['HBDs Operations', 'Admin']) && $rfq->partAwaitsSeniorOpsReview($pagePart) => 'senior_ops_review',
             $viewer->hasAnyRole(['Head of Business Development', 'Admin']) && $rfq->partAwaitsHeadOfBdReview($pagePart) => 'head_of_bd_review',
-            $viewer->hasAnyRole(['GM Assistant', 'Admin']) && $rfq->partAwaitsGmAssistant($pagePart) => 'gm_assistant',
+            $viewer->hasAnyRole(['GMs Operations', 'Admin']) && $rfq->partAwaitsGmAssistant($pagePart) => 'gm_assistant',
             $viewer->hasAnyRole(['General Manager', 'Admin']) && $rfq->partAwaitsGmApproval($pagePart) => 'gm_review',
             $viewer->hasAnyRole(['Business Development', 'Admin']) && $rfq->partAwaitsBdClosing($pagePart) => 'bd_closing',
             default => null,
@@ -156,9 +156,9 @@
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
     $rejectRole = match ($rejectFromStage) {
-        'senior_ops_review' => 'Senior Operations',
+        'senior_ops_review' => 'HBDs Operations',
         'head_of_bd_review' => 'Head of Business Development',
-        'gm_assistant' => 'GM Assistant',
+        'gm_assistant' => 'GMs Operations',
         'gm_review' => 'General Manager',
         'bd_closing' => 'Business Development',
         default => null,
@@ -243,7 +243,7 @@
         'finalize' => ['label' => 'Finalize', 'icon' => 'bi-check2-all'],
         'senior_ops' => ['label' => 'Senior Ops', 'icon' => 'bi-clipboard2-check'],
         'head_of_bd' => ['label' => 'Head of BD', 'icon' => 'bi-person-check'],
-        'gm_assistant' => ['label' => 'GM Assistant', 'icon' => 'bi-file-earmark-text'],
+        'gm_assistant' => ['label' => 'GMs Operations', 'icon' => 'bi-file-earmark-text'],
         'gm_review' => ['label' => 'General Manager', 'icon' => 'bi-award'],
         'closed' => ['label' => 'Closed', 'icon' => 'bi-check2-all'],
     ];
@@ -373,7 +373,7 @@
         ];
 
         $gmAssistant = [
-            'name' => 'GM Assistant',
+            'name' => 'GMs Operations',
             'step' => 'gm_assistant',
             'rfq_number' => $rfqNumber,
             'meta' => $assistantAt
@@ -1036,7 +1036,7 @@
                         {{-- Senior Operations (and Admin) reassign a part from here, at
                              whatever step it's at — see _reassign_button,
                              Rfq::canReplaceSourcing(). --}}
-                        @php $canReplaceSourcing = auth()->user()->hasAnyRole(['Senior Operations', 'Admin']); @endphp
+                        @php $canReplaceSourcing = auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']); @endphp
                         <div class="table-responsive">
                             <table class="table table-sm mb-0 align-middle">
                                 <thead>
@@ -1634,7 +1634,7 @@
     </div>
 
     @include('admin.rfqs._edit_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
-    @if (auth()->user()->hasAnyRole(['Senior Operations', 'Admin']))
+    @if (auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']))
         @include('admin.rfqs._reassign_modal', ['sourcingUsers' => $sourcingUsers])
     @endif
     @include('admin.rfqs._assign_modal', ['statusFilter' => $statusFilter, 'returnTo' => 'show'])
@@ -1648,7 +1648,7 @@
     @if ($pendingReasonParts->isNotEmpty())
         @include('admin.rfqs._pending_reason_modal')
     @endif
-    @if (auth()->user()->hasAnyRole(['Data Entry', 'GM Assistant', 'Admin']))
+    @if (auth()->user()->hasAnyRole(['Data Entry', 'GMs Operations', 'Admin']))
         @include('admin.rfqs._pause_data_entry_modal')
     @endif
     @if ($rejectFromStage)

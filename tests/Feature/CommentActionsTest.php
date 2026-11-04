@@ -12,7 +12,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Data Entry');
     Role::findOrCreate('Head of Business Development');
 });
@@ -27,7 +27,7 @@ beforeEach(function () {
  */
 function rfqWithActionComments(): array
 {
-    [$riley, $dataEntry, $ops] = [userWithRole('Sourcing'), userWithRole('Data Entry'), userWithRole('Senior Operations')];
+    [$riley, $dataEntry, $ops] = [userWithRole('Sourcing'), userWithRole('Data Entry'), userWithRole('HBDs Operations')];
 
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'priority_level' => 'Medium']), [1 => $riley, 2 => $riley, 3 => $riley]);
     $rfq->comments()->create(['user_id' => $ops->id, 'body' => 'Please be quick on this one']);

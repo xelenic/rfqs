@@ -30,10 +30,10 @@ beforeEach(function () {
  */
 function sheetWithEveryMark(): array
 {
-    $ops = User::factory()->create(['name' => 'Sam Operations'])->assignRole('Senior Operations');
+    $ops = User::factory()->create(['name' => 'Sam Operations'])->assignRole('HBDs Operations');
     $riley = User::factory()->create(['name' => 'Riley Sourcing'])->assignRole('Sourcing');
     $morgan = User::factory()->create(['name' => 'Morgan Entry'])->assignRole('Data Entry');
-    $jordan = User::factory()->create(['name' => 'Jordan Assistant'])->assignRole('GM Assistant');
+    $jordan = User::factory()->create(['name' => 'Jordan Assistant'])->assignRole('GMs Operations');
 
     test()->actingAs($ops)->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
@@ -58,11 +58,11 @@ it('opens a sheet\'s own page for Admin, Senior Operations and HR Executive alon
     test()->actingAs(sheetReviewer())->get(route('admin.attendance.show', $sheet))->assertOk()
         ->assertSee('<title>Attendance — Mon, Oct 5, 2026', false);
 
-    foreach (['Senior Operations', 'Admin'] as $role) {
+    foreach (['HBDs Operations', 'Admin'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.attendance.show', $sheet))->assertOk();
     }
 
-    foreach (['Sourcing', 'Data Entry', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'Data Entry', 'GMs Operations', 'General Manager', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.attendance.show', $sheet))->assertForbidden();
     }
 });
@@ -84,7 +84,7 @@ it('shows everyone on the sheet with their role, mark and note, and who submitte
         ->and(Str::betweenFirst($html, 'data-attendance-line="'.$morgan->id.'"', '</tr>'))
         ->toContain('Data Entry')->toContain('Full-Day Leave')->toContain('Sick')
         ->and(Str::betweenFirst($html, 'data-attendance-line="'.$jordan->id.'"', '</tr>'))
-        ->toContain('GM Assistant')->toContain('Half-Day Leave – Custom Time')->toContain('10:00–14:00')->toContain('Bank');
+        ->toContain('GMs Operations')->toContain('Half-Day Leave – Custom Time')->toContain('10:00–14:00')->toContain('Bank');
 });
 
 it('lets HR Executive approve from the page, and comes back to it', function () {

@@ -17,15 +17,25 @@ class BusinessRoleSeeder extends Seeder
      */
     public function run(): void
     {
-        // "Operations" is being renamed to "Senior Operations" — renaming
+        // "Operations" is being renamed to "HBDs Operations" — renaming
         // the existing row in place (rather than findOrCreate-ing a new
         // one under the new name below) keeps every current Operations
         // user attached, since model_has_roles is keyed by role_id, not
         // name.
-        $operations = Role::where('name', 'Operations')->first();
-        if ($operations) {
-            $operations->name = 'Senior Operations';
-            $operations->save();
+        // Since 2026-11-04, Senior Operations is "HBDs Operations" and GM
+        // Assistant is "GMs Operations", renamed in place the same way.
+        $renamedRoles = [
+            'Operations' => 'HBDs Operations',
+            'Senior Operations' => 'HBDs Operations',
+            'GM Assistant' => 'GMs Operations',
+        ];
+
+        foreach ($renamedRoles as $oldName => $newName) {
+            $role = Role::where('name', $oldName)->first();
+            if ($role && ! Role::where('name', $newName)->exists()) {
+                $role->name = $newName;
+                $role->save();
+            }
         }
 
         $roles = [
@@ -36,7 +46,7 @@ class BusinessRoleSeeder extends Seeder
                 'description' => 'Drives new client acquisition and manages RFQ relationships. Receives the final approved RFQ and closes it out.',
                 'permissions' => ['rfqs.view', 'rfqs.create', 'rfqs.edit'],
             ],
-            'Senior Operations' => [
+            'HBDs Operations' => [
                 'description' => 'Categorizes incoming RFQs, splits and assigns them to Sourcing, and gives the second-stage review before escalating to Head of Business Development.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
@@ -52,7 +62,7 @@ class BusinessRoleSeeder extends Seeder
                 'description' => 'Processes RFQs handed off by Sourcing into downstream systems.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
-            'GM Assistant' => [
+            'GMs Operations' => [
                 'description' => 'Submits an RFQ the Head of Business Development approved on to the General Manager for final approval, with a comment if needed.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],

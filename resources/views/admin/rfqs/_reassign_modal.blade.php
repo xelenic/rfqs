@@ -78,7 +78,7 @@
                 @enderror
 
                 <div class="mt-3">
-                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'reassign-acting-as', 'label' => 'Reassigned by'])
+                    @include('admin.rfqs._acting_as', ['role' => 'HBDs Operations', 'id' => 'reassign-acting-as', 'label' => 'Reassigned by'])
                 </div>
             </div>
 

@@ -19,7 +19,7 @@ function unassignedPageUrl(): string
 }
 
 it('gives Senior Operations a Get Details Again button on an Unassigned RFQ', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001']);
 
     test()->actingAs($ops)->get(unassignedPageUrl())->assertOk()
@@ -29,7 +29,7 @@ it('gives Senior Operations a Get Details Again button on an Unassigned RFQ', fu
 });
 
 it('sends the RFQ to Business Development\'s Returns page with the reason', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'subject' => 'Server room chillers']);
 
@@ -53,7 +53,7 @@ it('sends the RFQ to Business Development\'s Returns page with the reason', func
 });
 
 it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with Business Development, and keeps it there once they\'ve fixed it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001']);
     $returnsUrl = route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']);
@@ -92,7 +92,7 @@ it('takes it off the Unassigned queue onto Senior Operations\' Returns, as with 
 it('keeps an RFQ a reviewer rejected back to Business Development off Senior Operations\' Unassigned too, till it\'s fixed', function () {
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2002', 'stage' => 'senior_ops_review']);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.reject-senior-ops', $rfq), ['target_stage' => 'business_development', 'reason' => 'Wrong client'])
         ->assertSessionHasNoErrors();
 
@@ -108,7 +108,7 @@ it('keeps an RFQ a reviewer rejected back to Business Development off Senior Ope
 it('refuses a reason left empty, changing nothing', function () {
     $rfq = Rfq::factory()->create();
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.request-details', $rfq), ['reason' => ''])
         ->assertSessionHasErrors('reason', null, 'requestDetails');
 
@@ -126,7 +126,7 @@ it('refuses anyone but Senior Operations and Admin', function (string $role) {
 })->with(['Business Development', 'Sourcing', 'Data Entry', 'General Manager']);
 
 it('lets Admin do it on Senior Operations\' behalf', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs(userWithRole('Admin'))
@@ -139,7 +139,7 @@ it('lets Admin do it on Senior Operations\' behalf', function () {
 });
 
 it('refuses an RFQ that\'s already fully assigned, or already with Business Development', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $assigned = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
 
     test()->actingAs($ops)

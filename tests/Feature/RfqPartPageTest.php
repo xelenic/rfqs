@@ -36,7 +36,7 @@ function partTwoFinalized(): array
     $people = collect(['Pat Park', 'Riley Chen', 'Sam Rivera'])->map(fn (string $name) => tap(userWithRole('Sourcing'))->update(['name' => $name]));
     $rfq = splitAmong(Rfq::factory()->create([
         'rfq_number' => 'RFQ9911', 'subject' => 'Pumps',
-        'operations_assigned_by' => userWithRole('Senior Operations')->id, 'operations_assigned_at' => now(),
+        'operations_assigned_by' => userWithRole('HBDs Operations')->id, 'operations_assigned_at' => now(),
     ]), [1 => $people[0], 2 => $people[1], 3 => $people[2]]);
     $dataEntry = userWithRole('Data Entry');
 
@@ -53,7 +53,7 @@ function partTwoFinalized(): array
 it('shows only that part\'s details on the RFQ page — its step details, its Sourcing member, its number', function () {
     ['rfq' => $rfq] = partTwoFinalized();
 
-    $main = shownOf(test()->actingAs(userWithRole('Senior Operations'))->get($rfq->detailsUrl(2))->assertOk()
+    $main = shownOf(test()->actingAs(userWithRole('HBDs Operations'))->get($rfq->detailsUrl(2))->assertOk()
         ->assertSee('<title>RFQ9911-P2 of P3', false)
         ->assertSee('Showing <strong>RFQ9911-P2 of P3</strong> only — Riley Chen&#039;s part', false));
 
@@ -64,7 +64,7 @@ it('shows only that part\'s details on the RFQ page — its step details, its So
         ->not->toContain('Sam Rivera');
 
     // The whole RFQ, as before.
-    $whole = shownOf(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk());
+    $whole = shownOf(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk());
     expect($whole)->toContain('RFQ9911-P1 of P3')->toContain('Pat Park')->toContain('Sam Rivera');
 });
 
@@ -87,7 +87,7 @@ it('keeps to that part\'s timeline — and the RFQ\'s own, and the discussion �
 
 it('keeps another part\'s rejection off a part\'s page — its timeline step and its step details — but shows it on its own', function () {
     ['rfq' => $rfq] = partTwoFinalized();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq->refresh()->completeSourcingPart(3, null, null, 4);
     $rfq->refresh()->completeDataEntryPart(3, userWithRole('Data Entry'), 'Part 3 entered', 4);
     $rfq->refresh()->finalizePart(3, 4);
@@ -114,7 +114,7 @@ it('keeps another part\'s rejection off a part\'s page — its timeline step and
 
 it('offers the decisions on that part alone — never the whole RFQ\'s', function () {
     ['rfq' => $rfq] = partTwoFinalized();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $html = test()->actingAs($ops)->get($rfq->detailsUrl(2))->assertOk()
         ->assertSee('id="seniorOpsApproveModal"', false)

@@ -67,7 +67,7 @@ it('puts the Critical monitor in the top bar for Admin and Senior Operations', f
         ->assertSee('js/critical-monitor.js', false);
 
     criticalMonitor(userWithRole($role));
-})->with(['Admin', 'Senior Operations']);
+})->with(['Admin', 'HBDs Operations']);
 
 it('keeps it from everyone else', function (string $role) {
     test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()

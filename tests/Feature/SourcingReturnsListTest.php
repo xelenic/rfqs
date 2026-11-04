@@ -10,7 +10,7 @@ use Spatie\Permission\Models\Role;
 uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
-    foreach (['Sourcing', 'Senior Operations', 'Data Entry'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Data Entry'] as $role) {
         Role::findOrCreate($role);
     }
 });

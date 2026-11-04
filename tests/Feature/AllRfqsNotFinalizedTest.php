@@ -55,10 +55,10 @@ function sourcingAtEveryPoint(): array
 
     $cancelledPart = splitAmong($rfq('RFQ9106'), [1 => $riley, 2 => $sam]);
     finalizedPart($cancelledPart, 1);
-    $cancelledPart->refresh()->changePartStatus(2, Rfq::CANCELLED, userWithRole('Senior Operations'), 'Customer dropped it');
+    $cancelledPart->refresh()->changePartStatus(2, Rfq::CANCELLED, userWithRole('HBDs Operations'), 'Customer dropped it');
 
-    splitAmong($rfq('RFQ9107'), [1 => $riley])->changeStatus(Rfq::ON_HOLD, userWithRole('Senior Operations'), 'Waiting on drawings');
-    splitAmong($rfq('RFQ9108'), [1 => $riley])->changeStatus(Rfq::CANCELLED, userWithRole('Senior Operations'), 'Lost the job');
+    splitAmong($rfq('RFQ9107'), [1 => $riley])->changeStatus(Rfq::ON_HOLD, userWithRole('HBDs Operations'), 'Waiting on drawings');
+    splitAmong($rfq('RFQ9108'), [1 => $riley])->changeStatus(Rfq::CANCELLED, userWithRole('HBDs Operations'), 'Lost the job');
     $closed = splitAmong($rfq('RFQ9109'), [1 => $sam]);
     finalizedPart($closed, 1);
     $closed->forceFill(['status' => 'Completed', 'stage' => 'closed'])->save();

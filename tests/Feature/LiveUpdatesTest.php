@@ -209,7 +209,7 @@ it('refreshes the body of the workflow pages, but not the pages for users, roles
 it('gives the body a hash that only changes when what it shows does', function () {
     Carbon::setTestNow('2026-09-20 10:00:00');
 
-    $user = userWithRole('Senior Operations');
+    $user = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     // A page rebuilt with nothing changed comes out the same — otherwise a
@@ -235,7 +235,7 @@ it('gives the body a hash that only changes when what it shows does', function (
 });
 
 it('keeps what the server says about the sidebar in the page, so its counts can be picked up', function () {
-    $html = test()->actingAs(userWithRole('Senior Operations'))
+    $html = test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index', ['status' => 'Pending']))
         ->getContent();
 
@@ -244,6 +244,6 @@ it('keeps what the server says about the sidebar in the page, so its counts can 
 
     Rfq::factory()->create();
 
-    expect(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent())
+    expect(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent())
         ->toContain('class="nav-link-count" title="1 not yet assigned to Sourcing">1</span>');
 });

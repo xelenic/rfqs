@@ -8,7 +8,7 @@ use Spatie\Permission\Models\Role;
 uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
-    foreach (['Sourcing', 'Senior Operations', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Data Entry', 'Head of Business Development', 'GMs Operations', 'General Manager', 'Business Development'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -21,10 +21,10 @@ beforeEach(function () {
  */
 function rfqReadyToCelebrate(array $holders = []): Rfq
 {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     $head = userWithRole('Head of Business Development');
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $gm = userWithRole('General Manager');
     $holders = $holders ?: [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')];
 
@@ -155,7 +155,7 @@ it('stays quiet unless something was closed', function () {
 });
 
 it('is not part of the other approvals\' flash messages', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $rfq->completeSourcingPart(1);

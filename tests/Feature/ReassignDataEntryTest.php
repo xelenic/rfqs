@@ -65,7 +65,7 @@ function readyFor(User $person): array
 }
 
 it('offers Reassign on the Assigned tab and the RFQ page, saying who has it in Data Entry', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $morgan = tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']);
     $rfq = partWithDataEntry('RFQ9001', $morgan);
 
@@ -92,7 +92,7 @@ it('offers Reassign on the Assigned tab and the RFQ page, saying who has it in D
 it('lists each part of a split under one Reassign on the RFQ page', function () {
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9002']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
 
-    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
+    $html = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
 
     expect(Str::betweenFirst($html, 'data-reassign-menu', '</ul>'))
         ->toContain('data-part="1"')
@@ -101,7 +101,7 @@ it('lists each part of a split under one Reassign on the RFQ page', function () 
 
 it('gives a part waiting for its Start to someone else in Data Entry — off one list, onto the other, and they\'re told', function () {
     Notification::fake();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = partWithDataEntry('RFQ9003', $morgan);
 
@@ -139,7 +139,7 @@ it('gives a part waiting for its Start to someone else in Data Entry — off one
 });
 
 it('takes a part from whoever\'s on it: their time stays theirs, they\'re free, and the new person\'s countdown starts from their own Start', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
 
     reassignClock('09:00');
@@ -182,7 +182,7 @@ it('clears a pause along with the Start', function () {
 
     expect($rfq->refresh()->dataEntryStanding(1)['label'])->toContain('paused');
 
-    reassigns(userWithRole('Senior Operations'), $rfq, ['data_entry_user_id' => $kim->id])->assertSessionHasNoErrors();
+    reassigns(userWithRole('HBDs Operations'), $rfq, ['data_entry_user_id' => $kim->id])->assertSessionHasNoErrors();
 
     $pivot = $rfq->refresh()->assigneeForPart(1)->pivot;
 
@@ -192,7 +192,7 @@ it('clears a pause along with the Start', function () {
 });
 
 it('leaves a part with anyone in Data Entry, and gives one left with anyone to someone by name', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = partWithDataEntry('RFQ9006', $morgan);
 
@@ -214,7 +214,7 @@ it('leaves a part with anyone in Data Entry, and gives one left with anyone to s
 
 it('replaces Sourcing and Data Entry together', function () {
     Notification::fake();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sam = userWithRole('Sourcing');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = partWithDataEntry('RFQ9007', $morgan);
@@ -232,7 +232,7 @@ it('replaces Sourcing and Data Entry together', function () {
 });
 
 it('refuses what makes no sense, changing nothing — even when the other choice is fine', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sam = userWithRole('Sourcing');
     $morgan = userWithRole('Data Entry');
     $rfq = partWithDataEntry('RFQ9008', $morgan);
@@ -254,7 +254,7 @@ it('refuses what makes no sense, changing nothing — even when the other choice
 });
 
 it('stops choosing Data Entry once the part\'s been sent to finalize, Sourcing still replaceable', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $morgan = userWithRole('Data Entry');
     $rfq = partWithDataEntry('RFQ9009', $morgan);
     startDataEntryOn($rfq, 1, $morgan);
@@ -269,7 +269,7 @@ it('stops choosing Data Entry once the part\'s been sent to finalize, Sourcing s
 
 it('names someone in Data Entry while the part\'s still with Sourcing: told by message, on nobody\'s list yet', function () {
     Notification::fake();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $morgan = userWithRole('Data Entry');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9013']), [1 => userWithRole('Sourcing')]);
 
@@ -297,7 +297,7 @@ it('names someone in Data Entry while the part\'s still with Sourcing: told by m
 
 it('sends it to whoever Senior Operations named, whatever Sourcing picks — their popup shows it locked', function () {
     Notification::fake();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9014']), [1 => userWithRole('Sourcing')]);
     $riley = $rfq->assigneeForPart(1);
@@ -329,7 +329,7 @@ it('sends it to whoever Senior Operations named, whatever Sourcing picks — the
 });
 
 it('can change the person named, or give the pick back to Sourcing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim, $dana] = [userWithRole('Data Entry'), userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ9015']), [1 => userWithRole('Sourcing')]);
     $riley = $rfq->assigneeForPart(1);
@@ -360,7 +360,7 @@ it('can change the person named, or give the pick back to Sourcing', function ()
 });
 
 it('can name whoever had it before it came back to Sourcing — that was only where their picker started', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $morgan = userWithRole('Data Entry');
     $rfq = partWithDataEntry('RFQ9016', $morgan);
     $rfq->returnSourcingPart(1, 'Wrong supplier', $morgan);
@@ -380,7 +380,7 @@ it('lets only Senior Operations and Admin replace Data Entry, Admin as one of Se
         reassigns(userWithRole($role), $rfq, ['data_entry_user_id' => $kim->id])->assertForbidden();
     }
 
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     reassigns(userWithRole('Admin'), $rfq, ['data_entry_user_id' => $kim->id, 'acting_user_id' => $ops->id])->assertSessionHasNoErrors();
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->data_entry_assigned_to)->toBe($kim->id)
@@ -388,7 +388,7 @@ it('lets only Senior Operations and Admin replace Data Entry, Admin as one of Se
 });
 
 it('counts the new person\'s wait from when they were given it, and keeps them through a return to Sourcing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
 
     reassignClock('09:00');
@@ -413,7 +413,7 @@ it('leaves Sourcing\'s pick theirs once Senior Operations left it with anyone', 
     [$morgan, $kim] = [userWithRole('Data Entry'), userWithRole('Data Entry')];
     $rfq = partWithDataEntry('RFQ9017', $morgan);
 
-    reassigns(userWithRole('Senior Operations'), $rfq, ['data_entry_user_id' => 'anyone'])->assertSessionHasNoErrors();
+    reassigns(userWithRole('HBDs Operations'), $rfq, ['data_entry_user_id' => 'anyone'])->assertSessionHasNoErrors();
 
     $rfq->refresh()->returnSourcingPart(1, 'Wrong supplier', $kim);
     $rfq->refresh()->completeSourcingPart(1, null, $kim, 5);
@@ -423,7 +423,7 @@ it('leaves Sourcing\'s pick theirs once Senior Operations left it with anyone', 
 });
 
 it('reopens the popup on the same part, saying where Data Entry stands, when it\'s refused', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $morgan = tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']);
     $rfq = partWithDataEntry('RFQ9012', $morgan);
 

@@ -62,7 +62,7 @@ class SettingsController extends Controller
             // Person by person: their own time an item, for an Admin to set.
             'dataEntryPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('Data Entry')->orderBy('name')->get() : collect(),
             'dataEntryPerItemPeople' => Setting::perItemPeople('data_entry'),
-            'gmAssistantPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('GM Assistant')->orderBy('name')->get() : collect(),
+            'gmAssistantPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('GMs Operations')->orderBy('name')->get() : collect(),
             'gmAssistantPerItemPeople' => Setting::perItemPeople('gm_assistant'),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
@@ -462,7 +462,7 @@ class SettingsController extends Controller
      */
     public function updateGmAssistantPerItemPeople(Request $request): RedirectResponse
     {
-        return $this->savePerItemPeople($request, 'gm_assistant', 'GM Assistant', 'gm-assistant-targets');
+        return $this->savePerItemPeople($request, 'gm_assistant', 'GMs Operations', 'gm-assistant-targets');
     }
 
     /**

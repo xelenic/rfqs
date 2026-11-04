@@ -73,7 +73,7 @@ it('is for those who can see the Users list — Admin and HR Executive — and n
 
     userPage($riley, User::factory()->create()->assignRole('HR Executive'));
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.users.show', $riley))->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.users.show', $riley))->assertForbidden();
     test()->actingAs($riley)->get(route('admin.users.show', $riley))->assertForbidden();
 });
 
@@ -246,7 +246,7 @@ it('splits the page into tabs — the ones that fit the person', function () {
 
     expect($tabsOf(userWithRole('Sourcing')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'working-hours', 'extra-hours'])
         ->and($tabsOf(userWithRole('Business Development')))->toBe(['overview', 'activity', 'working-hours'])
-        ->and($tabsOf(userWithRole('GM Assistant')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'working-hours', 'extra-hours']);
+        ->and($tabsOf(userWithRole('GMs Operations')))->toBe(['overview', 'in-hand', 'activity', 'attendance', 'working-hours', 'extra-hours']);
 });
 
 it('opens on Overview — its figures and details — or the tab in the address', function () {

@@ -67,7 +67,7 @@ it('shows an Admin the Danger Zone, with how much there is to clear', function (
         ->assertSee('<strong>1</strong> photo or file', false)
         ->assertSee('Type <code>'.SettingsController::CLEAR_RFQ_DATA_PHRASE.'</code> to confirm', false);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.settings.edit'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.settings.edit'))->assertOk()
         ->assertDontSee('data-settings-tab="danger-zone"', false);
 });
 
@@ -124,4 +124,4 @@ it('keeps it to an Admin', function (string $role) {
     clearRfqData(userWithRole($role), ['confirmation' => 'DELETE ALL RFQS', 'password' => 'password'])->assertForbidden();
 
     expect(Rfq::count())->toBe(2);
-})->with(['Senior Operations', 'Business Development', 'General Manager']);
+})->with(['HBDs Operations', 'Business Development', 'General Manager']);

@@ -33,13 +33,13 @@ it('groups the workflow by role in the Admin sidebar', function () {
     foreach ([
         ['status' => 'Pending', 'view' => 'closing', 'role' => 'business-development'],
         ['status' => 'Pending', 'view' => 'returns', 'role' => 'business-development'],
-        ['status' => 'Pending', 'role' => 'senior-operations'],
-        ['status' => 'Pending', 'view' => 'review', 'role' => 'senior-operations'],
+        ['status' => 'Pending', 'role' => 'hbds-operations'],
+        ['status' => 'Pending', 'view' => 'review', 'role' => 'hbds-operations'],
         ['status' => 'Pending', 'role' => 'sourcing'],
         ['status' => 'Pending', 'view' => 'returns', 'role' => 'sourcing'],
         ['status' => 'Pending', 'role' => 'data-entry'],
         ['status' => 'Pending', 'role' => 'head-of-business-development'],
-        ['status' => 'Pending', 'role' => 'gm-assistant'],
+        ['status' => 'Pending', 'role' => 'gms-operations'],
         ['status' => 'Pending', 'role' => 'general-manager'],
     ] as $query) {
         $response->assertSee(e(indexUrl($query)), false);
@@ -120,7 +120,7 @@ it('numbers each role\'s step in workflow order, marking the one open and the on
 });
 
 it('leaves every other role\'s sidebar as it was', function () {
-    foreach (['Sourcing', 'Senior Operations', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))
             ->get(indexUrl(['status' => 'Pending']))
             ->assertOk()
@@ -226,7 +226,7 @@ it('opens each stage\'s own queue for Admin', function (string $slug, string $st
         ->assertDontSee('Somewhere else');
 })->with([
     'Head of Business Development' => ['head-of-business-development', 'head_of_bd_review', 'Review · Head of Business Development'],
-    'GM Assistant' => ['gm-assistant', 'gm_assistant', 'Review · GM Assistant'],
+    'GMs Operations' => ['gms-operations', 'gm_assistant', 'Review · GMs Operations'],
     'General Manager' => ['general-manager', 'gm_review', 'Review · General Manager'],
 ]);
 
@@ -241,7 +241,7 @@ it('opens the second-queue views for Admin', function (string $slug, string $vie
         ->assertSee('In this queue')
         ->assertDontSee('Somewhere else');
 })->with([
-    'Senior Operations review' => ['senior-operations', 'review', 'senior_ops_review', 'Review · Senior Operations'],
+    'Senior Operations review' => ['hbds-operations', 'review', 'senior_ops_review', 'Review · HBDs Operations'],
     'Business Development closing' => ['business-development', 'closing', 'bd_closing', 'Ready to Close · Business Development'],
 ]);
 
@@ -258,7 +258,7 @@ it('lets Admin work Data Entry\'s queue as Data Entry would', function () {
 });
 
 it('ignores ?role= for anyone but Admin', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     Rfq::factory()->create(['stage' => 'head_of_bd_review', 'subject' => 'Awaiting the Head']);
 
     test()->actingAs($ops)
@@ -282,10 +282,10 @@ it('sends Admin back to the role page a save came from', function () {
     test()->actingAs($admin)
         ->patch(route('admin.rfqs.assign-operations', $rfq), [
             'redirect_status' => 'Pending',
-            'redirect_role' => 'senior-operations',
+            'redirect_role' => 'hbds-operations',
             'redirect_view' => 'review',
         ])
-        ->assertRedirect(indexUrl(['status' => 'Pending', 'role' => 'senior-operations', 'view' => 'review']));
+        ->assertRedirect(indexUrl(['status' => 'Pending', 'role' => 'hbds-operations', 'view' => 'review']));
 
     // Anything that isn't a workflow role or view is dropped.
     test()->actingAs($admin)
@@ -297,7 +297,7 @@ it('sends Admin back to the role page a save came from', function () {
         ->assertRedirect(indexUrl(['status' => 'Pending']));
 
     // …and it's Admin's alone.
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.assign-operations', $rfq), [
             'redirect_status' => 'Pending',
             'redirect_role' => 'sourcing',
@@ -310,7 +310,7 @@ it('leaves Assign Operations off Admin\'s list and RFQ pages, but not off everyo
     $urls = [indexUrl(['status' => 'Pending']), route('admin.rfqs.show', $rfq)];
 
     // Admin — including through a role's lens — isn't offered it.
-    foreach ([...$urls, indexUrl(['status' => 'Pending', 'role' => 'senior-operations'])] as $url) {
+    foreach ([...$urls, indexUrl(['status' => 'Pending', 'role' => 'hbds-operations'])] as $url) {
         test()->actingAs(userWithRole('Admin'))->get($url)->assertOk()
             ->assertDontSee('js-assign-operations-rfq', false);
     }
@@ -344,7 +344,7 @@ it('gives Admin Attendance and Time Spent under Human Resource\'s HR Executive s
         ->toMatch('/href="'.preg_quote(route('admin.reports.time-spent'), '/').'"\s+class="nav-link active"/');
 
     // Senior Operations keeps its own Reports section.
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk()
         ->assertSee('<div class="sidebar-section-title">Reports</div>', false)
         ->assertSee(route('admin.attendance.index'))
         ->assertSee(route('admin.reports.time-spent'));
@@ -398,7 +398,7 @@ it('gives Admin an All RFQs link, to every RFQ whatever its status', function ()
         ->assertSee($link.' "', false);
 
     // Admin's, the General Manager's (below) and Senior Operations' (RfqStatusFilterTest) alone.
-    foreach (['Sourcing', 'Data Entry', 'Business Development', 'Head of Business Development', 'GM Assistant'] as $role) {
+    foreach (['Sourcing', 'Data Entry', 'Business Development', 'Head of Business Development', 'GMs Operations'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()
             ->assertDontSee('All RFQs');
     }

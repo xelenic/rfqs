@@ -13,7 +13,7 @@ uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
-    foreach (['Sourcing', 'Senior Operations', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Data Entry', 'Head of Business Development', 'GMs Operations', 'General Manager', 'Business Development'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -31,10 +31,10 @@ function gmPageUrl(array $query = []): string
 function approvalChain(): array
 {
     return [
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'dataEntry' => userWithRole('Data Entry'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
         'sourcing' => userWithRole('Sourcing'),
     ];
@@ -302,7 +302,7 @@ it('lets Admin work both pages', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
     $admin = userWithRole('Admin');
 
-    test()->actingAs($admin)->get(gmPageUrl(['role' => 'gm-assistant']))->assertOk()->assertSee('RFQ1001-P1 of P2');
+    test()->actingAs($admin)->get(gmPageUrl(['role' => 'gms-operations']))->assertOk()->assertSee('RFQ1001-P1 of P2');
 
     test()->actingAs($admin)->patch(route('admin.rfqs.start-gm-assistant', $rfq), ['part' => 1])->assertSessionHas('status');
     test()->actingAs($admin)->patch(route('admin.rfqs.gm-assistant-details', $rfq), ['part' => 1]);
@@ -366,7 +366,7 @@ it('leaves a part alone that is repeated on the model', function () {
     [$rfq, $chain] = splitWithPartOneApprovedByHead();
 
     $rfq->recordGmAssistantPart(1, $chain['assistant']);
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
     $rfq->refresh()->approveGmPart(1, $chain['gm']);
     $first = $rfq->refresh()->assigneeForPart(1)->pivot->gm_approved_at;
 

@@ -32,9 +32,9 @@ function atGmReview(): array
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->completeSeniorOpsReview(userWithRole('Senior Operations'));
+    $rfq->refresh()->completeSeniorOpsReview(userWithRole('HBDs Operations'));
     $rfq->refresh()->approveByHeadOfBd($head);
-    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GMs Operations'));
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
     return ['head' => $head, 'gm' => $gm, 'rfq' => $rfq->refresh()];
@@ -78,7 +78,7 @@ it('lists it only on Returns — not on their Review page, or in its count', fun
     $fresh->refresh()->completeSourcingPart(1);
     $fresh->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $fresh->refresh()->finalizePart(1);
-    $fresh->refresh()->completeSeniorOpsReview(userWithRole('Senior Operations'));
+    $fresh->refresh()->completeSeniorOpsReview(userWithRole('HBDs Operations'));
 
     expect(Rfq::headOfBdReviewCount())->toBe(1)
         ->and(Rfq::queueCounts()['head_of_bd'])->toBe(1);
@@ -163,9 +163,9 @@ function splitAtGmReview(): array
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $rfq->refresh()->finalizePart($part);
-        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, $head);
-        $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
+        $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GMs Operations'));
     }
     expect($rfq->refresh()->stage)->toBe('gm_review');
 
@@ -189,8 +189,8 @@ it('keeps an RFQ returned to the Head off every other role\'s review page, other
         ->and(Rfq::gmReviewCount())->toBe(0);
 
     foreach ([
-        ['Senior Operations', ['status' => 'Pending', 'view' => 'review']],
-        ['GM Assistant', ['status' => 'Pending']],
+        ['HBDs Operations', ['status' => 'Pending', 'view' => 'review']],
+        ['GMs Operations', ['status' => 'Pending']],
         ['General Manager', ['status' => 'Pending']],
     ] as [$role, $query]) {
         // (A table cell — the General Manager's own "Sent … back" message can
@@ -222,7 +222,7 @@ it('keeps an RFQ returned to the Head off every other role\'s review page, other
 it('releases an RFQ once the Head has dealt with the part sent back, even with another part still on its way', function () {
     $head = userWithRole('Head of Business Development');
     $gm = userWithRole('General Manager');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
 
     // P1 all the way to the General Manager; P2 still with Sourcing.
@@ -232,7 +232,7 @@ it('releases an RFQ once the Head has dealt with the part sent back, even with a
     $rfq->refresh()->finalizePart(1);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, $head);
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     test()->actingAs($gm)
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 1, 'target_stage' => 'head_of_bd_review', 'reason' => 'Check P1'])

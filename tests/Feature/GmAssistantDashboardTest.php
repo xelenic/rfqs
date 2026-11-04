@@ -39,7 +39,7 @@ function atGmAssistant(string $number, string $priority = 'Medium'): Rfq
     startDataEntryOn($rfq, 1, $dataEntry);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry, 'Entered', 2);
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
 
     return startGmAssistantOn($rfq, 1);
@@ -51,7 +51,7 @@ function gmAssistantDashboard(User $assistant): TestResponse
 }
 
 it('gives GM Assistant a dashboard of their own step — submitting, not approving', function () {
-    gmAssistantDashboard(userWithRole('GM Assistant'))
+    gmAssistantDashboard(userWithRole('GMs Operations'))
         ->assertViewIs('admin.dashboard.gm-assistant')
         ->assertSee('Awaiting your submit')
         ->assertSee('Waiting for you to submit')
@@ -62,7 +62,7 @@ it('gives GM Assistant a dashboard of their own step — submitting, not approvi
 });
 
 it('shows each waiting part\'s time left against their target, overdue ones called out', function () {
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     // High: an hour. Urgent: half an hour.
     atGmAssistant('RFQ7101', 'High');
     atGmAssistant('RFQ7102', 'Urgent');
@@ -81,7 +81,7 @@ it('shows each waiting part\'s time left against their target, overdue ones call
 });
 
 it('counts what they submitted and sent back, and what the General Manager sent back to them', function () {
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $submitted = atGmAssistant('RFQ7201');
     $sentBack = atGmAssistant('RFQ7202');
     $returned = atGmAssistant('RFQ7203');

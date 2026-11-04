@@ -28,7 +28,7 @@ function withTheHead(bool $split = false): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $dataEntry = userWithRole('Data Entry');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8801', 'subject' => 'Valves', 'priority_level' => 'High']), $split ? [1 => $riley, 2 => $riley] : [1 => $riley]);
 
     foreach ($split ? [1, 2] : [1] as $part) {
@@ -71,7 +71,7 @@ it('keeps the finalized line items with the part, and shows them to GM Assistant
         ->and($part->finalizedLineItems())->toBe(30)
         ->and($rfq->stage)->toBe('gm_assistant');
 
-    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('30 line items finalized');
     test()->actingAs($head)->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertSeeInOrder(['Finalized line items', '30']);
@@ -116,7 +116,7 @@ it('times GM Assistant by the Finalized Line Items, not Senior Operations\' Actu
     expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1800)
         ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 60, 'seconds' => 1800, 'source' => 'finalized']);
 
-    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSeeText('30 Finalized Line Items × 1 min a line item = 30m')
         ->assertSee('30 line items finalized')
         ->assertDontSee('actual line items');
@@ -158,7 +158,7 @@ it('times each part of a whole-RFQ approval by its own Finalized Line Items × t
     expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(1200)
         ->and($rfq->gmAssistantTargetSeconds(2))->toBe(4800);
 
-    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSeeText('10 Finalized Line Items × 2 min a line item = 20m')
         ->assertSeeText('40 Finalized Line Items × 2 min a line item = 1h 20m');
 });
@@ -168,7 +168,7 @@ it('counts GM Assistant down from it once they start — on their list and their
     ['rfq' => $rfq, 'head' => $head] = withTheHead();
     Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
     $rfq->approveHeadOfBdPart(1, $head, 30);
-    $gma = userWithRole('GM Assistant');
+    $gma = userWithRole('GMs Operations');
     startGmAssistantOn($rfq, 1, $gma);
 
     // 20 working minutes in: an hour (30 finalized × 2 min) less 20 minutes.
@@ -186,14 +186,14 @@ it('keeps timing by them when the General Manager sends the part back to GM Assi
     ['rfq' => $rfq, 'head' => $head] = withTheHead();
     Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
     $rfq->approveHeadOfBdPart(1, $head, 30);
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     $rfq->refresh()->rejectPartToStage(1, 'gm_assistant', 'Attach the brochure', userWithRole('General Manager'), 'gm_review');
 
     expect($rfq->refresh()->gmAssistantTargetSeconds(1))->toBe(3600)
         ->and($rfq->gmAssistantTargetBreakdown(1))->toBe(['items' => 30, 'perItem' => 120, 'seconds' => 3600, 'source' => 'finalized']);
     // A rejection: on their Rejected page (their Returns is for the General Manager's Returns).
-    test()->actingAs(userWithRole('GM Assistant'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
+    test()->actingAs(userWithRole('GMs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))->assertOk()
         ->assertSeeText('30 Finalized Line Items × 2 min a line item = 1h');
 });
 

@@ -22,7 +22,7 @@ function changeRfqStatus($by, Rfq $rfq, array $payload)
 }
 
 it('lets Senior Operations put an RFQ on hold, with why, taking it out of their queue', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ12001', 'subject' => 'Lobby chillers']);
 
     test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -58,7 +58,7 @@ it('lets Senior Operations put an RFQ on hold, with why, taking it out of their 
 });
 
 it('resumes an RFQ on hold just where it was', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['stage' => 'senior_ops_review']);
     changeRfqStatus($ops, $rfq, ['status' => 'On Hold', 'reason' => 'Waiting on the client']);
 
@@ -74,7 +74,7 @@ it('resumes an RFQ on hold just where it was', function () {
 });
 
 it('cancels an RFQ — open or on hold — and reopens a cancelled one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $open = Rfq::factory()->create(['rfq_number' => 'RFQ12002']);
     $held = Rfq::factory()->create(['rfq_number' => 'RFQ12003']);
     changeRfqStatus($ops, $held, ['status' => 'On Hold', 'reason' => 'Paused']);
@@ -98,7 +98,7 @@ it('cancels an RFQ — open or on hold — and reopens a cancelled one', functio
 });
 
 it('asks why for a hold or a cancel, and refuses a change that isn\'t one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     changeRfqStatus($ops, $rfq, ['status' => 'On Hold'])->assertSessionHasErrorsIn('rfq_status', ['reason' => 'Say why.']);
@@ -129,7 +129,7 @@ it('lets only Senior Operations and Admin stop or resume an RFQ', function () {
     }
 
     // Admin can, as one of Senior Operations.
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     changeRfqStatus(userWithRole('Admin'), $rfq, ['status' => 'On Hold', 'reason' => 'Paused', 'acting_user_id' => $ops->id])
         ->assertSessionHasNoErrors();
 
@@ -137,7 +137,7 @@ it('lets only Senior Operations and Admin stop or resume an RFQ', function () {
 });
 
 it('stops the clock while it\'s on hold, and starts it again on resuming', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $colombo = fn (string $time) => CarbonImmutable::parse($time, Setting::DEFAULT_TIMEZONE);
 
     test()->travelTo($colombo('2026-10-05 09:00'));
@@ -162,7 +162,7 @@ it('stops the clock while it\'s on hold, and starts it again on resuming', funct
 });
 
 it('credits Data Entry\'s time on both sides of a hold to whoever started on it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $rfq->refresh()->completeSourcingPart(1);
@@ -181,7 +181,7 @@ it('credits Data Entry\'s time on both sides of a hold to whoever started on it'
 });
 
 it('keeps an RFQ on hold through an edit — only resuming sets it going', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $admin = userWithRole('Admin');
     $rfq = Rfq::factory()->create();
     changeRfqStatus($ops, $rfq, ['status' => 'On Hold', 'reason' => 'Paused']);
@@ -204,7 +204,7 @@ it('keeps an RFQ on hold through an edit — only resuming sets it going', funct
 });
 
 it('gives Senior Operations On Hold and Cancelled pages in the sidebar, with how many', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     changeRfqStatus($ops, Rfq::factory()->create(), ['status' => 'On Hold', 'reason' => 'Paused']);
     changeRfqStatus($ops, Rfq::factory()->create(), ['status' => 'On Hold', 'reason' => 'Paused']);
     changeRfqStatus($ops, Rfq::factory()->create(), ['status' => 'Cancelled', 'reason' => 'Duplicate']);
@@ -218,11 +218,11 @@ it('gives Senior Operations On Hold and Cancelled pages in the sidebar, with how
     expect(Rfq::queueCounts())->toMatchArray(['on_hold' => 2, 'cancelled' => 1]);
 
     test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard'))->assertOk()
-        ->assertSee(e(route('admin.rfqs.index', ['status' => 'On Hold', 'role' => 'senior-operations'])), false);
+        ->assertSee(e(route('admin.rfqs.index', ['status' => 'On Hold', 'role' => 'hbds-operations'])), false);
 });
 
 it('gives an RFQ kept whole on Senior Operations\' Assigned tab the option on its one task line, not its row', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $assigned = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ12010', 'subject' => 'Roof pumps']), [1 => userWithRole('Sourcing')]);
     $unassigned = Rfq::factory()->create();
     $changeStatusUrl = 'data-action="'.route('admin.rfqs.change-status', $assigned).'"';
@@ -254,7 +254,7 @@ it('gives an RFQ kept whole on Senior Operations\' Assigned tab the option on it
 });
 
 it('reopens the shared popup against the same RFQ when the reason is left out', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ12011', 'subject' => 'Boiler']), [1 => userWithRole('Sourcing')]);
     $assignedUrl = route('admin.rfqs.index', ['status' => 'Pending', 'tab' => 'assigned']);
 

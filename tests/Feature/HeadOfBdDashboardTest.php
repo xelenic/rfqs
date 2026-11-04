@@ -39,7 +39,7 @@ function atTheHead(string $number, string $priority = 'Medium'): Rfq
     startDataEntryOn($rfq, 1, $dataEntry);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry, 'Entered', 2);
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     return $rfq->refresh();
 }
@@ -90,7 +90,7 @@ it('shows what the General Manager sent back to them, with why', function () {
     $head = userWithRole('Head of Business Development');
     $rfq = atTheHead('RFQ6601');
     $rfq->refresh()->approveHeadOfBdPart(1, $head);
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
 
     hbdClock('11:00');
     $rfq->refresh()->rejectPartToStage(1, 'head_of_bd_review', 'Margins look off', userWithRole('General Manager'), 'gm_review');

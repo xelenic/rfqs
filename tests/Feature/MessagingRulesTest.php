@@ -31,8 +31,8 @@ function inRole(string $name, string $role): User
 function exampleMessagingRules(): void
 {
     Setting::putMessageRoles([
-        'Sourcing' => ['Admin', 'Data Entry', 'Senior Operations'],
-        'Data Entry' => ['Admin', 'Senior Operations', 'Sourcing'],
+        'Sourcing' => ['Admin', 'Data Entry', 'HBDs Operations'],
+        'Data Entry' => ['Admin', 'HBDs Operations', 'Sourcing'],
     ]);
 }
 
@@ -47,15 +47,15 @@ it('lets an Admin set, role by role, who can message whom on Settings → Messag
     expect($html)->toContain('data-message-role="Sourcing"')->not->toContain('data-message-role="Admin"');
 
     test()->actingAs($admin)->put(route('admin.settings.message-roles'), ['limits' => [
-        $id('Sourcing') => ['limited' => '1', 'roles' => [$id('Data Entry'), $id('Admin'), $id('Senior Operations')]],
-        $id('Data Entry') => ['limited' => '1', 'roles' => [$id('Sourcing'), $id('Admin'), $id('Senior Operations')]],
+        $id('Sourcing') => ['limited' => '1', 'roles' => [$id('Data Entry'), $id('Admin'), $id('HBDs Operations')]],
+        $id('Data Entry') => ['limited' => '1', 'roles' => [$id('Sourcing'), $id('Admin'), $id('HBDs Operations')]],
         $id('General Manager') => ['limited' => '0', 'roles' => [$id('Sourcing')]],
         $id('Admin') => ['limited' => '1', 'roles' => [$id('Sourcing')]],
     ]])->assertRedirect()->assertSessionHas('status', 'Messaging saved.');
 
     expect(Setting::messageRoles())->toBe([
-        'Data Entry' => ['Admin', 'Senior Operations', 'Sourcing'],
-        'Sourcing' => ['Admin', 'Data Entry', 'Senior Operations'],
+        'Data Entry' => ['Admin', 'HBDs Operations', 'Sourcing'],
+        'Sourcing' => ['Admin', 'Data Entry', 'HBDs Operations'],
     ]);
 
     $html = test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'messaging']))->getContent();
@@ -64,7 +64,7 @@ it('lets an Admin set, role by role, who can message whom on Settings → Messag
         ->toContain('id="message-limit-'.$id('Sourcing').'-to-'.$id('Data Entry').'" checked')
         ->not->toContain('id="message-limit-'.$id('Sourcing').'-to-'.$id('General Manager').'" checked');
 
-    test()->actingAs(userWithRole('Senior Operations'))->put(route('admin.settings.message-roles'), ['limits' => []])->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->put(route('admin.settings.message-roles'), ['limits' => []])->assertForbidden();
 });
 
 it('keeps a limited role to the roles it may message — on send, in New message, and on a conversation', function () {
@@ -72,7 +72,7 @@ it('keeps a limited role to the roles it may message — on send, in New message
     $riley = inRole('Riley Chen', 'Sourcing');
     $dana = inRole('Dana Entry', 'Data Entry');
     $morgan = inRole('Morgan Ellis', 'General Manager');
-    $ops = inRole('Olivia Park', 'Senior Operations');
+    $ops = inRole('Olivia Park', 'HBDs Operations');
 
     expect($riley->canMessage($dana))->toBeTrue()
         ->and($riley->canMessage($ops))->toBeTrue()
@@ -123,7 +123,7 @@ it('leaves anyone not limited — and an Admin always — free to message anyone
 
     expect($morgan->canMessage($riley))->toBeTrue()
         ->and(userWithRole('Admin')->canMessage($ben))->toBeTrue()
-        ->and($both->messageableRoles())->toBe(['Admin', 'Data Entry', 'Senior Operations', 'Sourcing'])
+        ->and($both->messageableRoles())->toBe(['Admin', 'Data Entry', 'HBDs Operations', 'Sourcing'])
         ->and($both->canMessage($riley))->toBeTrue()
         ->and($both->canMessage($ben))->toBeFalse();
 

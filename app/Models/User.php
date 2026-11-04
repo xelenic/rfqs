@@ -120,7 +120,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
+    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'HBDs Operations', 'HR Executive'];
 
     /**
      * The roles that see the performance reports (Admin\PerformanceReportController):
@@ -129,7 +129,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'Senior Operations', 'HR Executive'];
+    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HBDs Operations', 'HR Executive'];
 
     /**
      * Who sets expected RFQs and corrects supplier calls on the Sourcing
@@ -138,7 +138,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const SOURCING_FIGURES_ROLES = ['Admin', 'Senior Operations'];
+    public const SOURCING_FIGURES_ROLES = ['Admin', 'HBDs Operations'];
 
     /**
      * The roles with "All RFQs" in their sidebar — the RFQ list with no
@@ -149,14 +149,14 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const ALL_RFQS_ROLES = ['Admin', 'General Manager', 'Senior Operations'];
+    public const ALL_RFQS_ROLES = ['Admin', 'General Manager', 'HBDs Operations'];
 
     /**
      * The roles that fill in and submit the daily attendance sheet.
      *
      * @var array<int, string>
      */
-    public const ATTENDANCE_KEEPER_ROLES = ['Admin', 'Senior Operations'];
+    public const ATTENDANCE_KEEPER_ROLES = ['Admin', 'HBDs Operations'];
 
     /**
      * The roles that review a submitted attendance sheet — approve it, or
@@ -191,7 +191,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    public const JOB_CATEGORY_ROLES = ['Admin', 'Senior Operations', 'GM Assistant'];
+    public const JOB_CATEGORY_ROLES = ['Admin', 'HBDs Operations', 'GMs Operations'];
 
     /**
      * The roles whose people are tagged with the job categories they take on
@@ -497,7 +497,7 @@ class User extends Authenticatable
      */
     public function canChangeRfqStatus(): bool
     {
-        return $this->hasAnyRole(['Senior Operations', 'Admin']);
+        return $this->hasAnyRole(['HBDs Operations', 'Admin']);
     }
 
     /**
@@ -507,7 +507,7 @@ class User extends Authenticatable
      */
     public function canSeeCriticalMonitor(): bool
     {
-        return $this->hasAnyRole(['Admin', 'Senior Operations']);
+        return $this->hasAnyRole(['Admin', 'HBDs Operations']);
     }
 
     /**

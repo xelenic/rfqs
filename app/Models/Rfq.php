@@ -141,8 +141,8 @@ class Rfq extends Model
      * @var array<int, string>
      */
     public const WORKFLOW_ROLES = [
-        'Business Development', 'Senior Operations', 'Sourcing', 'Data Entry',
-        'Head of Business Development', 'GM Assistant', 'General Manager',
+        'Business Development', 'HBDs Operations', 'Sourcing', 'Data Entry',
+        'Head of Business Development', 'GMs Operations', 'General Manager',
     ];
 
     /**
@@ -309,12 +309,12 @@ class Rfq extends Model
 
     public const RETURN_TARGET_ROLES = [
         'business_development' => 'Business Development',
-        'operations' => 'Senior Operations',
+        'operations' => 'HBDs Operations',
         'sourcing' => 'Sourcing',
         'data_entry' => 'Data Entry',
-        'senior_ops_review' => 'Senior Operations',
+        'senior_ops_review' => 'HBDs Operations',
         'head_of_bd_review' => 'Head of Business Development',
-        'gm_assistant' => 'GM Assistant',
+        'gm_assistant' => 'GMs Operations',
         'gm_review' => 'General Manager',
     ];
 
@@ -484,7 +484,7 @@ class Rfq extends Model
             'finalize' => 'Sourcing (finalize)',
             'senior_ops_review' => 'Senior Operations (2nd review)',
             'head_of_bd_review' => 'Head of Business Development',
-            'gm_assistant' => 'GM Assistant',
+            'gm_assistant' => 'GMs Operations',
             'gm_review' => 'General Manager',
             'bd_closing' => 'Business Development (closing)',
             'closed' => 'Closed',
@@ -542,7 +542,7 @@ class Rfq extends Model
     {
         return match (true) {
             $user->hasRole('Admin') => true,
-            $user->hasAnyRole(['Senior Operations', 'Business Development']) => $this->status !== 'Completed' && $this->isVisibleTo($user),
+            $user->hasAnyRole(['HBDs Operations', 'Business Development']) => $this->status !== 'Completed' && $this->isVisibleTo($user),
             default => false,
         };
     }
@@ -4322,7 +4322,7 @@ class Rfq extends Model
             'business_development', 'bd_closing' => collect([$this->creator]),
             'operations', 'senior_ops_review' => $this->operationsAssignee !== null
                 ? collect([$this->operationsAssignee])
-                : User::query()->holdingRole('Senior Operations')->get(),
+                : User::query()->holdingRole('HBDs Operations')->get(),
             'sourcing', 'finalize' => $parts,
             'data_entry' => $this->dataEntryPeopleOf($parts),
             default => isset(self::RETURN_TARGET_ROLES[$stage])
@@ -4545,8 +4545,8 @@ class Rfq extends Model
                 'at' => $stamp($holder->senior_ops_reviewed_at),
                 'until' => null,
                 'duration' => null,
-                'who' => $holder->seniorOpsReviewedBy?->name ?? 'Senior Operations',
-                'role' => 'Senior Operations',
+                'who' => $holder->seniorOpsReviewedBy?->name ?? 'HBDs Operations',
+                'role' => 'HBDs Operations',
                 'title' => 'Actual line items — verified',
                 'count' => (int) $holder->verified_line_items,
                 'change' => $before !== null && $before !== (int) $holder->verified_line_items

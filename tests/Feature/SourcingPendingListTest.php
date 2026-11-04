@@ -72,7 +72,7 @@ it('moves a part from Pending for Sourcing to With Data Entry once it\'s assigne
         ->and($finalized)->toContain($row)->toContain('In Senior Operations review')
         ->and($html)->toContain('Finalized <span class="rfq-tab-count">1</span>');
 
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
     expect(sourcingTabs($riley)[3])->toContain('With Head of Business Development');
 });
 

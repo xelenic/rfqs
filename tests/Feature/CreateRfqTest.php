@@ -29,7 +29,7 @@ function newRfqPayload(array $overrides = []): array
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
 });
 
 it('has no status to choose when creating, but still does when editing', function () {

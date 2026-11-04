@@ -45,7 +45,7 @@ function seniorOpsListed(User $ops, ?string $view = null): array
 }
 
 it('puts an RFQ Business Development fixed on Senior Operations\' Returns, not Unassigned, ready to assign', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001']);
 
@@ -78,7 +78,7 @@ it('puts an RFQ Business Development fixed on Senior Operations\' Returns, not U
 });
 
 it('brings one a reviewer rejected back to Business Development to Senior Operations\' Returns too, not their Rejected page', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2002', 'stage' => 'senior_ops_review']);
 
     test()->actingAs($ops)
@@ -95,7 +95,7 @@ it('brings one a reviewer rejected back to Business Development to Senior Operat
 });
 
 it('keeps it on Returns till every part is assigned again, then on neither list', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2003']);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.request-details', $rfq), ['reason' => 'Need the site address']);
@@ -120,7 +120,7 @@ it('keeps it on Returns till every part is assigned again, then on neither list'
 });
 
 it('lets Senior Operations ask for details again from Returns, and has it back there once fixed again', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2004']);
 
@@ -147,7 +147,7 @@ it('lets Senior Operations ask for details again from Returns, and has it back t
 });
 
 it('keeps a part of a split Business Development fixed on Returns, to pass straight back to whoever had it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ2005']), [1 => userWithRole('Sourcing'), 2 => $riley]);
 

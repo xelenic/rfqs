@@ -13,7 +13,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Data Entry');
 });
 
@@ -206,7 +206,7 @@ it('shows the unread count on the Messages link, and only theirs', function () {
     test()->actingAs($riley)->get(route('admin.dashboard'))->assertSee('title="1 unread"', false);
 
     // Nothing unread, no badge.
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))
         ->assertSee('Messages')
         ->assertDontSee(' unread"', false);
 });
@@ -250,7 +250,7 @@ it('lists the messages sent to someone in their bell, one line per person, with 
 });
 
 it('counts alerts and messages together, newest first, in the bell', function () {
-    [$me, $riley] = [userWithRole('Senior Operations'), userWithRole('Sourcing')];
+    [$me, $riley] = [userWithRole('HBDs Operations'), userWithRole('Sourcing')];
 
     $me->notifications()->create([
         'id' => (string) Str::uuid(),
@@ -371,7 +371,7 @@ it('loads the commenters\' roles in one go, however many there are', function ()
     test()->actingAs($dataEntry)->get(route('admin.dashboard'));
 
     $roleQueries = function (int $commenters) use ($riley, $dataEntry) {
-        $rfq = rfqWithComments(collect(range(1, $commenters))->map(fn () => userWithRole('Senior Operations'))->all(), $riley);
+        $rfq = rfqWithComments(collect(range(1, $commenters))->map(fn () => userWithRole('HBDs Operations'))->all(), $riley);
 
         DB::flushQueryLog();
         DB::enableQueryLog();

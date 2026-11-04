@@ -42,7 +42,7 @@ function rileysMonday(): array
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     test()->travelTo(halfDayClock('2026-10-05 17:00'));
 
-    return ['riley' => $riley, 'ops' => userWithRole('Senior Operations'), 'rfq' => $rfq];
+    return ['riley' => $riley, 'ops' => userWithRole('HBDs Operations'), 'rfq' => $rfq];
 }
 
 /**
@@ -165,7 +165,7 @@ it('lets an Admin set the morning off and the afternoon off on the Settings page
 
     // The attendance sheet says what each half takes.
     userWithRole('Sourcing');
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.attendance.index'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.attendance.index'))->assertOk()
         ->assertSee('Morning off (08:00–12:00)')
         ->assertSee('Afternoon off (13:00–16:30)');
 });
@@ -183,7 +183,7 @@ it('refuses a half day off that ends before it starts, or isn\'t a time', functi
 
     expect(Setting::halfDayOff())->toBe(Setting::DEFAULT_HALF_DAY_OFF);
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.settings.half-day'), ['halves' => Setting::DEFAULT_HALF_DAY_OFF])
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.settings.half-day'), ['halves' => Setting::DEFAULT_HALF_DAY_OFF])
         ->assertForbidden();
 });
 

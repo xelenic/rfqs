@@ -64,7 +64,7 @@ it('shows an Admin the working week on the Settings page, every day from Sunday,
         ->and($html)->toContain('<tr data-working-day="sunday" class="is-off">')
         ->toContain('<tr data-working-day="monday" class="">');
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.settings.edit'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.settings.edit'))->assertOk()
         ->assertDontSee('Working Hours')
         ->assertDontSee(route('admin.settings.working-hours'));
 });
@@ -140,7 +140,7 @@ it('refuses the working hours to anyone but an Admin', function (string $role) {
     saveWorkingWeek(workingWeekPayload(['saturday' => ['working' => '1']]), $role)->assertForbidden();
 
     expect(Setting::workingHours()['saturday']['working'])->toBeFalse();
-})->with(['Business Development', 'Senior Operations', 'General Manager']);
+})->with(['Business Development', 'HBDs Operations', 'General Manager']);
 
 it('falls back to the defaults for anything never saved or saved wrong', function () {
     Setting::put('working_hours', json_encode(['monday' => ['start' => '07:00'], 'funday' => ['working' => true]]));

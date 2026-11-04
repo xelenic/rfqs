@@ -33,7 +33,7 @@
         @foreach ([
             'Sourcing' => ['icon' => 'bi-people', 'iconClass' => ''],
             'Data Entry' => ['icon' => 'bi-keyboard', 'iconClass' => 'stat-icon-violet'],
-            'GM Assistant' => ['icon' => 'bi-file-earmark-text', 'iconClass' => 'stat-icon-warning'],
+            'GMs Operations' => ['icon' => 'bi-file-earmark-text', 'iconClass' => 'stat-icon-warning'],
         ] as $role => $card)
             <div class="col-md-6 col-xl-3">
                 <div class="stat-card d-flex align-items-center justify-content-between">

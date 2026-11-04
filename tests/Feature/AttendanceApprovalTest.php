@@ -29,7 +29,7 @@ beforeEach(function () {
  */
 function mondaysSheet(): array
 {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $morgan = userWithRole('Data Entry');
 
@@ -165,7 +165,7 @@ it('sends an approved sheet back for approval once it\'s corrected', function ()
 it('lets only HR Executive and Admin approve or return a sheet', function () {
     ['sheet' => $sheet] = mondaysSheet();
 
-    foreach (['Senior Operations', 'Sourcing', 'Business Development'] as $role) {
+    foreach (['HBDs Operations', 'Sourcing', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))->patch(route('admin.attendance.approve', $sheet))->assertForbidden();
         test()->actingAs(userWithRole($role))->patch(route('admin.attendance.return', $sheet), ['reason' => 'x'])->assertForbidden();
     }

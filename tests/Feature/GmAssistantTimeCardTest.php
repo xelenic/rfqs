@@ -38,11 +38,11 @@ function withGmAssistantToTime(bool $counted = true): array
     $rfq->refresh()->completeSourcingPart(1, null, null, 24);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'), 'Entered', 22);
     $rfq->refresh()->finalizePart(1, 22);
-    $rfq->refresh()->approveSeniorOpsPart(1, tap(userWithRole('Senior Operations'))->update(['name' => 'Olivia Park']), $counted ? 23 : null);
+    $rfq->refresh()->approveSeniorOpsPart(1, tap(userWithRole('HBDs Operations'))->update(['name' => 'Olivia Park']), $counted ? 23 : null);
     timeCardAt('09:00');
     $rfq->refresh()->approveHeadOfBdPart(1, tap(userWithRole('Head of Business Development'))->update(['name' => 'Hana Head']), $counted ? 30 : null);
 
-    return ['rfq' => $rfq->refresh(), 'gma' => tap(userWithRole('GM Assistant'))->update(['name' => 'Gail Assist'])];
+    return ['rfq' => $rfq->refresh(), 'gma' => tap(userWithRole('GMs Operations'))->update(['name' => 'Gail Assist'])];
 }
 
 /**

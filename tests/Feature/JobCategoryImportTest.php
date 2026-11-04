@@ -151,7 +151,7 @@ it('refuses a file it can\'t import, back in the Import popup saying why', funct
 it('downloads the list as an Excel template, for those who manage the categories only', function () {
     JobCategory::query()->create(['name' => 'Plumbing & Sanitary', 'description' => 'Pipes <and> pumps']);
     JobCategory::query()->create(['name' => 'Electrical Works']);
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
 
     test()->actingAs($operations)->get(route('admin.categories.index'))->assertOk()
         ->assertSee('action="'.route('admin.categories.import').'"', false)

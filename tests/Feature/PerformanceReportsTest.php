@@ -40,7 +40,7 @@ function mondaysWork(): array
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $sam = tap(userWithRole('Sourcing'))->update(['name' => 'Sam Rivera']);
     $morgan = tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']);
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     reportClock('08:30');
     $finalized = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8001', 'wc_number' => 'WC-101', 'subject' => 'Kitchen items', 'number_of_items' => 10, 'priority_level' => 'High']), [1 => $riley]);
@@ -327,7 +327,7 @@ it('is Admin\'s, Senior Operations\' and HR Executive\'s alone', function (strin
 
 it('lets Senior Operations see every report, from Reports in their sidebar', function () {
     mondaysWork();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     foreach (['sourcing-daily', 'data-entry-daily', 'sourcing-monthly', 'rfq-tracking'] as $report) {
         $html = test()->actingAs($ops)->get(route("admin.reports.{$report}"))->assertOk()->getContent();
@@ -381,7 +381,7 @@ it('is in Admin\'s sidebar, under Reports', function () {
 // ---- Waiting for customer clarification ----------------------------------------------
 
 it('lets a hold say it\'s waiting for the customer\'s clarification', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -397,7 +397,7 @@ it('lets a hold say it\'s waiting for the customer\'s clarification', function (
 });
 
 it('keeps an ordinary hold, or a cancellation, apart from waiting for the customer', function (string $status) {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->patch(route('admin.rfqs.change-status', $rfq), ['status' => $status, 'reason' => 'Because', 'customer_clarification' => $status === Rfq::CANCELLED ? '1' : null]);

@@ -44,7 +44,7 @@ function twoDiscussions(): array
 {
     $people = [
         'ben' => threadPerson('Ben Dev', 'Business Development'),
-        'olivia' => threadPerson('Olivia Park', 'Senior Operations'),
+        'olivia' => threadPerson('Olivia Park', 'HBDs Operations'),
         'riley' => threadPerson('Riley Chen', 'Sourcing'),
     ];
 

@@ -120,7 +120,7 @@ it('counts the queues and where the pending RFQs sit', function () {
             'With Data Entry' => 1,
             'Senior Operations review' => 1,
             'Head of Business Development' => 1,
-            'GM Assistant' => 1,
+            'GMs Operations' => 1,
             'General Manager' => 1,
             'Ready to close' => 1,
         ]);
@@ -231,7 +231,7 @@ it('falls back to today for a period it doesn\'t know, or a custom one with no d
 ]);
 
 it('counts each RFQ returned once, says how many came back to Business Development, and keeps them counted once fixed', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     // Returned to Business Development, and already fixed.
     $fixed = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'stage' => 'senior_ops_review']);

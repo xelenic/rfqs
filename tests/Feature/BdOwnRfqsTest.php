@@ -115,6 +115,6 @@ it('leaves everyone else seeing every RFQ — Admin, the other roles, and Busine
         ->assertSee('Taylor closed');
 })->with([
     'Admin' => [fn () => userWithRole('Admin')],
-    'Senior Operations' => [fn () => userWithRole('Senior Operations')],
-    'Business Development and Senior Operations' => [fn () => userWithRole('Business Development')->assignRole('Senior Operations')],
+    'HBDs Operations' => [fn () => userWithRole('HBDs Operations')],
+    'Business Development and Senior Operations' => [fn () => userWithRole('Business Development')->assignRole('HBDs Operations')],
 ]);

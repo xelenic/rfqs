@@ -29,9 +29,9 @@ function atGmFor(string $number, string $priority = 'Medium'): Rfq
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->completeSeniorOpsReview(userWithRole('Senior Operations'));
+    $rfq->refresh()->completeSeniorOpsReview(userWithRole('HBDs Operations'));
     $rfq->refresh()->approveByHeadOfBd(userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantDetails(userWithRole('GMs Operations'));
 
     return $rfq->refresh();
 }
@@ -133,7 +133,7 @@ it('gives Admin the views too, as the General Manager\'s — and keeps the other
     expect(gmListed($admin, ['show' => 'gm_approved', 'show_from' => '2026-10-19', 'show_to' => '2026-10-21']))->toBe(['RFQ8002', 'RFQ8004', 'RFQ8006']);
 
     // The Head of Business Development and GM Assistant have no All RFQs: their cards stay on their dashboard.
-    foreach (['Head of Business Development' => 'hbd', 'GM Assistant' => 'gma'] as $role => $anchor) {
+    foreach (['Head of Business Development' => 'hbd', 'GMs Operations' => 'gma'] as $role => $anchor) {
         $dashboard = test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()->getContent();
         expect($dashboard)->toContain('href="#'.$anchor.'-waiting"')
             ->not->toContain('show=');

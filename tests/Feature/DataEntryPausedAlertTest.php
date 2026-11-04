@@ -46,7 +46,7 @@ function pressPause(User $user, Rfq $rfq, array $payload = ['pause_reason' => 'W
 
 it('tells Senior Operations and the General Manager when Data Entry pauses, with why', function () {
     ['rfq' => $rfq, 'morgan' => $morgan] = runningForPauseAlert();
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $generalManager = userWithRole('General Manager');
 
     pressPause($morgan, $rfq)->assertSessionHas('status');
@@ -92,11 +92,11 @@ it('shortens a long reason in the alert, keeping all of it in its data', functio
 it('tells no one else — not other roles, nor a deactivated account', function () {
     ['rfq' => $rfq, 'morgan' => $morgan] = runningForPauseAlert();
 
-    foreach (['Admin', 'Head of Business Development', 'GM Assistant', 'Business Development'] as $role) {
+    foreach (['Admin', 'Head of Business Development', 'GMs Operations', 'Business Development'] as $role) {
         userWithRole($role);
     }
 
-    foreach (['Senior Operations', 'General Manager'] as $role) {
+    foreach (['HBDs Operations', 'General Manager'] as $role) {
         userWithRole($role)->forceFill(['deactivated_at' => now()])->save();
     }
 
@@ -108,7 +108,7 @@ it('tells no one else — not other roles, nor a deactivated account', function 
 it('names the Admin who paused it on Data Entry\'s behalf', function () {
     ['rfq' => $rfq] = runningForPauseAlert();
     $admin = userWithRole('Admin');
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
 
     pressPause($admin, $rfq);
 
@@ -147,7 +147,7 @@ it('tells them of every pause, but not of a resume', function () {
 
 it('is in their bell, and opens the RFQ', function () {
     ['rfq' => $rfq, 'morgan' => $morgan] = runningForPauseAlert();
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
 
     pressPause($morgan, $rfq);
 

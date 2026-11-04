@@ -91,7 +91,7 @@ it('tags nobody else — and takes the tags off with the role', function () {
     $admin = userWithRole('Admin');
 
     test()->actingAs($admin)->post(route('admin.users.store'), [
-        'name' => 'Olivia Park', 'email' => 'olivia@example.test', 'roles' => ['Senior Operations'], 'job_categories' => [$electrical->id],
+        'name' => 'Olivia Park', 'email' => 'olivia@example.test', 'roles' => ['HBDs Operations'], 'job_categories' => [$electrical->id],
     ])->assertSessionHasNoErrors();
     expect(User::query()->where('email', 'olivia@example.test')->sole()->jobCategories)->toBeEmpty();
 
@@ -104,7 +104,7 @@ it('tags nobody else — and takes the tags off with the role', function () {
     expect($riley->fresh()->jobCategories->pluck('name')->all())->toBe(['Fire Safety']);
 
     test()->actingAs($admin)->put(route('admin.users.update', $riley), [
-        'user_id' => $riley->id, 'name' => $riley->name, 'email' => $riley->email, 'roles' => ['Senior Operations'], 'job_categories' => [$fire->id],
+        'user_id' => $riley->id, 'name' => $riley->name, 'email' => $riley->email, 'roles' => ['HBDs Operations'], 'job_categories' => [$fire->id],
     ])->assertSessionHasNoErrors();
     expect($riley->fresh()->jobCategories)->toBeEmpty();
 });

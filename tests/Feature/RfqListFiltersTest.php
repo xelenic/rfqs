@@ -80,11 +80,11 @@ it('puts search, when they were created and their priority above the RFQ lists',
     'Data Entry\'s' => ['Data Entry', ['status' => 'Pending']],
     'Head of Business Development\'s' => ['Head of Business Development', ['status' => 'Pending']],
     'the General Manager\'s' => ['General Manager', ['status' => 'Pending']],
-    'Senior Operations\' review' => ['Senior Operations', ['status' => 'Pending', 'view' => 'review']],
+    'Senior Operations\' review' => ['HBDs Operations', ['status' => 'Pending', 'view' => 'review']],
 ]);
 
 it('gives Senior Operations\' Unassigned page the search alone — its own filters have the dates', function () {
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('id="rfqListFilterForm"', false)
         ->assertSee('id="opsFilterForm"', false)
         ->assertDontSee('aria-label="Created"', false)
@@ -273,8 +273,8 @@ it('offers grouping on the plain lists, not on a role\'s own queue', function (s
     'All RFQs' => ['Admin', [], true],
     'Business Development\'s Pending' => ['Business Development', ['status' => 'Pending'], true],
     'the Closed list' => ['Business Development', ['status' => 'Completed'], true],
-    'On Hold' => ['Senior Operations', ['status' => 'On Hold'], true],
-    'Senior Operations\' Unassigned' => ['Senior Operations', ['status' => 'Pending'], false],
+    'On Hold' => ['HBDs Operations', ['status' => 'On Hold'], true],
+    'Senior Operations\' Unassigned' => ['HBDs Operations', ['status' => 'Pending'], false],
     'Sourcing\'s own' => ['Sourcing', ['status' => 'Pending'], false],
     'Data Entry\'s' => ['Data Entry', ['status' => 'Pending'], false],
     'the Head of Business Development\'s review' => ['Head of Business Development', ['status' => 'Pending'], false],
@@ -343,7 +343,7 @@ it('groups what the filters leave, and leaves an unknown grouping — or a role\
     expect($response->viewData('groupTotals')->all())->toBe(['WC100' => 1, 'WC200' => 1]);
 
     groupedList(['group' => 'colour'])->assertDontSee('rfq-list-group', false);
-    groupedList(['status' => 'Pending', 'group' => 'wc'], 'Senior Operations')->assertDontSee('rfq-list-group', false);
+    groupedList(['status' => 'Pending', 'group' => 'wc'], 'HBDs Operations')->assertDontSee('rfq-list-group', false);
 });
 
 it('shows 20 RFQs a page', function () {

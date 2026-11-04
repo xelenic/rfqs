@@ -65,7 +65,7 @@
                 </template>
 
                 <div class="mt-3">
-                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'senior-ops-approve-acting-as', 'label' => 'Approved by'])
+                    @include('admin.rfqs._acting_as', ['role' => 'HBDs Operations', 'id' => 'senior-ops-approve-acting-as', 'label' => 'Approved by'])
                 </div>
             </div>
 

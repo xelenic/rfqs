@@ -11,7 +11,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Business Development');
 });
 
@@ -164,7 +164,7 @@ it('gives Data Entry a Send to Finalize that asks, and no comment box of their o
         ->toContain('data-who="'.e($sam->name).'"')
         ->toContain('data-audience="'.e($riley->name).'"')
         ->toContain('Send to Finalize')
-        ->not->toContain('data-audience="Senior Operations"')
+        ->not->toContain('data-audience="HBDs Operations"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p1"')
         ->toContain('data-back-modal="rfq-detail-modal-'.$rfq->id.'-p2"')
         // They can reach the whole RFQ to reply.
@@ -181,14 +181,14 @@ it('words each prompt for whoever is next in line', function () {
 
     // …and Admin, on Sourcing's page, can send back to Senior Operations…
     $adminHtml = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'sourcing']))->assertOk()->getContent();
-    expect($adminHtml)->toMatch('/data-kind="sourcing_to_ops"[^>]*data-audience="Senior Operations"/');
+    expect($adminHtml)->toMatch('/data-kind="sourcing_to_ops"[^>]*data-audience="HBDs Operations"/');
 
     // …and Data Entry, once started on it, to send back to them to finalize.
     $rfq->refresh()->completeSourcingPart(1);
     startDataEntryOn($rfq, 1);
     $dataEntryHtml = test()->actingAs(userWithRole('Data Entry'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     expect($dataEntryHtml)->toMatch('/data-kind="data_entry"[^>]*data-audience="'.preg_quote(e($riley->name), '/').'"/')
-        ->not->toContain('data-audience="Senior Operations"')
+        ->not->toContain('data-audience="HBDs Operations"')
         ->not->toContain('data-audience="Data Entry"');
 });
 

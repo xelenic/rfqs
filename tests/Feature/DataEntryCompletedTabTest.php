@@ -83,7 +83,7 @@ it('follows a completed part on — to closed — latest first', function () {
     sentToFinalizeBy($morgan, 'RFQ53002');
 
     $older->finalizePart(1);
-    $older->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $older->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     [, , $completed] = dataEntryTabs($morgan);
 

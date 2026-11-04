@@ -71,7 +71,7 @@
                     </div>
                     @include('admin.rfqs._attachments_input', ['attachmentsId' => 'rfq-status-attachments'])
                     <div class="mt-3">
-                        @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'rfq-status-acting-as', 'label' => 'Done by'])
+                        @include('admin.rfqs._acting_as', ['role' => 'HBDs Operations', 'id' => 'rfq-status-acting-as', 'label' => 'Done by'])
                     </div>
                 </div>
 

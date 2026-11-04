@@ -115,7 +115,7 @@ it('keeps it the assignee\'s call for everyone else — a pick does not open it 
     test()->actingAs($sam)
         ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
         ->assertForbidden();
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.complete-sourcing', $rfq), ['part' => 1, 'line_items' => 5, 'comment' => 'Mine now', 'acting_user_id' => $riley->id])
         ->assertForbidden();
 
@@ -226,7 +226,7 @@ it('shows nobody but Admin the picker, or Mark Complete on parts that are not th
     $list = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
     expect($list)->toContain('id="completeModal"')->not->toContain('complete-assignee');
 
-    foreach (['Business Development', 'Senior Operations'] as $role) {
+    foreach (['Business Development', 'HBDs Operations'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.rfqs.show', $rfq))->assertOk()
             ->assertDontSee('Assign P1 to Data Entry')
             ->assertDontSee('Assign P2 to Data Entry');

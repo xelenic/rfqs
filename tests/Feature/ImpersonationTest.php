@@ -79,7 +79,7 @@ it('keeps signing in as someone else to an Admin — and not as an Admin, themse
     $admin = userWithRole('Admin');
     $riley = userWithRole('Sourcing');
 
-    foreach ([userWithRole('Senior Operations'), User::factory()->create()->assignRole('HR Executive')] as $notAdmin) {
+    foreach ([userWithRole('HBDs Operations'), User::factory()->create()->assignRole('HR Executive')] as $notAdmin) {
         test()->actingAs($notAdmin)->post(route('admin.users.impersonate', $riley))->assertForbidden();
     }
 

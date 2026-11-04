@@ -12,7 +12,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Data Entry');
     Role::findOrCreate('Head of Business Development');
 });
@@ -31,7 +31,7 @@ function headReviewUrl(array $query = []): string
  */
 function splitWithPartOneApprovedBySeniorOps(): array
 {
-    [$ops, $dataEntry, $head, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $head, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
 
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Replace exit signs', 'priority_level' => 'Medium']), [1 => $riley, 2 => $riley]);
     foreach ([1, 2] as $part) {
@@ -76,7 +76,7 @@ it('has nothing for the Head until Senior Operations has approved a part', funct
         ->assertDontSee('Not approved yet')
         ->assertSee('Nothing\'s waiting on your review right now.', false);
 
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     test()->actingAs($head)->get(headReviewUrl())->assertSee('Not approved yet');
 });
@@ -140,7 +140,7 @@ it('approves the parts still waiting when the whole RFQ is approved', function (
 });
 
 it('lists an RFQ kept whole as one row, whose Approve moves it on', function () {
-    [$ops, $dataEntry, $head, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $head, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
@@ -347,7 +347,7 @@ it('takes back a part\'s approval by the Head when it is sent back for rework', 
 });
 
 it('counts each approval waiting — a row on the Review page — and shows it as a red badge on the sidebar\'s Review link', function () {
-    [$ops, $dataEntry, $head, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $head, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Head of Business Development'), userWithRole('Sourcing')];
 
     // Three parts of one RFQ approved by Senior Operations, one RFQ kept whole, and one at its review stage with no part to show.
     $split = splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => $riley, 3 => $riley]);
@@ -405,7 +405,7 @@ it('records each part\'s approval on a split\'s timeline, and none for an RFQ ke
         ->assertSee('Part approved by Head of Business Development')
         ->assertSee('RFQ1001-P1 of P2');
 
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
     $whole = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     $whole->completeSourcingPart(1);
     $whole->refresh()->completeDataEntryPart(1, $dataEntry);

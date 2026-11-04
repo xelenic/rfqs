@@ -24,7 +24,7 @@ class DataEntryIdle extends Notification
      *
      * @var array<int, string>
      */
-    public const RECIPIENT_ROLES = ['Senior Operations', 'Admin'];
+    public const RECIPIENT_ROLES = ['HBDs Operations', 'Admin'];
 
     public function __construct(
         public User $dataEntry,

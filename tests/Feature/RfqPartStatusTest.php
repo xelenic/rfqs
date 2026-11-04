@@ -72,7 +72,7 @@ it('gives each part of a split on the Assigned tab its own Status options, and t
 });
 
 it('puts one part on hold — out of its member\'s queue, its time stopped — while the rest carries on', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ13001']), [1 => $riley, 2 => $sam]);
 
@@ -113,7 +113,7 @@ it('puts one part on hold — out of its member\'s queue, its time stopped — w
 });
 
 it('keeps the RFQ from moving on past a part on hold, until it\'s resumed', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo();
     finalizeRfqPart($rfq, 1);
     $rfq->refresh()->completeSourcingPart(2);
@@ -133,7 +133,7 @@ it('keeps the RFQ from moving on past a part on hold, until it\'s resumed', func
 });
 
 it('refuses approving the RFQ as a whole while a part is on hold, leaving the other parts to approve one by one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo(['rfq_number' => 'RFQ13003']);
     finalizeRfqPart($rfq, 1);
     finalizeRfqPart($rfq, 2);
@@ -160,7 +160,7 @@ it('refuses approving the RFQ as a whole while a part is on hold, leaving the ot
 });
 
 it('lets the rest of the RFQ carry on without a cancelled part — through to closing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo(['rfq_number' => 'RFQ13004']);
     finalizeRfqPart($rfq, 1);
 
@@ -178,7 +178,7 @@ it('lets the rest of the RFQ carry on without a cancelled part — through to cl
 
     $rfq->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
     $rfq->refresh()->approveGmPart(1, userWithRole('General Manager'));
     $rfq->refresh()->closePart(1, userWithRole('Business Development'), 'REF-1');
 
@@ -189,12 +189,12 @@ it('lets the rest of the RFQ carry on without a cancelled part — through to cl
 });
 
 it('moves the RFQ straight on to where its other parts are, once the part it waited on is cancelled', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo();
     finalizeRfqPart($rfq, 1);
     $rfq->refresh()->approveSeniorOpsPart(1, $ops);
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart(1, userWithRole('GMs Operations'));
     $rfq->refresh()->approveGmPart(1, $gm = userWithRole('General Manager'));
     expect($rfq->refresh()->stage)->toBeNull();
 
@@ -208,7 +208,7 @@ it('moves the RFQ straight on to where its other parts are, once the part it wai
 });
 
 it('puts the RFQ back to where a reopened part leaves it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo();
     finalizeRfqPart($rfq, 1);
     changeRfqPartStatus($ops, $rfq, 2, 'Cancelled', 'Not needed');
@@ -227,7 +227,7 @@ it('puts the RFQ back to where a reopened part leaves it', function () {
 });
 
 it('refuses a part change that isn\'t one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitInTwo();
 
     changeRfqPartStatus($ops, $rfq, 1, 'On Hold')->assertSessionHasErrorsIn('rfq_status', ['reason' => 'Say why.']);
@@ -262,7 +262,7 @@ it('lets only Senior Operations and Admin stop a part', function () {
         changeRfqPartStatus(userWithRole($role), $rfq, 1, 'On Hold', 'x')->assertForbidden();
     }
 
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     test()->actingAs(userWithRole('Admin'))
         ->patch(route('admin.rfqs.change-status', $rfq), ['part' => 1, 'status' => 'On Hold', 'reason' => 'x', 'acting_user_id' => $ops->id])
         ->assertSessionHasNoErrors();
@@ -271,7 +271,7 @@ it('lets only Senior Operations and Admin stop a part', function () {
 });
 
 it('carries a part\'s round on once it\'s resumed — its countdown too', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $colombo = fn (string $time) => CarbonImmutable::parse($time, Setting::DEFAULT_TIMEZONE);
 
     test()->travelTo($colombo('2026-10-05 09:00'));

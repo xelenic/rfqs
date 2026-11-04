@@ -57,7 +57,7 @@ it('works out the discrepancy as added minus to add, and how it reads', function
 
 it('tells Senior Operations and the General Manager when the line items added differ', function () {
     ['rfq' => $rfq, 'morgan' => $morgan] = startedWithLineItems(24);
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $generalManager = userWithRole('General Manager');
 
     sendLineItemsAdded($morgan, $rfq, 22)->assertSessionHas('status');
@@ -86,11 +86,11 @@ it('tells Senior Operations and the General Manager when the line items added di
 it('tells no one else — not other roles, nor a deactivated account', function () {
     ['rfq' => $rfq, 'morgan' => $morgan] = startedWithLineItems(24);
 
-    foreach (['Admin', 'Head of Business Development', 'GM Assistant', 'Business Development'] as $role) {
+    foreach (['Admin', 'Head of Business Development', 'GMs Operations', 'Business Development'] as $role) {
         userWithRole($role);
     }
 
-    foreach (['Senior Operations', 'General Manager'] as $role) {
+    foreach (['HBDs Operations', 'General Manager'] as $role) {
         userWithRole($role)->forceFill(['deactivated_at' => now()])->save();
     }
 
@@ -101,7 +101,7 @@ it('tells no one else — not other roles, nor a deactivated account', function 
 
 it('tells no one when the line items added match, or no line items were given to add', function (?int $toAdd) {
     ['rfq' => $rfq, 'morgan' => $morgan] = startedWithLineItems($toAdd);
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $generalManager = userWithRole('General Manager');
 
     sendLineItemsAdded($morgan, $rfq, 24);
@@ -168,7 +168,7 @@ it('shows the discrepancy to Data Entry, Sourcing, Senior Operations and on the 
 
     $rfq->refresh()->finalizePart(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSeeInOrder(['22 line items added', '2 fewer than the 24 requested']);
 });
 

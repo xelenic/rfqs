@@ -44,7 +44,7 @@ function withThirtyFinalized(): Rfq
     $rfq->refresh()->completeSourcingPart(1, null, null, 24);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'), 'Entered', 22);
     $rfq->refresh()->finalizePart(1, 22);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'), 23);
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'), 23);
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'), 30);
 
     return $rfq->refresh();
@@ -54,7 +54,7 @@ it('lets an Admin give people in Data Entry and GM Assistant their own time per 
     $admin = userWithRole('Admin');
     $dana = worker('Dana Entry', 'Data Entry');
     $casey = worker('Casey Brooks', 'Data Entry');
-    $gail = worker('Gail Assist', 'GM Assistant');
+    $gail = worker('Gail Assist', 'GMs Operations');
     $riley = worker('Riley Chen', 'Sourcing');
 
     $html = test()->actingAs($admin)->get(route('admin.settings.edit', ['tab' => 'data-entry-targets']))->assertOk()
@@ -93,7 +93,7 @@ it('refuses a time out of range, and keeps it to an Admin', function () {
         ->assertSessionHasErrorsIn('data_entry_per_item_people', ['people.'.$dana->id]);
     expect(Setting::perItemPeople('data_entry'))->toBe([]);
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.settings.data-entry-per-item-people'), ['people' => [$dana->id => '3']])->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.settings.data-entry-per-item-people'), ['people' => [$dana->id => '3']])->assertForbidden();
 });
 
 it('times a Data Entry part by its person\'s own time — given to them by name, or once they start one left to anyone', function () {
@@ -118,8 +118,8 @@ it('times a Data Entry part by its person\'s own time — given to them by name,
 });
 
 it('times a GM Assistant part by its starter\'s own time, and says so on hover', function () {
-    $gail = worker('Gail Assist', 'GM Assistant');
-    $harper = worker('Harper Collins', 'GM Assistant');
+    $gail = worker('Gail Assist', 'GMs Operations');
+    $harper = worker('Harper Collins', 'GMs Operations');
     Setting::putGmAssistantPerItem(['enabled' => false, 'seconds' => 120]);
     Setting::putPerItemPeople('gm_assistant', [$gail->id => 60]);
     $rfq = withThirtyFinalized();

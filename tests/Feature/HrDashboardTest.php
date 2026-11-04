@@ -42,7 +42,7 @@ function hrWeek(): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $morgan = tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']);
-    $casey = tap(userWithRole('GM Assistant'))->update(['name' => 'Casey Brooks']);
+    $casey = tap(userWithRole('GMs Operations'))->update(['name' => 'Casey Brooks']);
 
     $sheet = fn (string $date, array $marks, bool $approved) => tap(AttendanceSheet::factory()->create(['date' => $date, 'approved_at' => $approved ? now() : null]),
         fn (AttendanceSheet $sheet) => collect($marks)->each(fn (array $mark, int $userId) => $sheet->attendances()->create(['user_id' => $userId] + $mark)));
@@ -141,7 +141,7 @@ it('shows the team by role, who joined in the period and who\'s deactivated', fu
 
     $overview = test()->actingAs(hrPerson())->get(route('admin.dashboard'))->assertOk()->viewData('overview');
 
-    expect($overview['team']->pluck('count', 'role')->all())->toBe(['Data Entry' => 1, 'GM Assistant' => 1, 'HR Executive' => 1, 'Sourcing' => 1])
+    expect($overview['team']->pluck('count', 'role')->all())->toBe(['Data Entry' => 1, 'GMs Operations' => 1, 'HR Executive' => 1, 'Sourcing' => 1])
         ->and($overview['activePeople'])->toBe(4)
         ->and($overview['deactivated'])->toBe(1)
         ->and($overview['joined'])->toBe(5);

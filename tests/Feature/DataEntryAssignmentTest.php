@@ -94,7 +94,7 @@ it('gives the part to them by name — recorded, said on the thread, and told in
 it('refuses someone who isn\'t in Data Entry, assigning nothing', function () {
     ['rfq' => $rfq, 'riley' => $riley] = withSourcingForDe();
 
-    assignToDe($rfq, $riley, userWithRole('Senior Operations'))
+    assignToDe($rfq, $riley, userWithRole('HBDs Operations'))
         ->assertSessionHas('error', 'Pick someone in Data Entry from the list, or leave it with anyone there.');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->completed_at)->toBeNull();

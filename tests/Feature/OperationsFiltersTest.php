@@ -13,7 +13,7 @@ beforeEach(function () {
     test()->travelTo(now()->setTime(12, 0));
 
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
 });
 
 /**
@@ -297,11 +297,11 @@ it('gives Admin the same filters on Senior Operations\' page', function () {
     opsRfq('Urgent job', ['priority_level' => 'Urgent']);
     opsRfq('Low job', ['priority_level' => 'Low']);
 
-    [$unassigned, , $page] = operationsTabs(['priority' => ['Urgent']], 'senior-operations');
+    [$unassigned, , $page] = operationsTabs(['priority' => ['Urgent']], 'hbds-operations');
 
     expect($unassigned)->toContain('Urgent job')->not->toContain('Low job')
         // The filter form stays on the role page.
-        ->and($page)->toContain('<input type="hidden" name="role" value="senior-operations">');
+        ->and($page)->toContain('<input type="hidden" name="role" value="hbds-operations">');
 });
 
 it('shows the note an RFQ came in with under its subject on Unassigned — escaped, and not on the Assigned tab', function () {

@@ -53,7 +53,7 @@
             ],
         ],
         [
-            'role' => 'Senior Operations', 'badge' => ['unassigned', 'ops_review'],
+            'role' => 'HBDs Operations', 'badge' => ['unassigned', 'ops_review'],
             'links' => [
                 ['label' => 'Unassigned RFQs', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'unassigned', 'hint' => 'not fully assigned to Sourcing'],
                 ['label' => 'Review', 'icon' => 'bi-clipboard2-check', 'status' => 'Pending', 'view' => 'review', 'count' => 'ops_review', 'hint' => 'awaiting second review'],
@@ -94,7 +94,7 @@
             ],
         ],
         [
-            'role' => 'GM Assistant', 'badge' => ['gm_assistant', 'gm_assistant_returns', 'gm_assistant_rejected'],
+            'role' => 'GMs Operations', 'badge' => ['gm_assistant', 'gm_assistant_returns', 'gm_assistant_rejected'],
             'links' => [
                 ['label' => 'Review', 'icon' => 'bi-hourglass-split', 'status' => 'Pending', 'view' => null, 'count' => 'gm_assistant', 'hint' => 'awaiting submit'],
                 ['label' => 'Returns', 'icon' => 'bi-arrow-counterclockwise', 'status' => 'Pending', 'view' => 'returns', 'count' => 'gm_assistant_returns', 'hint' => 'returned by the General Manager'],

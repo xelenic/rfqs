@@ -26,11 +26,11 @@ function actingPeople(): array
     return [
         'admin' => userWithRole('Admin'),
         'bd' => userWithRole('Business Development'),
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'sourcing' => userWithRole('Sourcing'),
         'dataEntry' => userWithRole('Data Entry'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
     ];
 }
@@ -136,7 +136,7 @@ it('records each approval, and the closing, as the person Admin picks for that s
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->{$column})->toBe($people[$person]->id, "recorded as the {$role}");
 })->with([
-    'Senior Operations approves' => ['data_entry_done', 'admin.rfqs.approve-senior-ops-part', 'senior_ops_reviewed_by', 'ops', 'Senior Operations'],
+    'Senior Operations approves' => ['data_entry_done', 'admin.rfqs.approve-senior-ops-part', 'senior_ops_reviewed_by', 'ops', 'HBDs Operations'],
     'the Head approves' => ['ops_approved', 'admin.rfqs.approve-head-of-bd-part', 'head_of_bd_approved_by', 'head', 'Head of Business Development'],
     'the General Manager approves' => ['assistant_done', 'admin.rfqs.approve-gm-part', 'gm_approved_by', 'gm', 'General Manager'],
     'Business Development closes' => ['gm_approved', 'admin.rfqs.close-part', 'bd_closed_by', 'bd', 'Business Development'],
@@ -163,7 +163,7 @@ it('records GM Assistant\'s Submit as the GM Assistant person Admin picks', func
 
     // The picker is in the Submit prompt.
     expect(Str::betweenFirst(
-        test()->actingAs($people['admin'])->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'gm-assistant']))->assertOk()->getContent(),
+        test()->actingAs($people['admin'])->get(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'gms-operations']))->assertOk()->getContent(),
         'id="gmAssistantSubmitForm"', '</form>'
     ))->toContain('id="gm-assistant-acting-as"')->toContain('Submitted by');
 
@@ -190,7 +190,7 @@ it('records a rejection as the person Admin picks for the stage that rejected', 
 
     expect($rfq->refresh()->rejected_by)->toBe($people[$person]->id);
 })->with([
-    'Senior Operations' => ['data_entry_done', 'admin.rfqs.reject-senior-ops', 'ops', 'data_entry'],
+    'HBDs Operations' => ['data_entry_done', 'admin.rfqs.reject-senior-ops', 'ops', 'data_entry'],
     'the Head' => ['ops_approved', 'admin.rfqs.reject-head-of-bd', 'head', 'senior_ops_review'],
     'the General Manager' => ['assistant_done', 'admin.rfqs.reject-gm', 'gm', 'gm_assistant'],
 ]);
@@ -208,7 +208,7 @@ it('records Admin themselves when no one is picked, as it always did', function 
 
 it('ignores the pick from anyone but Admin', function () {
     $people = actingPeople();
-    $someoneElse = userWithRole('Senior Operations');
+    $someoneElse = userWithRole('HBDs Operations');
     $rfq = actingRfqAt('data_entry_done', $people);
 
     test()->actingAs($people['ops'])
@@ -275,7 +275,7 @@ it('offers Admin each stage\'s own people beside its Approve and Close buttons, 
         ->assertDontSee('acting_user_id', false);
 })->with([
     // Approving verifies the line items in a popup — the picker's there.
-    'Senior Operations\' Review' => [['role' => 'senior-operations', 'view' => 'review'], 'data_entry_done', 'Senior Operations', 'ops', 'id="senior-ops-approve-acting-as"'],
+    'Senior Operations\' Review' => [['role' => 'hbds-operations', 'view' => 'review'], 'data_entry_done', 'HBDs Operations', 'ops', 'id="senior-ops-approve-acting-as"'],
     // Approving finalizes the line items in a popup — the picker's there.
     'the Head\'s Review' => [['role' => 'head-of-business-development'], 'ops_approved', 'Head of Business Development', 'head', 'id="head-of-bd-approve-acting-as"'],
     'the General Manager\'s Review' => [['role' => 'general-manager'], 'assistant_done', 'General Manager', 'gm', 'aria-label="Done by (General Manager)"'],
@@ -293,7 +293,7 @@ it('puts the picker in each stage\'s modal too — rejecting, assigning, Data En
     expect($admin(['role' => 'general-manager']))->toContain('id="reject-acting-as"');
 
     // The Assign Sourcing wizard's review step.
-    expect($admin(['role' => 'senior-operations']))->toContain('id="assign-acting-as"')->toContain('Assigned by');
+    expect($admin(['role' => 'hbds-operations']))->toContain('id="assign-acting-as"')->toContain('Assigned by');
 
     // Data Entry's prompt — hidden until one of Data Entry's own actions opens it.
     $dataEntry = $admin(['role' => 'data-entry']);

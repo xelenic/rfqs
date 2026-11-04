@@ -93,14 +93,14 @@ function marks(AttendanceSheet $sheet, array $absent = []): array
 it('is kept by Senior Operations and Admin alone', function () {
     rileysMorning();
 
-    foreach (['Senior Operations', 'Admin'] as $role) {
+    foreach (['HBDs Operations', 'Admin'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.attendance.index'))->assertOk()
             ->assertSee('<title>Attendance', false);
         test()->actingAs(userWithRole($role))->get(route('admin.dashboard'))->assertOk()
             ->assertSee(route('admin.attendance.index'));
     }
 
-    foreach (['Sourcing', 'Data Entry', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'Data Entry', 'GMs Operations', 'General Manager', 'Business Development'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.attendance.index'))->assertForbidden();
         test()->actingAs(userWithRole($role))->post(route('admin.attendance.store'), ['date' => '2026-10-05', 'attendance' => []])->assertForbidden();
     }
@@ -109,9 +109,9 @@ it('is kept by Senior Operations and Admin alone', function () {
 it('fills a new sheet in a popup, everyone present to start', function () {
     ['riley' => $riley] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     userWithRole('General Manager');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $html = test()->actingAs($ops)->get(route('admin.attendance.index'))->assertOk()
         ->assertSee('No attendance submitted yet')
@@ -133,7 +133,7 @@ it('fills a new sheet in a popup, everyone present to start', function () {
 it('submits the day\'s sheet with everyone\'s attendance at once', function () {
     ['riley' => $riley] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Sick leave'])
         ->assertSessionHasNoErrors()
@@ -154,7 +154,7 @@ it('submits the day\'s sheet with everyone\'s attendance at once', function () {
 it('lists each day\'s submitted sheet, with who was on leave, and an Edit that opens it', function () {
     ['riley' => $riley] = rileysMorning();
     $dataEntry = userWithRole('Data Entry');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     makeSheet($ops, '2026-10-05', [$dataEntry->id => 'Casual leave']);
 
     test()->travelTo(atLk('2026-10-06 10:00'));
@@ -178,7 +178,7 @@ it('lists each day\'s submitted sheet, with who was on leave, and an Edit that o
 
 it('brings a refused submission back in the popup, as it was sent', function () {
     ['riley' => $riley] = rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $html = test()->actingAs($ops)
         ->from(route('admin.attendance.index'))
@@ -198,7 +198,7 @@ it('brings a refused submission back in the popup, as it was sent', function () 
 
 it('marks someone on leave, and back again', function () {
     ['riley' => $riley] = rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     makeSheet($ops, '2026-10-05');
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
 
@@ -219,7 +219,7 @@ it('marks someone on leave, and back again', function () {
 
 it('doesn\'t ask why someone was on leave — on a new sheet or an edit — but keeps an older sheet\'s reason on the list', function () {
     ['riley' => $riley] = rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     expect(Str::betweenFirst(test()->actingAs($ops)->get(route('admin.attendance.index'))->getContent(), 'id="attendanceModal"', '</form>'))
         ->not->toContain('[reason]')
@@ -240,7 +240,7 @@ it('doesn\'t ask why someone was on leave — on a new sheet or an edit — but 
 
 it('keeps the sheet to Sourcing, Data Entry and GM Assistant people', function () {
     rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     makeSheet($ops, '2026-10-05');
     $sheet = AttendanceSheet::query()->sole();
 
@@ -250,7 +250,7 @@ it('keeps the sheet to Sourcing, Data Entry and GM Assistant people', function (
 
 it('adds someone who joined after the sheet was made when it\'s saved', function () {
     rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     makeSheet($ops, '2026-10-05');
     $sheet = AttendanceSheet::query()->with('attendances')->sole();
 
@@ -273,7 +273,7 @@ it('only makes sheets for days since attendance started, up to today', function 
 
     userWithRole('Sourcing');
 
-    makeSheet(userWithRole('Senior Operations'), $date)->assertSessionHasErrorsIn('attendance', ['date']);
+    makeSheet(userWithRole('HBDs Operations'), $date)->assertSessionHasErrorsIn('attendance', ['date']);
 
     expect(AttendanceSheet::query()->count())->toBe(0);
 })->with(['2026-10-07', '2026-10-02', 'Tuesday']);
@@ -289,7 +289,7 @@ it('lists the working days still without a sheet, skipping days off', function (
     test()->travelTo(atLk('2026-10-12 10:00'));
     expect(AttendanceSheet::missingDays())->toBe(['2026-10-12', '2026-10-09', '2026-10-08', '2026-10-06', '2026-10-05']);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk()
         ->assertSee('title="5 working days without a sheet"', false);
 });
 
@@ -300,13 +300,13 @@ it('holds a day\'s time back until its sheet is made', function () {
 
     expect($rfq->timeSpent()['roles']['Sourcing'])->toMatchArray(['seconds' => 0, 'awaiting' => 7200, 'absent' => 0]);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.reports.time-spent'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.reports.time-spent'))->assertOk()
         ->assertSee('2h awaiting attendance');
 });
 
 it('counts the day for someone present, and not for someone absent', function () {
     ['riley' => $riley, 'rfq' => $rfq] = rileysMorning();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     makeSheet($ops, '2026-10-05');
 
     // Submitted, but not counted until HR Executive approves it.
@@ -356,7 +356,7 @@ it('credits Data Entry\'s time to whoever started on it, by their attendance', f
     expect($rfq->refresh()->steps->firstWhere('step', 'data_entry')->worked_by)->toBe($dataEntry->id)
         ->and($rfq->timeSpent()['roles']['Data Entry'])->toMatchArray(['seconds' => 0, 'awaiting' => 3600]);
 
-    makeSheet(userWithRole('Senior Operations'), '2026-10-05');
+    makeSheet(userWithRole('HBDs Operations'), '2026-10-05');
     approveSheetAsHr('2026-10-05');
 
     expect($rfq->timeSpent()['roles']['Data Entry'])->toMatchArray(['seconds' => 3600, 'awaiting' => 0]);
@@ -364,7 +364,7 @@ it('credits Data Entry\'s time to whoever started on it, by their attendance', f
 
 it('doesn\'t count a day absent against Sourcing\'s deadline', function () {
     $riley = userWithRole('Sourcing');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     test()->travelTo(atLk('2026-10-05 09:00'));
     $rfq = splitAmong(Rfq::factory()->create(['priority_level' => 'Urgent']), [1 => $riley]);
@@ -401,14 +401,14 @@ it('turns attendance on and off from Settings', function () {
         ->assertSessionHasNoErrors();
     expect(Setting::attendanceSince())->toBeNull();
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.attendance.index'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.attendance.index'))->assertOk()
         ->assertSee('Attendance isn\'t counted yet', false);
 });
 
 it('leaves no sheet behind when a new one has someone on it who doesn\'t belong', function () {
     $riley = userWithRole('Sourcing');
 
-    test()->actingAs(userWithRole('Senior Operations'))->post(route('admin.attendance.store'), [
+    test()->actingAs(userWithRole('HBDs Operations'))->post(route('admin.attendance.store'), [
         'date' => '2026-10-05',
         'attendance' => [
             $riley->id => ['status' => 'present'],
@@ -421,7 +421,7 @@ it('leaves no sheet behind when a new one has someone on it who doesn\'t belong'
 
 it('opens New attendance sheet on the newest day without one, and turns it off once every day has one', function () {
     userWithRole('Sourcing');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     // Wednesday: Monday's done, Tuesday's and today's aren't.
     test()->travelTo(atLk('2026-10-07 10:00'));
@@ -441,7 +441,7 @@ it('opens New attendance sheet on the newest day without one, and turns it off o
 
 it('tells the popup which days already have a sheet, so a second is turned away before it\'s sent', function () {
     userWithRole('Sourcing');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     test()->travelTo(atLk('2026-10-06 10:00'));
     makeSheet($ops, '2026-10-05');
 

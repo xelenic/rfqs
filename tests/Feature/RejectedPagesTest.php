@@ -25,9 +25,9 @@ function rejectedPagePeople(): array
         'riley' => tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']),
         'sam' => tap(userWithRole('Sourcing'))->update(['name' => 'Sam Rivera']),
         'morgan' => tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']),
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
         'bd' => userWithRole('Business Development'),
     ];
@@ -233,7 +233,7 @@ it('gives every role sent work back a Rejected link on its sidebar, and Admin on
     }
 
     $html = test()->actingAs(userWithRole('Admin'))->get(route('admin.dashboard'))->assertOk()->getContent();
-    foreach (['business-development', 'senior-operations', 'sourcing', 'data-entry', 'head-of-business-development', 'gm-assistant', 'general-manager'] as $role) {
+    foreach (['business-development', 'hbds-operations', 'sourcing', 'data-entry', 'head-of-business-development', 'gms-operations', 'general-manager'] as $role) {
         expect($html)->toContain(e(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected', 'role' => $role])));
     }
 });

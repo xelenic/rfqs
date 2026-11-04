@@ -30,7 +30,7 @@ class LineItemsDiscrepancy extends Notification
     /**
      * Who's told of a discrepancy.
      */
-    public const RECIPIENT_ROLES = ['Senior Operations', 'General Manager'];
+    public const RECIPIENT_ROLES = ['HBDs Operations', 'General Manager'];
 
     public function __construct(
         public Rfq $rfq,

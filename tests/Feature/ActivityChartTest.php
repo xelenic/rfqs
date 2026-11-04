@@ -51,7 +51,7 @@ it('hands the chart the RFQs created over the period, pending and done, by day',
     Rfq::factory()->create(['status' => 'Pending', 'created_at' => now()->subDay()]);
 
     $payload = activityChartPayload(
-        test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard', ['range' => 7]))->getContent(),
+        test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard', ['range' => 7]))->getContent(),
     );
 
     expect($payload['labels'])->toHaveCount(7)

@@ -79,7 +79,7 @@ it('asks for a reason', function () {
 });
 
 it('shows Senior Operations why it\'s pending — the reason, who said it and their role — on hovering its status', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $sam = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ7002']), [1 => $riley, 2 => $sam]);
@@ -115,7 +115,7 @@ it('shows Senior Operations why it\'s pending — the reason, who said it and th
 it('keeps an RFQ with no reason to its plain Pending status', function () {
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ7003']), [1 => userWithRole('Sourcing')]);
 
-    expect(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index'))->assertOk()->getContent())
+    expect(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index'))->assertOk()->getContent())
         ->not->toContain('pending-reason-'.$rfq->id);
 });
 
@@ -125,7 +125,7 @@ it('lets only the part\'s own member say why, and only while it\'s pending with 
 
     // Not someone else's part, nor someone outside Sourcing.
     saysWhyPending($riley, $rfq, 'Not mine', part: 2)->assertForbidden();
-    saysWhyPending(userWithRole('Senior Operations'), $rfq, 'Not theirs')->assertForbidden();
+    saysWhyPending(userWithRole('HBDs Operations'), $rfq, 'Not theirs')->assertForbidden();
 
     // Assigned to Data Entry: off their Pending list — the reason with it.
     saysWhyPending($riley, $rfq, 'Waiting for the supplier');
@@ -149,7 +149,7 @@ it('clears the reason when the part is given to someone else, or sent back to So
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
 
     saysWhyPending($riley, $rfq, 'Waiting for the supplier');
-    $rfq->refresh()->replaceSourcingPart(1, $sam, userWithRole('Senior Operations'));
+    $rfq->refresh()->replaceSourcingPart(1, $sam, userWithRole('HBDs Operations'));
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->pending_reason)->toBeNull();
 
@@ -194,6 +194,6 @@ it('offers Pending reason on the RFQ page for the viewer\'s own part', function 
         ->assertSee('data-action="'.route('admin.rfqs.pending-reason', $rfq).'"', false)
         ->assertSee('id="pendingReasonModal"', false);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()
         ->assertDontSee('id="pendingReasonModal"', false);
 });

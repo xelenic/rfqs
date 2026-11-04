@@ -133,7 +133,7 @@ it('leaves someone else\'s photo to Admin and HR Executive — and an Admin\'s t
     $admin = userWithRole('Admin');
     $hr = User::factory()->create()->assignRole('HR Executive');
 
-    putUpPhoto(userWithRole('Senior Operations'), $riley)->assertForbidden();
+    putUpPhoto(userWithRole('HBDs Operations'), $riley)->assertForbidden();
     putUpPhoto($hr, $admin)->assertForbidden();
     expect($riley->refresh()->avatar_path)->toBeNull();
 
@@ -151,7 +151,7 @@ it('leaves someone else\'s photo to Admin and HR Executive — and an Admin\'s t
     test()->actingAs($hr)->get(route('admin.users.show', $admin))->assertOk()
         ->assertDontSee('action="'.route('admin.users.photo.update', $admin).'"', false);
 
-    test()->actingAs(userWithRole('Senior Operations'))->delete(route('admin.users.photo.destroy', $riley))->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->delete(route('admin.users.photo.destroy', $riley))->assertForbidden();
     test()->actingAs($admin)->delete(route('admin.users.photo.destroy', $riley))->assertRedirect(route('admin.users.show', $riley));
     expect($riley->refresh()->avatar_path)->toBeNull();
 

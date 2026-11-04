@@ -6,7 +6,7 @@
     Rfq::dataEntryTargetBreakdown() / gmAssistantTargetBreakdown() for the
     parts they do.
 
-    Expects: $id (the card's id), $role ('Data Entry' or 'GM Assistant'),
+    Expects: $id (the card's id), $role ('Data Entry' or 'GMs Operations'),
     $item ('item' or 'line item'), $action (the route it saves to), $bag (its
     error bag), $people (everyone in the role), $own (user id => seconds),
     $companySeconds, $range (DATA_ENTRY_PER_ITEM_RANGE).

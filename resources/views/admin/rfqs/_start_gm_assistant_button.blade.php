@@ -25,7 +25,7 @@
     @csrf
     @method('PATCH')
     <input type="hidden" name="part" value="{{ $part }}">
-    @include('admin.rfqs._acting_as', ['role' => 'GM Assistant'])
+    @include('admin.rfqs._acting_as', ['role' => 'GMs Operations'])
     <span @class(['d-inline-block start-hint js-start-hint', 'is-off' => $busyHint]) tabindex="0"
           data-on-hint="{{ $onHint }}" @if ($busyHint) data-busy-hint="{{ $busyHint }}" @endif
           data-start-hint="{{ $busyHint ?? ($offHoursReason ? $offHint($offHoursReason) : $onHint) }}">

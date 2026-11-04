@@ -64,10 +64,10 @@ it('can be seeded again without changing anything', function () {
 it('lets a seeded General Manager account work the approvals, part by part', function () {
     test()->seed([RolePermissionSeeder::class, BusinessRoleSeeder::class, UserSeeder::class]);
 
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     $head = userWithRole('Head of Business Development');
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $sourcing = userWithRole('Sourcing');
 
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Replace exit signs']), [1 => $sourcing, 2 => $sourcing]);

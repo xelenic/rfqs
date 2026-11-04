@@ -34,7 +34,7 @@ class RfqStep extends Model
     public const ROLE_STEPS = [
         'Sourcing' => ['sourcing', 'finalize'],
         'Data Entry' => ['data_entry'],
-        'GM Assistant' => ['gm_assistant'],
+        'GMs Operations' => ['gm_assistant'],
     ];
 
     public $timestamps = false;

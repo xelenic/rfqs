@@ -41,7 +41,7 @@ function approvedToGmAssistantAt(string $at, string $number = 'RFQ41001'): Rfq
     startDataEntryOn($rfq, 1, $dataEntry);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry, 'Entered', 2);
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     test()->travelTo(gmaIdleClock($at));
     $rfq->refresh()->approveHeadOfBdPart(1, userWithRole('Head of Business Development'));
@@ -77,9 +77,9 @@ function gmaIdleAlertsOf(User $user): array
  */
 function gmaIdleCast(): array
 {
-    $casey = tap(userWithRole('GM Assistant'))->update(['name' => 'Casey']);
+    $casey = tap(userWithRole('GMs Operations'))->update(['name' => 'Casey']);
 
-    return [$casey, userWithRole('Senior Operations'), userWithRole('Admin')];
+    return [$casey, userWithRole('HBDs Operations'), userWithRole('Admin')];
 }
 
 // ---- The setting -------------------------------------------------------------------
@@ -106,7 +106,7 @@ it('keeps the minutes sensible, and the setting Admin\'s', function () {
     test()->actingAs(userWithRole('Admin'))->patch(route('admin.settings.gm-assistant-idle-alert'), ['enabled' => '1', 'minutes' => 0])
         ->assertSessionHasErrorsIn('gm_assistant_idle_alert', ['minutes' => 'Keep it between 1 and 480 minutes.']);
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.settings.gm-assistant-idle-alert'), ['enabled' => '1', 'minutes' => 5])
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.settings.gm-assistant-idle-alert'), ['enabled' => '1', 'minutes' => 5])
         ->assertForbidden();
 
     expect(Setting::gmAssistantIdleAlert())->toBe(['enabled' => true, 'minutes' => 10]);

@@ -38,7 +38,7 @@
                         @include('admin.rfqs._attachments_input', ['attachmentsId' => 'request-details-attachments'])
                     </div>
                     <div class="mt-3">
-                        @include('admin.rfqs._acting_as', ['role' => 'Senior Operations', 'id' => 'request-details-acting-as', 'label' => 'Sent back by'])
+                        @include('admin.rfqs._acting_as', ['role' => 'HBDs Operations', 'id' => 'request-details-acting-as', 'label' => 'Sent back by'])
                     </div>
                 </div>
                 <div class="modal-footer">

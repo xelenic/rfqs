@@ -20,7 +20,7 @@ beforeEach(function () {
 });
 
 it('keeps the photos posted with a comment, and shows them under it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
@@ -53,7 +53,7 @@ it('keeps the photos posted with a comment, and shows them under it', function (
 });
 
 it('offers photos alone to pick, everywhere a comment can carry them', function () {
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', Rfq::factory()->create()))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', Rfq::factory()->create()))->assertOk()
         ->assertSee('accept="image/jpeg,image/png,image/gif,image/webp"', false)
         ->assertSee('— JPG, PNG, GIF or WebP.', false)
         ->assertDontSee('.pdf,', false)
@@ -61,7 +61,7 @@ it('offers photos alone to pick, everywhere a comment can carry them', function 
 });
 
 it('still downloads a document attached before photos alone were allowed', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $document = RfqCommentAttachment::factory()->create(['original_name' => 'spec.pdf', 'mime_type' => 'application/pdf', 'path' => 'rfq-attachments/spec.pdf']);
     Storage::disk(RfqCommentAttachment::DISK)->put($document->path, 'pdf bytes');
 
@@ -70,7 +70,7 @@ it('still downloads a document attached before photos alone were allowed', funct
 });
 
 it('turns away anything but a photo — a PDF, Word, Excel, CSV or text file — posting nothing', function (string $name, string $mime) {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
@@ -120,7 +120,7 @@ it('puts a reject\'s files on its own reason, not on the parts it sends back fir
 });
 
 it('shows the files a sent-back RFQ came with on the Returns page', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ19001']);
 
     test()->actingAs($ops)->patch(route('admin.rfqs.request-details', $rfq), [
@@ -134,7 +134,7 @@ it('shows the files a sent-back RFQ came with on the Returns page', function () 
 });
 
 it('turns away an SVG, too many photos, or too big a one — posting nothing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), [
@@ -172,7 +172,7 @@ it('serves a file only to those who can see RFQs', function () {
 });
 
 it('takes a comment\'s files — and its replies\' — with it when it\'s deleted', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create();
 
     test()->actingAs($ops)->post(route('admin.rfqs.comments.store', $rfq), ['body' => 'Photo', 'attachments' => [UploadedFile::fake()->image('a.jpg')]]);

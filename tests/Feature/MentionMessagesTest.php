@@ -44,7 +44,7 @@ function commentMentioning(User $user, Rfq $rfq, string $body, ?RfqComment $pare
 
 it('sends whoever a comment on a closed RFQ mentions a message from its author, and says so — saying it\'s closed', function () {
     $riley = personNamed('Riley Chen');
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $rfq = rfqForMentions();
 
     commentMentioning($operations, $rfq, 'Client asked about the flanges — @Riley Chen can you check?')
@@ -61,7 +61,7 @@ it('sends whoever a comment on a closed RFQ mentions a message from its author, 
 
 it('says it was a reply when it was', function () {
     $riley = personNamed('Riley Chen');
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $rfq = rfqForMentions();
     $parent = $rfq->comments()->create(['user_id' => $operations->id, 'body' => 'Client called']);
 
@@ -73,7 +73,7 @@ it('says it was a reply when it was', function () {
 
 it('shows in their bell and under Messages → RFQ comments — once, not in Private messages too — with the way back to the RFQ', function () {
     $riley = personNamed('Riley Chen');
-    $operations = personNamed('Olivia Park', 'Senior Operations');
+    $operations = personNamed('Olivia Park', 'HBDs Operations');
     $rfq = rfqForMentions();
 
     commentMentioning($operations, $rfq, '@Riley Chen please look');
@@ -101,7 +101,7 @@ it('sends it for a mention on an RFQ at any stage — open, on hold or cancelled
     $riley = personNamed('Riley Chen');
     $rfq = rfqForMentions($status);
 
-    commentMentioning(userWithRole('Senior Operations'), $rfq, '@Riley Chen please look')
+    commentMentioning(userWithRole('HBDs Operations'), $rfq, '@Riley Chen please look')
         ->assertSessionHas('status', 'Comment posted. Riley Chen will see it in Messages.');
 
     expect(PrivateMessage::query()->sole())
@@ -110,13 +110,13 @@ it('sends it for a mention on an RFQ at any stage — open, on hold or cancelled
 })->with(['Pending', Rfq::ON_HOLD, Rfq::CANCELLED]);
 
 it('sends everyone a comment mentions their own message, whatever their role, each in their Messages', function () {
-    $author = personNamed('Olivia Park', 'Senior Operations');
+    $author = personNamed('Olivia Park', 'HBDs Operations');
     $people = collect([
         'Business Development' => 'Ben Dev',
         'Sourcing' => 'Riley Chen',
         'Data Entry' => 'Dana Entry',
         'Head of Business Development' => 'Hana Head',
-        'GM Assistant' => 'Gail Assist',
+        'GMs Operations' => 'Gail Assist',
         'General Manager' => 'Morgan Ellis',
         'Admin' => 'Ada Admin',
     ])->map(fn (string $name, string $role) => personNamed($name, $role));
@@ -138,7 +138,7 @@ it('sends everyone a comment mentions their own message, whatever their role, ea
 });
 
 it('links the RFQ in the conversation only for someone who can open it', function () {
-    $author = personNamed('Olivia Park', 'Senior Operations');
+    $author = personNamed('Olivia Park', 'HBDs Operations');
     $riley = personNamed('Riley Chen');
     $ben = personNamed('Ben Dev', 'Business Development');
     $dana = personNamed('Dana Entry', 'Data Entry');
@@ -180,7 +180,7 @@ it('matches whole names only — not one inside a longer name', function () {
     $rileyJunior = personNamed('Riley Chen Jr');
     $rfq = rfqForMentions();
 
-    commentMentioning(userWithRole('Senior Operations'), $rfq, 'Over to @Riley Chen Jr. Not @Riley Chenoweth either.');
+    commentMentioning(userWithRole('HBDs Operations'), $rfq, 'Over to @Riley Chen Jr. Not @Riley Chenoweth either.');
 
     expect(PrivateMessage::query()->pluck('recipient_id')->all())->toBe([$rileyJunior->id])
         ->and($riley->receivedMessages()->count())->toBe(0);
@@ -191,7 +191,7 @@ it('mentions anyone on the staff, as the @mention list offers them — not a dea
     personNamed('Pat Gone', 'Data Entry')->forceFill(['deactivated_at' => now()])->save();
     $rfq = rfqForMentions();
 
-    commentMentioning(userWithRole('Senior Operations'), $rfq, '@Morgan Ellis FYI, and @Pat Gone')
+    commentMentioning(userWithRole('HBDs Operations'), $rfq, '@Morgan Ellis FYI, and @Pat Gone')
         ->assertSessionHas('status', 'Comment posted. Morgan Ellis will see it in Messages.');
 
     expect(PrivateMessage::query()->pluck('recipient_id')->all())->toBe([$morgan->id]);
@@ -199,7 +199,7 @@ it('mentions anyone on the staff, as the @mention list offers them — not a dea
 
 it('takes the message away when the comment is deleted', function () {
     personNamed('Riley Chen');
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     $rfq = rfqForMentions();
     commentMentioning($operations, $rfq, '@Riley Chen please look');
 
@@ -211,7 +211,7 @@ it('takes the message away when the comment is deleted', function () {
 
 it('clears mention messages with the RFQ data, keeping messages written in Messages', function () {
     $riley = personNamed('Riley Chen');
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
     commentMentioning($operations, rfqForMentions(), '@Riley Chen please look');
     $written = $operations->sentMessages()->create(['recipient_id' => $riley->id, 'body' => 'Lunch?']);
 
@@ -221,7 +221,7 @@ it('clears mention messages with the RFQ data, keeping messages written in Messa
 });
 
 it('tells the commenter, in the comment box, that a mention goes to Messages — on any RFQ', function () {
-    $operations = userWithRole('Senior Operations');
+    $operations = userWithRole('HBDs Operations');
 
     foreach ([rfqForMentions(), Rfq::factory()->create()] as $rfq) {
         test()->actingAs($operations)->get(route('admin.rfqs.show', $rfq))->assertOk()
@@ -234,7 +234,7 @@ it('sends it to everyone of that name when two share it', function () {
     $otherRiley = personNamed('Riley Chen');
     $rfq = rfqForMentions();
 
-    commentMentioning(userWithRole('Senior Operations'), $rfq, '@Riley Chen please look')
+    commentMentioning(userWithRole('HBDs Operations'), $rfq, '@Riley Chen please look')
         ->assertSessionHas('status', 'Comment posted. Riley Chen and Riley Chen will see it in Messages.');
 
     expect(PrivateMessage::query()->orderBy('recipient_id')->pluck('recipient_id')->all())->toBe([$riley->id, $otherRiley->id]);

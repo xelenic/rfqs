@@ -48,9 +48,9 @@
     };
     $rejectTargetStages = $rejectFromStage ? \App\Models\Rfq::rejectTargetStages($rejectFromStage) : [];
     $rejectRole = match ($rejectFromStage) {
-        'senior_ops_review' => 'Senior Operations',
+        'senior_ops_review' => 'HBDs Operations',
         'head_of_bd_review' => 'Head of Business Development',
-        'gm_assistant' => 'GM Assistant',
+        'gm_assistant' => 'GMs Operations',
         'gm_review' => 'General Manager',
         'bd_closing' => 'Business Development',
         default => null,
@@ -71,7 +71,7 @@
     // it (see RfqController::assign()), so just the one button is shown.
     // Admin isn't offered it either: it's only a way to name someone in
     // Operations, which is Operations' own call.
-    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['Senior Operations', 'Admin']);
+    $canSeeAssignOperationsButton = $canSeeAssignButtons && ! auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']);
 @endphp
 
 @extends('layouts.app')
@@ -1173,7 +1173,7 @@
                                                       data-confirm="Pass {{ $rfq->partsLabel(array_keys($passBackTo)) }} back to {{ $passBackNames }}?">
                                                     @csrf
                                                     @method('PATCH')
-                                                    @include('admin.rfqs._acting_as', ['role' => 'Senior Operations'])
+                                                    @include('admin.rfqs._acting_as', ['role' => 'HBDs Operations'])
                                                     <button type="submit" class="btn btn-sm btn-primary">
                                                         <i class="bi bi-arrow-right-circle"></i> Pass back to {{ $passBackNames }}
                                                     </button>
@@ -2010,7 +2010,7 @@
             {{-- No RFQ of its own — not the list loop's last one either. --}}
             @include('admin.rfqs._status_modal', ['rfq' => null])
         @endif
-        @if (auth()->user()->hasAnyRole(['Senior Operations', 'Admin']))
+        @if (auth()->user()->hasAnyRole(['HBDs Operations', 'Admin']))
             @include('admin.rfqs._reassign_modal', ['sourcingUsers' => $sourcingUsers])
         @endif
     @endif

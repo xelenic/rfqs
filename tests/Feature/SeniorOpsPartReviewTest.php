@@ -11,7 +11,7 @@ uses(LazilyRefreshDatabase::class);
 beforeEach(function () {
     // The list page looks up its Sourcing and Senior Operations members.
     Role::findOrCreate('Sourcing');
-    Role::findOrCreate('Senior Operations');
+    Role::findOrCreate('HBDs Operations');
     Role::findOrCreate('Data Entry');
     Role::findOrCreate('Head of Business Development');
 });
@@ -29,7 +29,7 @@ function reviewUrl(array $query = []): string
  */
 function splitWithPartOneThrough(): array
 {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
 
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Replace exit signs', 'priority_level' => 'Medium']), [1 => $riley, 2 => $riley]);
     $rfq->completeSourcingPart(1);
@@ -58,7 +58,7 @@ it('lists a part as its own row as soon as it is through Sourcing and Data Entry
 });
 
 it('lists each ready part of an RFQ separately, leaving out the ones with Sourcing, Data Entry or already approved', function () {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
 
     // Part 1 approved, 2 and 3 ready, 4 with Data Entry, 5 in progress, 6 sent back.
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1001', 'subject' => 'Six ways']), array_fill(1, 6, $riley));
@@ -85,7 +85,7 @@ it('lists each ready part of an RFQ separately, leaving out the ones with Sourci
 });
 
 it('leaves an RFQ out until one of its parts has been through both', function () {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
 
     // Part 1 is with Data Entry, part 2 still with Sourcing: nothing for Senior Operations yet.
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'Not there yet']), [1 => $riley, 2 => $riley]);
@@ -165,7 +165,7 @@ it('approves the parts still waiting when the whole RFQ is approved', function (
 });
 
 it('lists an RFQ kept whole as one row, whose Approve moves it on', function () {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['subject' => 'One piece of work']), [1 => $riley]);
     $rfq->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, $dataEntry);
@@ -184,7 +184,7 @@ it('lists an RFQ kept whole as one row, whose Approve moves it on', function () 
 });
 
 it('still lists an RFQ that reached its review stage with no part of its own to show, as a row for the whole', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = Rfq::factory()->create(['stage' => 'senior_ops_review', 'subject' => 'Straight to review']);
 
     test()->actingAs($ops)->get(reviewUrl())
@@ -196,7 +196,7 @@ it('lets Admin approve a part from Senior Operations\' page', function () {
     [$rfq] = splitWithPartOneThrough();
     $admin = userWithRole('Admin');
 
-    test()->actingAs($admin)->get(reviewUrl(['role' => 'senior-operations']))
+    test()->actingAs($admin)->get(reviewUrl(['role' => 'hbds-operations']))
         ->assertOk()
         ->assertSee('data-part="1"', false);
 
@@ -232,14 +232,14 @@ it('leaves an approval alone that is repeated on the model', function () {
     $firstApproval = $rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_at;
 
     test()->travel(5)->minutes();
-    $rfq->approveSeniorOpsPart(1, userWithRole('Senior Operations'));
+    $rfq->approveSeniorOpsPart(1, userWithRole('HBDs Operations'));
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->senior_ops_reviewed_at->equalTo($firstApproval))->toBeTrue()
         ->and($rfq->assigneeForPart(1)->pivot->senior_ops_reviewed_by)->toBe($ops->id);
 });
 
 it('won\'t escalate a split while a part is still unassigned', function () {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
 
     // Three parts planned, only the first assigned — and through Sourcing and Data Entry.
     $rfq = Rfq::factory()->create();
@@ -283,7 +283,7 @@ it('counts an approval for the Review queue once a part is waiting, and not once
 });
 
 it('counts each approval waiting — a row on the Review page — and shows it as a red badge on the sidebar\'s Review link', function () {
-    [$ops, $dataEntry, $riley] = [userWithRole('Senior Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
+    [$ops, $dataEntry, $riley] = [userWithRole('HBDs Operations'), userWithRole('Data Entry'), userWithRole('Sourcing')];
 
     // Three parts of one RFQ ready, one RFQ kept whole ready, and one at its review stage with no part to show.
     $split = splitAmong(Rfq::factory()->create(), [1 => $riley, 2 => $riley, 3 => $riley]);

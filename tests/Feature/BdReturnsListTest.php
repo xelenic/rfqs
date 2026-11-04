@@ -26,7 +26,7 @@ it('shows the empty state until a reviewer rejects something back, then lists it
     $people = [
         'sourcing' => userWithRole('Sourcing'),
         'dataEntry' => userWithRole('Data Entry'),
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'bd' => userWithRole('Business Development'),
     ];
 
@@ -66,7 +66,7 @@ it('shows the empty state until a reviewer rejects something back, then lists it
 });
 
 it('counts Business Development\'s Rejected badge, on their own sidebar and Admin\'s grouped one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $admin = userWithRole('Admin');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2001', 'stage' => 'senior_ops_review']);
@@ -91,7 +91,7 @@ it('counts Business Development\'s Rejected badge, on their own sidebar and Admi
 });
 
 it('keeps Senior Operations\' Get Details Again on Business Development\'s Returns, not Rejected', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $bd = userWithRole('Business Development');
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ2002', 'status' => 'Pending']);
 

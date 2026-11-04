@@ -247,7 +247,7 @@ class RfqController extends Controller implements HasMiddleware
         // been. A second lens on Senior Operations' own Pending status, alongside
         // "Unassigned" below — mutually exclusive via ?view=review, same
         // pattern as Sourcing's "Returns".
-        $scopedToSeniorOpsReview = $status === 'Pending' && $actsAs('Senior Operations') && $request->query('view') === 'review';
+        $scopedToSeniorOpsReview = $status === 'Pending' && $actsAs('HBDs Operations') && $request->query('view') === 'review';
 
         // Senior Operations' Returns page — RFQs sent back to them, to their
         // assignment step or their second review, by that review itself, the
@@ -255,7 +255,7 @@ class RfqController extends Controller implements HasMiddleware
         // waiting on them (Rfq::scopeReturnedToSeniorOperations()). A third
         // lens on their Pending status, via ?view=returns, same pattern as
         // Business Development's Returns.
-        $scopedToSeniorOpsReturns = $status === 'Pending' && $actsAs('Senior Operations') && in_array($request->query('view'), ['returns', 'rejected'], true);
+        $scopedToSeniorOpsReturns = $status === 'Pending' && $actsAs('HBDs Operations') && in_array($request->query('view'), ['returns', 'rejected'], true);
 
         // Operations' Pending list is just their actionable backlog — RFQs
         // nobody's assigned to Sourcing yet, but not those sent back to them,
@@ -263,7 +263,7 @@ class RfqController extends Controller implements HasMiddleware
         // their Returns page (Rfq::scopeAwaitingAssignment()) —
         // not every Pending RFQ in the company regardless of stage. Matches
         // the red count badge in the sidebar (layouts/app.blade.php).
-        $scopedToUnassigned = $status === 'Pending' && $actsAs('Senior Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
+        $scopedToUnassigned = $status === 'Pending' && $actsAs('HBDs Operations') && ! $scopedToSeniorOpsReview && ! $scopedToSeniorOpsReturns;
 
         // Head of Business Development's Returns and Rejected pages — RFQs the
         // General Manager Returned (?view=returns) or Rejected (?view=rejected)
@@ -283,13 +283,13 @@ class RfqController extends Controller implements HasMiddleware
         // Returned or Rejected to their step, while still waiting on them
         // (Rfq::scopeReturnedToGmAssistant()), dealt with right there and
         // listed only there — the same as the Head's.
-        $scopedToGmAssistantReturns = $status === 'Pending' && $actsAs('GM Assistant') && in_array($request->query('view'), ['returns', 'rejected'], true);
+        $scopedToGmAssistantReturns = $status === 'Pending' && $actsAs('GMs Operations') && in_array($request->query('view'), ['returns', 'rejected'], true);
 
         // GM Assistant's Pending list — one row per part Head of Business
         // Development has approved, waiting on their Submit before going on to
         // the General Manager, each part as it comes.
         // Their main queue — the whole Pending page, but for their Returns.
-        $scopedToGmAssistant = $status === 'Pending' && $actsAs('GM Assistant') && ! $scopedToGmAssistantReturns;
+        $scopedToGmAssistant = $status === 'Pending' && $actsAs('GMs Operations') && ! $scopedToGmAssistantReturns;
 
         // General Manager's Pending list — one row per part GM Assistant has
         // submitted, waiting on final
@@ -733,7 +733,7 @@ class RfqController extends Controller implements HasMiddleware
                 ? $user->dataEntryIdleness()
                 : null,
             // GM Assistant's own Review page, the same.
-            'myGmAssistantIdle' => $scopedToGmAssistant && $user->hasRole('GM Assistant') && ! $user->hasRole('Admin')
+            'myGmAssistantIdle' => $scopedToGmAssistant && $user->hasRole('GMs Operations') && ! $user->hasRole('Admin')
                 ? $user->gmAssistantIdleness()
                 : null,
             'countdownSchedule' => (($scopedToMe || $scopedToReturns) && ! $sourcingOverview) || $scopedToDataEntry || $scopedToGmAssistant || $scopedToGmAssistantReturns
@@ -754,7 +754,7 @@ class RfqController extends Controller implements HasMiddleware
             'opsFilters' => $opsFilters,
             'sourcingUsers' => $sourcingUsers,
             'jobCategories' => $jobCategories,
-            'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
+            'operationsUsers' => User::role('HBDs Operations')->active()->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
     }
@@ -1078,7 +1078,7 @@ class RfqController extends Controller implements HasMiddleware
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->active()->withSourcingWorkloadCounts()->with('jobCategories')->orderBy('name')->get(),
             'jobCategories' => JobCategory::orderBy('name')->get(),
-            'operationsUsers' => User::role('Senior Operations')->active()->orderBy('name')->get(),
+            'operationsUsers' => User::role('HBDs Operations')->active()->orderBy('name')->get(),
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),
             'myRunningGmAssistant' => $this->runningGmAssistantOfViewer($request->user()),
         ]);
@@ -1101,7 +1101,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     private function runningGmAssistantOfViewer(User $user): ?RfqStep
     {
-        return $user->hasRole('GM Assistant') && ! $user->hasRole('Admin') ? RfqStep::runningGmAssistantOf($user) : null;
+        return $user->hasRole('GMs Operations') && ! $user->hasRole('Admin') ? RfqStep::runningGmAssistantOf($user) : null;
     }
 
     public function store(Request $request): RedirectResponse
@@ -1293,7 +1293,7 @@ class RfqController extends Controller implements HasMiddleware
             return back()->with('error', implode(' ', $validator->errors()->all()));
         }
 
-        $user = $this->doneBy($request, 'Senior Operations');
+        $user = $this->doneBy($request, 'HBDs Operations');
 
         DB::transaction(function () use ($user, $request, $rfq, $planning, $newCategory, $totalParts, $assignments) {
 
@@ -1339,7 +1339,7 @@ class RfqController extends Controller implements HasMiddleware
     public function requestDetails(Request $request, Rfq $rfq): RedirectResponse
     {
         abort_unless(
-            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            $request->user()->hasAnyRole(['HBDs Operations', 'Admin']),
             403,
             'Only Senior Operations can ask Business Development for details again.'
         );
@@ -1360,7 +1360,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage('business_development', $validated['reason'], $this->doneBy($request, 'Senior Operations'), 'operations'));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->rejectToStage('business_development', $validated['reason'], $this->doneBy($request, 'HBDs Operations'), 'operations'));
 
         return redirect()->back()->with('status', "Sent {$rfq->rfq_number} back to Business Development for details.");
     }
@@ -1405,7 +1405,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changeStatus($validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changeStatus($validated['status'], $this->doneBy($request, 'HBDs Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
 
         return redirect()->back()->with('status', match ($validated['status']) {
             Rfq::ON_HOLD => "{$rfq->rfq_number} is on hold.",
@@ -1455,7 +1455,7 @@ class RfqController extends Controller implements HasMiddleware
             return $files;
         }
 
-        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'Senior Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
+        RfqComment::attachingFiles($rfq, $files, fn () => $rfq->changePartStatus($part, $validated['status'], $this->doneBy($request, 'HBDs Operations'), $validated['reason'] ?? null, (bool) ($validated['customer_clarification'] ?? false)));
 
         $label = $rfq->partNumberLabel($part);
 
@@ -1541,14 +1541,14 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function passBackToSourcing(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can pass an RFQ back to Sourcing.');
+        abort_unless($request->user()->hasAnyRole(['HBDs Operations', 'Admin']), 403, 'Only Senior Operations can pass an RFQ back to Sourcing.');
         $this->abortIfStopped($rfq, null);
 
         $holders = $rfq->previousHoldersOfOpenParts();
 
         abort_if($holders === [], 422, 'No part here has a Sourcing member to pass it back to — assign it instead.');
 
-        $user = $this->doneBy($request, 'Senior Operations');
+        $user = $this->doneBy($request, 'HBDs Operations');
 
         DB::transaction(function () use ($rfq, $holders, $user) {
             $rfq->assignSourcingParts(array_map(fn (User $holder) => $holder->id, $holders), $user);
@@ -1581,7 +1581,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function reassign(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->hasAnyRole(['Senior Operations', 'Admin']), 403, 'Only Senior Operations can reassign.');
+        abort_unless($request->user()->hasAnyRole(['HBDs Operations', 'Admin']), 403, 'Only Senior Operations can reassign.');
 
         $validated = $request->validateWithBag('reassign', [
             'part' => ['required', 'integer'],
@@ -1632,7 +1632,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $reason = trim((string) ($validated['reason'] ?? ''));
         $reason = $reason !== '' ? $reason : null;
-        $by = $this->doneBy($request, 'Senior Operations');
+        $by = $this->doneBy($request, 'HBDs Operations');
         $label = $rfq->partNumberLabel($part);
         $done = [];
 
@@ -1681,7 +1681,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $operationsUserId = $validated['operations_user'] ?? null;
         $isValidOperationsUser = $operationsUserId
-            && User::role('Senior Operations')->active()->whereKey($operationsUserId)->exists();
+            && User::role('HBDs Operations')->active()->whereKey($operationsUserId)->exists();
 
         $rfq->update([
             'operations_assigned_by' => $isValidOperationsUser ? $operationsUserId : null,
@@ -2188,7 +2188,7 @@ class RfqController extends Controller implements HasMiddleware
     public function approveSeniorOpsPart(Request $request, Rfq $rfq): RedirectResponse
     {
         abort_unless(
-            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            $request->user()->hasAnyRole(['HBDs Operations', 'Admin']),
             403,
             'Only Senior Operations can approve this review.'
         );
@@ -2208,7 +2208,7 @@ class RfqController extends Controller implements HasMiddleware
             return $verified;
         }
 
-        $rfq->approveSeniorOpsPart($part, $this->doneBy($request, 'Senior Operations'), $verified[$part]);
+        $rfq->approveSeniorOpsPart($part, $this->doneBy($request, 'HBDs Operations'), $verified[$part]);
 
         return redirect()->back()->with('status', $rfq->stage === 'head_of_bd_review'
             ? 'Approved — every part is through, escalated to Head of Business Development.'
@@ -2224,7 +2224,7 @@ class RfqController extends Controller implements HasMiddleware
     public function completeSeniorOpsReview(Request $request, Rfq $rfq): RedirectResponse
     {
         abort_unless(
-            $request->user()->hasAnyRole(['Senior Operations', 'Admin']),
+            $request->user()->hasAnyRole(['HBDs Operations', 'Admin']),
             403,
             'Only Senior Operations can approve this review.'
         );
@@ -2237,7 +2237,7 @@ class RfqController extends Controller implements HasMiddleware
             return $verified;
         }
 
-        $rfq->completeSeniorOpsReview($this->doneBy($request, 'Senior Operations'), $verified);
+        $rfq->completeSeniorOpsReview($this->doneBy($request, 'HBDs Operations'), $verified);
 
         return redirect()->back()->with('status', 'Approved — escalated to Head of Business Development.');
     }
@@ -2317,7 +2317,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function rejectSeniorOps(Request $request, Rfq $rfq): RedirectResponse
     {
-        return $this->reject($request, $rfq, 'senior_ops_review', 'Senior Operations');
+        return $this->reject($request, $rfq, 'senior_ops_review', 'HBDs Operations');
     }
 
     /**
@@ -2415,7 +2415,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function rejectGmAssistant(Request $request, Rfq $rfq): RedirectResponse
     {
-        return $this->reject($request, $rfq, 'gm_assistant', 'GM Assistant');
+        return $this->reject($request, $rfq, 'gm_assistant', 'GMs Operations');
     }
 
     /**
@@ -2571,7 +2571,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function startGmAssistant(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->hasAnyRole(['GM Assistant', 'Admin']), 403, 'Only GM Assistant can start on a part.');
+        abort_unless($request->user()->hasAnyRole(['GMs Operations', 'Admin']), 403, 'Only GM Assistant can start on a part.');
 
         $part = (int) $request->validate(['part' => ['required', 'integer']])['part'];
         $assignee = $rfq->assigneeForPart($part);
@@ -2580,7 +2580,7 @@ class RfqController extends Controller implements HasMiddleware
         $this->abortIfStopped($rfq, $assignee);
         abort_unless($rfq->partAwaitsGmAssistantStart($part), 422, 'This part isn\'t waiting to be started.');
 
-        $starter = $this->doneBy($request, 'GM Assistant');
+        $starter = $this->doneBy($request, 'GMs Operations');
 
         if ($running = RfqStep::runningGmAssistantOf($starter)) {
             return back()->with('error', ($starter->is($request->user()) ? 'You\'re' : "{$starter->name} is").' already on '
@@ -2663,7 +2663,7 @@ class RfqController extends Controller implements HasMiddleware
     private function gmAssistantPartOfStarter(Request $request, Rfq $rfq): array
     {
         $user = $request->user();
-        abort_unless($user->hasAnyRole(['GM Assistant', 'Admin']), 403, 'Only GM Assistant can pause or resume a part.');
+        abort_unless($user->hasAnyRole(['GMs Operations', 'Admin']), 403, 'Only GM Assistant can pause or resume a part.');
 
         $part = (int) $request->validate(['part' => ['required', 'integer']])['part'];
         $assignee = $rfq->assigneeForPart($part);
@@ -2689,7 +2689,7 @@ class RfqController extends Controller implements HasMiddleware
     public function submitGmAssistantDetails(Request $request, Rfq $rfq): RedirectResponse
     {
         abort_unless(
-            $request->user()->hasAnyRole(['GM Assistant', 'Admin']),
+            $request->user()->hasAnyRole(['GMs Operations', 'Admin']),
             403,
             'Only GM Assistant can submit this.'
         );
@@ -2735,7 +2735,7 @@ class RfqController extends Controller implements HasMiddleware
         // Photos with no words still go on the thread, with the Submit.
         $comment = trim((string) $request->input('comment'));
         $comment = $comment === '' && $files === [] ? null : $comment;
-        $submittedBy = $this->doneBy($request, 'GM Assistant');
+        $submittedBy = $this->doneBy($request, 'GMs Operations');
 
         if ($part === null) {
             RfqComment::attachingFiles($rfq, $files, fn () => $rfq->recordGmAssistantDetails($submittedBy, $comment));

@@ -164,12 +164,12 @@ it('counts what\'s waiting at each stage, each leading to Admin\'s view of that 
     $overview = adminOverviewNow();
     $awaiting = collect($overview['pipeline'])->firstWhere('label', 'Awaiting assignment');
 
-    expect($awaiting)->toMatchArray(['count' => 3, 'url' => route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations'])])
+    expect($awaiting)->toMatchArray(['count' => 3, 'url' => route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'hbds-operations'])])
         ->and(adminKpi($overview, 'Pending tasks')['value'])->toBe(collect($overview['pipeline'])->sum('count'))
         ->and(adminKpi($overview, 'Open RFQs'))->toMatchArray(['value' => 3, 'caption' => '2 urgent', 'alert' => true])
         ->and($overview['priorities'])->toBe(['Critical' => 0, 'Urgent' => 2, 'High' => 0, 'Medium' => 0, 'Low' => 1, 'Minimal' => 0, 'Trivial' => 0]);
 
-    adminDashboard()->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'senior-operations'])).'" class="pipeline-label"', false);
+    adminDashboard()->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'hbds-operations'])).'" class="pipeline-label"', false);
 });
 
 // ---- the period ------------------------------------------------------------

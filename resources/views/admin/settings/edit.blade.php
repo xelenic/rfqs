@@ -815,7 +815,7 @@
 
                 @include('admin.settings._per_item_people', [
                     'id' => 'gm-assistant-per-item-people',
-                    'role' => 'GM Assistant',
+                    'role' => 'GMs Operations',
                     'item' => 'line item',
                     'action' => route('admin.settings.gm-assistant-per-item-people'),
                     'bag' => 'gm_assistant_per_item_people',

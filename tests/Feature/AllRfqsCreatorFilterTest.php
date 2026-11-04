@@ -26,7 +26,7 @@ function madeByWhom(): array
     $casey = tap(userWithRole('Business Development'))->forceFill(['name' => 'Casey Lim', 'deactivated_at' => now()])->save();
     $casey = User::query()->where('name', 'Casey Lim')->sole();
     $admin = tap(userWithRole('Admin'))->update(['name' => 'Ada Admin']);
-    $moved = tap(userWithRole('Senior Operations'))->update(['name' => 'Morgan Moved']);
+    $moved = tap(userWithRole('HBDs Operations'))->update(['name' => 'Morgan Moved']);
 
     Rfq::factory()->create(['rfq_number' => 'RFQ6101', 'created_by' => $bailey->id]);
     Rfq::factory()->create(['rfq_number' => 'RFQ6102', 'created_by' => $bailey->id, 'status' => 'Completed']);
@@ -94,7 +94,7 @@ it('narrows All RFQs to who made them — one person, or anyone in a role — wh
 
 it('is on All RFQs alone', function () {
     ['bailey' => $bailey] = madeByWhom();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     // Senior Operations' own Pending page ignores it, and has no such filter.
     $pending = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'creator' => $bailey->id]))->assertOk();

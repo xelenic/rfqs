@@ -60,7 +60,7 @@ it('sends the part back to its Sourcing member to finalize, not on to Senior Ope
         ->and(Rfq::seniorOpsReviewCount())->toBe(0)
         ->and(Rfq::awaitingFinalizeCount($riley->id))->toBe(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertDontSee('RFQ1001');
 
@@ -110,7 +110,7 @@ it('moves the part on to Senior Operations\' review when its member finalizes it
         ->and($rfq->partAwaitsSeniorOpsReview(1))->toBeTrue()
         ->and(Rfq::seniorOpsReviewCount())->toBe(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('RFQ1001');
 });
@@ -138,7 +138,7 @@ it('lets only the part\'s own member, or Admin as them, finalize it', function (
     $rfq = withDataEntry([1 => $riley, 2 => $sam]);
     sendToFinalize($rfq, 1);
 
-    foreach ([$sam, userWithRole('Data Entry'), userWithRole('Senior Operations'), userWithRole('Business Development')] as $someoneElse) {
+    foreach ([$sam, userWithRole('Data Entry'), userWithRole('HBDs Operations'), userWithRole('Business Development')] as $someoneElse) {
         test()->actingAs($someoneElse)->patch(route('admin.rfqs.finalize', $rfq), ['part' => 1, 'submitted_line_items' => [1 => 10]])->assertForbidden();
     }
 
@@ -151,7 +151,7 @@ it('lets only the part\'s own member, or Admin as them, finalize it', function (
 
 it('needs finalizing again after a reviewer sends it back to Data Entry', function () {
     $riley = userWithRole('Sourcing');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = withDataEntry([1 => $riley]);
     sendToFinalize($rfq, 1);
     $rfq->refresh()->finalizePart(1);

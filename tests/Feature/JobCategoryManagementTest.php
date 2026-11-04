@@ -21,7 +21,7 @@ function categoryAdmin(): User
 }
 
 it('is for Admin, Senior Operations and GM Assistant, in their sidebar', function () {
-    foreach ([categoryAdmin(), userWithRole('Senior Operations'), userWithRole('GM Assistant')] as $person) {
+    foreach ([categoryAdmin(), userWithRole('HBDs Operations'), userWithRole('GMs Operations')] as $person) {
         test()->actingAs($person)->get(route('admin.dashboard'))->assertOk()
             ->assertSee('href="'.route('admin.categories.index').'"', false)
             ->assertSee('Job Categories');
@@ -87,7 +87,7 @@ it('adds a category — not one there already, whatever its case — and the wiz
 
     // Senior Operations' wizard lists it.
     $rfq = Rfq::factory()->create(['status' => 'Pending']);
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()
         ->assertSee('Solar Panels');
     expect($rfq->exists)->toBeTrue();
 });
@@ -140,8 +140,8 @@ it('deletes a category — its RFQs keep it, and it can be put back from the lis
 });
 
 it('lets Senior Operations and GM Assistant add, rename and delete categories', function () {
-    $operations = tap(userWithRole('Senior Operations'))->update(['name' => 'Omar Ops']);
-    $assistant = userWithRole('GM Assistant');
+    $operations = tap(userWithRole('HBDs Operations'))->update(['name' => 'Omar Ops']);
+    $assistant = userWithRole('GMs Operations');
     Rfq::factory()->create(['category' => 'Solar Panels']);
 
     test()->actingAs($operations)->post(route('admin.categories.store'), ['name' => 'Solar Panels', 'description' => 'PV modules'])
@@ -162,7 +162,7 @@ it('lets Senior Operations and GM Assistant add, rename and delete categories', 
 });
 
 it('moves the RFQs of a category not on the list to one that is', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $electrical = JobCategory::query()->create(['name' => 'Electrical Works']);
     JobCategory::query()->create(['name' => 'Plumbing & Sanitary']);
     Rfq::factory()->count(2)->create(['category' => 'Old Wiring']);

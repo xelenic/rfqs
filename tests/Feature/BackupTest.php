@@ -66,8 +66,8 @@ it('shows an Admin the Backups page — and nobody else', function () {
         ->assertSee('No backups yet')
         ->assertSee('href="'.route('admin.backups.index').'"', false);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.backups.index'))->assertForbidden();
-    test()->actingAs(userWithRole('Senior Operations'))->post(route('admin.backups.store'))->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.backups.index'))->assertForbidden();
+    test()->actingAs(userWithRole('HBDs Operations'))->post(route('admin.backups.store'))->assertForbidden();
 });
 
 it('backs up every table of the app\'s data — not the cache, sessions or jobs — with the uploaded files if asked', function () {

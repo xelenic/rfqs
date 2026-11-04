@@ -21,7 +21,7 @@
     // $bySourcingRfqs), since a split RFQ can hand off
     // more than one assignee's part to Data Entry.
     $pendingBadgeCount = match (true) {
-        auth()->user()->hasRole('Senior Operations') => \App\Models\Rfq::awaitingAssignment()->count(),
+        auth()->user()->hasRole('HBDs Operations') => \App\Models\Rfq::awaitingAssignment()->count(),
         auth()->user()->hasRole('Sourcing') => \Illuminate\Support\Facades\DB::table('rfq_user')
             ->join('rfqs', 'rfqs.id', '=', 'rfq_user.rfq_id')
             ->where('rfqs.status', 'Pending')
@@ -38,16 +38,16 @@
             ->tap(fn ($parts) => \App\Models\RfqAssignment::whereNotSentBackTo($parts, 'data_entry'))
             ->count(),
         auth()->user()->hasRole('Head of Business Development') => \App\Models\Rfq::headOfBdReviewCount(),
-        auth()->user()->hasRole('GM Assistant') => \App\Models\Rfq::gmAssistantReviewCount(),
+        auth()->user()->hasRole('GMs Operations') => \App\Models\Rfq::gmAssistantReviewCount(),
         auth()->user()->hasRole('General Manager') => \App\Models\Rfq::gmReviewCount(),
         default => 0,
     };
     $pendingBadgeTitle = match (true) {
-        auth()->user()->hasRole('Senior Operations') => "{$pendingBadgeCount} not yet assigned to Sourcing",
+        auth()->user()->hasRole('HBDs Operations') => "{$pendingBadgeCount} not yet assigned to Sourcing",
         auth()->user()->hasRole('Sourcing') => "{$pendingBadgeCount} to complete or finalize",
         auth()->user()->hasRole('Data Entry') => "{$pendingBadgeCount} not marked complete",
         auth()->user()->hasRole('Head of Business Development') => "{$pendingBadgeCount} awaiting your review",
-        auth()->user()->hasRole('GM Assistant') => "{$pendingBadgeCount} awaiting your submit",
+        auth()->user()->hasRole('GMs Operations') => "{$pendingBadgeCount} awaiting your submit",
         auth()->user()->hasRole('General Manager') => "{$pendingBadgeCount} awaiting your approval",
         default => '',
     };
@@ -59,9 +59,9 @@
         {{ match (true) {
             auth()->user()->hasRole('Sourcing') => 'My Pending RFQs',
             auth()->user()->hasRole('Data Entry') => 'Ready for Data Entry',
-            auth()->user()->hasRole('Senior Operations') => 'Unassigned RFQs',
+            auth()->user()->hasRole('HBDs Operations') => 'Unassigned RFQs',
             auth()->user()->hasRole('Head of Business Development') => 'Review',
-            auth()->user()->hasRole('GM Assistant') => 'Review',
+            auth()->user()->hasRole('GMs Operations') => 'Review',
             auth()->user()->hasRole('General Manager') => 'Review',
             default => 'Pending RFQs',
         } }}
@@ -128,7 +128,7 @@
         @endif
     </a>
 @endif
-@if (auth()->user()->hasRole('Senior Operations'))
+@if (auth()->user()->hasRole('HBDs Operations'))
     {{-- The approvals waiting — one per row on the Review page — as a red count,
          like the queue above it. --}}
     @php $reviewCount = \App\Models\Rfq::seniorOpsReviewCount(); @endphp
@@ -196,7 +196,7 @@
         @endif
     </a>
 @endif
-@if (auth()->user()->hasRole('GM Assistant'))
+@if (auth()->user()->hasRole('GMs Operations'))
     {{-- RFQs the General Manager Returned, or Rejected, to them, still waiting
          on them — one per row on each page — as red counts, like the queue
          above. --}}

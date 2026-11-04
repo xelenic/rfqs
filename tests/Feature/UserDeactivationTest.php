@@ -89,7 +89,7 @@ it('leaves them out of every list people are picked from — their name staying 
         ->and($rfq->refresh()->creator->name)->toBe($morgan->name);
 
     // Not offered to Sourcing, and refused if sent anyway.
-    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent();
+    $html = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->getContent();
     expect($html)->not->toContain('value="'.$riley->id.'" data-name="'.e($riley->name).'"');
 
     $sourcing = userWithRole('Sourcing');
@@ -150,7 +150,7 @@ it('won\'t send a message to a deactivated account', function () {
     $riley = userWithRole('Sourcing');
     deactivate(userWithRole('Admin'), $riley);
 
-    test()->actingAs(userWithRole('Senior Operations'))->postJson(route('admin.messages.store'), ['recipient_id' => $riley->id, 'body' => 'Hello'])
+    test()->actingAs(userWithRole('HBDs Operations'))->postJson(route('admin.messages.store'), ['recipient_id' => $riley->id, 'body' => 'Hello'])
         ->assertStatus(422)
         ->assertJsonPath('message', "{$riley->name}'s account has been deactivated — they won't see it.");
 });
@@ -159,7 +159,7 @@ it('keeps deactivating to an Admin — and never their own account', function ()
     $admin = userWithRole('Admin');
     $riley = userWithRole('Sourcing');
 
-    foreach ([User::factory()->create()->assignRole('HR Executive'), userWithRole('Senior Operations')] as $notAdmin) {
+    foreach ([User::factory()->create()->assignRole('HR Executive'), userWithRole('HBDs Operations')] as $notAdmin) {
         deactivate($notAdmin, $riley)->assertForbidden();
     }
 

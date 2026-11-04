@@ -74,7 +74,7 @@ function idleCast(): array
     $morgan = userWithRole('Data Entry');
     $morgan->update(['name' => 'Morgan']);
 
-    return [$morgan, userWithRole('Senior Operations'), userWithRole('Admin')];
+    return [$morgan, userWithRole('HBDs Operations'), userWithRole('Admin')];
 }
 
 // ---- The setting -----------------------------------------------------------------
@@ -97,7 +97,7 @@ it('refuses minutes out of range, and keeps the setting to an Admin', function (
     test()->actingAs(userWithRole('Admin'))->patch(route('admin.settings.idle-alert'), ['enabled' => '1', 'minutes' => 0])
         ->assertSessionHasErrorsIn('idle_alert', ['minutes' => 'Keep it between 1 and 480 minutes.']);
 
-    test()->actingAs(userWithRole('Senior Operations'))->patch(route('admin.settings.idle-alert'), ['enabled' => '1', 'minutes' => 5])
+    test()->actingAs(userWithRole('HBDs Operations'))->patch(route('admin.settings.idle-alert'), ['enabled' => '1', 'minutes' => 5])
         ->assertForbidden();
 
     expect(Setting::dataEntryIdleAlert())->toBe(Setting::DEFAULT_DATA_ENTRY_IDLE_ALERT);

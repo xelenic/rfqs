@@ -120,7 +120,7 @@ it('refuses a Finalize without the submitted line items, finalizing nothing', fu
 it('shows Senior Operations and the Head of Business Development what Sourcing submitted, and measures the actual count against it', function () {
     ['rfq' => $rfq, 'riley' => $riley] = awaitingRileysFinalize();
     finalizeWith($riley, $rfq, ['submitted_line_items' => [1 => 23]]);
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $html = test()->actingAs($ops)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()->getContent();
     expect(popupParts(Str::betweenFirst($html, 'js-senior-ops-approve"', '</button>')))
@@ -139,7 +139,7 @@ it('asks again once the part comes back past Finalize — the earlier count no l
     ['rfq' => $rfq, 'riley' => $riley] = awaitingRileysFinalize();
     finalizeWith($riley, $rfq, ['submitted_line_items' => [1 => 23]]);
 
-    $rfq->refresh()->rejectPartToStage(1, 'data_entry', 'Recheck the sizes', userWithRole('Senior Operations'), 'senior_ops_review');
+    $rfq->refresh()->rejectPartToStage(1, 'data_entry', 'Recheck the sizes', userWithRole('HBDs Operations'), 'senior_ops_review');
 
     expect($rfq->refresh()->assigneeForPart(1)->pivot->submittedLineItems())->toBeNull();
 

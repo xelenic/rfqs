@@ -164,19 +164,19 @@ it('marks a row Finished late, and lists it under Deadline exceeded with what\'s
         ->assertSeeInOrder(['RFQs with status', 'Deadline exceeded', 'a step finished late', '2 RFQs.'], false);
 
     // Not a card on Senior Operations' dashboard.
-    expect(collect(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->viewData('overview')['statuses'])->pluck('key')->all())
+    expect(collect(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->viewData('overview')['statuses'])->pluck('key')->all())
         ->toBe(array_keys(Rfq::STATUS_FILTERS));
 });
 
 it('gives the Status filter to everyone with All RFQs, and keeps it off every other list', function () {
     everyStatus();
 
-    foreach (['General Manager', 'Senior Operations'] as $role) {
+    foreach (['General Manager', 'HBDs Operations'] as $role) {
         expect(listedWithStatus(userWithRole($role), ['state' => 'overdue']))->toBe(['RFQ5001']);
     }
 
     // Senior Operations' own Unassigned page, and a list for someone without All RFQs.
-    foreach ([['Senior Operations', ['status' => 'Pending', 'state' => 'overdue']], ['Head of Business Development', ['state' => 'overdue']]] as [$role, $query]) {
+    foreach ([['HBDs Operations', ['status' => 'Pending', 'state' => 'overdue']], ['Head of Business Development', ['state' => 'overdue']]] as [$role, $query]) {
         $page = test()->actingAs(userWithRole($role))->get(route('admin.rfqs.index', $query))->assertOk();
 
         expect($page->getContent())->not->toContain('name="state"')
@@ -192,7 +192,7 @@ it('gives the Status filter to everyone with All RFQs, and keeps it off every ot
 it('gives Senior Operations a dashboard of RFQs by status, each card opening All RFQs on it', function () {
     everyStatus();
 
-    $response = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+    $response = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk()
         ->assertViewIs('admin.dashboard.senior-operations');
 
     expect(collect($response->viewData('overview')['statuses'])->pluck('value', 'key')->all())->toBe([
@@ -225,14 +225,14 @@ it('gives Senior Operations a dashboard of RFQs by status, each card opening All
 it('shows Senior Operations every task running now, overdue first, as Admin\'s dashboard does', function () {
     everyStatus();
 
-    $response = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk();
+    $response = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk();
     $tasks = Str::betweenFirst($response->getContent(), 'id="ongoing-tasks"', '</table>');
 
     expect($tasks)->toContain("Today's ongoing tasks")
         ->and(substr_count($tasks, 'class="task-sheet-task"'))->toBe(3);
 
     // The Urgent part past its 4 hours, the one nearly there, then the one on track.
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))
         ->assertSeeInOrder(['id="ongoing-tasks"', 'RFQ5001', 'Sourcing · Fire pump', '30m over 4h', 'Overdue', 'RFQ5002', 'Due soon', 'RFQ5003', 'On track', 'RFQ Activity'], false);
 
     // They can't open Users, so the names aren't links; for someone who can, they are.
@@ -246,7 +246,7 @@ it('shows Senior Operations every task running now, overdue first, as Admin\'s d
 
 it('counts on each card just what its list shows', function () {
     everyStatus();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $statuses = test()->actingAs($ops)->get(route('admin.dashboard'))->assertOk()->viewData('overview')['statuses'];
 
@@ -256,18 +256,18 @@ it('counts on each card just what its list shows', function () {
 });
 
 it('gives Senior Operations the All RFQs link', function () {
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.dashboard'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.dashboard'))->assertOk()
         ->assertSee('href="'.route('admin.rfqs.index').'" class="nav-link', false)
         ->assertSee('All RFQs');
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index'))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index'))->assertOk()
         ->assertSee('<title>All RFQs', false)
         ->assertSee('name="show"', false)
         ->assertSee('name="state"', false);
 });
 
 it('keeps the general dashboard for Senior Operations who also hold a role with one of its own', function () {
-    $both = userWithRole('Senior Operations')->assignRole('Sourcing');
+    $both = userWithRole('HBDs Operations')->assignRole('Sourcing');
 
     test()->actingAs($both)->get(route('admin.dashboard'))->assertOk()->assertViewIs('admin.dashboard.sourcing');
 });

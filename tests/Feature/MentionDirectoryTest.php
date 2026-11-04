@@ -43,12 +43,12 @@ function mentionListOn(Rfq $rfq, User $viewer): array
 
 it('offers all the active staff to @mention — each with their roles and picture or initial', function () {
     staffNamed('Riley Chen', 'Sourcing');
-    $morgan = staffNamed('Morgan Ito', 'Data Entry', 'GM Assistant');
+    $morgan = staffNamed('Morgan Ito', 'Data Entry', 'GMs Operations');
     staffNamed('Quinn Alder', 'General Manager');
     staffNamed('Alex Fernando', 'HR Executive');
     staffNamed('Pat Gone', 'Sourcing')->forceFill(['deactivated_at' => now()])->save();
     $morgan->forceFill(['avatar_path' => 'avatars/morgan.jpg'])->save();
-    $viewer = staffNamed('Olivia Park', 'Senior Operations');
+    $viewer = staffNamed('Olivia Park', 'HBDs Operations');
 
     $list = collect(mentionListOn(Rfq::factory()->create(), $viewer))->keyBy('name');
 
@@ -70,7 +70,7 @@ it('highlights a mention of anyone on the staff — whole names only, the longes
 
 it('highlights on the RFQ\'s thread, and says anyone can be mentioned', function () {
     staffNamed('Quinn Alder', 'General Manager');
-    $viewer = staffNamed('Olivia Park', 'Senior Operations');
+    $viewer = staffNamed('Olivia Park', 'HBDs Operations');
     $rfq = Rfq::factory()->create();
     $rfq->comments()->create(['user_id' => $viewer->id, 'body' => '@Quinn Alder please see']);
 
@@ -81,7 +81,7 @@ it('highlights on the RFQ\'s thread, and says anyone can be mentioned', function
 
 it('keeps the names safe in the page', function () {
     staffNamed('</script><b>Eve</b>', 'Sourcing');
-    $viewer = staffNamed('Olivia Park', 'Senior Operations');
+    $viewer = staffNamed('Olivia Park', 'HBDs Operations');
 
     $html = test()->actingAs($viewer)->get(route('admin.rfqs.show', Rfq::factory()->create()))->assertOk()->getContent();
 

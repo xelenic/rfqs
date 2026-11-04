@@ -62,7 +62,7 @@ it('opens a split part from its row on the RFQ page focused on it — the chart 
     expect(chartParts($response))->toBe(['RFQ9901-P2 of P3']);
 
     // Without a part — from a whole-RFQ row — every part.
-    expect(chartParts(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()))
+    expect(chartParts(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', $rfq))->assertOk()))
         ->toBe(['RFQ9901-P1 of P3', 'RFQ9901-P2 of P3', 'RFQ9901-P3 of P3']);
 });
 
@@ -84,7 +84,7 @@ it('lets an Admin switch the chart between the part\'s flow and the whole RFQ\'s
     expect(chartParts($whole))->toBe(['RFQ9901-P1 of P3', 'RFQ9901-P2 of P3', 'RFQ9901-P3 of P3']);
 
     // Anyone else asking for the whole flow still sees the part they came from.
-    expect(chartParts(test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.show', ['rfq' => $rfq, 'part' => 2, 'flow' => 'whole']))))
+    expect(chartParts(test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.show', ['rfq' => $rfq, 'part' => 2, 'flow' => 'whole']))))
         ->toBe(['RFQ9901-P2 of P3']);
 });
 
@@ -104,6 +104,6 @@ it('leads each part\'s row on the lists to that part', function () {
     $rfq->refresh()->completeDataEntryPart(2, userWithRole('Data Entry'), 'Entered', 4);
     $rfq->refresh()->finalizePart(2, 4);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('href="'.e($rfq->detailsUrl(2, 'Pending')).'"', false);
 });

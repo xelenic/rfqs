@@ -21,7 +21,7 @@ function partToGmAssistant(Rfq $rfq, int $part): void
     $rfq->refresh()->completeSourcingPart($part);
     $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart($part);
-    $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
     $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
 }
 
@@ -32,7 +32,7 @@ function partToGmAssistant(Rfq $rfq, int $part): void
 function partToBdClosing(Rfq $rfq, int $part): void
 {
     partToGmAssistant($rfq, $part);
-    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GMs Operations'));
     $rfq->refresh()->approveGmPart($part, userWithRole('General Manager'));
 }
 
@@ -81,7 +81,7 @@ it('lets Admin send a Sourcing part back to Senior Operations on its member\'s b
         ->and($rfq->assigneeForPart(2))->not->toBeNull()
         ->and(Rfq::seniorOpsReturnsCount())->toBe(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'returns']))->assertOk()
         ->assertSee('Electrical, not plumbing — not mine');
 });
 
@@ -117,7 +117,7 @@ it('gives Data Entry no way to send a part back to Senior Operations — Return 
 // ---- GM Assistant -----------------------------------------------------------
 
 it('lets GM Assistant send a part back to Senior Operations or Sourcing — and nowhere else, Data Entry included', function () {
-    $assistant = userWithRole('GM Assistant');
+    $assistant = userWithRole('GMs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15003']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     partToGmAssistant($rfq, 1);
 
@@ -207,7 +207,7 @@ it('lets Business Development send a whole RFQ ready to close back to the Head\'
 // ---- Senior Operations passes a freed part straight back -------------------
 
 it('lets Senior Operations pass a part sent back to them straight back to its Sourcing member, in one click', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15006']), [1 => $riley, 2 => userWithRole('Sourcing')]);
 
@@ -234,7 +234,7 @@ it('lets Senior Operations pass a part sent back to them straight back to its So
 });
 
 it('passes every part of an RFQ sent back whole to the member who had each', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15007']), [1 => $riley, 2 => $sam]);
     $rfq->rejectToStage('operations', 'Re-check the split', userWithRole('Head of Business Development'));
@@ -249,7 +249,7 @@ it('passes every part of an RFQ sent back whole to the member who had each', fun
 });
 
 it('offers no pass back for a part nobody has held, or whose member is no longer in Sourcing', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(), [1 => $riley]);
     test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.return-senior-ops', $rfq), ['part' => 1, 'reason' => 'Not mine']);
@@ -273,7 +273,7 @@ it('lets only Senior Operations and Admin pass a part back', function () {
         test()->actingAs(userWithRole($role))->patch(route('admin.rfqs.pass-back-sourcing', $rfq))->assertForbidden();
     }
 
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     test()->actingAs(userWithRole('Admin'))->patch(route('admin.rfqs.pass-back-sourcing', $rfq), ['acting_user_id' => $ops->id])
         ->assertSessionHasNoErrors();
 

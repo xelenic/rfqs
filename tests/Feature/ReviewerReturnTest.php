@@ -25,11 +25,11 @@ function returnableRfq(string $number, bool $toGm = false): Rfq
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart(1);
-    $rfq->refresh()->completeSeniorOpsReview(userWithRole('Senior Operations'));
+    $rfq->refresh()->completeSeniorOpsReview(userWithRole('HBDs Operations'));
 
     if ($toGm) {
         $rfq->refresh()->approveByHeadOfBd(userWithRole('Head of Business Development'));
-        $rfq->refresh()->recordGmAssistantDetails(userWithRole('GM Assistant'));
+        $rfq->refresh()->recordGmAssistantDetails(userWithRole('GMs Operations'));
     }
 
     return $rfq->refresh();
@@ -77,7 +77,7 @@ it('offers the Head of Business Development and the General Manager a Return bes
         ->assertSee('data-as-return="1"', false);
 
     // Not Senior Operations' second review: theirs is Reject alone.
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $atReview = splitAmong(Rfq::factory()->create(), [1 => userWithRole('Sourcing')]);
     $atReview->refresh()->completeSourcingPart(1);
     $atReview->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
@@ -165,10 +165,10 @@ it('puts what the General Manager Returns on Senior Operations\', Business Devel
         ->and(listedOn($viewer, 'returns'))->toContain('RFQ8006')
         ->and(listedOn($viewer, 'rejected'))->not->toContain('RFQ8006');
 })->with([
-    'Senior Operations' => ['operations', 'Senior Operations', fn () => Rfq::seniorOpsReturnsCount(), fn () => Rfq::seniorOpsReturnsCount(rejected: true)],
+    'HBDs Operations' => ['operations', 'HBDs Operations', fn () => Rfq::seniorOpsReturnsCount(), fn () => Rfq::seniorOpsReturnsCount(rejected: true)],
     'Business Development' => ['business_development', 'Business Development', fn () => Rfq::bdReturnsCount(), fn () => Rfq::bdReturnsCount(rejected: true)],
     'Head of Business Development' => ['head_of_bd_review', 'Head of Business Development', fn () => Rfq::headOfBdReturnsCount(), fn () => Rfq::headOfBdReturnsCount(rejected: true)],
-    'GM Assistant' => ['gm_assistant', 'GM Assistant', fn () => Rfq::gmAssistantReturnsCount(), fn () => Rfq::gmAssistantReturnsCount(rejected: true)],
+    'GMs Operations' => ['gm_assistant', 'GMs Operations', fn () => Rfq::gmAssistantReturnsCount(), fn () => Rfq::gmAssistantReturnsCount(rejected: true)],
 ]);
 
 it('shows the Head\'s Returns page with who Returned it, and a link to it beside Rejected', function () {
@@ -194,7 +194,7 @@ it('returns one part of a split on its own', function () {
         $rfq->refresh()->completeSourcingPart($part);
         $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
         $rfq->refresh()->finalizePart($part);
-        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+        $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
     }
 
     test()->actingAs($head)->patch(route('admin.rfqs.reject-head-of-bd', $rfq), ['part' => 1, 'target_stage' => 'sourcing', 'reason' => 'Wrong quote', 'as_return' => '1'])
@@ -211,7 +211,7 @@ it('lets only the Head of Business Development and the General Manager Return', 
     $atReview->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
     $atReview->refresh()->finalizePart(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->patch(route('admin.rfqs.reject-senior-ops', $atReview), ['target_stage' => 'sourcing', 'reason' => 'Redo', 'as_return' => '1'])
         ->assertStatus(422);
 
@@ -220,7 +220,7 @@ it('lets only the Head of Business Development and the General Manager Return', 
 
 it('keeps what\'s Returned to Senior Operations\' review on their Returns page alone — approved right there, then on to the Head', function () {
     $head = userWithRole('Head of Business Development');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = returnableRfq('RFQ8010');
 
     reviewerSendsBack($head, $rfq, 'senior_ops_review', reason: 'Recount the line items')
@@ -254,7 +254,7 @@ it('keeps what\'s Returned to Senior Operations\' review on their Returns page a
 
 it('takes a split off Senior Operations\' Returns once the part sent back is approved, the next part on to Review', function () {
     $head = userWithRole('Head of Business Development');
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8011']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     $rfq->refresh()->completeSourcingPart(1);
     $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));

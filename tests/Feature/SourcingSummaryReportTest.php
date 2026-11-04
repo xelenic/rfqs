@@ -37,7 +37,7 @@ function summaryDay(): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $sam = tap(userWithRole('Sourcing'))->update(['name' => 'Sam Rivera']);
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
 
     $finalized = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8101', 'number_of_items' => 10]), [1 => $riley]);
     $waiting = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8102', 'number_of_items' => 5]), [1 => $riley]);
@@ -95,7 +95,7 @@ it('is for those who see the performance reports, and on their sidebar and tabs'
         test()->actingAs(userWithRole($role))->get(summaryUrl())->assertForbidden();
     }
 
-    foreach (['Admin', 'Senior Operations', 'HR Executive'] as $role) {
+    foreach (['Admin', 'HBDs Operations', 'HR Executive'] as $role) {
         test()->actingAs(userWithRole($role))->get(summaryUrl())->assertOk()
             ->assertSee('href="'.route('admin.reports.sourcing-summary').'"', false);
     }

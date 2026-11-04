@@ -151,7 +151,7 @@ class DashboardController extends Controller
         // The Head of Business Development's and GM Assistant's are the same,
         // for their own step: what's been sent on to them, and what the
         // General Manager has sent back.
-        foreach (['General Manager' => 'general-manager', 'Head of Business Development' => 'head-of-business-development', 'GM Assistant' => 'gm-assistant'] as $role => $page) {
+        foreach (['General Manager' => 'general-manager', 'Head of Business Development' => 'head-of-business-development', 'GMs Operations' => 'gm-assistant'] as $role => $page) {
             if ($canViewRfqs && $user->hasRole($role) && ! $user->hasRole('Admin')) {
                 $period = $this->summaryPeriod($request, self::ADMIN_PERIODS, self::ADMIN_DEFAULT_PERIOD);
                 $stage = $this->approverStage($role);
@@ -187,7 +187,7 @@ class DashboardController extends Controller
         // overdue, due soon, on hold, cancelled, closed — each leading to All
         // RFQs with that Status filter; the RFQs created over time; and the
         // latest RFQs.
-        if ($canViewRfqs && $user->hasRole('Senior Operations') && ! $user->hasRole('Admin')) {
+        if ($canViewRfqs && $user->hasRole('HBDs Operations') && ! $user->hasRole('Admin')) {
             $overview = $this->seniorOperationsOverview($user);
 
             return view('admin.dashboard.senior-operations', [
@@ -277,20 +277,20 @@ class DashboardController extends Controller
         // reviewer) pages.
         $returnsPage = fn (string $role, string $view = 'returns') => $isAdmin
             ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => $view, 'role' => $role])
-            : ($role === 'senior-operations' ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => $view]) : null);
+            : ($role === 'hbds-operations' ? route('admin.rfqs.index', ['status' => 'Pending', 'view' => $view]) : null);
         $returns = collect([
             ['label' => 'Business Development · Returns', 'count' => $queues['bd_returns'], 'url' => $returnsPage('business-development')],
             ['label' => 'Business Development · Rejected', 'count' => $queues['bd_rejected'], 'url' => $returnsPage('business-development', 'rejected')],
-            ['label' => 'Senior Operations · Returns', 'count' => $queues['ops_returns'], 'url' => $returnsPage('senior-operations')],
-            ['label' => 'Senior Operations · Rejected', 'count' => $queues['ops_rejected'], 'url' => $returnsPage('senior-operations', 'rejected')],
+            ['label' => 'Senior Operations · Returns', 'count' => $queues['ops_returns'], 'url' => $returnsPage('hbds-operations')],
+            ['label' => 'Senior Operations · Rejected', 'count' => $queues['ops_rejected'], 'url' => $returnsPage('hbds-operations', 'rejected')],
             ['label' => 'Sourcing · Returns', 'count' => $queues['sourcing_returns'], 'url' => $returnsPage('sourcing')],
             ['label' => 'Sourcing · Rejected', 'count' => $queues['sourcing_rejected'], 'url' => $returnsPage('sourcing', 'rejected')],
             ['label' => 'Data Entry · Returns', 'count' => $queues['data_entry_returns'], 'url' => $returnsPage('data-entry')],
             ['label' => 'Data Entry · Rejected', 'count' => $queues['data_entry_rejected'], 'url' => $returnsPage('data-entry', 'rejected')],
             ['label' => 'Head of Business Development · Returns', 'count' => $queues['head_of_bd_returns'], 'url' => $returnsPage('head-of-business-development')],
             ['label' => 'Head of Business Development · Rejected', 'count' => $queues['head_of_bd_rejected'], 'url' => $returnsPage('head-of-business-development', 'rejected')],
-            ['label' => 'GM Assistant · Returns', 'count' => $queues['gm_assistant_returns'], 'url' => $returnsPage('gm-assistant')],
-            ['label' => 'GM Assistant · Rejected', 'count' => $queues['gm_assistant_rejected'], 'url' => $returnsPage('gm-assistant', 'rejected')],
+            ['label' => 'GM Assistant · Returns', 'count' => $queues['gm_assistant_returns'], 'url' => $returnsPage('gms-operations')],
+            ['label' => 'GM Assistant · Rejected', 'count' => $queues['gm_assistant_rejected'], 'url' => $returnsPage('gms-operations', 'rejected')],
             ['label' => 'General Manager · Rejected', 'count' => $queues['gm_rejected'], 'url' => $returnsPage('general-manager', 'rejected')],
         ]);
 
@@ -484,16 +484,16 @@ class DashboardController extends Controller
         $page = fn (string $role, ?string $view = null) => route('admin.rfqs.index', array_filter(['status' => 'Pending', 'view' => $view, 'role' => $role]));
 
         return [
-            ['label' => 'Awaiting assignment', 'role' => 'Senior Operations', 'count' => $queues['unassigned'], 'tone' => 'primary', 'url' => $page('senior-operations')],
+            ['label' => 'Awaiting assignment', 'role' => 'HBDs Operations', 'count' => $queues['unassigned'], 'tone' => 'primary', 'url' => $page('hbds-operations')],
             ['label' => 'With Sourcing', 'role' => 'Sourcing', 'count' => $queues['sourcing_pending'], 'tone' => 'primary', 'url' => $page('sourcing')],
             ['label' => 'Sent back to Sourcing', 'role' => 'Sourcing', 'count' => $queues['sourcing_returns'], 'tone' => 'danger', 'url' => $page('sourcing', 'returns')],
             ['label' => 'Rejected back to Sourcing', 'role' => 'Sourcing', 'count' => $queues['sourcing_rejected'], 'tone' => 'danger', 'url' => $page('sourcing', 'rejected')],
             ['label' => 'With Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry'], 'tone' => 'primary', 'url' => $page('data-entry')],
             ['label' => 'Sent back to Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry_returns'], 'tone' => 'danger', 'url' => $page('data-entry', 'returns')],
             ['label' => 'Rejected back to Data Entry', 'role' => 'Data Entry', 'count' => $queues['data_entry_rejected'], 'tone' => 'danger', 'url' => $page('data-entry', 'rejected')],
-            ['label' => 'Senior Operations review', 'role' => 'Senior Operations', 'count' => $queues['ops_review'], 'tone' => 'violet', 'url' => $page('senior-operations', 'review')],
+            ['label' => 'Senior Operations review', 'role' => 'HBDs Operations', 'count' => $queues['ops_review'], 'tone' => 'violet', 'url' => $page('hbds-operations', 'review')],
             ['label' => 'Head of Business Development', 'role' => 'Head of Business Development', 'count' => $queues['head_of_bd'] + $queues['head_of_bd_returns'] + $queues['head_of_bd_rejected'], 'tone' => 'violet', 'url' => $page('head-of-business-development')],
-            ['label' => 'GM Assistant', 'role' => 'GM Assistant', 'count' => $queues['gm_assistant'] + $queues['gm_assistant_returns'] + $queues['gm_assistant_rejected'], 'tone' => 'violet', 'url' => $page('gm-assistant')],
+            ['label' => 'GMs Operations', 'role' => 'GMs Operations', 'count' => $queues['gm_assistant'] + $queues['gm_assistant_returns'] + $queues['gm_assistant_rejected'], 'tone' => 'violet', 'url' => $page('gms-operations')],
             ['label' => 'General Manager', 'role' => 'General Manager', 'count' => $queues['gm_review'] + $queues['gm_rejected'], 'tone' => 'violet', 'url' => $page('general-manager')],
             ['label' => 'Ready to close', 'role' => 'Business Development', 'count' => $queues['closing'], 'tone' => 'success', 'url' => $page('business-development', 'closing')],
             ['label' => 'Sent back to Business Development', 'role' => 'Business Development', 'count' => $queues['bd_returns'], 'tone' => 'danger', 'url' => $page('business-development', 'returns')],
@@ -935,7 +935,7 @@ class DashboardController extends Controller
             ['label' => 'With Data Entry', 'tone' => 'primary', 'count' => $beforeDataEntry()->fullySourced()->whereNotNull('sourcing_completed_at')->count()],
             ['label' => 'Senior Operations review', 'tone' => 'violet', 'count' => $inStage['senior_ops_review'] ?? 0],
             ['label' => 'Head of Business Development', 'tone' => 'violet', 'count' => $inStage['head_of_bd_review'] ?? 0],
-            ['label' => 'GM Assistant', 'tone' => 'violet', 'count' => $inStage['gm_assistant'] ?? 0],
+            ['label' => 'GMs Operations', 'tone' => 'violet', 'count' => $inStage['gm_assistant'] ?? 0],
             ['label' => 'General Manager', 'tone' => 'violet', 'count' => $inStage['gm_review'] ?? 0],
             ['label' => 'Ready to close', 'tone' => 'success', 'count' => $inStage['bd_closing'] ?? 0],
         ];
@@ -1650,7 +1650,7 @@ class DashboardController extends Controller
         ];
 
         return match ($role) {
-            'GM Assistant' => [
+            'GMs Operations' => [
                 'role' => $role,
                 'from' => 'Head of Business Development',
                 'since' => 'head_of_bd_approved_at',
@@ -1684,7 +1684,7 @@ class DashboardController extends Controller
             ],
             'Head of Business Development' => [
                 'role' => $role,
-                'from' => 'Senior Operations',
+                'from' => 'HBDs Operations',
                 'since' => 'senior_ops_reviewed_at',
                 'by' => 'head_of_bd_approved_by',
                 'at' => 'head_of_bd_approved_at',
@@ -1702,7 +1702,7 @@ class DashboardController extends Controller
             ],
             default => [
                 'role' => 'General Manager',
-                'from' => 'GM Assistant',
+                'from' => 'GMs Operations',
                 'since' => 'gm_assistant_completed_at',
                 'by' => 'gm_approved_by',
                 'at' => 'gm_approved_at',

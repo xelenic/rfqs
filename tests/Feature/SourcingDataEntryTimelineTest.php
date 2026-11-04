@@ -26,7 +26,7 @@ function throughEveryRole(): array
 {
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen']);
     $morgan = tap(userWithRole('Data Entry'))->update(['name' => 'Morgan Ito']);
-    $ops = tap(userWithRole('Senior Operations'))->update(['name' => 'Olivia Park']);
+    $ops = tap(userWithRole('HBDs Operations'))->update(['name' => 'Olivia Park']);
     userWithRole('General Manager');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ8601', 'subject' => 'Valves']), [1 => $riley]);
 
@@ -107,8 +107,8 @@ it('shows everyone else the whole timeline — Admin, other roles, and someone i
         ->toContain('Line item count mismatch — alert sent');
 })->with([
     'Admin' => [fn () => userWithRole('Admin')],
-    'Senior Operations' => [fn () => userWithRole('Senior Operations')],
-    'Sourcing and Senior Operations' => [fn () => userWithRole('Sourcing')->assignRole('Senior Operations')],
+    'HBDs Operations' => [fn () => userWithRole('HBDs Operations')],
+    'Sourcing and Senior Operations' => [fn () => userWithRole('Sourcing')->assignRole('HBDs Operations')],
 ]);
 
 it('knows who sees only Sourcing\'s and Data Entry\'s part', function (array $roles, bool $only) {
@@ -123,6 +123,6 @@ it('knows who sees only Sourcing\'s and Data Entry\'s part', function (array $ro
     'Data Entry' => [['Data Entry'], true],
     'both' => [['Sourcing', 'Data Entry'], true],
     'Sourcing and Admin' => [['Sourcing', 'Admin'], false],
-    'Data Entry and GM Assistant' => [['Data Entry', 'GM Assistant'], false],
-    'Senior Operations' => [['Senior Operations'], false],
+    'Data Entry and GM Assistant' => [['Data Entry', 'GMs Operations'], false],
+    'HBDs Operations' => [['HBDs Operations'], false],
 ]);

@@ -33,7 +33,7 @@ class AlertIdleGmAssistant extends Command
         }
 
         $recipients = User::query()->holdingAnyRole(GmAssistantIdle::RECIPIENT_ROLES)->get();
-        $gmAssistants = User::holdingRole('GM Assistant')
+        $gmAssistants = User::holdingRole('GMs Operations')
             ->whereDoesntHave('roles', fn ($roles) => $roles->where('name', 'Admin'))
             ->get();
 

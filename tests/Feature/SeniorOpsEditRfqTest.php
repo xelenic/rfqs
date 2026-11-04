@@ -53,7 +53,7 @@ it('lets Senior Operations and Business Development edit an RFQ\'s details, from
         ->subject->toBe('Replace exit signs — all floors')
         ->priority_level->toBe('Urgent')
         ->status->toBe('Pending');
-})->with(['Senior Operations', 'Business Development']);
+})->with(['HBDs Operations', 'Business Development']);
 
 it('never lets Senior Operations or Business Development close an RFQ through Edit, or change a stopped one\'s status', function (string $role) {
     $ops = userWithRole($role);
@@ -65,7 +65,7 @@ it('never lets Senior Operations or Business Development close an RFQ through Ed
 
     expect($open->refresh()->status)->toBe('Pending')
         ->and($held->refresh())->status->toBe(Rfq::ON_HOLD)->subject->toBe('Paused for now');
-})->with(['Senior Operations', 'Business Development']);
+})->with(['HBDs Operations', 'Business Development']);
 
 it('keeps a closed RFQ out of Senior Operations\' and Business Development\'s reach — no Edit, and refused', function (string $role) {
     $ops = userWithRole($role);
@@ -85,7 +85,7 @@ it('keeps a closed RFQ out of Senior Operations\' and Business Development\'s re
     test()->actingAs(userWithRole('Admin'))->put(route('admin.rfqs.update', $closed), editPayload($closed, ['subject' => 'Corrected', 'status' => 'Completed']))
         ->assertSessionHasNoErrors();
     expect($closed->refresh()->subject)->toBe('Corrected');
-})->with(['Senior Operations', 'Business Development']);
+})->with(['HBDs Operations', 'Business Development']);
 
 it('keeps editing from everyone else', function (string $role) {
     $rfq = Rfq::factory()->create(['subject' => 'Untouched']);
@@ -95,4 +95,4 @@ it('keeps editing from everyone else', function (string $role) {
 
     test()->actingAs(userWithRole($role))->put(route('admin.rfqs.update', $rfq), editPayload($rfq, ['subject' => 'Changed']))->assertForbidden();
     expect($rfq->refresh()->subject)->toBe('Untouched');
-})->with(['Sourcing', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager']);
+})->with(['Sourcing', 'Data Entry', 'Head of Business Development', 'GMs Operations', 'General Manager']);

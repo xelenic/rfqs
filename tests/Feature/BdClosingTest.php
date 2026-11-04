@@ -10,7 +10,7 @@ use Spatie\Permission\Models\Role;
 uses(LazilyRefreshDatabase::class);
 
 beforeEach(function () {
-    foreach (['Sourcing', 'Senior Operations', 'Data Entry', 'Head of Business Development', 'GM Assistant', 'General Manager', 'Business Development'] as $role) {
+    foreach (['Sourcing', 'HBDs Operations', 'Data Entry', 'Head of Business Development', 'GMs Operations', 'General Manager', 'Business Development'] as $role) {
         Role::findOrCreate($role);
     }
 });
@@ -33,10 +33,10 @@ function closedUrl(): string
 function closingPeople(): array
 {
     return [
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'dataEntry' => userWithRole('Data Entry'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
         'closer' => userWithRole('Business Development'),
         'sourcing' => userWithRole('Sourcing'),

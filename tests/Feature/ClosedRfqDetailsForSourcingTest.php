@@ -73,7 +73,7 @@ it('still shows them to everyone else', function (Closure $viewer) {
         ->toContain('QT-5512');
 })->with([
     'Admin' => [fn () => userWithRole('Admin')],
-    'Senior Operations' => [fn () => userWithRole('Senior Operations')],
+    'HBDs Operations' => [fn () => userWithRole('HBDs Operations')],
 ]);
 
 it('leaves them off a closed RFQ\'s own page for Sourcing and Data Entry', function (string $who) {

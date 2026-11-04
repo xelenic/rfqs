@@ -117,7 +117,7 @@ it('refuses a start that isn\'t an RFQ number, keeping the one it had', function
 ]);
 
 it('keeps it to an Admin', function () {
-    saveRfqNumberStart('RFQ1670', userWithRole('Senior Operations'))->assertForbidden();
+    saveRfqNumberStart('RFQ1670', userWithRole('HBDs Operations'))->assertForbidden();
 
     expect(Setting::rfqNumberStart())->toBe(1001);
 });

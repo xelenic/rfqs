@@ -15,7 +15,7 @@ function assignSourcing(User $actor, Rfq $rfq, array $payload)
 }
 
 it('categorizes, splits and assigns some parts while leaving others empty', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1005']);
     JobCategory::factory()->create(['name' => 'Electrical Works']);
@@ -63,7 +63,7 @@ it('records Admin themselves as who routed it when they assign Sourcing without 
 });
 
 it('stores a category typed in by hand, reusing an existing one regardless of case', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
 
@@ -88,7 +88,7 @@ it('stores a category typed in by hand, reusing an existing one regardless of ca
 });
 
 it('requires a category and, unsplit, exactly one Sourcing member', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create();
@@ -104,7 +104,7 @@ it('requires a category and, unsplit, exactly one Sourcing member', function () 
 });
 
 it('holds the RFQ back from Data Entry until every part is assigned and done', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = Rfq::factory()->create();
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -134,7 +134,7 @@ it('holds the RFQ back from Data Entry until every part is assigned and done', f
 });
 
 it('never reassigns a part someone already holds', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     $rfq = Rfq::factory()->create();
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -152,7 +152,7 @@ it('never reassigns a part someone already holds', function () {
 });
 
 it('only assigns people with the Sourcing role', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     userWithRole('Sourcing');
     $notSourcing = userWithRole('Data Entry');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -171,7 +171,7 @@ it('only assigns people with the Sourcing role', function () {
 });
 
 it('lets one person take several parts, each its own assignment', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1005']);
@@ -194,7 +194,7 @@ it('lets one person take several parts, each its own assignment', function () {
 });
 
 it('words three or more held parts as a list', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1005']);
@@ -210,7 +210,7 @@ it('words three or more held parts as a list', function () {
 });
 
 it('completes each of a person\'s parts on its own and hands off once every part is done', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create();
@@ -236,7 +236,7 @@ it('completes each of a person\'s parts on its own and hands off once every part
 });
 
 it('lets a person take another part even after finishing one', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create(['rfq_number' => 'RFQ1005']);
@@ -259,7 +259,7 @@ it('lets a person take another part even after finishing one', function () {
 });
 
 it('only lets the part\'s own assignee complete it', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create();
@@ -281,7 +281,7 @@ it('only lets the part\'s own assignee complete it', function () {
 });
 
 it('has Data Entry process and return parts one at a time, even ones held by the same person', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     $riley = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -315,7 +315,7 @@ it('has Data Entry process and return parts one at a time, even ones held by the
 });
 
 it('moves to Senior Operations\' review only once every part is through Data Entry and finalized', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $dataEntry = userWithRole('Data Entry');
     [$riley, $sam] = [userWithRole('Sourcing'), userWithRole('Sourcing')];
     JobCategory::factory()->create(['name' => 'Fire Safety']);
@@ -362,7 +362,7 @@ it('keeps Sourcing itself from assigning', function () {
 });
 
 it('lists RFQs with empty parts in Operations\' queue until they are full', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety']);
     $rfq = Rfq::factory()->create();
@@ -388,7 +388,7 @@ it('lists RFQs with empty parts in Operations\' queue until they are full', func
 });
 
 it('stores the description typed in with a new category', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
     $rfq = Rfq::factory()->create();
 
@@ -404,7 +404,7 @@ it('stores the description typed in with a new category', function () {
 });
 
 it('leaves a new category\'s description empty when none is typed', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
 
     assignSourcing($ops, Rfq::factory()->create(), [
@@ -418,7 +418,7 @@ it('leaves a new category\'s description empty when none is typed', function () 
 });
 
 it('keeps an existing category\'s description when the same name is typed in again', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
     JobCategory::factory()->create(['name' => 'Fire Safety', 'description' => 'Alarms and extinguishers.']);
 
@@ -433,7 +433,7 @@ it('keeps an existing category\'s description when the same name is typed in aga
 });
 
 it('turns down a category description that\'s too long', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $sourcing = userWithRole('Sourcing');
 
     assignSourcing($ops, Rfq::factory()->create(), [
@@ -451,7 +451,7 @@ it('gives the wizard each category\'s description and icon to show', function ()
     JobCategory::factory()->create(['name' => 'Elevator Maintenance', 'description' => null]);
     userWithRole('Sourcing');
 
-    test()->actingAs(userWithRole('Senior Operations'))
+    test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index'))
         ->assertOk()
         ->assertSee('<option value="Electrical Works" data-icon="bi-lightning-charge" data-description="Wiring and lighting.">Electrical Works</option>', false)
@@ -492,7 +492,7 @@ it('seeds a description for every starter category without overwriting one alrea
 it('lays the wizard out as three steps — category, split, then assigning the parts', function () {
     userWithRole('Sourcing');
 
-    $response = test()->actingAs(userWithRole('Senior Operations'))
+    $response = test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index'))
         ->assertOk();
 
@@ -513,7 +513,7 @@ it('lays the wizard out as three steps — category, split, then assigning the p
 it('offers a stepper and quick picks for how many parts, within the limits', function () {
     userWithRole('Sourcing');
 
-    $response = test()->actingAs(userWithRole('Senior Operations'))
+    $response = test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index'))
         ->assertOk()
         // The number field is the one that's submitted, with − and + either side.
@@ -531,7 +531,7 @@ it('offers a stepper and quick picks for how many parts, within the limits', fun
 it('ends the wizard on a summary step, the only place Finish appears', function () {
     userWithRole('Sourcing');
 
-    $response = test()->actingAs(userWithRole('Senior Operations'))
+    $response = test()->actingAs(userWithRole('HBDs Operations'))
         ->get(route('admin.rfqs.index'))
         ->assertOk()
         ->assertSee('data-step-tab="4"', false)
@@ -556,7 +556,7 @@ it('ends the wizard on a summary step, the only place Finish appears', function 
 it('gives each Sourcing member\'s bare name to the summary', function () {
     $sam = userWithRole('Sourcing');
 
-    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index'))->assertOk()->getContent();
+    $html = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index'))->assertOk()->getContent();
 
     expect(wizardSourcingPeople($html))->{0}->name->toBe($sam->name);
 });
@@ -573,7 +573,7 @@ function wizardSourcingPeople(string $html): array
 }
 
 it('lists each Sourcing member in the wizard\'s dropdown — photo, name, pending count and job categories', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = tap(userWithRole('Sourcing'))->update(['name' => 'Riley Chen', 'avatar_path' => 'avatars/riley.jpg']);
     $sam = tap(userWithRole('Sourcing'))->update(['name' => 'Sam Rivera']);
     $riley->jobCategories()->sync([
@@ -605,7 +605,7 @@ it('keeps a job category\'s name from breaking out of the wizard\'s list of peop
     $riley->jobCategories()->sync([JobCategory::factory()->create(['name' => 'Wiring </script><script>alert(1)</script>'])->id]);
     Rfq::factory()->create(['status' => 'Pending']);
 
-    $html = test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+    $html = test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
 
     expect($html)->not->toContain('<script>alert(1)')
         ->and(wizardSourcingPeople($html)[0]['categories'])->toBe(['Wiring </script><script>alert(1)</script>']);

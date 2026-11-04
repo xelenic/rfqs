@@ -38,7 +38,7 @@ function taskRfq(): array
     return [
         'rfq' => $rfq->refresh(),
         'bd' => $bd,
-        'ops' => taskPerson('Olivia Ops', 'Senior Operations'),
+        'ops' => taskPerson('Olivia Ops', 'HBDs Operations'),
         'riley' => taskPerson('Riley Chen', 'Sourcing'),
         'dana' => taskPerson('Dana Entry', 'Data Entry'),
     ];

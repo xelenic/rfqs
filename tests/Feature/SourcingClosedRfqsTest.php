@@ -20,9 +20,9 @@ function closePartThroughEveryStep(Rfq $rfq, int $part): void
     $rfq->refresh()->completeSourcingPart($part);
     $rfq->refresh()->completeDataEntryPart($part, userWithRole('Data Entry'));
     $rfq->refresh()->finalizePart($part);
-    $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('Senior Operations'));
+    $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
     $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
-    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GM Assistant'));
+    $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GMs Operations'));
     $rfq->refresh()->approveGmPart($part, userWithRole('General Manager'));
     $rfq->refresh()->closePart($part, userWithRole('Business Development'), 'REF-'.$part);
 }
@@ -68,7 +68,7 @@ it('leaves everyone else\'s Closed RFQs, and Admin\'s view of Sourcing\'s, compa
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ17004']), [1 => $riley]);
     closePartThroughEveryStep($rfq, 1);
 
-    foreach (['Business Development', 'Senior Operations', 'General Manager'] as $role) {
+    foreach (['Business Development', 'HBDs Operations', 'General Manager'] as $role) {
         test()->actingAs(userWithRole($role))->get(route('admin.rfqs.index', ['status' => 'Completed']))->assertOk()
             ->assertSee('RFQ17004');
     }

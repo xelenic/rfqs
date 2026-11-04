@@ -112,7 +112,7 @@ it('shows the number on Data Entry\'s Completed tab, Senior Operations\' review 
 
     $rfq->refresh()->finalizePart(1);
 
-    test()->actingAs(userWithRole('Senior Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
+    test()->actingAs(userWithRole('HBDs Operations'))->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'review']))->assertOk()
         ->assertSee('by '.e($dataEntry->name).' · 1,234 line items added', false);
 });
 

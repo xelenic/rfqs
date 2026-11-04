@@ -48,17 +48,17 @@ it('shows Sourcing only Sourcing\'s time on the RFQ\'s page — not the other ro
     expect($sourcing)->toContain('<span>Time spent</span>')
         ->and($timeCard($sourcing))->toContain('Sourcing')
         ->not->toContain('Data Entry')
-        ->not->toContain('GM Assistant')
+        ->not->toContain('GMs Operations')
         ->and($sourcing)->not->toContain('id="rfq-time-spent-total"');
 
     // Everyone else sees every role, and the total.
     $admin = test()->actingAs(userWithRole('Admin'))->get(route('admin.rfqs.show', $rfq))->assertOk()->getContent();
-    expect($timeCard($admin))->toContain('Data Entry')->toContain('GM Assistant')
+    expect($timeCard($admin))->toContain('Data Entry')->toContain('GMs Operations')
         ->and($admin)->toContain('id="rfq-time-spent-total"');
 });
 
 it('shows when each of today\'s ongoing tasks was last updated, as a date and time', function () {
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     test()->travelTo(CarbonImmutable::parse('2026-10-19 09:15', Setting::DEFAULT_TIMEZONE));
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1679']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     test()->travelTo(CarbonImmutable::parse('2026-10-19 16:20', Setting::DEFAULT_TIMEZONE));

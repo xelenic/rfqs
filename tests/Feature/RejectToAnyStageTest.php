@@ -26,9 +26,9 @@ function chainPeople(): array
         'sourcing' => userWithRole('Sourcing'),
         'sourcing2' => userWithRole('Sourcing'),
         'dataEntry' => userWithRole('Data Entry'),
-        'ops' => userWithRole('Senior Operations'),
+        'ops' => userWithRole('HBDs Operations'),
         'head' => userWithRole('Head of Business Development'),
-        'assistant' => userWithRole('GM Assistant'),
+        'assistant' => userWithRole('GMs Operations'),
         'gm' => userWithRole('General Manager'),
     ];
 }
@@ -262,7 +262,7 @@ it('refuses the General Manager reject to anyone but the General Manager', funct
     test()->actingAs(userWithRole($role))
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 1, 'target_stage' => 'gm_assistant', 'reason' => 'No'])
         ->assertForbidden();
-})->with(['GM Assistant', 'Head of Business Development', 'Sourcing']);
+})->with(['GMs Operations', 'Head of Business Development', 'Sourcing']);
 
 it('refuses a part that is not the General Manager\'s to reject yet', function () {
     $people = chainPeople();
@@ -277,7 +277,7 @@ it('refuses a part that is not the General Manager\'s to reject yet', function (
 
 it('lets Senior Operations reject the whole RFQ back to Business Development, undoing the Operations assignment too', function () {
     $people = chainPeople();
-    $ops = userWithRole('Senior Operations');
+    $ops = userWithRole('HBDs Operations');
     $rfq = rfqReadyForSeniorOps($people);
     $rfq->update(['operations_assigned_by' => $ops->id, 'operations_assigned_at' => now()]);
 
@@ -487,8 +487,8 @@ it('runs an RFQ the General Manager sent all the way back to Senior Operations t
 });
 
 it('opens GM Assistant\'s popup on Sourcing, and sends it straight to the part\'s member — not through Senior Operations', function () {
-    $gmAssistant = userWithRole('GM Assistant');
-    $ops = userWithRole('Senior Operations');
+    $gmAssistant = userWithRole('GMs Operations');
+    $ops = userWithRole('HBDs Operations');
     $riley = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ7701']), [1 => $riley]);
     $rfq->refresh()->completeSourcingPart(1);
