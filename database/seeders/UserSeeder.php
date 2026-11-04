@@ -39,6 +39,9 @@ class UserSeeder extends Seeder
                 ['name' => 'Casey Patel', 'email' => 'operations@rfqms.test'],
                 ['name' => 'Drew Nakamura', 'email' => 'operations2@rfqms.test'],
             ],
+            'Operation Assistant Trainee' => [
+                ['name' => 'Rowan Silva', 'email' => 'operations.trainee@rfqms.test'],
+            ],
             'Head of Business Development' => [
                 ['name' => 'Jordan Lee', 'email' => 'head.of.business.development@rfqms.test'],
                 ['name' => 'Reese Anderson', 'email' => 'head.of.business.development2@rfqms.test'],

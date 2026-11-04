@@ -754,7 +754,7 @@ class RfqController extends Controller implements HasMiddleware
             'opsFilters' => $opsFilters,
             'sourcingUsers' => $sourcingUsers,
             'jobCategories' => $jobCategories,
-            'operationsUsers' => User::role('HBDs Operations')->active()->orderBy('name')->get(),
+            'operationsUsers' => User::query()->holdingRole('HBDs Operations')->orderBy('name')->get(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
         ]);
     }
@@ -1078,7 +1078,7 @@ class RfqController extends Controller implements HasMiddleware
             'statusFilter' => $status,
             'sourcingUsers' => User::role('Sourcing')->active()->withSourcingWorkloadCounts()->with('jobCategories')->orderBy('name')->get(),
             'jobCategories' => JobCategory::orderBy('name')->get(),
-            'operationsUsers' => User::role('HBDs Operations')->active()->orderBy('name')->get(),
+            'operationsUsers' => User::query()->holdingRole('HBDs Operations')->orderBy('name')->get(),
             'myRunningDataEntry' => $this->runningDataEntryOfViewer($request->user()),
             'myRunningGmAssistant' => $this->runningGmAssistantOfViewer($request->user()),
         ]);
@@ -1162,6 +1162,12 @@ class RfqController extends Controller implements HasMiddleware
         $rules = $this->rules();
         if ($rfq->isStopped()) {
             $rules['status'] = ['nullable'];
+        }
+
+        // Someone who can't change the priority (User::canChangeRfqPriority())
+        // has it left out: whatever they send, it stays as it was.
+        if (! $request->user()->canChangeRfqPriority()) {
+            unset($rules['priority_level']);
         }
 
         // An older RFQ keeps its WC number as it was; a new one is checked.
@@ -1681,7 +1687,7 @@ class RfqController extends Controller implements HasMiddleware
 
         $operationsUserId = $validated['operations_user'] ?? null;
         $isValidOperationsUser = $operationsUserId
-            && User::role('HBDs Operations')->active()->whereKey($operationsUserId)->exists();
+            && User::query()->holdingRole('HBDs Operations')->whereKey($operationsUserId)->exists();
 
         $rfq->update([
             'operations_assigned_by' => $isValidOperationsUser ? $operationsUserId : null,

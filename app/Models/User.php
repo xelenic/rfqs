@@ -22,6 +22,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Spatie\Permission\Contracts\Role;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -29,7 +30,9 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable;
+    use HasFactory, HasRoles, Notifiable {
+        HasRoles::hasRole as spatieHasRole;
+    }
 
     /**
      * What a preference is until the person changes it on their Settings page.
@@ -200,6 +203,16 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     public const JOB_CATEGORY_TAG_ROLES = ['Sourcing', 'Data Entry'];
+
+    /**
+     * Roles that have another role's access, wherever it's checked by name:
+     * holding the key counts as holding the value in hasRole()/hasAnyRole(),
+     * holdingRole()/holdingAnyRole() and so roleMembers(). Since 2026-11-05,
+     * an Operation Assistant Trainee works exactly as HBDs Operations.
+     *
+     * @var array<string, string>
+     */
+    public const ROLE_STAND_INS = ['Operation Assistant Trainee' => 'HBDs Operations'];
 
     /**
      * Who has written to this person themselves — peopleWhoWroteToMe(),
@@ -498,6 +511,22 @@ class User extends Authenticatable
     public function canChangeRfqStatus(): bool
     {
         return $this->hasAnyRole(['HBDs Operations', 'Admin']);
+    }
+
+    /**
+     * Whether this person changes an RFQ's priority level when they edit it
+     * (RfqController::update()). Since 2026-11-05, at the user's request, an
+     * Operation Assistant Trainee doesn't, though they otherwise edit as HBDs
+     * Operations (ROLE_STAND_INS) — unless a role of their own edits RFQs.
+     * Read off their roles, since hasRole() counts the trainee as HBDs
+     * Operations.
+     */
+    public function canChangeRfqPriority(): bool
+    {
+        $roles = $this->roles->pluck('name');
+
+        return ! $roles->contains('Operation Assistant Trainee')
+            || $roles->intersect(['Admin', 'HBDs Operations', 'Business Development'])->isNotEmpty();
     }
 
     /**
@@ -834,7 +863,7 @@ class User extends Authenticatable
      */
     public function scopeHoldingRole(Builder $query, string $role): void
     {
-        $query->active()->whereHas('roles', fn (Builder $roles) => $roles->where('name', $role));
+        $query->active()->whereHas('roles', fn (Builder $roles) => $roles->whereIn('name', self::rolesCountingAs($role)));
     }
 
     /**
@@ -846,7 +875,40 @@ class User extends Authenticatable
      */
     public function scopeHoldingAnyRole(Builder $query, array $roles): void
     {
-        $query->active()->whereHas('roles', fn (Builder $named) => $named->whereIn('name', $roles));
+        $query->active()->whereHas('roles', fn (Builder $named) => $named->whereIn('name', collect($roles)->flatMap(fn (string $role) => self::rolesCountingAs($role))->unique()->all()));
+    }
+
+    /**
+     * $role and the roles that stand in for it (ROLE_STAND_INS) — holding
+     * any of them counts as holding $role.
+     *
+     * @return array<int, string>
+     */
+    public static function rolesCountingAs(string $role): array
+    {
+        return [$role, ...array_keys(self::ROLE_STAND_INS, $role, true)];
+    }
+
+    /**
+     * Spatie's hasRole() (and so hasAnyRole()), with ROLE_STAND_INS: asked
+     * about a role by name, holding a role that stands in for it counts too.
+     * An array is checked name by name, coming back here for each.
+     *
+     * @param  string|int|array<int, mixed>|Role|SupportCollection<int, mixed>|\BackedEnum  $roles
+     */
+    public function hasRole($roles, ?string $guard = null): bool
+    {
+        if (! is_string($roles) || str_contains($roles, '|')) {
+            return $this->spatieHasRole($roles, $guard);
+        }
+
+        foreach (self::rolesCountingAs($roles) as $role) {
+            if ($this->spatieHasRole($role, $guard)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

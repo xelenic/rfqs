@@ -50,6 +50,11 @@ class BusinessRoleSeeder extends Seeder
                 'description' => 'Categorizes incoming RFQs, splits and assigns them to Sourcing, and gives the second-stage review before escalating to Head of Business Development.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
+            // Works exactly as HBDs Operations (User::ROLE_STAND_INS).
+            'Operation Assistant Trainee' => [
+                'description' => 'Trains in HBDs Operations, with the same access: categorizes incoming RFQs, splits and assigns them to Sourcing, and gives the second-stage review.',
+                'permissions' => ['rfqs.view', 'rfqs.edit'],
+            ],
             'Sourcing' => [
                 'description' => 'Manages supplier sourcing and procurement for quotations.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],

@@ -61,9 +61,13 @@
         @endif
     </div>
 
+    @php
+        // An Operation Assistant Trainee sees the priority but can't change it (User::canChangeRfqPriority()).
+        $priorityLocked = $mode === 'edit' && ! auth()->user()->canChangeRfqPriority();
+    @endphp
     <div class="col-md-6">
         <label for="{{ $idPrefix }}-priority_level" class="form-label">Priority level</label>
-        <select name="priority_level" id="{{ $idPrefix }}-priority_level" class="form-select @error('priority_level', $idPrefix) is-invalid @enderror" required>
+        <select name="priority_level" id="{{ $idPrefix }}-priority_level" class="form-select @error('priority_level', $idPrefix) is-invalid @enderror" required @disabled($priorityLocked)>
             {{-- P1 Critical first, down to P7 Trivial — each with its colour, which an option can't be drawn in. --}}
             @foreach (array_reverse($priorities) as $priority)
                 <option value="{{ $priority }}" {{ ($showOld ? old('priority_level', 'Medium') : 'Medium') === $priority ? 'selected' : '' }}>
@@ -71,6 +75,9 @@
                 </option>
             @endforeach
         </select>
+        @if ($priorityLocked)
+            <div class="form-text">Your role can't change the priority level.</div>
+        @endif
         @error('priority_level', $idPrefix)
             <div class="invalid-feedback">{{ $message }}</div>
         @enderror
