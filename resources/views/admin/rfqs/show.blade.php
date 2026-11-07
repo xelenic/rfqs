@@ -477,12 +477,15 @@
         $deIsRunning = ! $deIsDone && $assignee->pivot->hasDataEntryStarted();
 
         // The Data Entry box is Data Entry's: whoever sent it to finalize, or
-        // is on it now (their Start) — the part's Sourcing member is on the
-        // Sourcing and Finalize boxes. Nobody yet: just "Data Entry". Sourcing
-        // never learns who in Data Entry it was.
+        // is on it now (their Start), or else whoever it's been given to by
+        // name (as Rfq::dataEntryHolderId(): handed over, or named ahead by
+        // Senior Operations) — the part's Sourcing member is on the Sourcing
+        // and Finalize boxes. Nobody yet: just "Data Entry". Sourcing never
+        // learns who in Data Entry it was.
         $deWorker = match (true) {
             $deIsDone => $assignee->pivot->dataEntryCompletedBy,
             $deIsRunning => $assignee->pivot->dataEntryStartedBy,
+            $sourcingDone || $assignee->pivot->isDataEntryChosenByOperations() => $assignee->pivot->dataEntryAssignee,
             default => null,
         };
         $deNameLabel = $restrictSourcingView || $deWorker === null ? 'Data Entry' : $deWorker->name;

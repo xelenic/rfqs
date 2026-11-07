@@ -457,7 +457,7 @@ function dataEntryBoxes(Rfq $rfq, User $viewer): array
     $boxes = [];
     $walk = function (array $node) use (&$walk, &$boxes) {
         if (($node['step'] ?? null) === 'data_entry' && ($node['role'] ?? null) === 'Data Entry') {
-            $boxes[] = ['name' => $node['name'], 'meta' => $node['meta']];
+            $boxes[] = ['name' => $node['name'], 'meta' => $node['meta'], 'person' => $node['person'] ?? null];
         }
         foreach ($node['children'] ?? [] as $child) {
             $walk($child);
@@ -496,4 +496,23 @@ it('names each Data Entry box after who in Data Entry did it, or is on it — no
 
     // Sourcing never learns who in Data Entry it was.
     expect(collect(dataEntryBoxes($rfq, $people['sourcing']))->pluck('name')->unique()->all())->toBe(['Data Entry']);
+});
+
+it('names a Data Entry box after whoever it was given to by name, before they start', function () {
+    $people = progressPeople();
+    $people['dataEntry']->update(['name' => 'Morgan Ito']);
+
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ1021']), [1 => $people['sourcing']]);
+    $rfq->refresh()->completeSourcingPart(1, dataEntry: $people['dataEntry']);
+
+    [$box] = dataEntryBoxes($rfq->refresh(), $people['admin']);
+
+    expect($box['name'])->toBe('Morgan Ito')
+        ->and($box['person']['name'])->toBe('Morgan Ito')
+        ->and($box['meta'])->toBe(['Awaiting Start']);
+
+    // Sourcing never learns who in Data Entry it was.
+    [$sourcingBox] = dataEntryBoxes($rfq, $people['sourcing']);
+    expect($sourcingBox['name'])->toBe('Data Entry')
+        ->and($sourcingBox['person'])->toBeNull();
 });
