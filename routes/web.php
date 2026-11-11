@@ -119,6 +119,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::resource('users', UserController::class)->except(['create', 'edit']);
     Route::post('users/{user}/password-link', [UserController::class, 'sendPasswordLink'])->middleware('throttle:10,1')->name('users.password-link');
     Route::patch('users/{user}/default-data-entry', [UserController::class, 'updateDefaultDataEntry'])->name('users.default-data-entry');
+    Route::patch('users/{user}/expected-rfqs', [UserController::class, 'updateExpectedRfqs'])->name('users.expected-rfqs');
     Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate'])->name('users.deactivate');
     Route::patch('users/{user}/activate', [UserController::class, 'activate'])->name('users.activate');
     // An Admin signing in as someone else, and back — see App\Impersonation.

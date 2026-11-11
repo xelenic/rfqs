@@ -84,7 +84,7 @@ class PerformanceReportController extends Controller
 
         $days = SourcingDayFigure::query()
             ->select('day')
-            ->selectRaw('count(*) as people, sum(successful_calls) as successful_calls, sum(unanswered_calls) as unanswered_calls, sum(unattended_calls) as unattended_calls, sum(expected_rfqs) as expected_rfqs')
+            ->selectRaw('count(*) as people, sum(successful_calls) as successful_calls, sum(unanswered_calls) as unanswered_calls, sum(unattended_calls) as unattended_calls')
             ->groupBy('day')
             ->orderByDesc('day')
             ->paginate(SourcingDayFigureController::DAYS_PER_PAGE)
@@ -93,6 +93,7 @@ class PerformanceReportController extends Controller
         return view('admin.reports.performance.sourcing_summary_days', [
             'days' => $days,
             'received' => (new PerformanceReports)->receivedOn($days->pluck('day')->all()),
+            'expected' => (new PerformanceReports)->expectedOn($days->pluck('day')->all()),
             'canEditFigures' => $request->user()->canEditSourcingFigures(),
         ]);
     }

@@ -5,6 +5,7 @@ namespace App;
 use App\Models\RfqStep;
 use App\Models\Setting;
 use App\Models\SourcingDayFigure;
+use App\Models\SourcingExpectedRfq;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -188,20 +189,82 @@ class PerformanceReports
         $ids = $people->pluck('id')->all();
         $daily = $this->sourcingDaily($people, $from, $to);
         $typedIn = SourcingDayFigure::query()->whereIn('user_id', $ids)->where('day', '>=', $from)->where('day', '<=', $to)->get()->groupBy('user_id');
-        $fields = [...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'];
         $added = fn (Collection $rows, string $field) => $rows->whereNotNull($field)->isEmpty() ? null : (int) $rows->sum($field);
+        $expected = $this->expectedRfqs($people, self::daysBetween($from, $to));
+        $usual = SourcingExpectedRfq::lookup($ids);
 
-        $rows = $daily['people']->map(fn (array $summary) => $summary + [
-            'received' => $summary['finalized'],
-        ] + collect($fields)->mapWithKeys(fn (string $field) => [
-            $field => $added($typedIn->get($summary['user']->id, collect()), $field),
-        ])->all())->values();
+        $rows = $daily['people']->map(function (array $summary) use ($typedIn, $added, $expected, $usual, $to) {
+            $person = $summary['user'];
+            $mine = $typedIn->get($person->id, collect());
+
+            return $summary + ['received' => $summary['finalized']]
+                + collect(array_keys(SourcingDayFigure::CALL_FIELDS))->mapWithKeys(fn (string $field) => [$field => $added($mine, $field)])->all()
+                + [
+                    // Day by day, what was typed in, else their usual count (expectedRfqs()).
+                    'expected_rfqs' => self::addedUp($expected[$person->id] ?? []),
+                    // Only what was typed in, and their usual count on the
+                    // (last) day — for the one day's dropdown.
+                    'expected_rfqs_typed' => $added($mine, 'expected_rfqs'),
+                    'expected_rfqs_usual' => $this->isWorkingDay($to, $person) ? $usual($person->id, $to) : null,
+                ];
+        })->values();
 
         return [
             'rows' => $rows,
-            'total' => $daily['total'] + ['received' => $daily['total']['finalized']] + collect($fields)->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
+            'total' => $daily['total'] + ['received' => $daily['total']['finalized']] + collect([...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'])->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
             'asOf' => $daily['asOf'],
         ];
+    }
+
+    /**
+     * Each of $people's expected RFQs on each of $days ("Y-m-d"): the figure
+     * typed in for the day (SourcingDayFigure), else — on one of their working
+     * days (Setting::weekOn()) — their usual count, set on their user page
+     * (SourcingExpectedRfq). Null where there's neither.
+     *
+     * @param  Collection<int, User>  $people
+     * @param  array<int, string>  $days
+     * @return array<int, array<string, ?int>>
+     */
+    public function expectedRfqs(Collection $people, array $days): array
+    {
+        $ids = $people->pluck('id')->all();
+        $typedIn = SourcingDayFigure::query()->whereIn('user_id', $ids)->whereIn('day', $days)->whereNotNull('expected_rfqs')->get()
+            ->groupBy('user_id')
+            ->map(fn (Collection $figures) => $figures->pluck('expected_rfqs', 'day'));
+        $usual = SourcingExpectedRfq::lookup($ids);
+
+        return $people->mapWithKeys(fn (User $person) => [$person->id => collect($days)->mapWithKeys(fn (string $day) => [
+            $day => $typedIn->get($person->id)?->get($day) ?? ($this->isWorkingDay($day, $person) ? $usual($person->id, $day) : null),
+        ])->all()])->all();
+    }
+
+    /**
+     * Everyone in Sourcing's expected RFQs on each of $days, added up
+     * (expectedRfqs()) — null on a day nobody had any. For the Sourcing
+     * Summary's list of days.
+     *
+     * @param  array<int, string>  $days
+     * @return Collection<string, ?int>
+     */
+    public function expectedOn(array $days): Collection
+    {
+        $expected = $this->expectedRfqs(self::people('Sourcing'), $days);
+
+        return collect($days)->mapWithKeys(fn (string $day) => [$day => self::addedUp(array_column($expected, $day))]);
+    }
+
+    /**
+     * $figures added up, leaving out the ones not given — or null when none
+     * was.
+     *
+     * @param  array<array-key, ?int>  $figures
+     */
+    private static function addedUp(array $figures): ?int
+    {
+        $given = array_filter($figures, fn (?int $figure) => $figure !== null);
+
+        return $given === [] ? null : array_sum($given);
     }
 
     /**

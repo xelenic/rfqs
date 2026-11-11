@@ -141,13 +141,14 @@
                             <td class="fw-semibold text-nowrap">{{ $row['user']->name }}</td>
                             <td class="text-end report-typed-in">
                                 @if ($canEditFigures)
-                                    {{-- Picked from a dropdown; "—" leaves it not given (cleared). --}}
+                                    {{-- Picked from a dropdown for the day. The first choice sets none for
+                                         the day: their usual count (from their user page) counts, if they have one. --}}
                                     @php
-                                        $expected = old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs']);
+                                        $expected = old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs_typed']);
                                         $expected = $expected === null || $expected === '' ? null : (int) $expected;
                                     @endphp
                                     <select form="sourcing-figures-form" name="figures[{{ $row['user']->id }}][expected_rfqs]" class="form-select form-select-sm report-typed-in-select" aria-label="Number of expected RFQ, {{ $row['user']->name }}">
-                                        <option value="" @selected($expected === null)>—</option>
+                                        <option value="" @selected($expected === null)>{{ $row['expected_rfqs_usual'] !== null ? 'Usual · '.$row['expected_rfqs_usual'] : '—' }}</option>
                                         @foreach (range(0, max(\App\Models\SourcingDayFigure::EXPECTED_RFQS_CHOICES, $expected ?? 0)) as $count)
                                             <option value="{{ $count }}" @selected($expected === $count)>{{ $count }}</option>
                                         @endforeach
@@ -177,6 +178,6 @@
         'Finalized: the RFQs the person finalized (Sourcing\'s Finalize) in these dates.',
         'Pending: at the end of the last day, the RFQs they\'d been given and not yet finalized — those waiting for the customer\'s clarification are left out and counted on their own, and cancelled ones aren\'t counted.',
         'Received: the RFQs Senior Operations received from them — the ones they finalized, so it\'s the same as RFQ Finalized Successfully.',
-        'Yellow figures are typed in, not worked out: each Sourcing member enters their supplier calls on their dashboard, and Senior Operations sets the expected RFQs here. A dash means nothing has been entered.',
+        'Yellow figures are typed in, not worked out: each Sourcing member enters their supplier calls on their dashboard. Expected RFQs are each person\'s usual count, set by an Admin on their user page, on each of their working days — unless Senior Operations sets a figure for the day here, which counts instead. A dash means nothing has been entered.',
     ]])
 @endsection

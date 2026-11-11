@@ -9,7 +9,8 @@
     Admin\PerformanceReportController::sourcingSummaryDays().
 
     Expects: $days (paginated: day, people, the figures added up), $received
-    (RFQs received, by day), $canEditFigures.
+    (RFQs received, by day), $expected (expected RFQs, by day — typed in or
+    each person's usual), $canEditFigures.
 --}}
 @extends('layouts.app')
 
@@ -56,7 +57,7 @@
                             @foreach (array_keys(\App\Models\SourcingDayFigure::CALL_FIELDS) as $callField)
                                 <td class="text-end report-typed-in">{{ $typedIn($listed->{$callField}) }}</td>
                             @endforeach
-                            <td class="text-end report-typed-in">{{ $typedIn($listed->expected_rfqs) }}</td>
+                            <td class="text-end report-typed-in">{{ $typedIn($expected->get($listed->day)) }}</td>
                             <td class="text-end">{{ number_format($received->get($listed->day, 0)) }}</td>
                             <td class="text-end text-nowrap report-save">
                                 <a href="{{ route('admin.reports.sourcing-summary.sheet', ['from' => $listed->day, 'to' => $listed->day]) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i> View</a>
@@ -88,7 +89,7 @@
     @include('admin.reports.performance._how_counted', ['points' => [
         'A day is listed once anyone\'s figures have been typed in for it: a Sourcing member\'s supplier calls, or expected RFQs set by Senior Operations.',
         'Received: the RFQs Senior Operations received from Sourcing that day — the ones finalized, each RFQ once — as on the day\'s sheet.',
-        'Yellow figures are added up across the people who entered them. A dash means nobody entered that one.',
+        'Yellow figures are added up across the people who entered them. Expected RFQs count each person\'s usual figure (set on their user page) on a working day nobody set one for. A dash means there\'s none.',
         'View opens the day\'s full sheet, worked out from the RFQs. Deleting a day removes only its typed-in figures.',
     ]])
 @endsection
