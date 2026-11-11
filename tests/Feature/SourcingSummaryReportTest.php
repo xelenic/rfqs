@@ -126,7 +126,7 @@ it('lets Senior Operations set a day\'s figures right in the report, a blank cle
         ->unanswered_calls->toBeNull();
 
     test()->actingAs($ops)->get(summaryUrl())->assertOk()
-        ->assertSee('name="figures['.$riley->id.'][expected_rfqs]" value="6"', false);
+        ->assertSee('<option value="6" selected>6</option>', false);
 
     // Saved again, blank: cleared, the row kept to no harm.
     test()->actingAs($ops)->put(route('admin.reports.sourcing-summary.update'), [
@@ -134,6 +134,30 @@ it('lets Senior Operations set a day\'s figures right in the report, a blank cle
         'figures' => [$riley->id => ['expected_rfqs' => '', 'successful_calls' => '9']],
     ]);
     expect($saved->refresh()->expected_rfqs)->toBeNull()->and($saved->successful_calls)->toBe(9);
+});
+
+it('offers the expected RFQs as a dropdown for each Sourcing member, keeping a figure above its choices', function () {
+    ['riley' => $riley, 'sam' => $sam, 'ops' => $ops] = summaryDay();
+    SourcingDayFigure::record($sam->id, '2026-10-05', ['expected_rfqs' => 75]);
+
+    $html = test()->actingAs($ops)->get(summaryUrl())->assertOk()->getContent();
+    $dropdown = fn (User $person) => Str::betweenFirst($html, '<select form="sourcing-figures-form" name="figures['.$person->id.'][expected_rfqs]"', '</select>');
+
+    // Not given yet: "—", then 0 up to the choices.
+    expect($dropdown($riley))
+        ->toContain('<option value="" selected>—</option>')
+        ->toContain('<option value="0" >0</option>')
+        ->toContain('<option value="'.SourcingDayFigure::EXPECTED_RFQS_CHOICES.'" >'.SourcingDayFigure::EXPECTED_RFQS_CHOICES.'</option>')
+        ->not->toContain('value="'.(SourcingDayFigure::EXPECTED_RFQS_CHOICES + 1).'"')
+        // Sam's 75 is still there to keep.
+        ->and($dropdown($sam))
+        ->toContain('<option value="75" selected>75</option>')
+        ->toContain('<option value="" >—</option>');
+
+    // Someone who only sees the report gets the figure, not a dropdown.
+    test()->actingAs(userWithRole('HR Executive'))->get(summaryUrl())->assertOk()
+        ->assertDontSee('name="figures['.$sam->id.'][expected_rfqs]"', false)
+        ->assertSee('75');
 });
 
 it('refuses figures that make no sense, or for anyone outside Sourcing', function () {

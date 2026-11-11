@@ -141,8 +141,17 @@
                             <td class="fw-semibold text-nowrap">{{ $row['user']->name }}</td>
                             <td class="text-end report-typed-in">
                                 @if ($canEditFigures)
-                                    <input type="number" form="sourcing-figures-form" name="figures[{{ $row['user']->id }}][expected_rfqs]" value="{{ old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs']) }}"
-                                           min="0" max="{{ \App\Models\SourcingDayFigure::MAX_FIGURE }}" step="1" inputmode="numeric" class="form-control form-control-sm report-typed-in-input" aria-label="Number of expected RFQ, {{ $row['user']->name }}">
+                                    {{-- Picked from a dropdown; "—" leaves it not given (cleared). --}}
+                                    @php
+                                        $expected = old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs']);
+                                        $expected = $expected === null || $expected === '' ? null : (int) $expected;
+                                    @endphp
+                                    <select form="sourcing-figures-form" name="figures[{{ $row['user']->id }}][expected_rfqs]" class="form-select form-select-sm report-typed-in-select" aria-label="Number of expected RFQ, {{ $row['user']->name }}">
+                                        <option value="" @selected($expected === null)>—</option>
+                                        @foreach (range(0, max(\App\Models\SourcingDayFigure::EXPECTED_RFQS_CHOICES, $expected ?? 0)) as $count)
+                                            <option value="{{ $count }}" @selected($expected === $count)>{{ $count }}</option>
+                                        @endforeach
+                                    </select>
                                 @else
                                     {{ $typedIn($row['expected_rfqs']) }}
                                 @endif
