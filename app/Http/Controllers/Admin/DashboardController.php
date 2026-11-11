@@ -1061,15 +1061,17 @@ class DashboardController extends Controller
      * sent back, and what's with Data Entry now.
      *
      * "Pending" is what's still theirs to complete or finalize, leaving out
-     * what Data Entry sent back (that's "Returned", and their Returns list) —
-     * the same count as the badge on their sidebar link.
+     * what Data Entry sent back (that's "Returned", and their Returns list)
+     * and parts on hold or cancelled — the same count as the badge on their
+     * sidebar link and their Pending for Sourcing tab.
      *
      * Each part on their clock — sourcing it, or finalizing it — has its
      * time against its target (Rfq::timeAgainstTarget(), "for" Sourcing or
-     * Finalize), as Admin's ongoing tasks do; how many are overdue.
+     * Finalize), as Admin's ongoing tasks do. "overdue" counts the Pending
+     * ones, as their list shows them; "returnedOverdue" the Returned ones.
      *
      * @return array{
-     *     assigned: int, pending: int, urgent: int, overdue: int, returned: int, rejected: int, inReview: int, toFinalize: int, done: int, inProgress: int,
+     *     assigned: int, pending: int, urgent: int, overdue: int, returned: int, returnedOverdue: int, rejected: int, inReview: int, toFinalize: int, done: int, inProgress: int,
      *     recent: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array{for: string, seconds: int, target: int, remaining: int, state: string}}>,
      *     returnedParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array<string, mixed>}>,
      *     inReviewParts: Collection<int, array{rfq: Rfq, part: int, label: string, assignment: RfqAssignment, state: string, timing: ?array<string, mixed>}>
@@ -1112,18 +1114,22 @@ class DashboardController extends Controller
             ->values();
 
         $inState = fn (string $state) => $parts->where('state', $state);
+        $isOverdue = fn (array $part) => ($part['timing']['state'] ?? null) === 'overdue';
         // Theirs to act on: not yet completed (and not sent back — that's a
         // return), or sent to finalize by Data Entry and waiting on their
-        // Finalize. Matches the badge on their sidebar's Pending link.
-        $stillTheirs = $parts->filter(fn (array $part) => ($part['assignment']->completed_at === null && $part['state'] !== 'returned')
-            || $part['state'] === 'data_entry_done');
+        // Finalize — and not on hold or cancelled. Matches the badge on their
+        // sidebar's Pending link and their Pending for Sourcing tab.
+        $stillTheirs = $parts->filter(fn (array $part) => ! $part['assignment']->isStopped()
+            && (($part['assignment']->completed_at === null && $part['state'] !== 'returned') || $part['state'] === 'data_entry_done'));
 
         return [
             'assigned' => $parts->count(),
             'pending' => $stillTheirs->count(),
             'urgent' => $stillTheirs->filter(fn (array $part) => $part['rfq']->isUrgent())->count(),
-            'overdue' => $parts->filter(fn (array $part) => ($part['timing']['state'] ?? null) === 'overdue')->count(),
+            // Only the Pending ones, so the card never says more are overdue than its list shows.
+            'overdue' => $stillTheirs->filter($isOverdue)->count(),
             'returned' => $inState('returned')->count(),
+            'returnedOverdue' => $inState('returned')->reject(fn (array $part) => $part['assignment']->isStopped())->filter($isOverdue)->count(),
             // Of those, the ones a reviewer rejected back — on their Rejected page.
             'rejected' => $inState('returned')->filter(fn (array $part) => $part['assignment']->isRejectedTo('sourcing'))->count(),
             'inReview' => $inState('with_data_entry')->count(),

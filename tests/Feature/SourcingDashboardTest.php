@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Rfq;
+use App\Models\Setting;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Spatie\Permission\Models\Role;
 
@@ -119,6 +121,43 @@ it('matches the count on the sidebar link', function () {
 
         return true;
     });
+});
+
+it('counts as overdue under Pending only what their Pending list shows, and what was sent back under Returned', function () {
+    $riley = userWithRole('Sourcing');
+    $dataEntry = userWithRole('Data Entry');
+
+    // 2026-10-05 is a Monday; an Urgent part's target is 4 working hours.
+    test()->travelTo(CarbonImmutable::parse('2026-10-05 09:00', Setting::DEFAULT_TIMEZONE));
+    splitAmong(sourcingRfq('Still theirs', ['priority_level' => 'Urgent']), [1 => $riley]);
+    splitAmong(sourcingRfq('Plenty of time'), [1 => $riley]);
+    $returned = splitAmong(sourcingRfq('Sent back', ['priority_level' => 'Urgent']), [1 => $riley]);
+    $returned->completeSourcingPart(1);
+    $returned->refresh()->returnSourcingPart(1, 'Prices missing', $dataEntry);
+    $onHold = splitAmong(sourcingRfq('On hold', ['priority_level' => 'Urgent']), [1 => $riley]);
+
+    // 3h 30m before lunch and 2h after: the Urgent ones are 1h 30m over.
+    test()->travelTo(CarbonImmutable::parse('2026-10-05 15:30', Setting::DEFAULT_TIMEZONE));
+    $onHold->changePartStatus(1, 'On Hold', userWithRole('HBDs Operations'), 'Waiting on the client');
+
+    test()->actingAs($riley)->get(route('admin.dashboard'))
+        ->assertViewHas('overview', function (array $overview) {
+            expect($overview)->toMatchArray([
+                // Still theirs and on their list: not the returned one, nor the one on hold.
+                'pending' => 2,
+                'overdue' => 1,
+                'returned' => 1,
+                'returnedOverdue' => 1,
+            ]);
+
+            return true;
+        })
+        ->assertSee('1 overdue · 1 urgent')
+        ->assertSee('Needs rework · 1 overdue');
+
+    $list = test()->actingAs($riley)->get(route('admin.rfqs.index', ['status' => 'Pending']))->assertOk()->getContent();
+
+    expect(substr_count($list, 'Overdue by'))->toBe(1);
 });
 
 it('lists what they were given most recently, newest first, each part on its own line', function () {

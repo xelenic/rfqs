@@ -44,11 +44,15 @@
                 'label' => 'Returned', 'value' => $overview['returned'], 'icon' => 'bi-arrow-counterclockwise', 'iconClass' => 'stat-icon-danger',
                 // Data Entry's returns are on Returns, a reviewer's rejections on Rejected.
                 'url' => route('admin.rfqs.index', ['status' => 'Pending', 'view' => $overview['rejected'] > 0 && $overview['rejected'] === $overview['returned'] ? 'rejected' : 'returns']),
-                'caption' => match (true) {
-                    $overview['rejected'] > 0 => trans_choice('1 rejected by a reviewer|:count rejected by a reviewer', $overview['rejected'], ['count' => $overview['rejected']]),
-                    $overview['returned'] > 0 => 'Needs rework',
-                    default => 'Nothing sent back',
-                },
+                'caption' => collect([
+                    match (true) {
+                        $overview['rejected'] > 0 => trans_choice('1 rejected by a reviewer|:count rejected by a reviewer', $overview['rejected'], ['count' => $overview['rejected']]),
+                        $overview['returned'] > 0 => 'Needs rework',
+                        default => 'Nothing sent back',
+                    },
+                    // What's overdue among them — counted here, not under Pending, whose list doesn't show them.
+                    $overview['returnedOverdue'] > 0 ? $overview['returnedOverdue'].' overdue' : null,
+                ])->filter()->join(' · '),
                 'alert' => $overview['returned'] > 0,
             ],
         ] as $card)
