@@ -55,6 +55,25 @@ class SourcingExpectedRfq extends Model
     }
 
     /**
+     * The starts_on of a person's first count: it counts on every day before
+     * too, so the report shows it for past days as soon as it's set.
+     */
+    public const FROM_THE_START = '2000-01-01';
+
+    /**
+     * Sets $userId's usual count, as saved on their user page: the first one
+     * from the start (FROM_THE_START), and any change from today on — so
+     * past days keep the count they had. Changed twice in a day, the day's
+     * version changes in place.
+     */
+    public static function setFor(int $userId, ?int $expected, ?int $setBy): self
+    {
+        $startsOn = static::query()->where('user_id', $userId)->exists() ? Setting::today() : self::FROM_THE_START;
+
+        return static::put($userId, $expected, $startsOn, $setBy);
+    }
+
+    /**
      * Sets $userId's usual count from $startsOn on — changing in place a
      * version that starts that same day.
      */

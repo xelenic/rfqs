@@ -96,7 +96,9 @@ class SourcingDayFigureController extends Controller
      * Senior Operations or Admin sets one day's figures on the report:
      * expected RFQs, and calls to correct what a member entered. Only for
      * people in Sourcing, and only those the report showed. A figure left
-     * blank is cleared.
+     * blank is cleared. Someone with an expected RFQ count assigned on their
+     * user page has no box for it (the assigned count counts), so their
+     * expected figure for the day is left as it is.
      */
     public function updateForDay(Request $request): RedirectResponse
     {
@@ -114,8 +116,17 @@ class SourcingDayFigureController extends Controller
             'day.*' => 'Pick today or an earlier day.',
         ]);
 
-        foreach (PerformanceReports::people('Sourcing')->whereIn('id', array_keys($validated['figures'])) as $person) {
-            SourcingDayFigure::record($person->id, $validated['day'], $this->numbers($validated['figures'][$person->id], $fields));
+        $people = PerformanceReports::people('Sourcing')->whereIn('id', array_keys($validated['figures']));
+        $usual = (new PerformanceReports)->usualExpectedRfqs($people, $validated['day']);
+
+        foreach ($people as $person) {
+            $figures = $this->numbers($validated['figures'][$person->id], $fields);
+
+            if ($usual[$person->id] !== null) {
+                unset($figures['expected_rfqs']);
+            }
+
+            SourcingDayFigure::record($person->id, $validated['day'], $figures);
         }
 
         return back()->with('status', 'Saved the figures for '.CarbonImmutable::parse($validated['day'])->format('M d, Y').'.');

@@ -140,19 +140,20 @@
                         <tr>
                             <td class="fw-semibold text-nowrap">{{ $row['user']->name }}</td>
                             <td class="text-end report-typed-in">
-                                @if ($canEditFigures)
-                                    {{-- Picked from a dropdown for the day. The first choice sets none for
-                                         the day: their usual count (from their user page) counts, if they have one. --}}
-                                    @php
-                                        $expected = old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs_typed']);
-                                        $expected = $expected === null || $expected === '' ? null : (int) $expected;
-                                    @endphp
-                                    <select form="sourcing-figures-form" name="figures[{{ $row['user']->id }}][expected_rfqs]" class="form-select form-select-sm report-typed-in-select" aria-label="Number of expected RFQ, {{ $row['user']->name }}">
-                                        <option value="" @selected($expected === null)>{{ $row['expected_rfqs_usual'] !== null ? 'Usual · '.$row['expected_rfqs_usual'] : '—' }}</option>
-                                        @foreach (range(0, max(\App\Models\SourcingDayFigure::EXPECTED_RFQS_CHOICES, $expected ?? 0)) as $count)
-                                            <option value="{{ $count }}" @selected($expected === $count)>{{ $count }}</option>
-                                        @endforeach
-                                    </select>
+                                @if ($canEditFigures && $row['expected_rfqs_usual'] !== null)
+                                    {{-- Their count assigned on their user page: it counts, so there's nothing to type. --}}
+                                    <span class="fw-semibold" data-expected-assigned>{{ number_format($row['expected_rfqs_usual']) }}</span>
+                                    <span class="d-block small text-muted-soft">
+                                        @can('users.view')
+                                            <a href="{{ route('admin.users.show', $row['user']) }}#user-expected-rfqs" class="text-reset">Assigned</a>
+                                        @else
+                                            Assigned
+                                        @endcan
+                                    </span>
+                                @elseif ($canEditFigures)
+                                    {{-- Nothing assigned: typed in for the day. --}}
+                                    <input type="number" form="sourcing-figures-form" name="figures[{{ $row['user']->id }}][expected_rfqs]" value="{{ old("figures.{$row['user']->id}.expected_rfqs", $row['expected_rfqs_typed']) }}"
+                                           min="0" max="{{ \App\Models\SourcingDayFigure::MAX_FIGURE }}" step="1" inputmode="numeric" class="form-control form-control-sm report-typed-in-input" aria-label="Number of expected RFQ, {{ $row['user']->name }}">
                                 @else
                                     {{ $typedIn($row['expected_rfqs']) }}
                                 @endif
@@ -178,6 +179,6 @@
         'Finalized: the RFQs the person finalized (Sourcing\'s Finalize) in these dates.',
         'Pending: at the end of the last day, the RFQs they\'d been given and not yet finalized — those waiting for the customer\'s clarification are left out and counted on their own, and cancelled ones aren\'t counted.',
         'Received: the RFQs Senior Operations received from them — the ones they finalized, so it\'s the same as RFQ Finalized Successfully.',
-        'Yellow figures are typed in, not worked out: each Sourcing member enters their supplier calls on their dashboard. Expected RFQs are each person\'s usual count, set by an Admin on their user page, on each of their working days — unless Senior Operations sets a figure for the day here, which counts instead. A dash means nothing has been entered.',
+        'Yellow figures are typed in, not worked out: each Sourcing member enters their supplier calls on their dashboard. Expected RFQs are each person\'s expected RFQ count, assigned by an Admin on their user page, on each of their working days; for someone without one, it\'s typed in here for the day. A dash means nothing has been entered.',
     ]])
 @endsection

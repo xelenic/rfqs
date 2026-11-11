@@ -39,9 +39,9 @@ class SourcingDayFigure extends Model
     public const MAX_FIGURE = 100000;
 
     /**
-     * The Sourcing Summary's "Number of expected RFQ" is picked from a
-     * dropdown, 0 up to this (since 2026-11-12, at the user's request); a
-     * figure saved above it is offered too, so it's never lost.
+     * A Sourcing member's expected RFQ count is picked on their user page
+     * from a dropdown, 0 up to this (SourcingExpectedRfq); a count saved
+     * above it is offered too, so it's never lost.
      */
     public const EXPECTED_RFQS_CHOICES = 50;
 

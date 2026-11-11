@@ -104,17 +104,17 @@ class UserController extends Controller implements HasMiddleware
             // A Sourcing member's usual expected RFQs a working day, each
             // version latest first — for an Admin to set.
             'expectedRfqVersions' => $user->hasRole('Sourcing')
-                ? SourcingExpectedRfq::query()->where('user_id', $user->id)->with('setBy')->orderByDesc('starts_on')->get()
+                ? SourcingExpectedRfq::query()->where('user_id', $user->id)->orderByDesc('starts_on')->get()
                 : collect(),
         ]);
     }
 
     /**
-     * How many RFQs a Sourcing member is usually expected to hand in a
-     * working day, from a day on (today, unless another is picked) — the
-     * Sourcing Summary's figure on any day of theirs nobody set one for.
-     * Blank sets none from then on. Admin only, from the member's page. See
-     * SourcingExpectedRfq.
+     * A Sourcing member's expected RFQ count — how many RFQs they're expected
+     * to hand in a working day — the Sourcing Summary's figure (and its
+     * dropdown's) on any day of theirs nobody set one for. Blank sets none.
+     * The first count counts for past days too; a change, from today on
+     * (SourcingExpectedRfq::setFor()). Admin only, from the member's page.
      */
     public function updateExpectedRfqs(Request $request, User $user): RedirectResponse
     {
@@ -123,19 +123,16 @@ class UserController extends Controller implements HasMiddleware
 
         $validated = $request->validateWithBag('expected_rfqs', [
             'expected_rfqs' => ['nullable', 'integer', 'min:0', 'max:'.SourcingDayFigure::MAX_FIGURE],
-            'starts_on' => ['required', 'date_format:Y-m-d'],
         ], [
-            'expected_rfqs.*' => 'Pick how many RFQs from the list.',
-            'starts_on.*' => 'Pick the day it starts from.',
+            'expected_rfqs.*' => 'Pick the expected RFQ count from the list.',
         ]);
 
-        $expected = $validated['expected_rfqs'] ?? null;
-        SourcingExpectedRfq::put($user->id, $expected === null ? null : (int) $expected, $validated['starts_on'], $request->user()->id);
-        $from = CarbonImmutable::parse($validated['starts_on'])->format('M d, Y');
+        $expected = isset($validated['expected_rfqs']) ? (int) $validated['expected_rfqs'] : null;
+        SourcingExpectedRfq::setFor($user->id, $expected, $request->user()->id);
 
         return redirect()->route('admin.users.show', $user)->with('status', $expected === null
-            ? "{$user->name} has no usual expected RFQs from {$from}."
-            : "{$user->name} is expected to hand in {$expected} RFQ".((int) $expected === 1 ? '' : 's')." a working day from {$from}.");
+            ? "{$user->name} has no expected RFQ count now."
+            : "{$user->name}'s expected RFQ count is {$expected} a working day.");
     }
 
     /**

@@ -89,7 +89,7 @@
     @include('admin.reports.performance._how_counted', ['points' => [
         'A day is listed once anyone\'s figures have been typed in for it: a Sourcing member\'s supplier calls, or expected RFQs set by Senior Operations.',
         'Received: the RFQs Senior Operations received from Sourcing that day — the ones finalized, each RFQ once — as on the day\'s sheet.',
-        'Yellow figures are added up across the people who entered them. Expected RFQs count each person\'s usual figure (set on their user page) on a working day nobody set one for. A dash means there\'s none.',
+        'Yellow figures are added up across the people who entered them. Expected RFQs count each person\'s expected RFQ count assigned on their user page on their working days, else what was typed in for them. A dash means there\'s none.',
         'View opens the day\'s full sheet, worked out from the RFQs. Deleting a day removes only its typed-in figures.',
     ]])
 @endsection

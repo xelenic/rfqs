@@ -191,21 +191,22 @@ class PerformanceReports
         $typedIn = SourcingDayFigure::query()->whereIn('user_id', $ids)->where('day', '>=', $from)->where('day', '<=', $to)->get()->groupBy('user_id');
         $added = fn (Collection $rows, string $field) => $rows->whereNotNull($field)->isEmpty() ? null : (int) $rows->sum($field);
         $expected = $this->expectedRfqs($people, self::daysBetween($from, $to));
-        $usual = SourcingExpectedRfq::lookup($ids);
+        $usual = $this->usualExpectedRfqs($people, $to);
 
-        $rows = $daily['people']->map(function (array $summary) use ($typedIn, $added, $expected, $usual, $to) {
+        $rows = $daily['people']->map(function (array $summary) use ($typedIn, $added, $expected, $usual) {
             $person = $summary['user'];
             $mine = $typedIn->get($person->id, collect());
 
             return $summary + ['received' => $summary['finalized']]
                 + collect(array_keys(SourcingDayFigure::CALL_FIELDS))->mapWithKeys(fn (string $field) => [$field => $added($mine, $field)])->all()
                 + [
-                    // Day by day, what was typed in, else their usual count (expectedRfqs()).
+                    // Day by day, their assigned count, else what was typed in (expectedRfqs()).
                     'expected_rfqs' => self::addedUp($expected[$person->id] ?? []),
-                    // Only what was typed in, and their usual count on the
-                    // (last) day — for the one day's dropdown.
+                    // Only what was typed in, and their assigned count on the
+                    // (last) day — for the one day's sheet: the assigned
+                    // count shown, else a box for the typed-in figure.
                     'expected_rfqs_typed' => $added($mine, 'expected_rfqs'),
-                    'expected_rfqs_usual' => $this->isWorkingDay($to, $person) ? $usual($person->id, $to) : null,
+                    'expected_rfqs_usual' => $usual[$person->id],
                 ];
         })->values();
 
@@ -217,10 +218,28 @@ class PerformanceReports
     }
 
     /**
-     * Each of $people's expected RFQs on each of $days ("Y-m-d"): the figure
-     * typed in for the day (SourcingDayFigure), else — on one of their working
-     * days (Setting::weekOn()) — their usual count, set on their user page
-     * (SourcingExpectedRfq). Null where there's neither.
+     * Each of $people's usual expected RFQs on $day ("Y-m-d"), set on their
+     * user page (SourcingExpectedRfq) — null for anyone without one, or for
+     * whom it isn't a working day (Setting::weekOn()).
+     *
+     * @param  Collection<int, User>  $people
+     * @return array<int, ?int>
+     */
+    public function usualExpectedRfqs(Collection $people, string $day): array
+    {
+        $usual = SourcingExpectedRfq::lookup($people->pluck('id')->all());
+
+        return $people->mapWithKeys(fn (User $person) => [
+            $person->id => $this->isWorkingDay($day, $person) ? $usual($person->id, $day) : null,
+        ])->all();
+    }
+
+    /**
+     * Each of $people's expected RFQs on each of $days ("Y-m-d"): on one of
+     * their working days (Setting::weekOn()), the count assigned on their
+     * user page (SourcingExpectedRfq), if they have one; else the figure
+     * typed in for the day (SourcingDayFigure). Null where there's neither.
+     * Since 2026-11-12, at the user's request, an assigned count comes first.
      *
      * @param  Collection<int, User>  $people
      * @param  array<int, string>  $days
@@ -235,7 +254,7 @@ class PerformanceReports
         $usual = SourcingExpectedRfq::lookup($ids);
 
         return $people->mapWithKeys(fn (User $person) => [$person->id => collect($days)->mapWithKeys(fn (string $day) => [
-            $day => $typedIn->get($person->id)?->get($day) ?? ($this->isWorkingDay($day, $person) ? $usual($person->id, $day) : null),
+            $day => ($this->isWorkingDay($day, $person) ? $usual($person->id, $day) : null) ?? $typedIn->get($person->id)?->get($day),
         ])->all()])->all();
     }
 

@@ -309,67 +309,44 @@
                     </div>
                 </div>
 
-                {{-- How many RFQs they're usually expected to hand in a working
-                     day: the Sourcing Summary's figure on any day nobody set one
-                     for (SourcingExpectedRfq). Kept as versions, each from its
-                     day, so past days keep theirs. An Admin sets it. --}}
+                {{-- Their expected RFQ count: how many RFQs they're expected to
+                     hand in a working day — the Sourcing Summary's figure, and
+                     its dropdown's, on any day nobody set one for
+                     (SourcingExpectedRfq). An Admin sets it. --}}
                 @php
-                    $today = \App\Models\Setting::today();
-                    $currentExpected = $expectedRfqVersions->first(fn ($version) => $version->starts_on <= $today);
-                    $nextExpected = $expectedRfqVersions->filter(fn ($version) => $version->starts_on > $today)->last();
-                    $expectedDay = fn (string $day) => \Carbon\CarbonImmutable::parse($day)->format('M d, Y');
-                    $expectedCount = fn (?int $count) => $count === null ? 'None' : $count.' RFQ'.($count === 1 ? '' : 's').' a working day';
+                    $currentExpected = $expectedRfqVersions->first(fn ($version) => $version->starts_on <= \App\Models\Setting::today())?->expected_rfqs;
                 @endphp
                 <div class="card mb-4" id="user-expected-rfqs">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <i class="bi bi-bullseye"></i> Expected RFQs
+                        <i class="bi bi-bullseye"></i> Expected RFQ count
                     </div>
                     <div class="card-body">
                         <p class="small text-muted-soft">
-                            How many RFQs {{ $user->name }} is usually expected to hand in on a working day — the Sourcing Summary's Number of expected RFQ on each of their working days, unless a figure is set for the day itself on the report.
-                        </p>
-                        <p class="mb-3">
-                            <span class="fw-semibold" data-expected-now>{{ $expectedCount($currentExpected?->expected_rfqs) }}</span>
-                            @if ($currentExpected)
-                                <span class="text-muted-soft small">since {{ $expectedDay($currentExpected->starts_on) }}</span>
-                            @endif
-                            @if ($nextExpected)
-                                <span class="d-block small text-muted-soft">From {{ $expectedDay($nextExpected->starts_on) }}: {{ $expectedCount($nextExpected->expected_rfqs) }}</span>
-                            @endif
+                            How many RFQs {{ $user->name }} is expected to hand in on a working day. The Sourcing Summary shows it for them, already picked in its dropdown — it can still be changed there for a single day.
                         </p>
                         @if (auth()->user()->hasRole('Admin'))
                             @php
-                                $expectedShown = old('expected_rfqs', $currentExpected?->expected_rfqs);
+                                $expectedShown = old('expected_rfqs', $currentExpected);
                                 $expectedShown = $expectedShown === null || $expectedShown === '' ? null : (int) $expectedShown;
                             @endphp
-                            <form method="POST" action="{{ route('admin.users.expected-rfqs', $user) }}" class="d-flex flex-wrap align-items-end gap-2">
+                            <form method="POST" action="{{ route('admin.users.expected-rfqs', $user) }}" class="d-flex flex-wrap align-items-start gap-2">
                                 @csrf
                                 @method('PATCH')
-                                <div>
-                                    <label for="expected-rfqs-count" class="form-label small mb-1">RFQs a working day</label>
-                                    <select name="expected_rfqs" id="expected-rfqs-count" class="form-select @error('expected_rfqs', 'expected_rfqs') is-invalid @enderror" style="width: 9rem;">
+                                <div style="min-width: 180px;">
+                                    <select name="expected_rfqs" class="form-select @error('expected_rfqs', 'expected_rfqs') is-invalid @enderror" aria-label="Expected RFQ count">
                                         <option value="" @selected($expectedShown === null)>None</option>
                                         @foreach (range(0, max(\App\Models\SourcingDayFigure::EXPECTED_RFQS_CHOICES, $expectedShown ?? 0)) as $count)
                                             <option value="{{ $count }}" @selected($expectedShown === $count)>{{ $count }}</option>
                                         @endforeach
                                     </select>
-                                </div>
-                                <div>
-                                    <label for="expected-rfqs-from" class="form-label small mb-1">From</label>
-                                    <input type="date" name="starts_on" id="expected-rfqs-from" value="{{ old('starts_on', $today) }}" class="form-control @error('starts_on', 'expected_rfqs') is-invalid @enderror" style="width: auto;">
+                                    @error('expected_rfqs', 'expected_rfqs')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                                 <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save</button>
                             </form>
-                            @if ($errors->expected_rfqs->any())
-                                <div class="text-danger small mt-2" role="alert">{{ $errors->expected_rfqs->first() }}</div>
-                            @endif
-                        @endif
-                        @if ($expectedRfqVersions->count() > 1)
-                            <ul class="list-unstyled small text-muted-soft mt-3 mb-0" data-expected-history>
-                                @foreach ($expectedRfqVersions->take(6) as $version)
-                                    <li>From {{ $expectedDay($version->starts_on) }}: {{ $expectedCount($version->expected_rfqs) }}@if ($version->setBy) · set by {{ $version->setBy->name }}@endif</li>
-                                @endforeach
-                            </ul>
+                        @else
+                            <p class="mb-0 fw-semibold" data-expected-now>{{ $currentExpected === null ? 'None' : $currentExpected.' a working day' }}</p>
                         @endif
                     </div>
                 </div>

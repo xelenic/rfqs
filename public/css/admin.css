@@ -7552,12 +7552,6 @@ tr.is-deactivated > td:not(:last-child) {
   text-align: right;
 }
 
-/* The expected RFQs' dropdown, beside the typed-in boxes. */
-.report-typed-in-select {
-  width: 6rem;
-  margin-left: auto;
-}
-
 /* Print the report alone: no sidebar, filters or tabs. */
 @media print {
   .sidebar,
@@ -7581,13 +7575,6 @@ tr.is-deactivated > td:not(:last-child) {
     border: 0;
     background: transparent;
     appearance: textfield;
-  }
-
-  .report-typed-in-select {
-    border: 0;
-    background: transparent;
-    appearance: none;
-    text-align: right;
   }
 }
 
