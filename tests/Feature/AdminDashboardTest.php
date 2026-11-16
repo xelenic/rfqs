@@ -157,6 +157,30 @@ it('shows who in Data Entry is working, and who\'s idle with parts waiting, for 
 
 // ---- what's waiting --------------------------------------------------------
 
+it('shows under Open RFQs how many are critical, urgent and high, each in its colour, and the others', function () {
+    Rfq::factory()->create(['priority_level' => 'Critical']);
+    Rfq::factory()->count(2)->create(['priority_level' => 'Urgent']);
+    Rfq::factory()->create(['priority_level' => 'Medium']);
+    Rfq::factory()->create(['priority_level' => 'Low']);
+    Rfq::factory()->create(['priority_level' => 'Critical', 'status' => 'Completed']);
+
+    expect(adminKpi(adminOverviewNow(), 'Open RFQs'))->toMatchArray([
+        'value' => 5,
+        'caption' => '1 critical · 2 urgent · 0 high · 2 others',
+        'breakdown' => [
+            ['text' => '1 critical', 'count' => 1, 'class' => 'priority-chip-critical'],
+            ['text' => '2 urgent', 'count' => 2, 'class' => 'priority-chip-urgent'],
+            ['text' => '0 high', 'count' => 0, 'class' => 'priority-chip-high'],
+            ['text' => '2 others', 'count' => 2, 'class' => null],
+        ],
+    ]);
+
+    adminDashboard()
+        ->assertSee('<span class="kpi-breakdown-item priority-chip-critical is-counted">', false)
+        ->assertSee('<span class="kpi-breakdown-item priority-chip-high ">', false)
+        ->assertSeeInOrder(['Open RFQs', '1 critical', '2 urgent', '0 high', '2 others', 'Pending tasks']);
+});
+
 it('counts what\'s waiting at each stage, each leading to Admin\'s view of that page', function () {
     Rfq::factory()->count(2)->create(['priority_level' => 'Urgent']);
     Rfq::factory()->create(['priority_level' => 'Low']);
@@ -166,7 +190,7 @@ it('counts what\'s waiting at each stage, each leading to Admin\'s view of that 
 
     expect($awaiting)->toMatchArray(['count' => 3, 'url' => route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'hbds-operations'])])
         ->and(adminKpi($overview, 'Pending tasks')['value'])->toBe(collect($overview['pipeline'])->sum('count'))
-        ->and(adminKpi($overview, 'Open RFQs'))->toMatchArray(['value' => 3, 'caption' => '2 urgent', 'alert' => true])
+        ->and(adminKpi($overview, 'Open RFQs'))->toMatchArray(['value' => 3, 'caption' => '0 critical · 2 urgent · 0 high · 1 other', 'alert' => true])
         ->and($overview['priorities'])->toBe(['Critical' => 0, 'Urgent' => 2, 'High' => 0, 'Medium' => 0, 'Low' => 1, 'Minimal' => 0, 'Trivial' => 0]);
 
     adminDashboard()->assertSee('href="'.e(route('admin.rfqs.index', ['status' => 'Pending', 'role' => 'hbds-operations'])).'" class="pipeline-label"', false);

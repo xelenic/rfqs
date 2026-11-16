@@ -249,8 +249,7 @@ class DashboardController extends Controller
         $floor = $this->dataEntryFloor($now, $today);
         $idle = $floor['people']->where('state', 'Idle')->sortByDesc('seconds')->values();
 
-        // P1 Critical, P2 Urgent and P3 High, the most pressing first.
-        $pressing = ['Critical', 'Urgent', 'High'];
+        $pressing = Rfq::PRESSING_PRIORITIES;
         $urgentCounts = Rfq::query()->where('status', 'Pending')->whereIn('priority_level', $pressing)
             ->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
         $urgent = Rfq::query()
@@ -413,6 +412,31 @@ class DashboardController extends Controller
     }
 
     /**
+     * The small line under Admin's Open RFQs figure: how many open RFQs are
+     * at each of Rfq::PRESSING_PRIORITIES ("1 critical", "2 urgent",
+     * "5 high"), even when none are, then the rest as "28 others". Each
+     * level carries its priority-chip class, so it's drawn in its own colour.
+     *
+     * @param  Collection<string, int>  $byPriority  open RFQs, keyed by priority_level
+     * @return array<int, array{text: string, count: int, class: string|null}>
+     */
+    protected function openByPressingPriority(Collection $byPriority, int $openCount): array
+    {
+        $pressing = collect(Rfq::PRESSING_PRIORITIES)->map(fn (string $priority) => [
+            'text' => (int) ($byPriority[$priority] ?? 0).' '.strtolower($priority),
+            'count' => (int) ($byPriority[$priority] ?? 0),
+            'class' => 'priority-chip-'.strtolower($priority),
+        ]);
+        $others = $openCount - $pressing->sum('count');
+
+        return $pressing->push([
+            'text' => trans_choice('1 other|:count others', $others, ['count' => $others]),
+            'count' => $others,
+            'class' => null,
+        ])->all();
+    }
+
+    /**
      * What Admin's dashboard shows: the headline figures (kpis), every task
      * someone's on right now (ongoingTasks()), what's waiting at each stage
      * (pipeline()), how each tracked person is doing (teamPerformance()),
@@ -441,6 +465,8 @@ class DashboardController extends Controller
         $open = Rfq::query()->where('status', 'Pending');
         $byPriority = (clone $open)->selectRaw('priority_level, count(*) as total')->groupBy('priority_level')->pluck('total', 'priority_level');
         $openUrgent = (int) collect(Rfq::URGENT_PRIORITIES)->sum(fn (string $priority) => $byPriority[$priority] ?? 0);
+        $openCount = (clone $open)->count();
+        $openBreakdown = $this->openByPressingPriority($byPriority, $openCount);
         $finished = RfqStep::query()->where('ended_by_role', true)->whereBetween('ended_at', $window)->count();
         $closed = Rfq::query()->whereBetween('bd_closed_at', $window)->count();
         $overdue = $ongoing->where('state', 'overdue')->count();
@@ -448,7 +474,7 @@ class DashboardController extends Controller
 
         return [
             'kpis' => [
-                ['label' => 'Open RFQs', 'value' => (clone $open)->count(), 'caption' => $openUrgent.' urgent', 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => $openUrgent > 0, 'url' => route('admin.rfqs.index', ['status' => 'Pending'])],
+                ['label' => 'Open RFQs', 'value' => $openCount, 'caption' => collect($openBreakdown)->pluck('text')->join(' · '), 'breakdown' => $openBreakdown, 'icon' => 'bi-folder2-open', 'tone' => '', 'alert' => $openUrgent > 0, 'url' => route('admin.rfqs.index', ['status' => 'Pending'])],
                 ['label' => 'Pending tasks', 'value' => collect($pipeline)->sum('count'), 'caption' => 'Waiting across the workflow', 'icon' => 'bi-list-check', 'tone' => 'violet', 'alert' => false, 'url' => '#pending-by-stage'],
                 ['label' => 'In progress', 'value' => $ongoing->count(), 'caption' => trans_choice('1 person working|:count people working', $working, ['count' => $working]), 'icon' => 'bi-play-circle', 'tone' => 'teal', 'alert' => false, 'url' => '#ongoing-tasks'],
                 ['label' => 'Overdue', 'value' => $overdue, 'caption' => 'Past their target', 'icon' => 'bi-alarm', 'tone' => 'danger', 'alert' => $overdue > 0, 'url' => '#ongoing-tasks'],

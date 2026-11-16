@@ -1257,6 +1257,35 @@ h6, .h6 { font-size: 0.85rem; }
   transform: translateY(-1px);
 }
 
+/* Admin's Open RFQs card, under its number: a dot and count per pressing
+   level (Rfq::PRESSING_PRIORITIES), in that level's own colour when any are
+   open, then the rest. */
+.kpi-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.55rem;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  color: var(--rfq-text-muted);
+}
+
+.kpi-breakdown-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.kpi-breakdown-item.is-counted {
+  color: var(--dot-text, var(--dot));
+  font-weight: 600;
+}
+
+.kpi-breakdown .priority-chip-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+}
+
 /* A long table keeps to its card, scrolling within it. */
 .dash-scroll {
   max-height: 460px;

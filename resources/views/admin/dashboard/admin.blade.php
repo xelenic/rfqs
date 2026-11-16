@@ -42,7 +42,21 @@
                             <span class="stat-icon {{ $kpi['tone'] ? 'stat-icon-'.$kpi['tone'] : '' }}"><i class="bi {{ $kpi['icon'] }}"></i></span>
                         </div>
                         <div class="stat-value">{{ $kpi['value'] }}</div>
-                        <div class="stat-caption {{ $kpi['alert'] ? 'text-danger fw-semibold' : '' }}">{{ $kpi['caption'] }}</div>
+                        @isset($kpi['breakdown'])
+                            {{-- Open RFQs: a count per pressing level, in its colour, then the rest. --}}
+                            <div class="kpi-breakdown" aria-label="{{ $kpi['caption'] }}">
+                                @foreach ($kpi['breakdown'] as $part)
+                                    <span class="kpi-breakdown-item {{ $part['class'] }} {{ $part['class'] && $part['count'] > 0 ? 'is-counted' : '' }}">
+                                        @if ($part['class'])
+                                            <span class="priority-chip-dot"></span>
+                                        @endif
+                                        {{ $part['text'] }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="stat-caption {{ $kpi['alert'] ? 'text-danger fw-semibold' : '' }}">{{ $kpi['caption'] }}</div>
+                        @endisset
                     </div>
                 </a>
             </div>

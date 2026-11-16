@@ -61,6 +61,14 @@ class Rfq extends Model
     public const URGENT_PRIORITIES = ['Critical', 'Urgent'];
 
     /**
+     * The levels the Critical monitor lists, and Admin's Open RFQs card counts
+     * one by one: P1 Critical, P2 Urgent and P3 High, the most pressing first.
+     *
+     * @var array<int, string>
+     */
+    public const PRESSING_PRIORITIES = ['Critical', 'Urgent', 'High'];
+
+    /**
      * The selectable statuses. An RFQ starts Pending and is marked
      * Completed once it's been fulfilled.
      *
