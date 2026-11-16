@@ -114,10 +114,10 @@ it('counts their approvals and send-backs over the period, how long an approval 
         ->and(array_sum($overview['decisions']['series'][0]['values']))->toBe(1)
         ->and(array_sum($overview['decisions']['series'][1]['values']))->toBe(1)
         ->and($overview['latest']->pluck('approved')->all())->toBe([false, true])
-        ->and($overview['latest'][0]['detail'])->toBe('to GM Assistant — Wrong payment terms');
+        ->and($overview['latest'][0]['detail'])->toBe('to GMs Operations — Wrong payment terms');
 
     gmDashboard($gm)
-        ->assertSee('Sent back to: GM Assistant 1')
+        ->assertSee('Sent back to: GMs Operations 1')
         ->assertSeeInOrder(['Your latest decisions', 'Sent back', 'RFQ6102', 'Approved', 'RFQ6101']);
 });
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\RfqReadyToShare;
 use App\TaskMessages;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -19,6 +20,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 class Rfq extends Model
 {
@@ -4936,7 +4938,9 @@ class Rfq extends Model
      * part not yet closed on its own — the true end of the lifecycle.
      * Idempotent. Reuses the existing 'Completed' status value (see
      * statusLabel() for why the display text says "Closed"). $referenceCode is
-     * kept with the RFQ, and with every part closed along with it.
+     * kept with the RFQ, and with every part closed along with it. Whoever
+     * created it is then emailed that it's ready to share with the customer
+     * (emailCreatorReadyToShare()).
      *
      * Caller is responsible for verifying stage === 'bd_closing'.
      */
@@ -4967,6 +4971,29 @@ class Rfq extends Model
         ]);
 
         $this->syncSteps();
+        $this->emailCreatorReadyToShare();
+    }
+
+    /**
+     * Emails whoever created this RFQ — Business Development — that it's
+     * ready to share with the customer (RfqReadyToShare), since 2026-11-16 at
+     * the user's request. Nobody's emailed for an RFQ whose creator's account
+     * is gone or deactivated. A mail that can't go is reported, and the RFQ
+     * stays closed.
+     */
+    private function emailCreatorReadyToShare(): void
+    {
+        $creator = $this->creator()->first();
+
+        if ($creator === null || $creator->isDeactivated()) {
+            return;
+        }
+
+        try {
+            $creator->notify(new RfqReadyToShare($this));
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**

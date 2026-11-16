@@ -56,7 +56,7 @@ it('gives the Head of Business Development a dashboard of their own review', fun
         ->assertSee('Sent back to you')
         ->assertSee('Your decisions')
         ->assertSee('Where open RFQs are')
-        ->assertSee('Sent on by Senior Operations');
+        ->assertSee('Sent on by HBDs Operations');
 });
 
 it('lists what waits on their review — Urgent first — and counts their approvals and send-backs', function () {

@@ -452,7 +452,8 @@ class DashboardController extends Controller
                 ['label' => 'Pending tasks', 'value' => collect($pipeline)->sum('count'), 'caption' => 'Waiting across the workflow', 'icon' => 'bi-list-check', 'tone' => 'violet', 'alert' => false, 'url' => '#pending-by-stage'],
                 ['label' => 'In progress', 'value' => $ongoing->count(), 'caption' => trans_choice('1 person working|:count people working', $working, ['count' => $working]), 'icon' => 'bi-play-circle', 'tone' => 'teal', 'alert' => false, 'url' => '#ongoing-tasks'],
                 ['label' => 'Overdue', 'value' => $overdue, 'caption' => 'Past their target', 'icon' => 'bi-alarm', 'tone' => 'danger', 'alert' => $overdue > 0, 'url' => '#ongoing-tasks'],
-                ['label' => $period['isToday'] ? 'Done today' : 'Finished', 'value' => $finished, 'caption' => trans_choice('1 RFQ closed|:count RFQs closed', $closed, ['count' => $closed]), 'icon' => 'bi-check2-circle', 'tone' => 'success', 'alert' => false, 'url' => '#throughput'],
+                // RFQs closed up top, the tasks finished under it (since 2026-11-16, at the user's request).
+                ['label' => $period['isToday'] ? 'Closed today' : 'RFQs closed', 'value' => $closed, 'caption' => trans_choice('1 task finished|:count tasks finished', $finished, ['count' => $finished]), 'icon' => 'bi-check2-circle', 'tone' => 'success', 'alert' => false, 'url' => '#throughput'],
                 ['label' => 'Data Entry idle', 'value' => $dataEntry['idleCount'], 'caption' => $dataEntry['idleSeconds'] > 0 ? Setting::durationLabel($dataEntry['idleSeconds']).' idle in all' : 'Nobody idle now', 'icon' => 'bi-hourglass-bottom', 'tone' => 'warning', 'alert' => $dataEntry['idleCount'] > 0, 'url' => '#data-entry-floor'],
             ],
             'ongoing' => $ongoing,

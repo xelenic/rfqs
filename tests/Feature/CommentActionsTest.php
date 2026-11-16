@@ -264,7 +264,7 @@ it('keeps an ordinary comment plain, and its replies under it', function () {
         ->toContain('On it — quotes by noon')
         // Each name is still a hover card, with its role beside it.
         ->toContain('data-user-id="'.$ops->id.'"')
-        ->toContain('<span class="badge badge-soft-secondary rfq-comment-role">Senior Operations</span>');
+        ->toContain('<span class="badge badge-soft-secondary rfq-comment-role">HBDs Operations</span>');
 });
 
 it('says so when there are no comments yet', function () {

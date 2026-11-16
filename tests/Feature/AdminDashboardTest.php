@@ -69,7 +69,7 @@ it('gives Admin a dashboard of its own, without the users, roles and permissions
         ->assertDontSee('<div class="stat-label">Users</div>', false)
         ->assertDontSee('<div class="stat-label">Roles</div>', false)
         ->assertDontSee('<div class="stat-label">Permissions</div>', false)
-        ->assertSeeInOrder(['Open RFQs', 'Pending tasks', 'In progress', 'Overdue', 'Finished', 'Data Entry idle'])
+        ->assertSeeInOrder(['Open RFQs', 'Pending tasks', 'In progress', 'Overdue', 'RFQs closed', 'Data Entry idle'])
         ->assertSeeInOrder(['id="ongoing-tasks"', 'id="pending-by-stage"', 'id="team-performance"', 'id="data-entry-floor"', 'id="throughputChart"', 'id="workloadChart"', 'id="rfqActivityChart"'], false)
         ->assertSee('js/admin-dashboard.js', false)
         ->assertSee('Nobody\'s on a task right now.', false);
@@ -114,7 +114,7 @@ it('shows how each tracked person is doing: finished, how long each took, and on
         ->and($rows[$sam->id])->toMatchArray(['done' => 0, 'average' => null, 'onTime' => null, 'inHand' => 1, 'state' => 'Working', 'detail' => 'RFQ3102'])
         // Most finished first.
         ->and($overview['team']->first()['user']->id)->toBe($riley->id)
-        ->and(adminKpi($overview, 'Finished')['value'])->toBe(1)
+        ->and(adminKpi($overview, 'RFQs closed')['caption'])->toBe('1 task finished')
         // The charts: a column a day over the 7 days, today's last; and each person's two bars.
         ->and($overview['throughput']['total'])->toBe(1)
         ->and(collect($overview['throughput']['series'])->firstWhere('label', 'Sourcing')['values'])->toHaveCount(7)
@@ -201,6 +201,20 @@ it('covers the last 7 days to begin with, offering Today, 30 and 90 days, and da
     expect($response->viewData('period'))->toMatchArray(['key' => 'week', 'from' => '2026-09-29', 'to' => '2026-10-05']);
 });
 
+it('shows the RFQs closed in the period as the closed card\'s number, with the tasks finished under it', function () {
+    $closed = fn (string $at) => Rfq::factory()->create(['status' => 'Completed', 'stage' => 'closed', 'bd_closed_at' => Carbon::parse($at, 'Asia/Colombo')]);
+    $closed('2026-10-04 11:00');
+    $closed('2026-10-03 11:00');
+    $closed('2026-09-20 11:00');
+    $riley = userWithRole('Sourcing');
+    partFinishedOn('2026-10-05', $riley);
+
+    expect(adminKpi(adminOverviewNow(), 'RFQs closed'))->toMatchArray(['value' => 2, 'caption' => '1 task finished'])
+        ->and(adminKpi(adminOverviewNow(['period' => 'month']), 'RFQs closed')['value'])->toBe(3);
+
+    adminDashboard()->assertSeeInOrder(['RFQs closed', '<div class="stat-value">2</div>', '1 task finished'], false);
+});
+
 it('scopes what\'s been finished, the team and the charts to the period — what\'s open stays as of now', function () {
     $riley = userWithRole('Sourcing');
     partFinishedOn('2026-09-25', $riley);
@@ -211,9 +225,9 @@ it('scopes what\'s been finished, the team and the charts to the period — what
     $month = adminOverviewNow(['period' => 'month']);
     $today = adminOverviewNow(['period' => 'today']);
 
-    expect(adminKpi($week, 'Finished')['value'])->toBe(1)
-        ->and(adminKpi($month, 'Finished')['value'])->toBe(2)
-        ->and(adminKpi($today, 'Done today')['value'])->toBe(1)
+    expect(adminKpi($week, 'RFQs closed')['caption'])->toBe('1 task finished')
+        ->and(adminKpi($month, 'RFQs closed')['caption'])->toBe('2 tasks finished')
+        ->and(adminKpi($today, 'Closed today')['caption'])->toBe('1 task finished')
         ->and($week['team']->first()['done'])->toBe(1)
         ->and($month['team']->first()['done'])->toBe(2)
         ->and($month['workload']['done'])->toBe([2])
@@ -253,7 +267,7 @@ it('covers dates of your own, and the RFQs created in them', function () {
 
     $overview = $response->viewData('overview');
 
-    expect(adminKpi($overview, 'Finished')['value'])->toBe(1)
+    expect(adminKpi($overview, 'RFQs closed')['caption'])->toBe('1 task finished')
         ->and($overview['throughput']['dates'])->toBe(['Thu, Sep 24', 'Fri, Sep 25', 'Sat, Sep 26'])
         ->and($response->viewData('rfqActivity'))->toMatchArray(['labels' => ['Sep 24', 'Sep 25', 'Sep 26'], 'pending' => [0, 1, 0], 'completed' => [0, 0, 0]]);
 });

@@ -194,7 +194,7 @@ it('lets the General Manager reject all the way back to GM Assistant, leaving ev
 
     test()->actingAs($people['gm'])
         ->patch(route('admin.rfqs.reject-gm', $rfq), ['part' => 1, 'target_stage' => 'gm_assistant', 'reason' => 'Payment terms are wrong'])
-        ->assertSessionHas('status', 'Sent RFQ1001-P1 of P2 back to GM Assistant.');
+        ->assertSessionHas('status', 'Sent RFQ1001-P1 of P2 back to GMs Operations.');
 
     $one = $rfq->refresh()->assigneeForPart(1)->pivot;
 
@@ -427,7 +427,7 @@ it('records a General Manager rejection on the timeline the same way', function 
     expect(substr_count($timeline, 'Fix the payment terms'))->toBe(1)
         ->and(Str::betweenFirst($timeline, 'rfq-comment-role">General Manager', 'rfq-comment-time'))
         ->toContain('Rejected')
-        ->toContain('Returned to GM Assistant');
+        ->toContain('Returned to GMs Operations');
 });
 
 it('clears a pending reject record once the RFQ is approved past it again, whoever rejected it', function () {

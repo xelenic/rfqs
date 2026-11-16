@@ -129,7 +129,7 @@ it('lets Data Entry send a part the General Manager sent back straight back to t
 
     $row = Str::betweenFirst(returnsPage($people['dataEntry']), '<td class="text-nowrap">RFQ1001-P2 of P2</td>', '</tr>');
     expect($row)->toContain('Send back to General Manager')
-        ->toContain('It skips Sourcing (finalize), Senior Operations (2nd review), Head of Business Development and GM Assistant');
+        ->toContain('It skips Sourcing (finalize), Senior Operations (2nd review), Head of Business Development and GMs Operations');
 
     sendStraightBack($people['dataEntry'], $rfq, ['part' => 2, 'target' => 'data_entry', 'from' => 'gm_review'])
         ->assertSessionHas('status', 'Sent RFQ1001-P2 of P2 straight back to General Manager.');

@@ -53,7 +53,7 @@ it('offers all the active staff to @mention — each with their roles and pictur
     $list = collect(mentionListOn(Rfq::factory()->create(), $viewer))->keyBy('name');
 
     expect($list->keys()->all())->toBe(['Alex Fernando', 'Morgan Ito', 'Olivia Park', 'Quinn Alder', 'Riley Chen'])
-        ->and($list['Morgan Ito'])->toMatchArray(['id' => $morgan->id, 'role' => 'Data Entry, GM Assistant', 'avatar' => $morgan->avatarUrl(), 'initial' => 'M'])
+        ->and($list['Morgan Ito'])->toMatchArray(['id' => $morgan->id, 'role' => 'Data Entry, GMs Operations', 'avatar' => $morgan->avatarUrl(), 'initial' => 'M'])
         ->and($list['Quinn Alder'])->toMatchArray(['role' => 'General Manager', 'avatar' => null, 'initial' => 'Q'])
         ->and($list['Alex Fernando']['role'])->toBe('HR Executive');
 });

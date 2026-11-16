@@ -77,18 +77,18 @@ it('keeps a limited role to the roles it may message — on send, in New message
     expect($riley->canMessage($dana))->toBeTrue()
         ->and($riley->canMessage($ops))->toBeTrue()
         ->and($riley->canMessage($morgan))->toBeFalse()
-        ->and($riley->messagingLimitText())->toBe('As Sourcing, you can message Admin, Data Entry and Senior Operations — and answer anyone who writes to you.');
+        ->and($riley->messagingLimitText())->toBe('As Sourcing, you can message Admin, Data Entry and HBDs Operations — and answer anyone who writes to you.');
 
     test()->actingAs($riley)->from(route('admin.messages.index'))
         ->post(route('admin.messages.store'), ['new_conversation' => '1', 'recipient_id' => $morgan->id, 'body' => 'Hi'])
         ->assertRedirect(route('admin.messages.index'))
-        ->assertSessionHasErrors(['recipient_id' => 'You can\'t message Morgan Ellis. As Sourcing, you can message Admin, Data Entry and Senior Operations — and answer anyone who writes to you.']);
+        ->assertSessionHasErrors(['recipient_id' => 'You can\'t message Morgan Ellis. As Sourcing, you can message Admin, Data Entry and HBDs Operations — and answer anyone who writes to you.']);
     test()->actingAs($riley)->postJson(route('admin.messages.store'), ['recipient_id' => $morgan->id, 'body' => 'Hi'])->assertStatus(422);
     test()->actingAs($riley)->post(route('admin.messages.store'), ['recipient_id' => $dana->id, 'body' => 'Hi'])->assertRedirect(route('admin.messages.show', $dana));
     expect(PrivateMessage::query()->pluck('recipient_id')->all())->toBe([$dana->id]);
 
     $html = test()->actingAs($riley)->get(route('admin.messages.index'))->assertOk()
-        ->assertSee('As Sourcing, you can message Admin, Data Entry and Senior Operations')
+        ->assertSee('As Sourcing, you can message Admin, Data Entry and HBDs Operations')
         ->getContent();
     expect(Str::betweenFirst($html, 'class="new-message-people', '</div>'))
         ->toContain('data-person="'.$dana->id.'"')->toContain('data-person="'.$ops->id.'"')
