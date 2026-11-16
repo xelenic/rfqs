@@ -114,7 +114,8 @@ class PerformanceReportController extends Controller
         $people = $this->chosen($request, $everyone);
 
         return view('admin.reports.performance.sourcing_summary', [
-            'report' => (new PerformanceReports)->sourcingSummary($people, $from, $to),
+            // A deactivated account with nothing in the range shows only when picked.
+            'report' => (new PerformanceReports)->sourcingSummary($people, $from, $to, keepDeactivated: $people->count() < $everyone->count()),
             'everyone' => $everyone,
             'chosen' => $people->pluck('id')->all(),
             'from' => $from,

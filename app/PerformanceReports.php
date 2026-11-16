@@ -179,12 +179,15 @@ class PerformanceReports
      * up — null where nothing was given. Its "received" is what Senior
      * Operations received from them: the RFQs they finalized, the same figure
      * (since 2026-11-03, at the user's request). With the total: each RFQ once,
-     * and the typed-in figures added up.
+     * and the typed-in figures added up. Since 2026-11-17, at the user's
+     * request, a deactivated account with nothing in the range
+     * (hasSourcingWork()) is left out, unless $keepDeactivated (they were
+     * picked by name).
      *
      * @param  Collection<int, User>  $people
      * @return array{rows: Collection<int, array<string, mixed>>, total: array<string, mixed>, asOf: string}
      */
-    public function sourcingSummary(Collection $people, string $from, string $to): array
+    public function sourcingSummary(Collection $people, string $from, string $to, bool $keepDeactivated = false): array
     {
         $ids = $people->pluck('id')->all();
         $daily = $this->sourcingDaily($people, $from, $to);
@@ -208,13 +211,26 @@ class PerformanceReports
                     'expected_rfqs_typed' => $added($mine, 'expected_rfqs'),
                     'expected_rfqs_usual' => $usual[$person->id],
                 ];
-        })->values();
+        })->reject(fn (array $row) => ! $keepDeactivated && $row['user']->isDeactivated() && ! self::hasSourcingWork($row))->values();
 
         return [
             'rows' => $rows,
             'total' => $daily['total'] + ['received' => $daily['total']['finalized']] + collect([...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'])->mapWithKeys(fn (string $field) => [$field => $added($rows, $field)])->all(),
             'asOf' => $daily['asOf'],
         ];
+    }
+
+    /**
+     * Whether a Sourcing Summary row has anything in it: RFQs finalized,
+     * pending or waiting for the customer, or figures typed in. An assigned
+     * expected count alone isn't anything they did.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function hasSourcingWork(array $row): bool
+    {
+        return $row['finalized'] > 0 || $row['pending'] > 0 || $row['customer'] > 0
+            || collect([...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs_typed'])->contains(fn (string $field) => $row[$field] !== null);
     }
 
     /**

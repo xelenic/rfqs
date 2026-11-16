@@ -3,6 +3,7 @@
 use App\Models\Rfq;
 use App\Models\Setting;
 use App\Models\SourcingDayFigure;
+use App\Models\SourcingExpectedRfq;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -205,6 +206,26 @@ it('narrows to the people picked', function () {
     test()->actingAs($ops)->get(summaryUrl(['people' => [$riley->id]]))->assertOk()
         ->assertSeeInOrder(['data-sourcing-summary', 'Riley Chen'], false)
         ->assertDontSee('<td class="fw-semibold text-nowrap">Sam Rivera</td>', false);
+});
+
+it('leaves out a deactivated account with nothing in the period — not one who did work in it, nor one picked', function () {
+    ['riley' => $riley, 'ops' => $ops] = summaryDay();
+    $riley->forceFill(['deactivated_at' => now()])->save();
+    $gone = tap(userWithRole('Sourcing'), fn (User $person) => $person->forceFill(['name' => 'Morgan Ellis', 'deactivated_at' => now()->subWeek()])->save());
+    SourcingExpectedRfq::setFor($gone->id, 5, null);
+    $calledIn = tap(userWithRole('Sourcing'), fn (User $person) => $person->forceFill(['name' => 'Jordan Lee', 'deactivated_at' => now()->subWeek()])->save());
+    SourcingDayFigure::factory()->create(['user_id' => $calledIn->id, 'day' => '2026-10-05', 'successful_calls' => 2, 'unanswered_calls' => null, 'unattended_calls' => null, 'expected_rfqs' => null]);
+
+    $sheet = test()->actingAs($ops)->get(summaryUrl())->assertOk()
+        ->assertDontSee('<td class="fw-semibold text-nowrap">Morgan Ellis</td>', false);
+
+    // Riley finalized and holds RFQs; Jordan's calls were typed in. Morgan's
+    // assigned count alone keeps nobody, nor counts in the total.
+    expect($sheet->viewData('report')['rows']->pluck('user.name')->all())->toBe(['Jordan Lee', 'Riley Chen', 'Sam Rivera'])
+        ->and($sheet->viewData('report')['total'])->toMatchArray(['finalized' => 1, 'successful_calls' => 2, 'expected_rfqs' => null]);
+
+    test()->actingAs($ops)->get(summaryUrl(['people' => [$gone->id]]))->assertOk()
+        ->assertSee('<td class="fw-semibold text-nowrap">Morgan Ellis</td>', false);
 });
 
 it('counts as received what each person finalized — the same as RFQ Finalized Successfully, on any day or range', function () {
