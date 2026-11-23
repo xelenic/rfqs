@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Permissions;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
@@ -22,6 +23,11 @@ class RolePermissionSeeder extends Seeder
             foreach ($actions as $action) {
                 Permission::findOrCreate("{$resource}.{$action}");
             }
+        }
+
+        // And every feature a role can be given (App\Permissions).
+        foreach (Permissions::names() as $name) {
+            Permission::findOrCreate($name);
         }
 
         $admin = Role::findOrCreate('Admin');

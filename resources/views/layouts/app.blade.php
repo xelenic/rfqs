@@ -38,8 +38,8 @@
                     <i class="bi bi-grid-1x2"></i> Dashboard
                 </a>
                 {{-- The list of every RFQ, whatever its status or where it is —
-                     the RFQ list with no status or role asked for: Admin's, the
-                     General Manager's and Senior Operations' (User::ALL_RFQS_ROLES). --}}
+                     the RFQ list with no status or role asked for
+                     (User::canListAllRfqs(), rfqs.list-all). --}}
                 @if (auth()->user()->canListAllRfqs())
                     <a href="{{ route('admin.rfqs.index') }}" class="nav-link {{ request()->routeIs('admin.rfqs.index') && ! request()->filled('status') && ! request()->filled('role') ? 'active' : '' }}">
                         <i class="bi bi-collection"></i> All RFQs
@@ -63,8 +63,10 @@
                 @endcan
 
                 {{-- Admin has these in a Human Resource group of their own, after
-                     RFQ Management (_sidebar_admin_groups). --}}
-                @if (auth()->user()->canViewTimeSpentReport() && ! (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view')))
+                     RFQ Management (_sidebar_admin_groups). Each is a permission
+                     of its own (App\Permissions). --}}
+                @if ((auth()->user()->canViewAttendance() || auth()->user()->canViewTimeSpentReport() || auth()->user()->canViewPerformanceReports())
+                    && ! (auth()->user()->hasRole('Admin') && auth()->user()->can('rfqs.view')))
                     <div class="sidebar-section-title">Reports</div>
                     @if (auth()->user()->canViewAttendance())
                         {{-- What's waiting on them there, as a red count: for Senior
@@ -89,9 +91,11 @@
                             @endif
                         </a>
                     @endif
-                    <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
-                        <i class="bi bi-stopwatch"></i> Time Spent
-                    </a>
+                    @if (auth()->user()->canViewTimeSpentReport())
+                        <a href="{{ route('admin.reports.time-spent') }}" class="nav-link {{ request()->routeIs('admin.reports.time-spent') ? 'active' : '' }}">
+                            <i class="bi bi-stopwatch"></i> Time Spent
+                        </a>
+                    @endif
                     {{-- The performance reports — Senior Operations' and HR Executive's
                          here; Admin's under Reports in _sidebar_admin_groups. --}}
                     @if (auth()->user()->canViewPerformanceReports())
@@ -131,7 +135,7 @@
                     </a>
                 @endcan
 
-                {{-- What the RFQs are set up with — the job categories the Assign Sourcing wizard offers (Admin\JobCategoryController, User::JOB_CATEGORY_ROLES). --}}
+                {{-- What the RFQs are set up with — the job categories the Assign Sourcing wizard offers (Admin\JobCategoryController, job-categories.manage). --}}
                 @if (auth()->user()->canManageJobCategories())
                     <div class="sidebar-section-title">Configuration</div>
                     <a href="{{ route('admin.categories.index') }}" class="nav-link {{ request()->routeIs('admin.categories.*') ? 'active' : '' }}">
@@ -139,17 +143,21 @@
                     </a>
                 @endif
 
-                {{-- The application's log files, read only — Admin\LogController. --}}
-                @if (auth()->user()->hasRole('Admin'))
+                @canany(['logs.view', 'backups.manage'])
                     <div class="sidebar-section-title">System</div>
+                @endcanany
+                {{-- The application's log files, read only — Admin\LogController. --}}
+                @can('logs.view')
                     <a href="{{ route('admin.logs.index') }}" class="nav-link {{ request()->routeIs('admin.logs.*') ? 'active' : '' }}">
                         <i class="bi bi-journal-text"></i> Logs
                     </a>
-                    {{-- Backups and restoring them — Admin\BackupController. --}}
+                @endcan
+                {{-- Backups and restoring them — Admin\BackupController. --}}
+                @can('backups.manage')
                     <a href="{{ route('admin.backups.index') }}" class="nav-link {{ request()->routeIs('admin.backups.*') ? 'active' : '' }}">
                         <i class="bi bi-cloud-arrow-up"></i> Backups
                     </a>
-                @endif
+                @endcan
 
                 <div class="sidebar-section-title">Account</div>
                 <a href="{{ route('admin.settings.edit') }}" class="nav-link {{ request()->routeIs('admin.settings.*') ? 'active' : '' }}">

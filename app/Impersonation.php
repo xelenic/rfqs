@@ -23,11 +23,12 @@ final class Impersonation
     public const SESSION_KEY = 'impersonator_id';
 
     /**
-     * Whether $admin can sign in as $user.
+     * Whether $admin can sign in as $user: with users.impersonate (Admin's
+     * to begin with), never as an Admin.
      */
     public static function canStart(User $admin, User $user): bool
     {
-        return $admin->hasRole('Admin')
+        return $admin->can('users.impersonate')
             && ! self::isActive()
             && ! $admin->is($user)
             && ! $user->hasRole('Admin')
@@ -54,8 +55,8 @@ final class Impersonation
 
     /**
      * Back to the Admin's own account. Null — and signed out altogether — if
-     * there's no Admin to go back to any more (their account deleted, or no
-     * longer an Admin).
+     * there's no Admin to go back to any more (their account deleted, or
+     * without users.impersonate now).
      */
     public static function stop(): ?User
     {
@@ -68,7 +69,7 @@ final class Impersonation
             'user_id' => $impersonated?->id,
         ]);
 
-        if ($admin === null || ! $admin->hasRole('Admin')) {
+        if ($admin === null || ! $admin->can('users.impersonate')) {
             Auth::guard('web')->logout();
             session()->invalidate();
             session()->regenerateToken();

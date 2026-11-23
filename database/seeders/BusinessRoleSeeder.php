@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Role;
+use App\Permissions;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 
@@ -12,8 +13,9 @@ class BusinessRoleSeeder extends Seeder
      * Seed the business/functional roles.
      *
      * Each one is given sensible defaults on the RFQ module — the entity
-     * they exist to work with — and nothing else. Fine-tune from the admin
-     * panel's Roles screen as needed.
+     * they exist to work with — and the features it has to begin with
+     * (App\Permissions::defaultsFor()). Fine-tune from the admin panel's
+     * Roles screen as needed.
      */
     public function run(): void
     {
@@ -58,10 +60,10 @@ class BusinessRoleSeeder extends Seeder
                 'description' => 'Gives final executive approval before an RFQ routes back to Business Development to close.',
                 'permissions' => ['rfqs.view', 'rfqs.edit'],
             ],
-            // No part in the RFQ workflow: attendance and the Time Spent
-            // report go by role (User::TIME_SPENT_REPORT_ROLES), not
-            // permission. They add people and change their details — never
-            // an Admin's, nor as Admin (see Admin\UserController).
+            // No part in the RFQ workflow: attendance, the reports and
+            // people's details are features of theirs (App\Permissions).
+            // They add people and change their details — never an Admin's,
+            // nor as Admin (see Admin\UserController).
             'HR Executive' => [
                 'description' => 'Approves the daily attendance sheet, sees the Time Spent report, and adds people and keeps their details — new people get an email to set their password.',
                 'permissions' => ['users.view', 'users.create', 'users.edit'],
@@ -72,7 +74,8 @@ class BusinessRoleSeeder extends Seeder
             $role = Role::findOrCreate($name);
             $role->description = $config['description'];
             $role->save();
-            $role->syncPermissions(Permission::whereIn('name', $config['permissions'])->get());
+            $role->syncPermissions(collect([...$config['permissions'], ...Permissions::defaultsFor($role->slug)])
+                ->map(fn (string $name) => Permission::findOrCreate($name, $role->guard_name)));
         }
 
         // The original "Manager" role is retired: the General Manager is the

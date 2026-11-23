@@ -27,13 +27,16 @@ function hrExecutive(): User
     return User::factory()->create()->assignRole('HR Executive');
 }
 
-it('seeds HR Executive with a description, adding and keeping people, and no RFQ permissions', function () {
+it('seeds HR Executive with a description, adding and keeping people, its features, and no RFQ permissions', function () {
     test()->seed([RolePermissionSeeder::class, BusinessRoleSeeder::class]);
 
     $role = Role::findByName('HR Executive');
 
     expect($role->description)->toContain('attendance sheet')
-        ->and($role->permissions->pluck('name')->sort()->values()->all())->toBe(['users.create', 'users.edit', 'users.view']);
+        ->and($role->permissions->pluck('name')->sort()->values()->all())->toBe([
+            'attendance.approve', 'reports.performance', 'reports.time-spent', 'users.change-details',
+            'users.create', 'users.edit', 'users.view', 'working-hours.manage',
+        ]);
 });
 
 it('lets HR Executive review the attendance sheets, but not fill them in', function () {
@@ -73,11 +76,14 @@ it('gives HR Executive a sidebar of Attendance and Time Spent, and no RFQ pages'
 });
 
 /**
- * Runs the migration that renamed HR Manager to HR Executive.
+ * Runs the migration that renamed HR Manager to HR Executive — then, as
+ * migrations run, add_feature_permissions, which gives HR Executive what it
+ * could do by its name (App\Permissions).
  */
 function renameHrManagerRole(): void
 {
     (require database_path('migrations/2026_10_19_072154_rename_hr_manager_role_to_hr_executive.php'))->up();
+    (require database_path('migrations/2026_11_23_213920_add_feature_permissions.php'))->up();
 }
 
 it('renames an HR Manager role from before to HR Executive, keeping its people and permissions', function () {

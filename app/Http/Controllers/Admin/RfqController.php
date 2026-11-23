@@ -1383,7 +1383,7 @@ class RfqController extends Controller implements HasMiddleware
      */
     public function changeStatus(Request $request, Rfq $rfq): RedirectResponse
     {
-        abort_unless($request->user()->canChangeRfqStatus(), 403, 'Only Senior Operations can put an RFQ on hold or cancel it.');
+        abort_unless($request->user()->canChangeRfqStatus(), 403, 'Your role can\'t put an RFQ on hold or cancel it.');
 
         if ($request->filled('part')) {
             return $this->changePartStatus($request, $rfq, (int) $request->input('part'));

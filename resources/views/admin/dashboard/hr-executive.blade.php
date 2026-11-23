@@ -52,8 +52,8 @@
             ['label' => 'Active people', 'value' => $overview['activePeople'], 'caption' => $overview['joined'] > 0 ? $overview['joined'].' joined in the period' : ($overview['deactivated'] > 0 ? $overview['deactivated'].' deactivated' : 'Everyone signs in'), 'icon' => 'bi-people', 'tone' => 'teal', 'alert' => false, 'url' => '#hr-team'],
         ];
         $quickLinks = array_filter([
-            ['Attendance sheets', 'bi-person-check', $sheetsUrl],
-            ['Time Spent', 'bi-stopwatch', route('admin.reports.time-spent')],
+            auth()->user()->canViewAttendance() ? ['Attendance sheets', 'bi-person-check', $sheetsUrl] : null,
+            auth()->user()->canViewTimeSpentReport() ? ['Time Spent', 'bi-stopwatch', route('admin.reports.time-spent')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Sourcing Daily', 'bi-calendar-day', route('admin.reports.sourcing-daily')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Sourcing Monthly', 'bi-calendar3', route('admin.reports.sourcing-monthly')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Data Entry Daily', 'bi-keyboard', route('admin.reports.data-entry-daily')] : null,

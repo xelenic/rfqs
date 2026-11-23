@@ -97,12 +97,12 @@ class UserController extends Controller implements HasMiddleware
             'timeOff' => $isTracked ? $this->timeOffOf($user) : null,
             ...$this->hoursOf($user),
             // Whom in Data Entry a Sourcing member's parts go to, to begin
-            // with — for an Admin to set.
-            'dataEntryPeople' => $user->hasRole('Sourcing') && $request->user()->hasRole('Admin')
+            // with — set with users.sourcing-setup.
+            'dataEntryPeople' => $user->hasRole('Sourcing') && $request->user()->can('users.sourcing-setup')
                 ? User::query()->holdingRole('Data Entry')->orderBy('name')->get()
                 : collect(),
             // A Sourcing member's usual expected RFQs a working day, each
-            // version latest first — for an Admin to set.
+            // version latest first — set with users.sourcing-setup.
             'expectedRfqVersions' => $user->hasRole('Sourcing')
                 ? SourcingExpectedRfq::query()->where('user_id', $user->id)->orderByDesc('starts_on')->get()
                 : collect(),
@@ -114,11 +114,12 @@ class UserController extends Controller implements HasMiddleware
      * to hand in a working day — the Sourcing Summary's figure (and its
      * dropdown's) on any day of theirs nobody set one for. Blank sets none.
      * The first count counts for past days too; a change, from today on
-     * (SourcingExpectedRfq::setFor()). Admin only, from the member's page.
+     * (SourcingExpectedRfq::setFor()). With users.sourcing-setup, from the
+     * member's page.
      */
     public function updateExpectedRfqs(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can set someone\'s expected RFQs.');
+        abort_unless($request->user()->can('users.sourcing-setup'), 403, 'Your role can\'t set someone\'s expected RFQs.');
         abort_unless($user->hasRole('Sourcing'), 422, 'Only someone in Sourcing has RFQs expected of them.');
 
         $validated = $request->validateWithBag('expected_rfqs', [
@@ -347,12 +348,12 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * A Sourcing member's usual person in Data Entry — whom their "Assign to
-     * Data Entry" picks to begin with — or nobody (anyone there). Admin only,
+     * Data Entry" picks to begin with — or nobody (anyone there). With users.sourcing-setup,
      * from the member's page. See User::defaultDataEntryUser().
      */
     public function updateDefaultDataEntry(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can set someone\'s Data Entry person.');
+        abort_unless($request->user()->can('users.sourcing-setup'), 403, 'Your role can\'t set someone\'s Data Entry person.');
         abort_unless($user->hasRole('Sourcing'), 422, 'Only someone in Sourcing hands parts to Data Entry.');
 
         $validated = $request->validateWithBag('default_data_entry', [
@@ -420,25 +421,25 @@ class UserController extends Controller implements HasMiddleware
      * Adds someone — HR Executive or Admin. By default with no password of
      * their own yet: they're emailed a link to set it (AccountCreated, good
      * for a week and once); if the email can't be sent, the account still
-     * stands, and says so — Send link tries again. An Admin can set a
-     * password for them instead (sign_in "password"), and then no email
-     * goes. Only an Admin can make an Admin.
+     * stands, and says so — Send link tries again. With users.set-password
+     * a password can be set for them instead (sign_in "password"), and then
+     * no email goes. Only an Admin can make an Admin.
      */
     public function store(Request $request): RedirectResponse
     {
-        $isAdmin = $request->user()->hasRole('Admin');
+        $setsPasswords = $request->user()->can('users.set-password');
 
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'sign_in' => ['nullable', Rule::in($isAdmin ? ['email_link', 'password'] : ['email_link'])],
+            'sign_in' => ['nullable', Rule::in($setsPasswords ? ['email_link', 'password'] : ['email_link'])],
             'password' => ['exclude_unless:sign_in,password', 'required', 'string', 'min:8', 'confirmed'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
             'job_categories' => ['array'],
             'job_categories.*' => ['integer', 'exists:job_categories,id'],
         ], [
-            'sign_in.in' => 'Only an Admin can set a password for someone — email them a link instead.',
+            'sign_in.in' => 'Your role can\'t set a password for someone — email them a link instead.',
             'roles.*.in' => 'Pick from the roles listed.',
             'job_categories.*.exists' => 'Pick from the job categories listed.',
         ]);
@@ -473,13 +474,13 @@ class UserController extends Controller implements HasMiddleware
      * every list people are picked from — their name stays on everything
      * they did. Data Entry parts given to them by name and not yet started go
      * back to anyone in Data Entry, and nobody's parts go to them by default
-     * any more. What they still hold is said, to hand on. Admin only, never
+     * any more. What they still hold is said, to hand on. With users.deactivate, never
      * themselves.
      */
     public function deactivate(Request $request, User $user): RedirectResponse
     {
         $admin = $request->user();
-        abort_unless($admin->hasRole('Admin'), 403, 'Only an Admin can deactivate an account.');
+        abort_unless($admin->can('users.deactivate'), 403, 'Your role can\'t deactivate an account.');
 
         if ($admin->is($user)) {
             return back()->with('error', 'You can\'t deactivate your own account.');
@@ -519,11 +520,11 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * Lets a deactivated account sign in again, and be picked for work.
-     * Admin only.
+     * With users.deactivate.
      */
     public function activate(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can activate an account.');
+        abort_unless($request->user()->can('users.deactivate'), 403, 'Your role can\'t activate an account.');
 
         if (! $user->isDeactivated()) {
             return back()->with('error', "{$user->name}'s account is already active.");
@@ -568,8 +569,9 @@ class UserController extends Controller implements HasMiddleware
 
     /**
      * Changes someone's details and roles — Admin, or HR Executive (who holds
-     * users.edit too). Only an Admin changes an Admin's, or sets anyone's
-     * password: HR Executive sends a link to set it instead.
+     * users.edit too). Only an Admin changes an Admin's; only with
+     * users.set-password is anyone's password set — HR Executive sends a
+     * link to set it instead.
      */
     public function update(Request $request, User $user): RedirectResponse
     {
@@ -578,13 +580,13 @@ class UserController extends Controller implements HasMiddleware
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => $request->user()->hasRole('Admin') ? ['nullable', 'string', 'min:8', 'confirmed'] : ['prohibited'],
+            'password' => $request->user()->can('users.set-password') ? ['nullable', 'string', 'min:8', 'confirmed'] : ['prohibited'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
             'job_categories' => ['array'],
             'job_categories.*' => ['integer', 'exists:job_categories,id'],
         ], [
-            'password.prohibited' => 'Only an Admin can set someone\'s password — send them a link instead.',
+            'password.prohibited' => 'Your role can\'t set someone\'s password — send them a link instead.',
             'roles.*.in' => 'Pick from the roles listed.',
             'job_categories.*.exists' => 'Pick from the job categories listed.',
         ]);

@@ -107,7 +107,7 @@
                                                 </button>
                                             </li>
                                         @endif
-                                        @if ($hasTrackedTime && auth()->user()->hasRole('Admin'))
+                                        @if ($hasTrackedTime && auth()->user()->can('settings.manage'))
                                             <li>
                                                 <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}">
                                                     <i class="bi bi-moon-stars"></i> Extra hours
@@ -139,7 +139,7 @@
                                             </li>
                                         @endif
                                         {{-- Deactivating keeps the account and its history; nobody signs in with it. --}}
-                                        @if (auth()->user()->hasRole('Admin') && ! auth()->user()->is($user))
+                                        @if (auth()->user()->can('users.deactivate') && ! auth()->user()->is($user))
                                             <li>@include('admin.users._deactivate_button', ['user' => $user, 'asMenuItem' => true])</li>
                                         @endif
                                         @can('users.delete')
@@ -189,7 +189,7 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        @php $createSetsPassword = $errors->create->any() && old('sign_in') === 'password' && auth()->user()->hasRole('Admin'); @endphp
+                        @php $createSetsPassword = $errors->create->any() && old('sign_in') === 'password' && auth()->user()->can('users.set-password'); @endphp
                         <button type="submit" class="btn btn-primary js-sign-in-submit">
                             <span class="js-sign-in-email-label @if ($createSetsPassword) d-none @endif"><i class="bi bi-envelope-check"></i> Create and email them</span>
                             <span class="js-sign-in-password-label @unless ($createSetsPassword) d-none @endunless"><i class="bi bi-person-plus"></i> Create user</span>
@@ -203,8 +203,8 @@
     {{-- Edit user modal (shared — populated via JS per row, see public/js/admin.js) --}}
     @include('admin.users._edit_modal')
 
-    {{-- Each tracked person's Extra hours window — Admin only. --}}
-    @if (auth()->user()->hasRole('Admin'))
+    {{-- Each tracked person's Extra hours window — with settings.manage. --}}
+    @if (auth()->user()->can('settings.manage'))
         @foreach ($users as $user)
             @if ($user->rolesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty())
                 @include('admin.users._extra_hours_modal', ['user' => $user])

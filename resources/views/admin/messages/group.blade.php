@@ -5,7 +5,7 @@
     go from here to change it (?edit= on Groups).
 
     Expects: $group (with members.roles), $messages (with sender.roles),
-    $isAdmin.
+    $managesGroups.
 --}}
 @extends('layouts.app')
 
@@ -34,7 +34,7 @@
                     </span>
                     {{ $group->members->count() }} {{ $group->members->count() === 1 ? 'person' : 'people' }}
                 </button>
-                @if ($isAdmin)
+                @if ($managesGroups)
                     <a href="{{ route('admin.messages.groups', ['edit' => $group->id]) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit group</a>
                 @endif
             </div>

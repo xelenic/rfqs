@@ -47,7 +47,7 @@ class LogController extends Controller
 
     public function index(Request $request): View
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can see the logs.');
+        abort_unless($request->user()->can('logs.view'), 403, 'Your role can\'t see the logs.');
 
         $files = $this->files();
         $file = array_key_exists((string) $request->query('file'), $files) ? (string) $request->query('file') : array_key_first($files);
@@ -86,7 +86,7 @@ class LogController extends Controller
      */
     public function download(Request $request): BinaryFileResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can download the logs.');
+        abort_unless($request->user()->can('logs.view'), 403, 'Your role can\'t download the logs.');
 
         $file = $this->files()[(string) $request->query('file')] ?? null;
 

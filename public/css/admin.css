@@ -3910,8 +3910,43 @@ a.pipeline-label:hover {
 .permission-group .group-title {
   font-weight: 700;
   font-size: 0.75rem;
-  text-transform: capitalize;
   margin-bottom: 0.4rem;
+  color: var(--rfq-text-muted);
+}
+
+/* A role's permissions (roles/_form): each a switch with what it's called,
+   its key and what it lets someone do — two across where there's room. */
+.permission-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 0.55rem 1.25rem;
+}
+
+.permission-row {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.permission-row .form-check-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.45rem;
+}
+
+.permission-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.permission-key {
+  font-size: 0.7rem;
+  color: var(--rfq-text-muted);
+}
+
+.permission-hint {
+  font-size: 0.75rem;
+  line-height: 1.35;
   color: var(--rfq-text-muted);
 }
 

@@ -29,23 +29,34 @@
                 <tbody>
                     @forelse ($permissions as $permission)
                         <tr>
-                            <td class="fw-semibold">{{ $permission->name }}</td>
+                            @php $isBuiltIn = \App\Permissions::isBuiltIn($permission->name); @endphp
+                            <td>
+                                <div class="fw-semibold">{{ \App\Permissions::label($permission->name) }}</div>
+                                <code class="small text-muted-soft">{{ $permission->name }}</code>
+                                @if ($isBuiltIn)
+                                    <span class="badge badge-soft-secondary ms-1" title="The app checks it by its name, so it can't be renamed or deleted">Built in</span>
+                                @endif
+                            </td>
                             <td><span class="badge badge-soft-primary">{{ $permission->roles_count }}</span></td>
                             <td class="text-end">
-                                @can('permissions.edit')
-                                    <a href="{{ route('admin.permissions.edit', $permission) }}" class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                @endcan
-                                @can('permissions.delete')
-                                    <form action="{{ route('admin.permissions.destroy', $permission) }}" method="POST" class="d-inline" data-confirm="Delete this permission?">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
-                                @endcan
+                                @if ($isBuiltIn)
+                                    <span class="small text-muted-soft">Switch it on or off on a role</span>
+                                @else
+                                    @can('permissions.edit')
+                                        <a href="{{ route('admin.permissions.edit', $permission) }}" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                    @endcan
+                                    @can('permissions.delete')
+                                        <form action="{{ route('admin.permissions.destroy', $permission) }}" method="POST" class="d-inline" data-confirm="Delete this permission?">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    @endcan
+                                @endif
                             </td>
                         </tr>
                     @empty

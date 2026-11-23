@@ -28,9 +28,9 @@
         @enderror
     </div>
 
-    @if ($mode === 'edit' && ! auth()->user()->hasRole('Admin'))
-        {{-- Only an Admin sets someone's password; HR Executive sends a link
-             (the envelope on the list). --}}
+    @if ($mode === 'edit' && ! auth()->user()->can('users.set-password'))
+        {{-- Only with users.set-password is someone's password set; anyone
+             else sends a link (the envelope on the list). --}}
     @elseif ($mode === 'edit')
         <div class="col-md-6">
             <label for="{{ $idPrefix }}-password" class="form-label">
@@ -48,11 +48,11 @@
         </div>
     @else
         {{-- How a new account signs in: by default its person sets their own
-             password from the email it sends; an Admin can set one instead,
+             password from the email it sends; with users.set-password one can be set instead,
              and no email goes (Admin\UserController::store()). admin.js
              shows the password fields for that choice alone. --}}
         @php
-            $canSetPassword = auth()->user()->hasRole('Admin');
+            $canSetPassword = auth()->user()->can('users.set-password');
             $setsPassword = $canSetPassword && $showOld && old('sign_in') === 'password';
         @endphp
         @if ($canSetPassword)

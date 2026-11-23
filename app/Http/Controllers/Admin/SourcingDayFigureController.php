@@ -85,7 +85,7 @@ class SourcingDayFigureController extends Controller
      */
     public function destroyDay(Request $request, string $day): RedirectResponse
     {
-        abort_unless($request->user()->canEditSourcingFigures(), 403, 'Only Senior Operations and Admin can delete these figures.');
+        abort_unless($request->user()->canEditSourcingFigures(), 403, 'Your role can\'t delete these figures.');
 
         SourcingDayFigure::query()->where('day', $day)->delete();
 
@@ -102,7 +102,7 @@ class SourcingDayFigureController extends Controller
      */
     public function updateForDay(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->canEditSourcingFigures(), 403, 'Only Senior Operations and Admin can change these figures.');
+        abort_unless($request->user()->canEditSourcingFigures(), 403, 'Your role can\'t change these figures.');
 
         $fields = [...array_keys(SourcingDayFigure::CALL_FIELDS), 'expected_rfqs'];
         $validated = $request->validate([

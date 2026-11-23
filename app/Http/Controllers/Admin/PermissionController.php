@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -13,6 +14,11 @@ use Spatie\Permission\Models\Permission;
 
 class PermissionController extends Controller implements HasMiddleware
 {
+    /**
+     * Why a built-in permission (App\Permissions) isn't renamed or deleted.
+     */
+    private const BUILT_IN = 'That permission is built in — the app checks it by its name, so it can\'t be renamed or deleted. Switch it on or off for a role on the Roles page.';
+
     public static function middleware(): array
     {
         return [
@@ -54,8 +60,16 @@ class PermissionController extends Controller implements HasMiddleware
         return redirect()->route('admin.permissions.index')->with('status', 'Permission created successfully.');
     }
 
-    public function edit(Permission $permission): View
+    /**
+     * Renaming one the code checks (App\Permissions::isBuiltIn()) is
+     * refused: whoever has it would lose what it gives them.
+     */
+    public function edit(Permission $permission): View|RedirectResponse
     {
+        if (Permissions::isBuiltIn($permission->name)) {
+            return redirect()->route('admin.permissions.index')->with('error', self::BUILT_IN);
+        }
+
         return view('admin.permissions.edit', [
             'permission' => $permission,
         ]);
@@ -63,6 +77,10 @@ class PermissionController extends Controller implements HasMiddleware
 
     public function update(Request $request, Permission $permission): RedirectResponse
     {
+        if (Permissions::isBuiltIn($permission->name)) {
+            return redirect()->route('admin.permissions.index')->with('error', self::BUILT_IN);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('permissions', 'name')->ignore($permission->id)],
         ]);
@@ -75,6 +93,10 @@ class PermissionController extends Controller implements HasMiddleware
 
     public function destroy(Permission $permission): RedirectResponse
     {
+        if (Permissions::isBuiltIn($permission->name)) {
+            return back()->with('error', self::BUILT_IN);
+        }
+
         if ($permission->roles()->exists()) {
             return back()->with('error', 'Cannot delete a permission that is still assigned to roles.');
         }

@@ -236,7 +236,7 @@ class DashboardController extends Controller
      */
     public function critical(Request $request): View
     {
-        abort_unless($request->user()->canSeeCriticalMonitor(), 403, 'Only Admin and Senior Operations have the Critical monitor.');
+        abort_unless($request->user()->canSeeCriticalMonitor(), 403, 'Your role doesn\'t have the Critical monitor.');
 
         $now = CarbonImmutable::now();
         $today = $now->setTimezone(Setting::timezone())->startOfDay();

@@ -33,8 +33,9 @@ class AppServiceProvider extends ServiceProvider
         LiveVersion::watch();
         WorkingSchedule::watch();
 
-        // A role made through Spatie's own model gets its slug too.
+        // A role made through Spatie's own model gets its slug, and its features, too.
         SpatieRole::creating(fn (SpatieRole $role) => Role::giveSlug($role));
+        SpatieRole::created(fn (SpatieRole $role) => Role::giveDefaultPermissions($role));
 
         $this->registerBusinessTimezoneMacro();
     }

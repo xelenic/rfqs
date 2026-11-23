@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Role;
+use App\Permissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Permission;
@@ -43,7 +45,7 @@ class RoleController extends Controller implements HasMiddleware
     public function create(): View
     {
         return view('admin.roles.create', [
-            'permissions' => Permission::orderBy('name')->get()->groupBy(fn (Permission $permission) => str($permission->name)->before('.')->toString()),
+            'permissions' => $this->permissionsByArea(),
         ]);
     }
 
@@ -71,7 +73,7 @@ class RoleController extends Controller implements HasMiddleware
     {
         return view('admin.roles.edit', [
             'role' => $role->load('permissions'),
-            'permissions' => Permission::orderBy('name')->get()->groupBy(fn (Permission $permission) => str($permission->name)->before('.')->toString()),
+            'permissions' => $this->permissionsByArea(),
         ]);
     }
 
@@ -106,6 +108,22 @@ class RoleController extends Controller implements HasMiddleware
             'is_active' => $role->is_active,
             'status' => $role->is_active ? "{$role->name} enabled." : "{$role->name} disabled.",
         ]);
+    }
+
+    /**
+     * Every permission, by area and in the order App\Permissions lists them
+     * — those made on the Permissions page last, under Other.
+     *
+     * @return Collection<string, Collection<int, Permission>>
+     */
+    private function permissionsByArea(): Collection
+    {
+        $areas = array_flip([...array_keys(Permissions::AREAS), Permissions::OTHER_AREA]);
+        $order = array_flip(Permissions::names());
+
+        return Permission::query()->orderBy('name')->get()
+            ->sortBy(fn (Permission $permission) => [$areas[Permissions::areaOf($permission->name)], $order[$permission->name] ?? PHP_INT_MAX])
+            ->groupBy(fn (Permission $permission) => Permissions::areaOf($permission->name));
     }
 
     public function destroy(Role $role): RedirectResponse
