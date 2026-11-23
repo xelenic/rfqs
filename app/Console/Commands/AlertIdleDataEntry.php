@@ -34,7 +34,7 @@ class AlertIdleDataEntry extends Command
 
         $recipients = User::query()->holdingAnyRole(DataEntryIdle::RECIPIENT_ROLES)->get();
         $dataEntry = User::holdingRole('Data Entry')
-            ->whereDoesntHave('roles', fn ($roles) => $roles->where('name', 'Admin'))
+            ->whereDoesntHave('roles', fn ($roles) => $roles->where('slug', 'admin'))
             ->get();
 
         foreach ($dataEntry as $person) {

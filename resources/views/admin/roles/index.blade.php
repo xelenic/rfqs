@@ -22,7 +22,10 @@
                 <div class="card h-100 role-card">
                     <div class="card-body d-flex flex-column">
                         <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
-                            <h2 class="h6 fw-bold mb-0">{{ $role->name }}</h2>
+                            <div>
+                                <h2 class="h6 fw-bold mb-0">{{ $role->name }}</h2>
+                                <code class="small text-muted-soft" title="The key the system knows this role by — it stays the same when the role is renamed">{{ $role->slug }}</code>
+                            </div>
 
                             <div class="form-check form-switch mb-0 flex-shrink-0" title="{{ $role->is_active ? 'Disable role' : 'Enable role' }}">
                                 <input class="form-check-input js-role-toggle" type="checkbox" role="switch"

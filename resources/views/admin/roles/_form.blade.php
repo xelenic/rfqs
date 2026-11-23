@@ -9,6 +9,14 @@
     @error('name')
         <div class="invalid-feedback">{{ $message }}</div>
     @enderror
+    {{-- The slug the system knows the role by (App\Models\Role): renaming never changes it. --}}
+    <div class="form-text">
+        @if ($role?->slug)
+            Key <code>{{ $role->slug }}</code> — the system knows this role by its key, so renaming it keeps its people, permissions and access.
+        @else
+            Its key is made from this name when it's saved, and stays the same if it's renamed later.
+        @endif
+    </div>
 </div>
 
 <div class="mb-3">

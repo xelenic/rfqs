@@ -1591,7 +1591,7 @@ class Rfq extends Model
     public function scopeCreatedByFilter(Builder $query, string $creator): void
     {
         array_key_exists($creator, self::CREATOR_ROLES)
-            ? $query->whereHas('creator', fn (Builder $people) => $people->whereHas('roles', fn (Builder $roles) => $roles->where('name', self::CREATOR_ROLES[$creator])))
+            ? $query->whereHas('creator', fn (Builder $people) => $people->whereHas('roles', fn (Builder $roles) => $roles->where('slug', Role::slugFor(self::CREATOR_ROLES[$creator]))))
             : $query->where('rfqs.created_by', (int) $creator);
     }
 

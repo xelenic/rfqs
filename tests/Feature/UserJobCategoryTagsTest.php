@@ -43,7 +43,7 @@ it('asks, adding someone, for the job categories they take on — a field to typ
     $options = json_decode(Str::before(Str::after($form, 'js-category-tag-options">'), '</script>'), true);
 
     expect($tags)->toContain('d-none')
-        ->toContain('data-tag-roles="Sourcing|Data Entry"')
+        ->toContain('data-tag-roles="sourcing|data-entry"')
         ->and($form)->toContain('class="category-tag-input js-category-tag-input" id="create-category-search"')
         ->toContain('placeholder="Type a category…"')
         ->not->toContain('name="job_categories[]"')

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\LiveVersion;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\WorkingSchedule;
 use Carbon\Carbon;
@@ -10,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Role as SpatieRole;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
 
         LiveVersion::watch();
         WorkingSchedule::watch();
+
+        // A role made through Spatie's own model gets its slug too.
+        SpatieRole::creating(fn (SpatieRole $role) => Role::giveSlug($role));
 
         $this->registerBusinessTimezoneMacro();
     }

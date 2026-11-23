@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
 class BusinessRoleSeeder extends Seeder
 {
@@ -17,27 +17,10 @@ class BusinessRoleSeeder extends Seeder
      */
     public function run(): void
     {
-        // "Operations" is being renamed to "HBDs Operations" — renaming
-        // the existing row in place (rather than findOrCreate-ing a new
-        // one under the new name below) keeps every current Operations
-        // user attached, since model_has_roles is keyed by role_id, not
-        // name.
-        // Since 2026-11-04, Senior Operations is "HBDs Operations" and GM
-        // Assistant is "GMs Operations", renamed in place the same way.
-        $renamedRoles = [
-            'Operations' => 'HBDs Operations',
-            'Senior Operations' => 'HBDs Operations',
-            'GM Assistant' => 'GMs Operations',
-        ];
-
-        foreach ($renamedRoles as $oldName => $newName) {
-            $role = Role::where('name', $oldName)->first();
-            if ($role && ! Role::where('name', $newName)->exists()) {
-                $role->name = $newName;
-                $role->save();
-            }
-        }
-
+        // Each role is found by its slug (App\Models\Role::findOrCreate()),
+        // whatever it's called now, so a role renamed on the Roles page keeps
+        // its name and its people — and isn't made a second time. Since
+        // 2026-11-24 nothing here renames a role: its name is the Admin's.
         $roles = [
             // Only Business Development (and Admin, which always has every
             // permission — see RolePermissionSeeder) can create new RFQs.
@@ -95,7 +78,7 @@ class BusinessRoleSeeder extends Seeder
         // The original "Manager" role is retired: the General Manager is the
         // manager here. Whoever held it holds General Manager now — same
         // accounts, same logins — and then it goes.
-        $legacyManager = Role::where('name', 'Manager')->first();
+        $legacyManager = Role::findBySlug('Manager');
         if ($legacyManager) {
             $generalManager = Role::findByName('General Manager');
 

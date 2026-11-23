@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Spatie\Permission\Models\Role;
 
 /**
  * The application-wide settings an Admin can change on the Settings page: one
@@ -216,9 +215,10 @@ class Setting extends Model
 
     /**
      * Who each role may start a private message with (Settings → Messaging):
-     * role name => the role names its people may write to. A role not here
-     * may write to anyone — as every role may until an Admin limits it
-     * (since 2026-10-25). See User::messageableRoles().
+     * role slug => the role slugs its people may write to (by slug since
+     * 2026-11-24, so renaming a role keeps its rules — App\Models\Role). A
+     * role not here may write to anyone — as every role may until an Admin
+     * limits it (since 2026-10-25). See User::messageableRoles().
      *
      * @return array<string, array<int, string>>
      */

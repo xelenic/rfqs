@@ -10,6 +10,7 @@ use App\Models\RfqAssignment;
 use App\Models\RfqComment;
 use App\Models\RfqReturn;
 use App\Models\RfqStep;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
@@ -815,7 +816,7 @@ class RfqController extends Controller implements HasMiddleware
     {
         $people = User::query()
             ->where(fn ($anyone) => $anyone
-                ->whereHas('roles', fn ($roles) => $roles->whereIn('name', Rfq::CREATOR_ROLES))
+                ->whereHas('roles', fn ($roles) => $roles->whereIn('slug', array_map(Role::slugFor(...), Rfq::CREATOR_ROLES)))
                 ->orWhereIn('id', Rfq::query()->whereNotNull('created_by')->select('created_by')))
             ->with('roles')
             ->orderBy('name')
@@ -824,7 +825,7 @@ class RfqController extends Controller implements HasMiddleware
         $groups = [];
 
         foreach (Rfq::CREATOR_ROLES as $value => $role) {
-            $holders = $people->filter(fn (User $person) => $person->roles->contains('name', $role));
+            $holders = $people->filter(fn (User $person) => $person->hasRole($role));
             $people = $people->diff($holders);
             $groups[$role] = [$value => $role === 'Admin' ? 'Any Admin' : "Anyone in {$role}"] + $holders->mapWithKeys(fn (User $person) => [$person->id => $nameOf($person)])->all();
         }

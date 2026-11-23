@@ -934,7 +934,7 @@
                                         <option value="">Pick someone…</option>
                                         @foreach ($extraHoursPeople as $person)
                                             <option value="{{ $person->id }}" @selected($extraFailed && (string) old('user_id') === (string) $person->id)>
-                                                {{ $person->name }} — {{ $person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->join(', ') }}
+                                                {{ $person->name }} — {{ $person->roleNamesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS))->join(', ') }}
                                             </option>
                                         @endforeach
                                     </select>
@@ -968,7 +968,7 @@
                                     <tr>
                                         <td class="fw-semibold">{{ $range->user?->name ?? 'Unknown' }}</td>
                                         <td>
-                                            @foreach ($range->user?->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) ?? [] as $roleName)
+                                            @foreach ($range->user?->roleNamesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS)) ?? [] as $roleName)
                                                 <span class="badge badge-soft-secondary">{{ $roleName }}</span>
                                             @endforeach
                                         </td>
@@ -1024,9 +1024,9 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach ($allRoles->reject(fn ($role) => $role->name === 'Admin') as $role)
-                                            @php $limit = $messageRules[$role->name] ?? null; @endphp
-                                            <tr data-message-role="{{ $role->name }}">
+                                        @foreach ($allRoles->reject(fn ($role) => $role->slug === 'admin') as $role)
+                                            @php $limit = $messageRules[$role->slug] ?? null; @endphp
+                                            <tr data-message-role="{{ $role->slug }}">
                                                 <td class="fw-semibold text-nowrap">{{ $role->name }}</td>
                                                 <td>
                                                     <div class="d-flex flex-wrap gap-3 mb-2">
@@ -1043,7 +1043,7 @@
                                                         @foreach ($allRoles as $target)
                                                             <div class="form-check form-check-inline">
                                                                 <input class="form-check-input" type="checkbox" name="limits[{{ $role->id }}][roles][]" value="{{ $target->id }}"
-                                                                       id="message-limit-{{ $role->id }}-to-{{ $target->id }}" @checked(in_array($target->name, $limit ?? [], true)) @disabled($limit === null)>
+                                                                       id="message-limit-{{ $role->id }}-to-{{ $target->id }}" @checked(in_array($target->slug, $limit ?? [], true)) @disabled($limit === null)>
                                                                 <label class="form-check-label small" for="message-limit-{{ $role->id }}-to-{{ $target->id }}">{{ $target->name }}</label>
                                                             </div>
                                                         @endforeach

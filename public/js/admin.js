@@ -48,14 +48,15 @@ function rfqmsBoot() {
     }
 
     // Users → Add/Edit user: the job categories they take on (tags) show
-    // while Sourcing or Data Entry is ticked (data-tag-roles).
+    // while Sourcing or Data Entry is ticked (data-tag-roles, by role slug,
+    // so under any name).
     function syncJobCategoryTags(form) {
         var section = form && form.querySelector('.js-job-category-tags');
         if (!section) return;
 
         var tagRoles = (section.dataset.tagRoles || '').split('|');
         var takesTags = Array.prototype.some.call(form.querySelectorAll('input[name="roles[]"]:checked'), function (box) {
-            return tagRoles.indexOf(box.value) !== -1;
+            return tagRoles.indexOf(box.dataset.roleSlug) !== -1;
         });
         section.classList.toggle('d-none', !takesTags);
     }

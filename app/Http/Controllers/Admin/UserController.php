@@ -8,6 +8,7 @@ use App\Models\JobCategory;
 use App\Models\Rfq;
 use App\Models\RfqComment;
 use App\Models\RfqStep;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\SourcingDayFigure;
 use App\Models\SourcingExpectedRfq;
@@ -30,7 +31,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Spatie\Permission\Models\Role;
 use Throwable;
 
 class UserController extends Controller implements HasMiddleware
@@ -390,6 +390,19 @@ class UserController extends Controller implements HasMiddleware
     }
 
     /**
+     * The roles ticked on the form, by what they're called now — exactly, not
+     * by slug (Role::findByName()), so a role made with a renamed role's old
+     * name is the one given.
+     *
+     * @param  array<int, string>  $names
+     * @return Collection<int, Role>
+     */
+    private function rolesNamed(array $names): Collection
+    {
+        return Role::query()->whereIn('name', $names)->get();
+    }
+
+    /**
      * The roles $user can give someone: any, for an Admin — and every one
      * but Admin for anyone else who adds people (HR Executive).
      *
@@ -398,7 +411,7 @@ class UserController extends Controller implements HasMiddleware
     private function assignableRoles(User $user): Collection
     {
         return Role::query()
-            ->when(! $user->hasRole('Admin'), fn ($roles) => $roles->where('name', '!=', 'Admin'))
+            ->when(! $user->hasRole('Admin'), fn ($roles) => $roles->where('slug', '!=', 'admin'))
             ->orderBy('name')
             ->get();
     }
@@ -444,7 +457,7 @@ class UserController extends Controller implements HasMiddleware
             'password' => Hash::make($setsPassword ? $validated['password'] : Str::random(64)),
         ]);
 
-        $user->syncRoles($validated['roles'] ?? []);
+        $user->syncRoles($this->rolesNamed($validated['roles'] ?? []));
         $this->syncJobCategories($user, $validated['job_categories'] ?? []);
 
         if ($setsPassword) {
@@ -590,7 +603,7 @@ class UserController extends Controller implements HasMiddleware
         }
 
         $user->save();
-        $user->syncRoles($validated['roles'] ?? []);
+        $user->syncRoles($this->rolesNamed($validated['roles'] ?? []));
         $this->syncJobCategories($user, $validated['job_categories'] ?? []);
 
         return $this->backFrom($request, $user)->with('status', 'User updated successfully.');

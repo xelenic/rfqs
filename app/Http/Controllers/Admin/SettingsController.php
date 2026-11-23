@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceSheet;
 use App\Models\ExtraWorkingHour;
 use App\Models\Rfq;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
@@ -18,7 +19,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Illuminate\View\View;
-use Spatie\Permission\Models\Role;
 
 /**
  * The Settings page. Everyone signed in has their own part of it — profile,
@@ -566,7 +566,7 @@ class SettingsController extends Controller
     {
         abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change who can message whom.');
 
-        $roles = Role::query()->orderBy('name')->pluck('name', 'id');
+        $roles = Role::query()->orderBy('name')->pluck('slug', 'id');
 
         $validated = $request->validateWithBag('message_roles', [
             'limits' => ['array'],
@@ -577,15 +577,16 @@ class SettingsController extends Controller
 
         $rules = [];
 
-        foreach ($roles as $id => $name) {
+        // By slug, so renaming a role keeps its rules.
+        foreach ($roles as $id => $slug) {
             $limit = $validated['limits'][$id] ?? [];
 
             // Admin can always message anyone.
-            if ($name === 'Admin' || ! filter_var($limit['limited'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            if ($slug === 'admin' || ! filter_var($limit['limited'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                 continue;
             }
 
-            $rules[$name] = collect($limit['roles'] ?? [])->map(fn ($roleId) => $roles[(int) $roleId])->unique()->sort()->values()->all();
+            $rules[$slug] = collect($limit['roles'] ?? [])->map(fn ($roleId) => $roles[(int) $roleId])->unique()->sort()->values()->all();
         }
 
         Setting::putMessageRoles($rules);

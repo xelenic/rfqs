@@ -3,6 +3,7 @@
 namespace App;
 
 use App\Models\RfqStep;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\SourcingDayFigure;
 use App\Models\SourcingExpectedRfq;
@@ -64,7 +65,7 @@ class PerformanceReports
     public static function people(string $role): Collection
     {
         return User::query()
-            ->whereHas('roles', fn ($roles) => $roles->where('name', $role))
+            ->whereHas('roles', fn ($roles) => $roles->where('slug', Role::slugFor($role)))
             ->orderBy('name')
             ->get();
     }

@@ -9,6 +9,7 @@ use App\Models\Rfq;
 use App\Models\RfqAssignment;
 use App\Models\RfqComment;
 use App\Models\RfqStep;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\SourcingDayFigure;
 use App\Models\User;
@@ -25,7 +26,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
 class DashboardController extends Controller
 {
@@ -703,7 +703,7 @@ class DashboardController extends Controller
                 $mine = $ongoing->filter(fn (array $task) => $task['worker']?->id === $person->id);
                 $done = $finished->get($person->id, collect());
                 $timed = $done->whereNotNull('onTime');
-                $role = $person->roles->pluck('name')->intersect(array_keys(RfqStep::ROLE_STEPS))->first();
+                $role = $person->roleNamesAmong(array_keys(RfqStep::ROLE_STEPS))->first();
 
                 [$state, $tone, $detail] = match (true) {
                     $floor->has($person->id) && $floor[$person->id]['state'] !== 'Free' => [$floor[$person->id]['state'], $floor[$person->id]['tone'], $floor[$person->id]['detail']],
@@ -1423,7 +1423,7 @@ class DashboardController extends Controller
 
             return [
                 'user' => $person,
-                'roles' => $person->roles->pluck('name')->intersect($trackedRoles)->values(),
+                'roles' => $person->roleNamesAmong($trackedRoles),
                 'status' => $mark?->status ?? Attendance::UNMARKED,
                 // As HR Executive reads it: "Full-Day Leave", "Half-Day Leave – First Half"…, and the hours off.
                 'leaveType' => $mark?->leaveTypeLabel(),
@@ -1489,7 +1489,7 @@ class DashboardController extends Controller
             'missingDays' => AttendanceSheet::missingDays(),
             'sheets' => AttendanceSheet::query()->with(['attendances', 'createdBy', 'approvedBy', 'returnedBy'])->latest('date')->limit(7)->get(),
             'team' => Role::query()->orderBy('name')->get()
-                ->map(fn (Role $role) => ['role' => $role->name, 'count' => $active->filter(fn (User $member) => $member->roles->contains('name', $role->name))->count()])
+                ->map(fn (Role $role) => ['role' => $role->name, 'count' => $active->filter(fn (User $member) => $member->roles->contains('id', $role->id))->count()])
                 ->filter(fn (array $row) => $row['count'] > 0)
                 ->values(),
             'activePeople' => $active->count(),

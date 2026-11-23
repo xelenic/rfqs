@@ -2,10 +2,10 @@
 
 namespace Database\Seeders;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
 
 class UserSeeder extends Seeder
 {
@@ -68,7 +68,7 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $roleName => $people) {
-            $role = Role::where('name', $roleName)->first();
+            $role = Role::findBySlug($roleName);
 
             if (! $role) {
                 continue;

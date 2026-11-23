@@ -146,7 +146,7 @@ class AttendanceSheet extends Model
         // a role that hasn't been made yet, and there's just nobody in it.
         return User::query()
             ->active()
-            ->whereHas('roles', fn ($roles) => $roles->whereIn('name', array_keys(RfqStep::ROLE_STEPS)))
+            ->whereHas('roles', fn ($roles) => $roles->whereIn('slug', array_map(Role::slugFor(...), array_keys(RfqStep::ROLE_STEPS))))
             ->with('roles')
             ->orderBy('name')
             ->get();

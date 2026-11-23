@@ -22,7 +22,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Spatie\Permission\Contracts\Role;
+use Spatie\Permission\Contracts\Role as RoleContract;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'password'])]
@@ -32,6 +32,7 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasRoles, Notifiable {
         HasRoles::hasRole as spatieHasRole;
+        HasRoles::hasAllRoles as spatieHasAllRoles;
     }
 
     /**
@@ -205,14 +206,14 @@ class User extends Authenticatable
     public const JOB_CATEGORY_TAG_ROLES = ['Sourcing', 'Data Entry'];
 
     /**
-     * Roles that have another role's access, wherever it's checked by name:
+     * Roles that have another role's access, by slug (App\Models\Role):
      * holding the key counts as holding the value in hasRole()/hasAnyRole(),
      * holdingRole()/holdingAnyRole() and so roleMembers(). Since 2026-11-05,
      * an Operation Assistant Trainee works exactly as HBDs Operations.
      *
      * @var array<string, string>
      */
-    public const ROLE_STAND_INS = ['Operation Assistant Trainee' => 'HBDs Operations'];
+    public const ROLE_STAND_INS = ['operation-assistant-trainee' => 'hbds-operations'];
 
     /**
      * Who has written to this person themselves — peopleWhoWroteToMe(),
@@ -318,10 +319,10 @@ class User extends Authenticatable
      */
     public function seesOnlySourcingAndDataEntryTimeline(): bool
     {
-        $roles = $this->roles->pluck('name');
+        $roles = $this->roleSlugs();
 
-        return $roles->intersect(['Sourcing', 'Data Entry'])->isNotEmpty()
-            && $roles->diff(['Sourcing', 'Data Entry'])->isEmpty();
+        return $roles->intersect(['sourcing', 'data-entry'])->isNotEmpty()
+            && $roles->diff(['sourcing', 'data-entry'])->isEmpty();
     }
 
     /**
@@ -330,7 +331,51 @@ class User extends Authenticatable
      */
     public function isSourcingOrDataEntry(): bool
     {
-        return $this->roles->pluck('name')->intersect(['Sourcing', 'Data Entry'])->isNotEmpty();
+        return $this->roleSlugs()->intersect(['sourcing', 'data-entry'])->isNotEmpty();
+    }
+
+    /**
+     * The slugs of the roles this person holds (App\Models\Role) — what the
+     * code knows them by, whatever they're called now.
+     *
+     * @return SupportCollection<int, string>
+     */
+    public function roleSlugs(): SupportCollection
+    {
+        return $this->roles->pluck('slug');
+    }
+
+    /**
+     * Those of $roles (as the code names them) this person holds, in the
+     * order given — by slug, so under any name. Stand-ins (ROLE_STAND_INS)
+     * don't count.
+     *
+     * @param  array<int, string>  $roles
+     * @return SupportCollection<int, string>
+     */
+    public function rolesAmong(array $roles): SupportCollection
+    {
+        $mine = $this->roleSlugs();
+
+        return collect($roles)->filter(fn (string $role) => $mine->contains(Role::slugFor($role)))->values();
+    }
+
+    /**
+     * What those of $roles this person holds are called now (rolesAmong()),
+     * for showing — in the order given.
+     *
+     * @param  array<int, string>  $roles
+     * @return SupportCollection<int, string>
+     */
+    public function roleNamesAmong(array $roles): SupportCollection
+    {
+        $slugs = array_map(Role::slugFor(...), $roles);
+
+        return $this->roles
+            ->filter(fn (Role $role) => in_array($role->slug, $slugs, true))
+            ->sortBy(fn (Role $role) => array_search($role->slug, $slugs, true))
+            ->pluck('name')
+            ->values();
     }
 
     /**
@@ -374,16 +419,16 @@ class User extends Authenticatable
      * The roles this person may start a private message with, by their roles'
      * rules on Settings → Messaging (Setting::messageRoles()) — all of their
      * roles' allowed roles together — or null for anyone: an Admin always,
-     * and anyone holding a role (or no role) that isn't limited.
+     * and anyone holding a role (or no role) that isn't limited. By slug.
      *
      * @return array<int, string>|null
      */
     public function messageableRoles(): ?array
     {
         $rules = Setting::messageRoles();
-        $mine = $this->roles->pluck('name');
+        $mine = $this->roleSlugs();
 
-        if ($mine->isEmpty() || $mine->contains('Admin') || $mine->contains(fn (string $role) => ! array_key_exists($role, $rules))) {
+        if ($mine->isEmpty() || $mine->contains('admin') || $mine->contains(fn (string $role) => ! array_key_exists($role, $rules))) {
             return null;
         }
 
@@ -400,7 +445,7 @@ class User extends Authenticatable
         $allowed = $this->messageableRoles();
 
         return $allowed === null
-            || $recipient->roles->pluck('name')->intersect($allowed)->isNotEmpty()
+            || $recipient->roleSlugs()->intersect($allowed)->isNotEmpty()
             || in_array($recipient->id, $this->peopleWhoWroteToMe(), true);
     }
 
@@ -418,10 +463,12 @@ class User extends Authenticatable
         }
 
         $as = 'As '.$this->roles->pluck('name')->sort()->join(', ', ' and ').', you can ';
+        // The roles allowed, by what they're called now.
+        $names = Role::query()->whereIn('slug', $allowed)->pluck('name')->sort()->values();
 
         return $allowed === []
             ? $as.'only answer those who write to you.'
-            : $as.'message '.collect($allowed)->join(', ', ' and ').' — and answer anyone who writes to you.';
+            : $as.'message '.$names->join(', ', ' and ').' — and answer anyone who writes to you.';
     }
 
     /**
@@ -523,10 +570,10 @@ class User extends Authenticatable
      */
     public function canChangeRfqPriority(): bool
     {
-        $roles = $this->roles->pluck('name');
+        $roles = $this->roleSlugs();
 
-        return ! $roles->contains('Operation Assistant Trainee')
-            || $roles->intersect(['Admin', 'HBDs Operations', 'Business Development'])->isNotEmpty();
+        return ! $roles->contains('operation-assistant-trainee')
+            || $roles->intersect(['admin', 'hbds-operations', 'business-development'])->isNotEmpty();
     }
 
     /**
@@ -863,7 +910,7 @@ class User extends Authenticatable
      */
     public function scopeHoldingRole(Builder $query, string $role): void
     {
-        $query->active()->whereHas('roles', fn (Builder $roles) => $roles->whereIn('name', self::rolesCountingAs($role)));
+        $query->active()->whereHas('roles', fn (Builder $roles) => $roles->whereIn('slug', self::slugsCountingAs($role)));
     }
 
     /**
@@ -875,40 +922,68 @@ class User extends Authenticatable
      */
     public function scopeHoldingAnyRole(Builder $query, array $roles): void
     {
-        $query->active()->whereHas('roles', fn (Builder $named) => $named->whereIn('name', collect($roles)->flatMap(fn (string $role) => self::rolesCountingAs($role))->unique()->all()));
+        $query->active()->whereHas('roles', fn (Builder $named) => $named->whereIn('slug', collect($roles)->flatMap(fn (string $role) => self::slugsCountingAs($role))->unique()->all()));
     }
 
     /**
-     * $role and the roles that stand in for it (ROLE_STAND_INS) — holding
-     * any of them counts as holding $role.
+     * The slug of $role (as the code names it, App\Models\Role::slugFor())
+     * and of the roles that stand in for it (ROLE_STAND_INS) — holding any of
+     * them counts as holding $role.
      *
      * @return array<int, string>
      */
-    public static function rolesCountingAs(string $role): array
+    public static function slugsCountingAs(string $role): array
     {
-        return [$role, ...array_keys(self::ROLE_STAND_INS, $role, true)];
+        $slug = Role::slugFor($role);
+
+        return [$slug, ...array_keys(self::ROLE_STAND_INS, $slug, true)];
     }
 
     /**
-     * Spatie's hasRole() (and so hasAnyRole()), with ROLE_STAND_INS: asked
-     * about a role by name, holding a role that stands in for it counts too.
-     * An array is checked name by name, coming back here for each.
+     * Spatie's hasRole() (and so hasAnyRole(), Blade's role checks and the
+     * role middleware), by slug: asked about a role by the name the code
+     * knows it by, or its slug, it's whatever the role is called now. Holding
+     * a role that stands in for it (ROLE_STAND_INS) counts too. An array, or
+     * "A|B", is any of them. A Role, an id or a Collection go to Spatie.
      *
-     * @param  string|int|array<int, mixed>|Role|SupportCollection<int, mixed>|\BackedEnum  $roles
+     * @param  string|int|array<int, mixed>|RoleContract|SupportCollection<int, mixed>|\BackedEnum  $roles
      */
     public function hasRole($roles, ?string $guard = null): bool
     {
-        if (! is_string($roles) || str_contains($roles, '|')) {
+        if (is_string($roles) && str_contains($roles, '|')) {
+            $roles = explode('|', $roles);
+        }
+
+        if (is_array($roles)) {
+            return collect($roles)->contains(fn (mixed $role) => $this->hasRole($role, $guard));
+        }
+
+        if (! is_string($roles)) {
             return $this->spatieHasRole($roles, $guard);
         }
 
-        foreach (self::rolesCountingAs($roles) as $role) {
-            if ($this->spatieHasRole($role, $guard)) {
-                return true;
-            }
+        $this->loadMissing('roles');
+
+        return ($guard === null ? $this->roles : $this->roles->where('guard_name', $guard))
+            ->pluck('slug')
+            ->intersect(self::slugsCountingAs($roles))
+            ->isNotEmpty();
+    }
+
+    /**
+     * Whether this person holds every one of $roles — by slug, as hasRole().
+     *
+     * @param  string|array<int, mixed>|RoleContract|SupportCollection<int, mixed>|\BackedEnum  $roles
+     */
+    public function hasAllRoles($roles, ?string $guard = null): bool
+    {
+        if (is_string($roles)) {
+            $roles = explode('|', $roles);
         }
 
-        return false;
+        return is_array($roles)
+            ? collect($roles)->every(fn (mixed $role) => $this->hasRole($role, $guard))
+            : $this->spatieHasAllRoles($roles, $guard);
     }
 
     /**

@@ -39,7 +39,7 @@
                         @php
                             // Sourcing, Data Entry and GM Assistant: their time is tracked,
                             // so they can have extra hours (ExtraWorkingHour) — Admin sets them.
-                            $hasTrackedTime = $user->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty();
+                            $hasTrackedTime = $user->rolesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty();
                         @endphp
                         <tr @class(['is-deactivated' => $user->isDeactivated()])>
                             <td class="fw-semibold">
@@ -206,7 +206,7 @@
     {{-- Each tracked person's Extra hours window — Admin only. --}}
     @if (auth()->user()->hasRole('Admin'))
         @foreach ($users as $user)
-            @if ($user->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty())
+            @if ($user->rolesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS))->isNotEmpty())
                 @include('admin.users._extra_hours_modal', ['user' => $user])
             @endif
         @endforeach

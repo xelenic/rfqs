@@ -12,7 +12,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Role as SpatieRole;
 
 /**
  * A role's own working week, or one person's, in place of the company's
@@ -222,17 +222,17 @@ class WorkingSchedule extends Model
      */
     public static function roleOrder(): Collection
     {
-        $workflow = array_flip(Rfq::WORKFLOW_ROLES);
+        $workflow = array_flip(array_map(Role::slugFor(...), Rfq::WORKFLOW_ROLES));
 
         return Role::query()->orderBy('name')->get()
-            ->sortBy(fn (Role $role) => [$workflow[$role->name] ?? PHP_INT_MAX, $role->name])
+            ->sortBy(fn (Role $role) => [$workflow[$role->slug] ?? PHP_INT_MAX, $role->name])
             ->values();
     }
 
     /**
      * $owner's version counting today — none if they work someone else's.
      */
-    public static function currentFor(Role|User $owner): ?self
+    public static function currentFor(SpatieRole|User $owner): ?self
     {
         $today = Setting::today();
         $latest = static::query()->ownedBy($owner)
@@ -251,7 +251,7 @@ class WorkingSchedule extends Model
      *
      * @param  array<string, array{working: bool, start: string, end: string, lunch_start: ?string, lunch_end: ?string}>  $week
      */
-    public static function putFor(Role|User $owner, array $week, User $by): self
+    public static function putFor(SpatieRole|User $owner, array $week, User $by): self
     {
         $current = static::currentFor($owner);
 
@@ -262,7 +262,7 @@ class WorkingSchedule extends Model
         }
 
         return static::query()->create([
-            $owner instanceof Role ? 'role_id' : 'user_id' => $owner->getKey(),
+            $owner instanceof SpatieRole ? 'role_id' : 'user_id' => $owner->getKey(),
             'week' => $week,
             'starts_on' => Setting::today(),
             'created_by' => $by->id,
@@ -274,7 +274,7 @@ class WorkingSchedule extends Model
      * role's, or the company's. Days before keep the hours they had. False if
      * they had none.
      */
-    public static function endFor(Role|User $owner): bool
+    public static function endFor(SpatieRole|User $owner): bool
     {
         $current = static::currentFor($owner);
 
@@ -286,9 +286,9 @@ class WorkingSchedule extends Model
      *
      * @param  Builder<self>  $query
      */
-    public function scopeOwnedBy(Builder $query, Role|User $owner): void
+    public function scopeOwnedBy(Builder $query, SpatieRole|User $owner): void
     {
-        $query->where($owner instanceof Role ? 'role_id' : 'user_id', $owner->getKey());
+        $query->where($owner instanceof SpatieRole ? 'role_id' : 'user_id', $owner->getKey());
     }
 
     /**

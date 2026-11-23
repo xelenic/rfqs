@@ -80,7 +80,7 @@
                                         @endisset
                                     </td>
                                     <td>
-                                        @foreach ($person->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) as $roleName)
+                                        @foreach ($person->roleNamesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS)) as $roleName)
                                             <span class="badge badge-soft-secondary">{{ $roleName }}</span>
                                         @endforeach
                                     </td>

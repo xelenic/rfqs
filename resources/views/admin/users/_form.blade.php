@@ -119,7 +119,7 @@
                     <label class="role-pick-card {{ $checked ? 'selected' : '' }}" for="{{ $idPrefix }}-role-{{ $role->id }}">
                         <input type="checkbox" class="role-pick-input" name="roles[]"
                                id="{{ $idPrefix }}-role-{{ $role->id }}"
-                               value="{{ $role->name }}" {{ $checked ? 'checked' : '' }}>
+                               value="{{ $role->name }}" data-role-slug="{{ $role->slug }}" {{ $checked ? 'checked' : '' }}>
                         <span class="role-pick-check"><i class="bi bi-check-circle-fill"></i></span>
                         <span class="role-pick-name">{{ $role->name }}</span>
                         @if ($role->description)
@@ -146,11 +146,11 @@
          off (admin.js, .js-category-tag-picker). --}}
     @php
         $jobCategories ??= collect();
-        $tagRoles = \App\Models\User::JOB_CATEGORY_TAG_ROLES;
+        $tagRoles = array_map(\App\Models\Role::slugFor(...), \App\Models\User::JOB_CATEGORY_TAG_ROLES);
         $pickedCategories = $showOld
             ? collect((array) old('job_categories', []))->map(fn ($id) => $jobCategories->firstWhere('id', (int) $id))->filter()->unique('id')
             : collect();
-        $showsTags = $showOld && array_intersect($tagRoles, (array) old('roles', [])) !== [];
+        $showsTags = $showOld && $roles->whereIn('name', (array) old('roles', []))->whereIn('slug', $tagRoles)->isNotEmpty();
     @endphp
     <div @class(['col-12 js-job-category-tags', 'd-none' => ! $showsTags]) data-tag-roles="{{ implode('|', $tagRoles) }}">
         <label class="form-label" for="{{ $idPrefix }}-category-search">Job categories <span class="text-muted-soft fw-normal">(the work they take on)</span></label>

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -23,6 +24,13 @@ return new class extends Migration
 
             if ($new === null) {
                 $old->name = 'HR Executive';
+
+                // Where roles have slugs already (add_slug_to_roles_table),
+                // it's known as HR Executive too.
+                if (Schema::hasColumn('roles', 'slug')) {
+                    $old->slug = 'hr-executive';
+                }
+
                 $old->save();
             } else {
                 $new->givePermissionTo($old->permissions);

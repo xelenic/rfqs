@@ -288,7 +288,7 @@
                         <tr data-attendance-line="{{ $line->user_id }}" @class(['is-absent' => $line->status === \App\Models\Attendance::ABSENT, 'is-half-day' => $line->status === \App\Models\Attendance::HALF_DAY])>
                             <td>@include('admin.attendance._sheet_person')</td>
                             <td>
-                                @foreach ($line->user?->roles->pluck('name')->intersect(array_keys(\App\Models\RfqStep::ROLE_STEPS)) ?? [] as $roleName)
+                                @foreach ($line->user?->roleNamesAmong(array_keys(\App\Models\RfqStep::ROLE_STEPS)) ?? [] as $roleName)
                                     <span class="badge badge-soft-secondary">{{ $roleName }}</span>
                                 @endforeach
                             </td>
