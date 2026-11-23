@@ -1,15 +1,16 @@
 {{--
     The Settings page (see SettingsController), one tab per part: Profile,
-    Password and Preferences for everyone, and for an Admin the Application
-    settings, WC Validation, RFQ Numbers, the Working Hours, each role's own
-    (Role Hours — HR Executive's too), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
-    and people's Extra Hours, and Messaging — who each role can message. Each tab is its own form with its own error bag. The tab that
+    Password and Preferences for everyone, and — with settings.manage — the
+    Application settings, WC Validation, RFQ Numbers, the Working Hours, each
+    role's own (Role Hours — with working-hours.manage), the Half Day, the Sourcing Targets and Data Entry Time, the Idle Alert,
+    and people's Extra Hours, and Messaging — who each role can message — and
+    the Danger Zone (rfqs.clear-data). Each tab is its own form with its own error bag. The tab that
     opens is the one a form was just saved from (session settings_tab) or
     failed on, else ?tab=, else
     Profile — and switching tabs keeps ?tab= in the address (see admin.js),
     so a reload stays put.
 
-    Expects: $user, $closesRfqs, $isAdmin, $managesWorkingHours, $companyName, $liveInterval,
+    Expects: $user, $closesRfqs, $isAdmin, $managesSettings, $clearsRfqData, $managesWorkingHours, $companyName, $liveInterval,
     $liveIntervalRange, $workingHours (Setting::workingHours()), $timezone
     (Setting::timezone()), $sourcingTargets (Setting::sourcingTargets()),
     $dataEntryTargets (Setting::dataEntryTargets()), $finalizeTargets
@@ -20,14 +21,14 @@
     (Setting::gmAssistantIdleAlert()), $dataEntryIdleMinutesRange, $dataEntryPerItem
     (Setting::dataEntryPerItem()) and $dataEntryPerItemRange, $rfqNumberStart
     (Setting::rfqNumberStart()), $nextRfqNumber, $lastRfqSequence, $rfqDataCounts
-    (App\RfqDataEraser::counts(), for an Admin), $extraHours
+    (App\RfqDataEraser::counts(), with rfqs.clear-data), $extraHours
     (ExtraWorkingHour, with user.roles), $extraHoursPeople
     (AttendanceSheet::people()),
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
     (Setting::halfDayOff()), $roleHours (each role with its current
     WorkingSchedule, or null), $peopleHours (each person with their own),
-    $messageRules (Setting::messageRoles()) and $allRoles (every role, for an
-    Admin).
+    $messageRules (Setting::messageRoles()) and $allRoles (every role, with
+    settings.manage).
 --}}
 @extends('layouts.app')
 
@@ -41,13 +42,16 @@
             'preferences' => ['label' => 'Preferences', 'icon' => 'bi-sliders', 'bag' => null],
         ];
         $roleHoursTab = ['label' => 'Role Hours', 'icon' => 'bi-person-badge', 'bag' => 'role_hours'];
-        // The Admin's own tabs — or, for HR Executive, Role Hours alone — under their heading.
-        $managedTabs = $isAdmin ? [
+        // The tabs their role's permissions give them — the application's
+        // settings, Role Hours, the Danger Zone — under one heading: Admin, or
+        // what their roles are called (HR Executive's, Role Hours alone).
+        $settingsTabs = $managesSettings ? [
             'application' => ['label' => 'Application', 'icon' => 'bi-building', 'bag' => 'application'],
             'wc-validation' => ['label' => 'WC Validation', 'icon' => 'bi-patch-check', 'bag' => null],
             'rfq-numbers' => ['label' => 'RFQ Numbers', 'icon' => 'bi-123', 'bag' => 'rfq_numbers'],
             'working-hours' => ['label' => 'Working Hours', 'icon' => 'bi-clock', 'bag' => 'working_hours'],
-            'role-hours' => $roleHoursTab,
+        ] : [];
+        $moreSettingsTabs = $managesSettings ? [
             'half-day' => ['label' => 'Half Day', 'icon' => 'bi-circle-half', 'bag' => 'half_day'],
             'sourcing-targets' => ['label' => 'Sourcing Targets', 'icon' => 'bi-stopwatch', 'bag' => 'sourcing_targets'],
             'data-entry-targets' => ['label' => 'Data Entry Time', 'icon' => 'bi-hourglass-split', 'bag' => ['data_entry_targets', 'data_entry_per_item', 'data_entry_per_item_people']],
@@ -56,9 +60,12 @@
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => ['idle_alert', 'gm_assistant_idle_alert']],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'messaging' => ['label' => 'Messaging', 'icon' => 'bi-chat-dots', 'bag' => 'message_roles'],
-            'danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true],
-        ] : ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : []);
-        $managedTabsHeading = $isAdmin ? 'Admin' : 'HR Executive';
+        ] : [];
+        $managedTabs = $settingsTabs
+            + ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : [])
+            + $moreSettingsTabs
+            + ($clearsRfqData ? ['danger-zone' => ['label' => 'Danger Zone', 'icon' => 'bi-exclamation-octagon', 'bag' => 'danger_zone', 'danger' => true]] : []);
+        $managedTabsHeading = $isAdmin ? 'Admin' : $user->roles->pluck('name')->sort()->join(', ');
         $allTabs = $accountTabs + $managedTabs;
         // A tab's form — or forms — and whether one of them failed.
         $hasErrors = fn (array $tab) => collect((array) $tab['bag'])->contains(fn (string $bag) => $errors->getBag($bag)->any());
@@ -67,7 +74,7 @@
         $activeTab = array_key_exists((string) $activeTab, $allTabs) ? $activeTab : 'profile';
     @endphp
 
-    {{-- Tabs down the left — the Admin's own (HR Executive's) under their heading — and the
+    {{-- Tabs down the left — those their permissions give them under their heading — and the
          open one's form beside them. On a narrow screen they're a row across
          the top, which scrolls. --}}
     <div class="settings-layout">
@@ -134,7 +141,7 @@
                     </div>
 
                     {{-- Only those who keep people's details change their own
-                         (User::USER_DETAILS_ROLES); everyone else sees theirs. --}}
+                         (User::canChangeUserDetails()); everyone else sees theirs. --}}
                     @if ($user->canChangeUserDetails())
                         <form method="POST" action="{{ route('admin.settings.profile') }}" novalidate>
                             @csrf
@@ -281,7 +288,7 @@
             </div>
         </div>
 
-        @if ($isAdmin)
+        @if ($managesSettings)
             <div class="tab-pane fade {{ $activeTab === 'application' ? 'show active' : '' }}" id="settings-pane-application" role="tabpanel" aria-labelledby="settings-tab-application" tabindex="0">
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center gap-2">
@@ -566,7 +573,7 @@
 
         @endif
 
-        @if ($isAdmin)
+        @if ($managesSettings)
             <div class="tab-pane fade {{ $activeTab === 'half-day' ? 'show active' : '' }}" id="settings-pane-half-day" role="tabpanel" aria-labelledby="settings-tab-half-day" tabindex="0">
                 {{-- The time a half day off takes — the morning off and the
                      afternoon off. On the attendance sheet, someone on a half day
@@ -1063,6 +1070,9 @@
                 </div>
             </div>
 
+        @endif
+
+        @if ($clearsRfqData)
             <div class="tab-pane fade {{ $activeTab === 'danger-zone' ? 'show active' : '' }}" id="settings-pane-danger-zone" role="tabpanel" aria-labelledby="settings-tab-danger-zone" tabindex="0">
                 {{-- Clearing every RFQ for good — SettingsController::clearRfqData(),
                      App\RfqDataEraser. Typed phrase and password, then the

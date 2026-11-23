@@ -28,7 +28,7 @@ describe('holding the role', function () {
 
         expect($trainee->hasRole('HBDs Operations'))->toBeTrue()
             ->and($trainee->hasAnyRole(['HBDs Operations', 'Admin']))->toBeTrue()
-            ->and($trainee->hasAnyRole(User::ALL_RFQS_ROLES))->toBeTrue()
+            ->and($trainee->hasAnyRole(['Admin', 'General Manager', 'HBDs Operations']))->toBeTrue()
             ->and($trainee->hasRole('HBDs Operations|Sourcing'))->toBeTrue()
             ->and($trainee->hasRole('Operation Assistant Trainee'))->toBeTrue()
             ->and($trainee->canChangeRfqStatus())->toBeTrue()

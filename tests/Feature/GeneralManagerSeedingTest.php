@@ -32,8 +32,9 @@ it('gives the General Manager role its approval permissions, and no oversight-on
 
     $permissions = Role::findByName('General Manager')->permissions->pluck('name')->sort()->values()->all();
 
-    // What the Manager had on top — users, roles and permissions — isn't the General Manager's.
-    expect($permissions)->toBe(['rfqs.edit', 'rfqs.view']);
+    // What the Manager had on top — users, roles and permissions — isn't the
+    // General Manager's. All RFQs is (App\Permissions).
+    expect($permissions)->toBe(['rfqs.edit', 'rfqs.list-all', 'rfqs.view']);
 });
 
 it('folds a Manager role from an earlier seed into General Manager, keeping its accounts and their logins', function () {

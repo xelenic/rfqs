@@ -51,7 +51,7 @@
             <i class="bi bi-info-circle"></i>
             <div>
                 Attendance isn't counted yet — all tracked time counts straight away.
-                @if (auth()->user()->hasRole('Admin'))
+                @if (auth()->user()->can('settings.manage'))
                     Choose the day it starts in <a href="{{ route('admin.settings.edit', ['tab' => 'working-hours']) }}">Settings → Working Hours</a>.
                 @endif
             </div>

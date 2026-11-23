@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Permissions;
 use BackedEnum;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Contracts\Role as RoleContract;
 use Spatie\Permission\Guard;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role as SpatieRole;
 
 use function Illuminate\Support\enum_value;
@@ -58,6 +60,26 @@ class Role extends SpatieRole
     }
 
     /**
+     * Gives a role just made the features it has to begin with, by its slug
+     * (App\Permissions::defaultsFor()) — so a role the code knows starts with
+     * what it always had, and one of a new slug ("sourcing-2") with none.
+     * Switched off on the Roles page, a feature stays off: it's given only
+     * here. Also run for Spatie's own Role model (see AppServiceProvider).
+     */
+    public static function giveDefaultPermissions(SpatieRole $role): void
+    {
+        $names = Permissions::defaultsFor((string) $role->slug);
+
+        if ($names === []) {
+            return;
+        }
+
+        $guard = $role->guard_name ?? Guard::getDefaultName(static::class);
+
+        $role->givePermissionTo(array_map(fn (string $name) => Permission::findOrCreate($name, $guard), $names));
+    }
+
+    /**
      * Whether roles have slugs yet: an earlier migration making a role runs
      * before add_slug_to_roles_table, which gives it one. Once they have,
      * it isn't asked again.
@@ -104,5 +126,6 @@ class Role extends SpatieRole
     protected static function booted(): void
     {
         static::creating(fn (self $role) => self::giveSlug($role));
+        static::created(fn (self $role) => self::giveDefaultPermissions($role));
     }
 }

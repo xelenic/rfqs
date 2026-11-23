@@ -106,7 +106,7 @@
                 @php
                     $canSendLink = $canManage && auth()->user()->can('users.create') && ! $user->isDeactivated();
                     $canLogInAs = \App\Impersonation::canStart(auth()->user(), $user);
-                    $canDeactivate = auth()->user()->hasRole('Admin') && ! $isYou;
+                    $canDeactivate = auth()->user()->can('users.deactivate') && ! $isYou;
                     $canRemovePhoto = $user->avatar_path && auth()->user()->canChangePhotoOf($user);
                 @endphp
                 @if ($canSendLink || $canLogInAs || $canDeactivate || $canRemovePhoto)
@@ -276,7 +276,7 @@
 
             {{-- A Sourcing member's usual person in Data Entry: whom their
                  "Assign to Data Entry" picks to begin with (they can pick
-                 someone else). An Admin sets it. --}}
+                 someone else). Set with users.sourcing-setup. --}}
             @if ($user->hasRole('Sourcing'))
                 <div class="card mb-4" id="user-default-data-entry">
                     <div class="card-header d-flex align-items-center gap-2">
@@ -286,7 +286,7 @@
                         <p class="small text-muted-soft">
                             When {{ $user->name }} assigns a part to Data Entry, this person is picked to begin with — they can still pick someone else, or leave it with anyone there.
                         </p>
-                        @if (auth()->user()->hasRole('Admin'))
+                        @if (auth()->user()->can('users.sourcing-setup'))
                             <form method="POST" action="{{ route('admin.users.default-data-entry', $user) }}" class="d-flex flex-wrap align-items-start gap-2">
                                 @csrf
                                 @method('PATCH')
@@ -312,7 +312,7 @@
                 {{-- Their expected RFQ count: how many RFQs they're expected to
                      hand in a working day — the Sourcing Summary's figure, and
                      its dropdown's, on any day nobody set one for
-                     (SourcingExpectedRfq). An Admin sets it. --}}
+                     (SourcingExpectedRfq). Set with users.sourcing-setup. --}}
                 @php
                     $currentExpected = $expectedRfqVersions->first(fn ($version) => $version->starts_on <= \App\Models\Setting::today())?->expected_rfqs;
                 @endphp
@@ -324,7 +324,7 @@
                         <p class="small text-muted-soft">
                             How many RFQs {{ $user->name }} is expected to hand in on a working day. The Sourcing Summary shows it for them, already picked in its dropdown — it can still be changed there for a single day.
                         </p>
-                        @if (auth()->user()->hasRole('Admin'))
+                        @if (auth()->user()->can('users.sourcing-setup'))
                             @php
                                 $expectedShown = old('expected_rfqs', $currentExpected);
                                 $expectedShown = $expectedShown === null || $expectedShown === '' ? null : (int) $expectedShown;
@@ -640,7 +640,7 @@
                 <div class="card mb-4">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <span>Their time counts in these hours too</span>
-                        @if (auth()->user()->hasRole('Admin'))
+                        @if (auth()->user()->can('settings.manage'))
                             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#extraHoursModal-{{ $user->id }}">
                                 <i class="bi bi-pencil"></i> Change
                             </button>
@@ -665,7 +665,7 @@
         @include('admin.users._edit_modal', ['roles' => $roles, 'returnTo' => 'show'])
     @endif
 
-    @if ($isTracked && auth()->user()->hasRole('Admin'))
+    @if ($isTracked && auth()->user()->can('settings.manage'))
         @include('admin.users._extra_hours_modal', ['user' => $user])
     @endif
 

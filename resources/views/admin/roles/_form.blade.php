@@ -1,5 +1,12 @@
+{{--
+    A role's name, description, and what it can do: each permission an on/off
+    switch, by area (App\Permissions) — what it's called, what it lets
+    someone do, and its key. Those made on the Permissions page come last.
+
+    Expects: $role (null when adding one), $permissions (area => permissions).
+--}}
 @php
-    $rolePermissions = $role?->permissions->pluck('name')->toArray() ?? old('permissions', []);
+    $rolePermissions = session()->hasOldInput() ? old('permissions', []) : ($role?->permissions->pluck('name')->all() ?? []);
 @endphp
 
 <div class="mb-3">
@@ -37,19 +44,32 @@
     <div class="form-text">Disabled roles are flagged inactive but keep any permissions already assigned.</div>
 </div>
 
-<label class="form-label d-block">Permissions</label>
+<div class="mb-2">
+    <span class="form-label d-block mb-0">What this role can do</span>
+    <div class="form-text mt-0">Switch a permission on to give it to everyone in this role, or off to take it away. It counts from their next page.</div>
+</div>
 
-@forelse ($permissions as $group => $items)
-    <div class="permission-group">
-        <div class="group-title">{{ $group }}</div>
-        @foreach ($items as $permission)
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" name="permissions[]" id="permission-{{ $permission->id }}"
-                       value="{{ $permission->name }}" {{ in_array($permission->name, $rolePermissions) ? 'checked' : '' }}>
-                <label class="form-check-label" for="permission-{{ $permission->id }}">{{ $permission->name }}</label>
-            </div>
-        @endforeach
-    </div>
+@forelse ($permissions as $area => $items)
+    <fieldset class="permission-group">
+        <legend class="group-title">{{ $area }}</legend>
+        <div class="permission-rows">
+            @foreach ($items as $permission)
+                @php $hint = \App\Permissions::hint($permission->name); @endphp
+                <div class="form-check form-switch permission-row">
+                    <input class="form-check-input" type="checkbox" role="switch" name="permissions[]" id="permission-{{ $permission->id }}"
+                           value="{{ $permission->name }}" @checked(in_array($permission->name, $rolePermissions, true))
+                           @if ($hint) aria-describedby="permission-{{ $permission->id }}-hint" @endif>
+                    <label class="form-check-label" for="permission-{{ $permission->id }}">
+                        <span class="permission-label">{{ \App\Permissions::label($permission->name) }}</span>
+                        <code class="permission-key">{{ $permission->name }}</code>
+                    </label>
+                    @if ($hint)
+                        <div class="permission-hint" id="permission-{{ $permission->id }}-hint">{{ $hint }}</div>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    </fieldset>
 @empty
     <p class="text-muted-soft">No permissions have been created yet.</p>
 @endforelse

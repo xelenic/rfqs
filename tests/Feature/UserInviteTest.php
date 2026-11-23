@@ -140,7 +140,7 @@ it('never lets HR Executive touch an Admin\'s account, or set a password', funct
     // No password field for them; one sent anyway is refused.
     expect(test()->actingAs($alex)->get(route('admin.users.index'))->getContent())->not->toContain('id="edit-password"');
     test()->actingAs($alex)->put(route('admin.users.update', $sam), ['name' => 'Sam', 'email' => $sam->email, 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
-        ->assertSessionHasErrorsIn('edit', ['password' => 'Only an Admin can set someone\'s password — send them a link instead.']);
+        ->assertSessionHasErrorsIn('edit', ['password' => 'Your role can\'t set someone\'s password — send them a link instead.']);
 
     // An Admin can do all of it.
     test()->actingAs($root)->put(route('admin.users.update', $sam), ['name' => 'Sam', 'email' => $sam->email, 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
@@ -244,7 +244,7 @@ it('needs a sound password when an Admin sets one, and only an Admin can', funct
 
     test()->actingAs(personAs('HR Executive', 'Alex Silva'))
         ->post(route('admin.users.store'), ['name' => 'Morgan Perera', 'email' => 'morgan@company.lk', 'sign_in' => 'password', 'password' => 'quotes-2026', 'password_confirmation' => 'quotes-2026'])
-        ->assertSessionHasErrorsIn('create', ['sign_in' => 'Only an Admin can set a password for someone — email them a link instead.']);
+        ->assertSessionHasErrorsIn('create', ['sign_in' => 'Your role can\'t set a password for someone — email them a link instead.']);
 
     expect(User::query()->where('email', 'morgan@company.lk')->exists())->toBeFalse();
     Notification::assertNothingSent();

@@ -173,6 +173,6 @@ class BackupController extends Controller
 
     private function abortUnlessAdmin(Request $request): void
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can manage backups.');
+        abort_unless($request->user()->can('backups.manage'), 403, 'Your role can\'t manage backups.');
     }
 }

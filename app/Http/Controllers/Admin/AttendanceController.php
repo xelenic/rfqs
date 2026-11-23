@@ -41,7 +41,7 @@ class AttendanceController extends Controller
      */
     public function index(Request $request): View
     {
-        abort_unless($request->user()->canViewAttendance(), 403, 'Only Admin, Senior Operations and HR Executive see the attendance sheets.');
+        abort_unless($request->user()->canViewAttendance(), 403, 'Your role doesn\'t see the attendance sheets.');
 
         $today = Setting::today();
         $missingDays = AttendanceSheet::missingDays();
@@ -81,7 +81,7 @@ class AttendanceController extends Controller
      */
     public function show(Request $request, AttendanceSheet $sheet): View
     {
-        abort_unless($request->user()->canViewAttendance(), 403, 'Only Admin, Senior Operations and HR Executive see the attendance sheets.');
+        abort_unless($request->user()->canViewAttendance(), 403, 'Your role doesn\'t see the attendance sheets.');
 
         $sheet->load(['attendances.user.roles', 'createdBy', 'updatedBy', 'approvedBy', 'returnedBy']);
         $date = $sheet->date->toDateString();
@@ -109,7 +109,7 @@ class AttendanceController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin and Senior Operations fill in the attendance sheet.');
+        abort_unless($request->user()->canManageAttendance(), 403, 'Your role doesn\'t fill in the attendance sheet.');
 
         $validated = $request->validateWithBag('attendance', [
             'date' => [
@@ -155,7 +155,7 @@ class AttendanceController extends Controller
      */
     public function update(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canManageAttendance(), 403, 'Only Admin and Senior Operations fill in the attendance sheet.');
+        abort_unless($request->user()->canManageAttendance(), 403, 'Your role doesn\'t fill in the attendance sheet.');
 
         $validated = $request->validateWithBag('attendance', $this->markRules(), $this->markMessages());
 
@@ -176,7 +176,7 @@ class AttendanceController extends Controller
      */
     public function approve(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Executive approves the attendance sheet.');
+        abort_unless($request->user()->canApproveAttendance(), 403, 'Your role doesn\'t approve the attendance sheet.');
         abort_unless($sheet->isAwaitingApproval(), 422, 'That sheet isn\'t waiting for approval.');
 
         $sheet->approve($request->user());
@@ -191,7 +191,7 @@ class AttendanceController extends Controller
      */
     public function sendBack(Request $request, AttendanceSheet $sheet): RedirectResponse
     {
-        abort_unless($request->user()->canApproveAttendance(), 403, 'Only HR Executive returns the attendance sheet.');
+        abort_unless($request->user()->canApproveAttendance(), 403, 'Your role doesn\'t return the attendance sheet.');
         abort_unless($sheet->isAwaitingApproval(), 422, 'That sheet isn\'t waiting for approval.');
 
         $validated = $request->validateWithBag('attendance_return', [

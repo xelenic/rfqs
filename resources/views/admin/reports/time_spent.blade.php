@@ -110,7 +110,7 @@
             </form>
             <span class="text-muted-soft small">
                 <span class="fw-semibold text-body">Working time</span>, within the
-                @if (auth()->user()->hasRole('Admin'))
+                @if (auth()->user()->can('settings.manage'))
                     <a href="{{ route('admin.settings.edit', ['tab' => 'working-hours']) }}">working hours</a>
                     and anyone's own <a href="{{ route('admin.settings.edit', ['tab' => 'extra-hours']) }}">extra hours</a>
                 @else

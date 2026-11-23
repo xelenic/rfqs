@@ -13,7 +13,7 @@ use Illuminate\View\View;
 
 /**
  * The Time Spent report, for Admin, Senior Operations and HR Executive
- * (User::TIME_SPENT_REPORT_ROLES): the working time Sourcing, Data Entry and
+ * (reports.time-spent): the working time Sourcing, Data Entry and
  * GM Assistant have spent on each RFQ (Rfq::timeSpent()), and on average
  * across them, so a slow stage stands out; how each stands against its
  * targets (Rfq::deadlines()) — every timed step, judged as the dashboards
@@ -43,7 +43,7 @@ class TimeSpentReportController extends Controller
 
     public function __invoke(Request $request): View
     {
-        abort_unless($request->user()->canViewTimeSpentReport(), 403, 'Only Admin, Senior Operations and HR Executive can see the time spent report.');
+        abort_unless($request->user()->canViewTimeSpentReport(), 403, 'Your role can\'t see the time spent report.');
 
         $tab = array_key_exists((string) $request->query('tab'), self::TABS) ? $request->query('tab') : array_key_first(self::TABS);
         $search = $request->string('search')->trim()->toString();

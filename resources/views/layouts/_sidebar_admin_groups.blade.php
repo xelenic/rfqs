@@ -114,14 +114,15 @@
 
     // The two parents, each a timeline of its steps: the RFQ workflow, and
     // Human Resource with HR Executive's pages.
+    $seesReports = auth()->user()->canViewPerformanceReports();
     $trees = [
         ['slug' => 'role-stages', 'label' => 'RFQ Management', 'icon' => 'bi-layers', 'groups' => $groups],
         ['slug' => 'human-resource', 'label' => 'Human Resource', 'icon' => 'bi-person-vcard', 'groups' => [
             [
                 'role' => 'HR Executive', 'badge' => ['attendance'],
                 'links' => [
-                    ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve'],
-                    ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => ''],
+                    ['label' => 'Attendance', 'icon' => 'bi-person-check', 'route' => 'admin.attendance.index', 'activeOn' => 'admin.attendance.*', 'count' => 'attendance', 'hint' => 'attendance sheets to make, correct or approve', 'can' => auth()->user()->canViewAttendance()],
+                    ['label' => 'Time Spent', 'icon' => 'bi-stopwatch', 'route' => 'admin.reports.time-spent', 'activeOn' => 'admin.reports.time-spent', 'count' => null, 'hint' => '', 'can' => auth()->user()->canViewTimeSpentReport()],
                 ],
             ],
         ]],
@@ -130,25 +131,37 @@
             [
                 'role' => 'Sourcing Reports', 'badge' => [],
                 'links' => [
-                    ['label' => 'Daily Report', 'icon' => 'bi-calendar-day', 'route' => 'admin.reports.sourcing-daily', 'activeOn' => 'admin.reports.sourcing-daily', 'count' => null, 'hint' => ''],
-                    ['label' => 'Summary Report', 'icon' => 'bi-clipboard-data', 'route' => 'admin.reports.sourcing-summary', 'activeOn' => 'admin.reports.sourcing-summary*', 'count' => null, 'hint' => ''],
-                    ['label' => 'Monthly Report', 'icon' => 'bi-calendar3', 'route' => 'admin.reports.sourcing-monthly', 'activeOn' => 'admin.reports.sourcing-monthly', 'count' => null, 'hint' => ''],
+                    ['label' => 'Daily Report', 'icon' => 'bi-calendar-day', 'route' => 'admin.reports.sourcing-daily', 'activeOn' => 'admin.reports.sourcing-daily', 'count' => null, 'hint' => '', 'can' => $seesReports],
+                    ['label' => 'Summary Report', 'icon' => 'bi-clipboard-data', 'route' => 'admin.reports.sourcing-summary', 'activeOn' => 'admin.reports.sourcing-summary*', 'count' => null, 'hint' => '', 'can' => $seesReports],
+                    ['label' => 'Monthly Report', 'icon' => 'bi-calendar3', 'route' => 'admin.reports.sourcing-monthly', 'activeOn' => 'admin.reports.sourcing-monthly', 'count' => null, 'hint' => '', 'can' => $seesReports],
                 ],
             ],
             [
                 'role' => 'Data Entry Reports', 'badge' => [],
                 'links' => [
-                    ['label' => 'Daily Report', 'icon' => 'bi-keyboard', 'route' => 'admin.reports.data-entry-daily', 'activeOn' => 'admin.reports.data-entry-daily', 'count' => null, 'hint' => ''],
+                    ['label' => 'Daily Report', 'icon' => 'bi-keyboard', 'route' => 'admin.reports.data-entry-daily', 'activeOn' => 'admin.reports.data-entry-daily', 'count' => null, 'hint' => '', 'can' => $seesReports],
                 ],
             ],
             [
                 'role' => 'RFQ Tracking', 'badge' => [],
                 'links' => [
-                    ['label' => 'Tracking Sheet', 'icon' => 'bi-table', 'route' => 'admin.reports.rfq-tracking', 'activeOn' => 'admin.reports.rfq-tracking', 'count' => null, 'hint' => ''],
+                    ['label' => 'Tracking Sheet', 'icon' => 'bi-table', 'route' => 'admin.reports.rfq-tracking', 'activeOn' => 'admin.reports.rfq-tracking', 'count' => null, 'hint' => '', 'can' => $seesReports],
                 ],
             ],
         ]],
     ];
+
+    // Only the pages their role's permissions open (App\Permissions) — a
+    // group, or a parent, left with none goes.
+    $trees = collect($trees)
+        ->map(fn (array $tree) => [...$tree, 'groups' => collect($tree['groups'])
+            ->map(fn (array $group) => [...$group, 'links' => array_values(array_filter($group['links'], fn (array $link) => $link['can'] ?? true))])
+            ->filter(fn (array $group) => $group['links'] !== [])
+            ->values()
+            ->all()])
+        ->filter(fn (array $tree) => $tree['groups'] !== [])
+        ->values()
+        ->all();
 
     // What a group's heading, or a parent's (all its groups added up), shows
     // while it's collapsed.

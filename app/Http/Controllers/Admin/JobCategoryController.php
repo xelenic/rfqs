@@ -26,7 +26,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  * deleted, say — are listed, to put back, or to move their RFQs to one
  * that is (reassign()). Many can be added at once from an
  * Excel workbook or CSV (JobCategoryImport), starting from the list itself,
- * downloaded as one. For User::JOB_CATEGORY_ROLES
+ * downloaded as one. With job-categories.manage
  * (Admin, Senior Operations, GM Assistant).
  */
 class JobCategoryController extends Controller
@@ -273,6 +273,6 @@ class JobCategoryController extends Controller
 
     private function abortUnlessCanManage(Request $request): void
     {
-        abort_unless($request->user()->canManageJobCategories(), 403, 'Only Admin, Senior Operations and GM Assistant can manage the job categories.');
+        abort_unless($request->user()->canManageJobCategories(), 403, 'Your role can\'t manage the job categories.');
     }
 }

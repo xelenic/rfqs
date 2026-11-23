@@ -16,7 +16,8 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * Messages → Groups: group chats (MessageGroup). An Admin sets one up — a
+ * Messages → Groups: group chats (MessageGroup). Someone with
+ * message-groups.manage (an Admin, to begin with) sets one up — a
  * name, what it's for, and who's in it — changes it, or deletes it; its
  * members read what's said in it and write to it, each with what's still
  * unread for them, in their bell too (User::bellItems()). Only members read
@@ -26,18 +27,18 @@ use Illuminate\View\View;
 class MessageGroupController extends Controller
 {
     /**
-     * The groups they're in — an Admin, every group — the latest said first,
-     * each with its last message and what's unread for them; for an Admin,
+     * The groups they're in — with message-groups.manage, every group — the latest said first,
+     * each with its last message and what's unread for them; with it too,
      * New group and each one's Edit and Delete too.
      */
     public function index(Request $request): View
     {
         $me = $request->user();
-        $isAdmin = $me->hasRole('Admin');
+        $managesGroups = $me->can('message-groups.manage');
         $mine = $me->messageGroups()->pluck('message_groups.id')->all();
 
         $groups = MessageGroup::query()
-            ->when(! $isAdmin, fn ($query) => $query->whereKey($mine))
+            ->when(! $managesGroups, fn ($query) => $query->whereKey($mine))
             ->with(['members' => fn ($members) => $members->with('roles')->orderBy('name')])
             ->withCount('members')
             ->addSelect(['last_message_id' => GroupMessage::query()->select('id')->whereColumn('group_messages.message_group_id', 'message_groups.id')->latest('id')->limit(1)])
@@ -54,19 +55,19 @@ class MessageGroupController extends Controller
                 ->get()
                 ->keyBy('id'),
             'unread' => MessageGroup::unreadCountsFor($me),
-            'isAdmin' => $isAdmin,
-            'people' => $isAdmin ? User::query()->active()->with('roles')->orderBy('name')->get() : collect(),
+            'managesGroups' => $managesGroups,
+            'people' => $managesGroups ? User::query()->active()->with('roles')->orderBy('name')->get() : collect(),
         ]);
     }
 
     /**
      * Sets up a group: a name no other group has, what it's for, and who's
      * in it — the Admin too, unless they leave themselves out — at least two
-     * people. Admin only. Opens it, if they're in it.
+     * people. With message-groups.manage. Opens it, if they're in it.
      */
     public function store(Request $request): RedirectResponse
     {
-        $this->abortUnlessAdmin($request);
+        $this->abortUnlessManagesGroups($request);
 
         $validated = $this->validated($request, 'createGroup');
         $members = $this->membersFrom($request, $validated);
@@ -90,11 +91,11 @@ class MessageGroupController extends Controller
 
     /**
      * Changes a group's name, what it's for, and who's in it — those added
-     * see what's been said; those taken off no longer do. Admin only.
+     * see what's been said; those taken off no longer do. With message-groups.manage.
      */
     public function update(Request $request, MessageGroup $group): RedirectResponse
     {
-        $this->abortUnlessAdmin($request);
+        $this->abortUnlessManagesGroups($request);
 
         $validated = $this->validated($request, 'editGroup', $group);
         $members = $this->membersFrom($request, $validated);
@@ -108,11 +109,11 @@ class MessageGroupController extends Controller
     }
 
     /**
-     * Deletes a group and everything said in it. Admin only.
+     * Deletes a group and everything said in it. With message-groups.manage.
      */
     public function destroy(Request $request, MessageGroup $group): RedirectResponse
     {
-        $this->abortUnlessAdmin($request);
+        $this->abortUnlessManagesGroups($request);
 
         $group->delete();
 
@@ -134,7 +135,7 @@ class MessageGroupController extends Controller
         return view('admin.messages.group', [
             'group' => $group->load(['members' => fn ($members) => $members->with('roles')->orderBy('name')]),
             'messages' => $group->messages()->with('sender.roles')->get(),
-            'isAdmin' => $me->hasRole('Admin'),
+            'managesGroups' => $me->can('message-groups.manage'),
         ]);
     }
 
@@ -224,8 +225,8 @@ class MessageGroupController extends Controller
         return $members;
     }
 
-    private function abortUnlessAdmin(Request $request): void
+    private function abortUnlessManagesGroups(Request $request): void
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can set up and change groups.');
+        abort_unless($request->user()->can('message-groups.manage'), 403, 'Your role can\'t set up or change groups.');
     }
 }

@@ -4,6 +4,7 @@ use App\Models\Rfq;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Permissions;
 use Database\Seeders\BusinessRoleSeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -72,7 +73,7 @@ it('keeps a renamed role\'s people and everything it gives them, by its slug', f
     [$ops, $sourcing, $admin] = [$ops->fresh(), $sourcing->fresh(), $admin->fresh()];
 
     expect($renamed)->toMatchArray(['name' => 'Senior Ops', 'slug' => 'hbds-operations'])
-        ->and($renamed->permissions->pluck('name')->all())->toEqualCanonicalizing(['rfqs.view', 'rfqs.edit'])
+        ->and($renamed->permissions->pluck('name')->all())->toEqualCanonicalizing(['rfqs.view', 'rfqs.edit', ...Permissions::defaultsFor('hbds-operations')])
         // By the name the code knows it by, or its slug.
         ->and($ops->hasRole('HBDs Operations'))->toBeTrue()
         ->and($ops->hasRole('hbds-operations'))->toBeTrue()

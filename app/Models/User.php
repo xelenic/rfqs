@@ -100,7 +100,8 @@ class User extends Authenticatable
     /**
      * Whether this person can change $person's photo: their own, always;
      * someone else's only as one who changes people's details
-     * (USER_DETAILS_ROLES, with users.edit) — and an Admin's only as an Admin.
+     * (canChangeUserDetails(), with users.edit) — and an Admin's only as an
+     * Admin.
      */
     public function canChangePhotoOf(self $person): bool
     {
@@ -117,85 +118,6 @@ class User extends Authenticatable
 
         return array_key_exists($theme, self::THEMES) ? $theme : self::PREFERENCE_DEFAULTS['theme'];
     }
-
-    /**
-     * The roles that see the Time Spent report. HR Executive has no part in the
-     * RFQ workflow itself.
-     *
-     * @var array<int, string>
-     */
-    public const TIME_SPENT_REPORT_ROLES = ['Admin', 'HBDs Operations', 'HR Executive'];
-
-    /**
-     * The roles that see the performance reports (Admin\PerformanceReportController):
-     * Sourcing's daily and monthly reports, Data Entry's daily report and the
-     * RFQ tracking sheet.
-     *
-     * @var array<int, string>
-     */
-    public const PERFORMANCE_REPORT_ROLES = ['Admin', 'HBDs Operations', 'HR Executive'];
-
-    /**
-     * Who sets expected RFQs and corrects supplier calls on the Sourcing
-     * Summary report (SourcingDayFigure). HR Executive sees the report, and
-     * doesn't change it.
-     *
-     * @var array<int, string>
-     */
-    public const SOURCING_FIGURES_ROLES = ['Admin', 'HBDs Operations'];
-
-    /**
-     * The roles with "All RFQs" in their sidebar — the RFQ list with no
-     * status or role asked for: every RFQ, whatever its status or where it
-     * is. The General Manager's since 2026-10-21, beside their Review queue;
-     * Senior Operations' since 2026-10-28, where their dashboard's status
-     * cards lead.
-     *
-     * @var array<int, string>
-     */
-    public const ALL_RFQS_ROLES = ['Admin', 'General Manager', 'HBDs Operations'];
-
-    /**
-     * The roles that fill in and submit the daily attendance sheet.
-     *
-     * @var array<int, string>
-     */
-    public const ATTENDANCE_KEEPER_ROLES = ['Admin', 'HBDs Operations'];
-
-    /**
-     * The roles that review a submitted attendance sheet — approve it, or
-     * return it to be corrected.
-     *
-     * @var array<int, string>
-     */
-    public const ATTENDANCE_APPROVER_ROLES = ['Admin', 'HR Executive'];
-
-    /**
-     * The roles that change people's details — a name, an email — their
-     * own on Settings → Profile, and others' on the Users page (with
-     * users.edit). Everyone else's are kept for them.
-     *
-     * @var array<int, string>
-     */
-    public const USER_DETAILS_ROLES = ['Admin', 'HR Executive'];
-
-    /**
-     * The roles that give a role, or one person, working hours of their own
-     * (WorkingSchedule) — on Settings → Role Hours and on a person's page.
-     * The company's working hours stay the Admin's.
-     *
-     * @var array<int, string>
-     */
-    public const WORKING_HOURS_ROLES = ['Admin', 'HR Executive'];
-
-    /**
-     * The roles that manage the job categories (Admin\JobCategoryController)
-     * — the list Senior Operations picks from in the Assign Sourcing wizard.
-     * Senior Operations' and GM Assistant's too since 2026-10-24.
-     *
-     * @var array<int, string>
-     */
-    public const JOB_CATEGORY_ROLES = ['Admin', 'HBDs Operations', 'GMs Operations'];
 
     /**
      * The roles whose people are tagged with the job categories they take on
@@ -277,12 +199,14 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this person changes people's details, their own included —
-     * see USER_DETAILS_ROLES.
+     * Whether this person changes people's details — a name, an email —
+     * their own on Settings → Profile, and others' on the Users page (with
+     * users.edit). Everyone else's are kept for them. Admin's and HR
+     * Executive's to begin with (App\Permissions).
      */
     public function canChangeUserDetails(): bool
     {
-        return $this->hasAnyRole(self::USER_DETAILS_ROLES);
+        return $this->can('users.change-details');
     }
 
     /**
@@ -398,21 +322,21 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this person sets a role's or someone's own working hours —
-     * see WORKING_HOURS_ROLES.
+     * Whether this person gives a role, or one person, working hours of
+     * their own (WorkingSchedule) — on Settings → Role Hours and on a
+     * person's page. The company's working hours are Application settings'.
      */
     public function canManageWorkingHours(): bool
     {
-        return $this->hasAnyRole(self::WORKING_HOURS_ROLES);
+        return $this->can('working-hours.manage');
     }
 
     /**
-     * Whether this person sees the Time Spent report — see
-     * TIME_SPENT_REPORT_ROLES.
+     * Whether this person sees the Time Spent report.
      */
     public function canViewTimeSpentReport(): bool
     {
-        return $this->hasAnyRole(self::TIME_SPENT_REPORT_ROLES);
+        return $this->can('reports.time-spent');
     }
 
     /**
@@ -489,57 +413,61 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this person adds, edits and deletes the job categories — see
-     * JOB_CATEGORY_ROLES.
+     * Whether this person adds, edits and deletes the job categories
+     * (Admin\JobCategoryController) — the list Senior Operations picks from
+     * in the Assign Sourcing wizard.
      */
     public function canManageJobCategories(): bool
     {
-        return $this->hasAnyRole(self::JOB_CATEGORY_ROLES);
+        return $this->can('job-categories.manage');
     }
 
     /**
-     * Whether this person sees the performance reports — see
-     * PERFORMANCE_REPORT_ROLES.
+     * Whether this person sees the performance reports
+     * (Admin\PerformanceReportController): Sourcing's daily, summary and
+     * monthly reports, Data Entry's daily report and the RFQ tracking sheet.
      */
     public function canViewPerformanceReports(): bool
     {
-        return $this->hasAnyRole(self::PERFORMANCE_REPORT_ROLES);
+        return $this->can('reports.performance');
     }
 
     /**
-     * Whether this person can change the Sourcing Summary report's typed-in
-     * figures — see SOURCING_FIGURES_ROLES.
+     * Whether this person sets expected RFQs and corrects supplier calls on
+     * the Sourcing Summary report (SourcingDayFigure). Others who see the
+     * report only see it.
      */
     public function canEditSourcingFigures(): bool
     {
-        return $this->hasAnyRole(self::SOURCING_FIGURES_ROLES);
+        return $this->can('reports.sourcing-figures');
     }
 
     /**
-     * Whether this person has "All RFQs" in their sidebar — see
-     * ALL_RFQS_ROLES. They open RFQs as anyone does (rfqs.view).
+     * Whether this person has "All RFQs" in their sidebar — the RFQ list
+     * with no status or role asked for: every RFQ, whatever its status or
+     * where it is. They open RFQs as anyone does (rfqs.view).
      */
     public function canListAllRfqs(): bool
     {
-        return $this->hasAnyRole(self::ALL_RFQS_ROLES) && $this->can('rfqs.view');
+        return $this->can('rfqs.list-all') && $this->can('rfqs.view');
     }
 
     /**
      * Whether this person fills in and submits the daily attendance sheet
-     * (AttendanceSheet) — see ATTENDANCE_KEEPER_ROLES.
+     * (AttendanceSheet).
      */
     public function canManageAttendance(): bool
     {
-        return $this->hasAnyRole(self::ATTENDANCE_KEEPER_ROLES);
+        return $this->can('attendance.keep');
     }
 
     /**
      * Whether this person reviews submitted attendance sheets — approves
-     * them, or returns them to be corrected. See ATTENDANCE_APPROVER_ROLES.
+     * them, or returns them to be corrected.
      */
     public function canApproveAttendance(): bool
     {
-        return $this->hasAnyRole(self::ATTENDANCE_APPROVER_ROLES);
+        return $this->can('attendance.approve');
     }
 
     /**
@@ -553,48 +481,46 @@ class User extends Authenticatable
 
     /**
      * Whether this person can put an RFQ on hold, cancel it, or set it going
-     * again — Senior Operations, and Admin (Rfq::changeStatus()).
+     * again (Rfq::changeStatus()) — Senior Operations' and Admin's to begin
+     * with.
      */
     public function canChangeRfqStatus(): bool
     {
-        return $this->hasAnyRole(['HBDs Operations', 'Admin']);
+        return $this->can('rfqs.change-status');
     }
 
     /**
      * Whether this person changes an RFQ's priority level when they edit it
      * (RfqController::update()). Since 2026-11-05, at the user's request, an
      * Operation Assistant Trainee doesn't, though they otherwise edit as HBDs
-     * Operations (ROLE_STAND_INS) — unless a role of their own edits RFQs.
-     * Read off their roles, since hasRole() counts the trainee as HBDs
-     * Operations.
+     * Operations (ROLE_STAND_INS): their role hasn't the permission, unlike
+     * Admin's, HBDs Operations' and Business Development's.
      */
     public function canChangeRfqPriority(): bool
     {
-        $roles = $this->roleSlugs();
-
-        return ! $roles->contains('operation-assistant-trainee')
-            || $roles->intersect(['admin', 'hbds-operations', 'business-development'])->isNotEmpty();
+        return $this->can('rfqs.change-priority');
     }
 
     /**
      * Whether this person has the Critical monitor in their top bar
      * (DashboardController::critical()) — what's overdue, idle or urgent
-     * across the operation: Admin, and Senior Operations, who run it.
+     * across the operation: Admin's and Senior Operations', who run it, to
+     * begin with.
      */
     public function canSeeCriticalMonitor(): bool
     {
-        return $this->hasAnyRole(['Admin', 'HBDs Operations']);
+        return $this->can('rfqs.critical-monitor');
     }
 
     /**
      * Whether this person can send a Sourcing part, still with Sourcing, back
      * to Senior Operations to assign again (RfqController::returnSeniorOps())
-     * — Admin alone, on the member's behalf. Sourcing's own Return to Senior
-     * Operations button was taken away on 2026-10-12.
+     * — on the member's behalf; Admin's alone to begin with. Sourcing's own
+     * Return to Senior Operations button was taken away on 2026-10-12.
      */
     public function canSendSourcingPartsBackToSeniorOps(): bool
     {
-        return $this->hasRole('Admin');
+        return $this->can('rfqs.return-to-senior-ops');
     }
 
     /**

@@ -10,8 +10,8 @@
 
     Expects: $groups (with members, members_count, last_message_id), $mine
     (ids of the groups they're in), $lastMessages (id => GroupMessage),
-    $unread (group id => count), $isAdmin, $people (everyone active, for an
-    Admin).
+    $unread (group id => count), $managesGroups, $people (everyone active, with
+    message-groups.manage).
 --}}
 @extends('layouts.app')
 
@@ -21,7 +21,7 @@
     @php
         $failedCreate = $errors->createGroup->any();
         $failedEditId = $errors->editGroup->any() ? (int) old('group_id') : null;
-        $openEditId = $failedEditId ?: ($isAdmin ? (int) request('edit') : null);
+        $openEditId = $failedEditId ?: ($managesGroups ? (int) request('edit') : null);
         $peopleButMe = $people->reject(fn ($person) => $person->is(auth()->user()));
     @endphp
 
@@ -32,7 +32,7 @@
             <span>Groups</span>
             <span class="d-flex align-items-center gap-3">
                 <span class="text-muted-soft small fw-normal">Only the people in a group can read it</span>
-                @if ($isAdmin)
+                @if ($managesGroups)
                     <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#newGroupModal">
                         <i class="bi bi-people"></i> New group
                     </button>
@@ -75,7 +75,7 @@
                         @if ($unreadCount > 0)
                             <span class="nav-link-count" title="{{ $unreadCount }} unread">{{ $unreadCount }}</span>
                         @endif
-                        @if ($isAdmin)
+                        @if ($managesGroups)
                             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editGroupModal-{{ $group->id }}" title="Edit {{ $group->name }}">
                                 <i class="bi bi-pencil"></i> Edit
                             </button>
@@ -93,12 +93,12 @@
             <div class="card-body text-center py-5">
                 <i class="bi bi-people conversation-empty-icon"></i>
                 <p class="fw-semibold mb-1">No groups yet</p>
-                <p class="text-muted-soft small mb-0">{{ $isAdmin ? 'Set one up with New group — pick who\'s in it, and they can all talk there.' : 'When an Admin puts you in a group, its chat shows here.' }}</p>
+                <p class="text-muted-soft small mb-0">{{ $managesGroups ? 'Set one up with New group — pick who\'s in it, and they can all talk there.' : 'When an Admin puts you in a group, its chat shows here.' }}</p>
             </div>
         @endforelse
     </div>
 
-    @if ($isAdmin)
+    @if ($managesGroups)
         {{-- Set up a group. --}}
         <div class="modal fade" id="newGroupModal" tabindex="-1" aria-labelledby="newGroupModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -163,7 +163,7 @@
     @endif
 @endsection
 
-@if ($isAdmin && ($failedCreate || $openEditId))
+@if ($managesGroups && ($failedCreate || $openEditId))
     @push('scripts')
         <script>
             // A refused save — or Edit asked for from a group's chat: its popup open.

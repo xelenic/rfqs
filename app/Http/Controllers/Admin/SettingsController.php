@@ -43,11 +43,14 @@ class SettingsController extends Controller
     public function edit(Request $request): View
     {
         $user = $request->user();
+        $managesSettings = $user->can('settings.manage');
 
         return view('admin.settings.edit', [
             'user' => $user->load('roles'),
             'closesRfqs' => $user->hasAnyRole(self::CLOSING_ROLES),
             'isAdmin' => $user->hasRole('Admin'),
+            'managesSettings' => $managesSettings,
+            'clearsRfqData' => $user->can('rfqs.clear-data'),
             'companyName' => Setting::get('company_name'),
             'liveInterval' => Setting::liveIntervalSeconds(),
             'liveIntervalRange' => Setting::LIVE_INTERVAL_RANGE,
@@ -60,9 +63,9 @@ class SettingsController extends Controller
             'gmAssistantPerItem' => Setting::gmAssistantPerItem(),
             'dataEntryPerItem' => Setting::dataEntryPerItem(),
             // Person by person: their own time an item, for an Admin to set.
-            'dataEntryPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('Data Entry')->orderBy('name')->get() : collect(),
+            'dataEntryPeople' => $managesSettings ? User::query()->holdingRole('Data Entry')->orderBy('name')->get() : collect(),
             'dataEntryPerItemPeople' => Setting::perItemPeople('data_entry'),
-            'gmAssistantPeople' => $user->hasRole('Admin') ? User::query()->holdingRole('GMs Operations')->orderBy('name')->get() : collect(),
+            'gmAssistantPeople' => $managesSettings ? User::query()->holdingRole('GMs Operations')->orderBy('name')->get() : collect(),
             'gmAssistantPerItemPeople' => Setting::perItemPeople('gm_assistant'),
             'dataEntryPerItemRange' => Setting::DATA_ENTRY_PER_ITEM_RANGE,
             'dataEntryIdleAlert' => Setting::dataEntryIdleAlert(),
@@ -71,16 +74,16 @@ class SettingsController extends Controller
             'rfqNumberStart' => Setting::rfqNumberStart(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
             'lastRfqSequence' => Rfq::lastRfqSequence(),
-            'rfqDataCounts' => $user->hasRole('Admin') ? RfqDataEraser::counts() : [],
-            'extraHours' => $user->hasRole('Admin')
+            'rfqDataCounts' => $user->can('rfqs.clear-data') ? RfqDataEraser::counts() : [],
+            'extraHours' => $managesSettings
                 ? ExtraWorkingHour::query()->current()->with('user.roles')->get()->sortBy(fn (ExtraWorkingHour $range) => [$range->user?->name, $range->start])->values()
                 : collect(),
-            'extraHoursPeople' => $user->hasRole('Admin') ? AttendanceSheet::people() : collect(),
+            'extraHoursPeople' => $managesSettings ? AttendanceSheet::people() : collect(),
             'dataEntryIdleMinutesRange' => Setting::DATA_ENTRY_IDLE_MINUTES_RANGE,
             'attendanceSince' => Setting::attendanceSince(),
             'halfDayOff' => Setting::halfDayOff(),
             'messageRules' => Setting::messageRoles(),
-            'allRoles' => $user->hasRole('Admin') ? Role::query()->orderBy('name')->get() : collect(),
+            'allRoles' => $managesSettings ? Role::query()->orderBy('name')->get() : collect(),
             'managesWorkingHours' => $user->canManageWorkingHours(),
             'roleHours' => $user->canManageWorkingHours()
                 ? WorkingSchedule::roleOrder()->map(fn (Role $role) => ['role' => $role, 'current' => WorkingSchedule::currentFor($role)])
@@ -96,13 +99,13 @@ class SettingsController extends Controller
 
     /**
      * Your own name and email — only for those who keep people's details
-     * (User::USER_DETAILS_ROLES); everyone else's are kept for them.
+     * (User::canChangeUserDetails()); everyone else's are kept for them.
      */
     public function updateProfile(Request $request): RedirectResponse
     {
         $user = $request->user();
 
-        abort_unless($user->canChangeUserDetails(), 403, 'Only an Admin or HR Executive can change your name or email.');
+        abort_unless($user->canChangeUserDetails(), 403, 'Your role can\'t change your name or email.');
 
         $validated = $request->validateWithBag('profile', [
             'name' => ['required', 'string', 'max:255'],
@@ -157,7 +160,7 @@ class SettingsController extends Controller
 
     public function updateApplication(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the application settings.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the application settings.');
 
         [$fewest, $most] = Setting::LIVE_INTERVAL_RANGE;
 
@@ -185,7 +188,7 @@ class SettingsController extends Controller
      */
     public function updateWorkingHours(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the working hours.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the working hours.');
 
         $validated = $this->validatedWeek($request, 'working_hours', [
             'timezone' => ['required', 'timezone:all'],
@@ -203,12 +206,12 @@ class SettingsController extends Controller
      * A role's own working week, in place of the company's — the same days,
      * hours and lunches, checked the same way — from today on: its people's
      * time counts in it unless they have their own. Days before keep the
-     * hours they had. Admin or HR Executive (User::WORKING_HOURS_ROLES). See
+     * hours they had. With working-hours.manage (User::canManageWorkingHours()). See
      * WorkingSchedule.
      */
     public function updateRoleHours(Request $request, Role $role): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change a role\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Your role can\'t change a role\'s working hours.');
 
         $validated = $this->validatedWeek($request, 'role_hours');
         $base = WorkingSchedule::currentFor($role)?->week ?? Setting::workingHours();
@@ -224,7 +227,7 @@ class SettingsController extends Controller
      */
     public function destroyRoleHours(Request $request, Role $role): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change a role\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Your role can\'t change a role\'s working hours.');
         abort_unless(WorkingSchedule::endFor($role), 404);
 
         return $this->backToTab('role-hours', "{$role->name} works the company's working hours again from today.");
@@ -234,11 +237,11 @@ class SettingsController extends Controller
      * One person's own working week, in place of their role's or the
      * company's, from today on. Days before keep the hours they had. Set from
      * their page, and back to it, by an Admin or HR Executive
-     * (User::WORKING_HOURS_ROLES). See WorkingSchedule.
+     * (User::canManageWorkingHours()). See WorkingSchedule.
      */
     public function updateUserHours(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change someone\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Your role can\'t change someone\'s working hours.');
 
         $validated = $this->validatedWeek($request, 'user_hours');
         $base = Setting::weekOn(Setting::today(), $user->id);
@@ -255,7 +258,7 @@ class SettingsController extends Controller
      */
     public function destroyUserHours(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->canManageWorkingHours(), 403, 'Only an Admin or HR Executive can change someone\'s working hours.');
+        abort_unless($request->user()->canManageWorkingHours(), 403, 'Your role can\'t change someone\'s working hours.');
         abort_unless(WorkingSchedule::endFor($user), 404);
 
         return redirect()->route('admin.users.show', ['user' => $user, 'tab' => 'working-hours'])
@@ -332,7 +335,7 @@ class SettingsController extends Controller
      */
     public function updateSourcingTargets(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Sourcing targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the Sourcing targets.');
 
         Setting::put('sourcing_targets', json_encode($this->validatedTargets($request, 'sourcing_targets', Setting::DEFAULT_SOURCING_TARGETS)));
 
@@ -347,7 +350,7 @@ class SettingsController extends Controller
      */
     public function updateDataEntryTargets(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Data Entry targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the Data Entry targets.');
 
         Setting::put('data_entry_targets', json_encode($this->validatedTargets($request, 'data_entry_targets', Setting::DEFAULT_DATA_ENTRY_TARGETS)));
 
@@ -362,7 +365,7 @@ class SettingsController extends Controller
      */
     public function updateFinalizeTargets(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Finalize targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the Finalize targets.');
 
         Setting::put('finalize_targets', json_encode($this->validatedTargets($request, 'finalize_targets', Setting::DEFAULT_FINALIZE_TARGETS)));
 
@@ -378,7 +381,7 @@ class SettingsController extends Controller
      */
     public function updateGmAssistantTargets(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the GM Assistant targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the GM Assistant targets.');
 
         Setting::put('gm_assistant_targets', json_encode($this->validatedTargets($request, 'gm_assistant_targets', Setting::DEFAULT_GM_ASSISTANT_TARGETS)));
 
@@ -393,7 +396,7 @@ class SettingsController extends Controller
      */
     public function updateGmAssistantPerItem(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the GM Assistant targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the GM Assistant targets.');
 
         [$fewest, $most] = array_map(fn (int $seconds) => $seconds / 60, Setting::DATA_ENTRY_PER_ITEM_RANGE);
 
@@ -425,7 +428,7 @@ class SettingsController extends Controller
      */
     public function updateDataEntryPerItem(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the Data Entry targets.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the Data Entry targets.');
 
         [$fewest, $most] = array_map(fn (int $seconds) => $seconds / 60, Setting::DATA_ENTRY_PER_ITEM_RANGE);
 
@@ -469,11 +472,11 @@ class SettingsController extends Controller
      * The people in $role who take their own time an item rather than the
      * company's — people[user id] in minutes (to the half minute), kept in
      * seconds; left empty, the company's. Only for those in $role; anyone
-     * else sent is ignored. See Setting::perItemPeople(). Admin only.
+     * else sent is ignored. See Setting::perItemPeople(). With settings.manage.
      */
     private function savePerItemPeople(Request $request, string $step, string $role, string $tab): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, "Only an Admin can change {$role}'s times.");
+        abort_unless($request->user()->can('settings.manage'), 403, "Your role can't change {$role}'s times.");
 
         [$fewest, $most] = array_map(fn (int $seconds) => $seconds / 60, Setting::DATA_ENTRY_PER_ITEM_RANGE);
 
@@ -507,7 +510,7 @@ class SettingsController extends Controller
      */
     public function updateIdleAlert(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the idle alert.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the idle alert.');
 
         [$fewest, $most] = Setting::DATA_ENTRY_IDLE_MINUTES_RANGE;
 
@@ -536,7 +539,7 @@ class SettingsController extends Controller
      */
     public function updateGmAssistantIdleAlert(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the idle alert.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the idle alert.');
 
         [$fewest, $most] = Setting::DATA_ENTRY_IDLE_MINUTES_RANGE;
 
@@ -560,11 +563,11 @@ class SettingsController extends Controller
     /**
      * Who each role may start a private message with — limits[role id]:
      * limited (else anyone) and roles[] (the role ids it may write to) — see
-     * Setting::messageRoles(). Admin is never limited. Admin only.
+     * Setting::messageRoles(). Admin is never limited. With settings.manage.
      */
     public function updateMessageRoles(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change who can message whom.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change who can message whom.');
 
         $roles = Role::query()->orderBy('name')->pluck('slug', 'id');
 
@@ -600,7 +603,7 @@ class SettingsController extends Controller
      */
     public function updateWcValidation(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the WC validation.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the WC validation.');
 
         Setting::put('wc_format_required', $request->boolean('enabled') ? '1' : null);
 
@@ -610,11 +613,11 @@ class SettingsController extends Controller
     /**
      * Where new RFQ numbers start from — typed as RFQ1670 or just 1670; the
      * next RFQ is given it and they count on from there, never reusing a
-     * number already given (Rfq::nextRfqNumber()). Admin only.
+     * number already given (Rfq::nextRfqNumber()). With settings.manage.
      */
     public function updateRfqNumbers(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change where RFQ numbers start.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change where RFQ numbers start.');
 
         [$lowest, $highest] = Setting::RFQ_NUMBER_START_RANGE;
         $prefix = Rfq::RFQ_NUMBER_PREFIX;
@@ -647,12 +650,12 @@ class SettingsController extends Controller
     /**
      * Settings → Danger Zone: deletes every RFQ and everything with it —
      * parts, comments and their files, returns, steps (App\RfqDataEraser) —
-     * for good. Admin only, typing CLEAR_RFQ_DATA_PHRASE and their own
+     * for good. With rfqs.clear-data, typing CLEAR_RFQ_DATA_PHRASE and their own
      * password; logged with who and how much.
      */
     public function clearRfqData(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can clear the RFQ data.');
+        abort_unless($request->user()->can('rfqs.clear-data'), 403, 'Your role can\'t clear the RFQ data.');
 
         $request->validateWithBag('danger_zone', [
             'confirmation' => ['required', 'string', Rule::in([self::CLEAR_RFQ_DATA_PHRASE])],
@@ -688,7 +691,7 @@ class SettingsController extends Controller
      */
     public function storeExtraHours(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change anyone\'s working hours.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change anyone\'s working hours.');
 
         $validated = $request->validateWithBag('extra_hours', [
             'user_id' => ['required', 'integer', Rule::in(AttendanceSheet::people()->pluck('id'))],
@@ -728,7 +731,7 @@ class SettingsController extends Controller
      */
     public function destroyExtraHours(Request $request, ExtraWorkingHour $extraHours): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change anyone\'s working hours.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change anyone\'s working hours.');
         abort_if($extraHours->ended_at !== null, 404);
 
         $extraHours->update(['ended_at' => now()]);
@@ -786,7 +789,7 @@ class SettingsController extends Controller
      */
     public function updateHalfDay(Request $request): RedirectResponse
     {
-        abort_unless($request->user()->hasRole('Admin'), 403, 'Only an Admin can change the half day.');
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the half day.');
 
         $rules = [];
         $attributes = [];
