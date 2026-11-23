@@ -21,7 +21,7 @@ return new class extends Migration
     private const KNOWN_ROLES = [
         'admin' => ['Admin'],
         'business-development' => ['Business Development'],
-        'hbds-operations' => ['HBDs Operations', 'Senior Operations', 'Operations'],
+        'hbds-operations' => ['HBDs Operations', 'HBDs Operations (Section In-Charge)', 'Senior Operations', 'Operations'],
         'operation-assistant-trainee' => ['Operation Assistant Trainee'],
         'sourcing' => ['Sourcing'],
         'head-of-business-development' => ['Head of Business Development'],
