@@ -50,7 +50,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="text-muted-soft small" id="reject-kind-note">
-                        {{ $isReturn ? 'Sent back for changes, not rejected — it goes on their Returns page.' : 'A rejection — it goes on their Rejected page.' }}
+                        {{ $isReturn ? "This RFQ will appear on their 'Returns' page." : "This RFQ will appear on their 'Rejected' page." }}
                     </p>
                     <div class="mb-3">
                         <label for="reject-target-stage" class="form-label">Send back to</label>
@@ -81,7 +81,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn {{ $isReturn ? 'btn-primary' : 'btn-danger' }}" id="reject-submit">{{ $isReturn ? 'Return' : 'Send back' }}</button>
+                    <button type="submit" class="btn {{ $isReturn ? 'btn-primary' : 'btn-danger' }}" id="reject-submit">Return</button>
                 </div>
             </form>
         </div>

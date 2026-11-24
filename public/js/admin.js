@@ -2364,10 +2364,10 @@ function rfqmsBoot() {
             document.getElementById('rejectRfqTarget').textContent = button.dataset.label || '';
             document.getElementById('rejectRfqModalLabel').textContent = asReturn ? 'Return' : 'Reject & Return';
             document.getElementById('reject-kind-note').textContent = asReturn
-                ? 'Sent back for changes, not rejected \u2014 it goes on their Returns page.'
-                : 'A rejection \u2014 it goes on their Rejected page.';
+                ? 'This RFQ will appear on their \'Returns\' page.'
+                : 'This RFQ will appear on their \'Rejected\' page.';
             var submit = document.getElementById('reject-submit');
-            submit.textContent = asReturn ? 'Return' : 'Send back';
+            submit.textContent = 'Return';
             submit.classList.toggle('btn-primary', asReturn);
             submit.classList.toggle('btn-danger', !asReturn);
         });
