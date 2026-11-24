@@ -9,10 +9,11 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * The email to whoever created an RFQ — Business Development — once it's
- * closed (Rfq::closeOut()): it's ready to share with the customer. The
- * wording is the business's own (2026-11-16). Mail only, so it's not on the
- * RFQ's timeline.
+ * The email to whoever created an RFQ — Business Development — once the
+ * General Manager has approved it all (Rfq::approveByGm(); since 2026-11-25,
+ * at the user's request — before then, once it was closed): it's ready to
+ * share with the customer. The wording is the business's own (2026-11-16).
+ * Mail only, so it's not on the RFQ's timeline.
  */
 class RfqReadyToShare extends Notification
 {

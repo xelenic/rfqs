@@ -4863,7 +4863,9 @@ class Rfq extends Model
     /**
      * General Manager gives final approval to the whole RFQ — approving any
      * part not yet approved on its own — and it's now ready for Business
-     * Development to close out. Idempotent.
+     * Development to close out. Whoever created it is then emailed that it's
+     * ready to share with the customer (emailCreatorReadyToShare()).
+     * Idempotent.
      *
      * Caller is responsible for verifying stage === 'gm_review'.
      */
@@ -4889,6 +4891,8 @@ class Rfq extends Model
             'gm_approved_at' => now(),
             'stage' => 'bd_closing',
         ]);
+
+        $this->emailCreatorReadyToShare();
     }
 
     /**
@@ -4949,9 +4953,9 @@ class Rfq extends Model
      * part not yet closed on its own — the true end of the lifecycle.
      * Idempotent. Reuses the existing 'Completed' status value (see
      * statusLabel() for why the display text says "Closed"). $referenceCode is
-     * kept with the RFQ, and with every part closed along with it. Whoever
-     * created it is then emailed that it's ready to share with the customer
-     * (emailCreatorReadyToShare()).
+     * kept with the RFQ, and with every part closed along with it. No email:
+     * its creator was told it's ready to share when the General Manager
+     * approved it (approveByGm()).
      *
      * Caller is responsible for verifying stage === 'bd_closing'.
      */
@@ -4982,15 +4986,16 @@ class Rfq extends Model
         ]);
 
         $this->syncSteps();
-        $this->emailCreatorReadyToShare();
     }
 
     /**
      * Emails whoever created this RFQ — Business Development — that it's
-     * ready to share with the customer (RfqReadyToShare), since 2026-11-16 at
-     * the user's request. Nobody's emailed for an RFQ whose creator's account
+     * ready to share with the customer (RfqReadyToShare): since 2026-11-16 at
+     * the user's request, and since 2026-11-25, also at their request, once
+     * the General Manager has approved it all (approveByGm()) rather than
+     * once it's closed. Nobody's emailed for an RFQ whose creator's account
      * is gone or deactivated. A mail that can't go is reported, and the RFQ
-     * stays closed.
+     * stays approved.
      */
     private function emailCreatorReadyToShare(): void
     {

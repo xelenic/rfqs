@@ -19,12 +19,12 @@ beforeEach(function () {
 });
 
 /**
- * An RFQ $creator made, split into $parts, every part approved by the
- * General Manager, so it's ready for Business Development to close.
+ * An RFQ $creator made, split into $parts, every part through GM Assistant,
+ * so it's waiting on the General Manager's approval.
  *
  * @param  array<string, mixed>  $attributes
  */
-function readyToShareRfq(User $creator, int $parts = 1, array $attributes = []): Rfq
+function rfqAwaitingGm(User $creator, int $parts = 1, array $attributes = []): Rfq
 {
     $sourcing = userWithRole('Sourcing');
     $rfq = splitAmong(Rfq::factory()->create($attributes + ['rfq_number' => 'RFQ1838', 'wc_number' => 'WC0191', 'created_by' => $creator->id]), array_fill(1, $parts, $sourcing));
@@ -36,21 +36,20 @@ function readyToShareRfq(User $creator, int $parts = 1, array $attributes = []):
         $rfq->refresh()->approveSeniorOpsPart($part, userWithRole('HBDs Operations'));
         $rfq->refresh()->approveHeadOfBdPart($part, userWithRole('Head of Business Development'));
         $rfq->refresh()->recordGmAssistantPart($part, userWithRole('GMs Operations'));
-        $rfq->refresh()->approveGmPart($part, userWithRole('General Manager'));
     }
 
     return $rfq->refresh();
 }
 
-it('emails whoever created the RFQ, once it\'s closed, that it\'s ready to share with the customer', function () {
+it('emails whoever created the RFQ, once the General Manager approves it, that it\'s ready to share with the customer — and not again when it\'s closed', function () {
     Notification::fake();
     $creator = tap(userWithRole('Business Development'))->update(['name' => 'Bailey Nguyen']);
-    $rfq = readyToShareRfq($creator);
+    $rfq = rfqAwaitingGm($creator);
 
     Notification::assertNothingSent();
 
-    test()->actingAs($creator)->patch(route('admin.rfqs.close', $rfq), ['reference_code' => 'PO-1001'])
-        ->assertSessionHas('status', 'RFQ closed.');
+    test()->actingAs(userWithRole('General Manager'))->patch(route('admin.rfqs.approve-gm', $rfq))
+        ->assertSessionHas('status', 'Approved — ready for Business Development to close.');
 
     Notification::assertSentToTimes($creator, RfqReadyToShare::class, 1);
     Notification::assertSentTo($creator, RfqReadyToShare::class, function (RfqReadyToShare $notification, array $channels) use ($creator) {
@@ -61,22 +60,45 @@ it('emails whoever created the RFQ, once it\'s closed, that it\'s ready to share
             && $mail->greeting === 'Dear Bailey Nguyen,'
             && $mail->introLines === ['Your RFQ1838 is ready to share with customer (WC0191). Please do the needful to share the final file with them at earliest possible.'];
     });
-});
 
-it('emails the creator, not whoever closed it, and only once every part is closed', function () {
-    Notification::fake();
-    $creator = userWithRole('Business Development');
-    $admin = userWithRole('Admin');
-    $rfq = readyToShareRfq($creator, parts: 2);
-
-    test()->actingAs($admin)->patch(route('admin.rfqs.close-part', $rfq), ['part' => 1, 'reference_code' => 'PO-1001']);
-    Notification::assertNothingSent();
-
-    test()->actingAs($admin)->patch(route('admin.rfqs.close-part', $rfq->refresh()), ['part' => 2, 'reference_code' => 'PO-1002']);
+    test()->actingAs($creator)->patch(route('admin.rfqs.close', $rfq->refresh()), ['reference_code' => 'PO-1001'])
+        ->assertSessionHas('status', 'RFQ closed.');
 
     expect($rfq->refresh()->status)->toBe('Completed');
     Notification::assertSentToTimes($creator, RfqReadyToShare::class, 1);
-    Notification::assertNotSentTo($admin, RfqReadyToShare::class);
+});
+
+it('emails the creator, not the General Manager, and only once every part is approved', function () {
+    Notification::fake();
+    $creator = userWithRole('Business Development');
+    $gm = userWithRole('General Manager');
+    $rfq = rfqAwaitingGm($creator, parts: 2);
+
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm-part', $rfq), ['part' => 1]);
+    Notification::assertNothingSent();
+
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm-part', $rfq->refresh()), ['part' => 2]);
+
+    expect($rfq->refresh()->stage)->toBe('bd_closing');
+    Notification::assertSentToTimes($creator, RfqReadyToShare::class, 1);
+    Notification::assertNotSentTo($gm, RfqReadyToShare::class);
+});
+
+it('emails the creator again once the General Manager approves what Business Development sent back to them', function () {
+    Notification::fake();
+    $creator = userWithRole('Business Development');
+    $gm = userWithRole('General Manager');
+    $rfq = rfqAwaitingGm($creator);
+
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm', $rfq));
+    test()->actingAs($creator)->patch(route('admin.rfqs.reject-bd', $rfq->refresh()), ['part' => 1, 'target_stage' => 'gm_review', 'reason' => 'Client asked for a lower price'])
+        ->assertSessionHasNoErrors();
+    Notification::assertSentToTimes($creator, RfqReadyToShare::class, 1);
+
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm-part', $rfq->refresh()), ['part' => 1]);
+
+    expect($rfq->refresh()->stage)->toBe('bd_closing');
+    Notification::assertSentToTimes($creator, RfqReadyToShare::class, 2);
 });
 
 it('leaves the brackets out for an RFQ without a WC number', function () {
@@ -86,23 +108,23 @@ it('leaves the brackets out for an RFQ without a WC number', function () {
     expect((new RfqReadyToShare($rfq))->toMail($creator)->subject)->toBe('Your RFQ1838 is ready to share with customer');
 });
 
-it('emails nobody when the creator\'s account is deactivated or gone, and still closes', function () {
+it('emails nobody when the creator\'s account is deactivated or gone, and still approves', function () {
     Notification::fake();
     $deactivated = userWithRole('Business Development');
-    $rfq = readyToShareRfq($deactivated);
+    $rfq = rfqAwaitingGm($deactivated);
     $deactivated->forceFill(['deactivated_at' => now()])->save();
-    $gone = readyToShareRfq(userWithRole('Business Development'), attributes: ['rfq_number' => 'RFQ1839', 'wc_number' => 'WC0192']);
+    $gone = rfqAwaitingGm(userWithRole('Business Development'), attributes: ['rfq_number' => 'RFQ1839', 'wc_number' => 'WC0192']);
     $gone->creator->delete();
 
-    $closer = userWithRole('Admin');
-    test()->actingAs($closer)->patch(route('admin.rfqs.close', $rfq), ['reference_code' => 'PO-1001']);
-    test()->actingAs($closer)->patch(route('admin.rfqs.close', $gone->refresh()), ['reference_code' => 'PO-1002']);
+    $gm = userWithRole('General Manager');
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm', $rfq));
+    test()->actingAs($gm)->patch(route('admin.rfqs.approve-gm', $gone->refresh()));
 
-    expect($rfq->refresh()->status)->toBe('Completed')->and($gone->refresh()->status)->toBe('Completed');
+    expect($rfq->refresh()->stage)->toBe('bd_closing')->and($gone->refresh()->stage)->toBe('bd_closing');
     Notification::assertNothingSent();
 });
 
-it('still closes the RFQ when the email can\'t be sent, and reports why', function () {
+it('still approves the RFQ when the email can\'t be sent, and reports why', function () {
     Exceptions::fake();
     // A mail server that's down: the mail channel fails.
     app(ChannelManager::class)->extend('mail', fn () => new class
@@ -113,11 +135,11 @@ it('still closes the RFQ when the email can\'t be sent, and reports why', functi
         }
     });
     $creator = userWithRole('Business Development');
-    $rfq = readyToShareRfq($creator);
+    $rfq = rfqAwaitingGm($creator);
 
-    test()->actingAs($creator)->patch(route('admin.rfqs.close', $rfq), ['reference_code' => 'PO-1001'])
-        ->assertSessionHas('status', 'RFQ closed.');
+    test()->actingAs(userWithRole('General Manager'))->patch(route('admin.rfqs.approve-gm', $rfq))
+        ->assertSessionHas('status', 'Approved — ready for Business Development to close.');
 
-    expect($rfq->refresh()->status)->toBe('Completed');
+    expect($rfq->refresh()->stage)->toBe('bd_closing');
     Exceptions::assertReported(fn (RuntimeException $exception) => $exception->getMessage() === 'The mail server is down.');
 });
