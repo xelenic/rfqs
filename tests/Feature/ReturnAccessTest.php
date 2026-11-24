@@ -116,7 +116,7 @@ it('gives Data Entry no way to send a part back to Senior Operations — Return 
 
 // ---- GM Assistant -----------------------------------------------------------
 
-it('lets GM Assistant send a part back to Senior Operations or Sourcing — and nowhere else, Data Entry included', function () {
+it('lets GM Assistant send a part back to Sourcing, Senior Operations or the Head of Business Development — and nowhere else, Data Entry included', function () {
     $assistant = userWithRole('GMs Operations');
     $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ15003']), [1 => userWithRole('Sourcing'), 2 => userWithRole('Sourcing')]);
     partToGmAssistant($rfq, 1);
@@ -126,12 +126,13 @@ it('lets GM Assistant send a part back to Senior Operations or Sourcing — and 
         ->toContain('<option value="operations" >')
         ->toContain('<option value="sourcing" >')
         ->toContain('<option value="senior_ops_review" >')
+        // Since 2026-11-24, at the user's request.
+        ->toContain('<option value="head_of_bd_review" >')
         ->not->toContain('<option value="data_entry" >')
         ->not->toContain('<option value="business_development" >')
-        ->not->toContain('<option value="head_of_bd_review" >')
         ->not->toContain('<option value="gm_review" >');
 
-    foreach (['data_entry', 'business_development', 'head_of_bd_review', 'gm_review'] as $target) {
+    foreach (['data_entry', 'business_development', 'gm_review'] as $target) {
         test()->actingAs($assistant)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => $target, 'reason' => 'No'])
             ->assertSessionHasErrorsIn('reject', 'target_stage');
     }

@@ -77,8 +77,9 @@ it('gives each stage the earlier ones the business lets it send back to, and non
     // their own assignment step.
     expect(Rfq::rejectTargetStages('senior_ops_review'))->toBe(['business_development', 'sourcing', 'data_entry'])
         ->and(Rfq::rejectTargetStages('head_of_bd_review'))->toBe(['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'])
-        // GM Assistant: Sourcing first, which their popup opens on, then Senior Operations — not Data Entry.
-        ->and(Rfq::rejectTargetStages('gm_assistant'))->toBe(['sourcing', 'operations', 'senior_ops_review'])
+        // GM Assistant: Sourcing first, which their popup opens on, then
+        // Senior Operations, then the Head of Business Development — not Data Entry.
+        ->and(Rfq::rejectTargetStages('gm_assistant'))->toBe(['sourcing', 'operations', 'senior_ops_review', 'head_of_bd_review'])
         // The General Manager's own example: Operations, Sourcing, Data
         // Entry, Senior Ops, Head of BD, GM Assistant — plus Business
         // Development itself, further back than any of them.
@@ -503,7 +504,7 @@ it('opens GM Assistant\'s popup on Sourcing, and sends it straight to the part\'
         preg_match('/<select name="target_stage".*?<\/select>/s', test()->actingAs($gmAssistant)->get($page)->assertOk()->getContent(), $picker);
         preg_match_all('/<option value="([a-z_]+)"/', $picker[0], $options);
 
-        expect($options[1])->toBe(['sourcing', 'operations', 'senior_ops_review']);
+        expect($options[1])->toBe(['sourcing', 'operations', 'senior_ops_review', 'head_of_bd_review']);
     }
 
     test()->actingAs($gmAssistant)->from($list)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => 'sourcing', 'reason' => 'Wrong supplier'])
@@ -520,4 +521,44 @@ it('opens GM Assistant\'s popup on Sourcing, and sends it straight to the part\'
         ->and($pending($ops))->toBe([])
         ->and($pending($ops, ['view' => 'returns']))->toBe([])
         ->and($pending($ops, ['view' => 'rejected']))->toBe([]);
+});
+
+it('lets GM Assistant send a part back to the Head of Business Development, onto their Rejected page, and on again once approved', function () {
+    $gmAssistant = userWithRole('GMs Operations');
+    $head = userWithRole('Head of Business Development');
+    $ops = userWithRole('HBDs Operations');
+    $rfq = splitAmong(Rfq::factory()->create(['rfq_number' => 'RFQ7702']), [1 => userWithRole('Sourcing')]);
+    $rfq->refresh()->completeSourcingPart(1);
+    $rfq->refresh()->completeDataEntryPart(1, userWithRole('Data Entry'));
+    $rfq->refresh()->finalizePart(1);
+    $rfq->refresh()->completeSeniorOpsReview($ops);
+    $rfq->refresh()->approveByHeadOfBd($head);
+    $list = route('admin.rfqs.index', ['status' => 'Pending']);
+
+    test()->actingAs($gmAssistant)->from($list)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => 'head_of_bd_review', 'reason' => 'Margin needs a second look'])
+        ->assertRedirect($list)
+        ->assertSessionHas('status', 'Sent RFQ7702 back to Head of Business Development.');
+
+    $part = $rfq->refresh()->assigneeForPart(1)->pivot;
+    $pending = fn ($user, array $query = []) => test()->actingAs($user)->get(route('admin.rfqs.index', ['status' => 'Pending'] + $query))->assertOk()->viewData('rfqs')->pluck('rfq_number')->all();
+
+    expect($part->head_of_bd_approved_at)->toBeNull()
+        // Senior Operations' review still stands.
+        ->and($part->senior_ops_reviewed_at)->not->toBeNull()
+        ->and($rfq->reject_from_stage)->toBe('gm_assistant')
+        ->and($rfq->reject_target_stage)->toBe('head_of_bd_review')
+        ->and($pending($head, ['view' => 'rejected']))->toBe(['RFQ7702'])
+        ->and($pending($head, ['view' => 'returns']))->toBe([])
+        ->and(Rfq::headOfBdReturnsCount(rejected: true))->toBe(1)
+        ->and($pending($gmAssistant))->toBe([]);
+
+    // Who sent it back, and why, on the row.
+    expect(pageMain(test()->actingAs($head)->get(route('admin.rfqs.index', ['status' => 'Pending', 'view' => 'rejected']))))
+        ->toContain("Rejected by GMs Operations ({$gmAssistant->name}): Margin needs a second look");
+
+    $rfq->refresh()->approveHeadOfBdPart(1, $head);
+
+    expect($rfq->refresh()->reject_target_stage)->toBeNull()
+        ->and($pending($head, ['view' => 'rejected']))->toBe([])
+        ->and($pending($gmAssistant))->toBe(['RFQ7702']);
 });

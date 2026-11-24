@@ -225,7 +225,9 @@ class Rfq extends Model
      * - The Head of Business Development: Business Development, Senior
      *   Operations (its assignment or its review), Sourcing, Data Entry.
      * - GM Assistant: Sourcing, which their popup opens on, then Senior
-     *   Operations (its assignment or its review) — not Data Entry.
+     *   Operations (its assignment or its review), then — since 2026-11-24,
+     *   at the user's request — the Head of Business Development. Not Data
+     *   Entry.
      * - The General Manager: every stage before their own.
      *
      * Senior Operations' assignment step ('operations') frees the part for
@@ -239,7 +241,7 @@ class Rfq extends Model
         'sourcing' => ['operations'],
         'senior_ops_review' => ['business_development', 'sourcing', 'data_entry'],
         'head_of_bd_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review'],
-        'gm_assistant' => ['sourcing', 'operations', 'senior_ops_review'],
+        'gm_assistant' => ['sourcing', 'operations', 'senior_ops_review', 'head_of_bd_review'],
         'gm_review' => ['business_development', 'operations', 'sourcing', 'data_entry', 'senior_ops_review', 'head_of_bd_review', 'gm_assistant'],
         'bd_closing' => ['head_of_bd_review', 'gm_review'],
     ];
@@ -1605,10 +1607,11 @@ class Rfq extends Model
     }
 
     /**
-     * What's on the Head of Business Development's Returns page: an RFQ the
-     * General Manager sent back to their review (rejectToStage()/
-     * rejectPartToStage() targeting 'head_of_bd_review' — nobody else can)
-     * that's still waiting on it. Approving it again clears the record (see
+     * What's on the Head of Business Development's Returns (and Rejected)
+     * page: an RFQ sent back to their review (rejectToStage()/
+     * rejectPartToStage() targeting 'head_of_bd_review') — by GM Assistant,
+     * the General Manager or Business Development, see RETURN_TARGETS — that's
+     * still waiting on it. Approving it again clears the record (see
      * clearedRejectRecord()); sending it further back retargets it.
      */
     public function scopeReturnedToHeadOfBd(Builder $query): void
