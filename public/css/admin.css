@@ -7793,3 +7793,18 @@ tr.is-deactivated > td:not(:last-child) {
 .line-items-check-readonly.is-off {
   color: var(--rfq-danger);
 }
+
+/* The app's own confirm (layouts/_confirm_modal): narrow, and over any
+   popup it's asked from — its backdrop dimming that popup too. */
+.app-confirm {
+  --bs-modal-zindex: 1075;
+  --bs-modal-width: 420px;
+}
+
+.modal-backdrop ~ .modal-backdrop {
+  z-index: 1070;
+}
+
+.app-confirm .modal-body {
+  font-size: 0.925rem;
+}

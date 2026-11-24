@@ -283,6 +283,7 @@
     </div>
 
     @include('layouts._user_card')
+    @include('layouts._confirm_modal')
     @if (auth()->user()->canSeeCriticalMonitor())
         @include('layouts._critical_modal')
     @endif

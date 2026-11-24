@@ -1,5 +1,56 @@
 // RFQMS Admin Panel — plain JS, no build step.
 
+// Asks, in the app's own confirm popup (#appConfirmModal), what $form's
+// data-confirm asks — under its data-confirm-title, with data-confirm-ok on
+// its Yes — and calls proceed() once it's answered Yes. Cancel, ×, Escape or a
+// click outside leave the form unsent, with focus back on what sent it. Over
+// another popup, that one stays open behind it. Falls back to the browser's
+// own confirm where the popup isn't on the page.
+function askToConfirm(form, proceed, returnFocusTo) {
+    var modalEl = document.getElementById('appConfirmModal');
+    var question = form.dataset.confirm || 'Are you sure?';
+
+    if (!modalEl || !window.bootstrap) {
+        if (window.confirm(question)) proceed();
+        return;
+    }
+
+    document.getElementById('appConfirmTitle').textContent = form.dataset.confirmTitle || 'Please confirm';
+    document.getElementById('appConfirmMessage').textContent = question;
+    var ok = document.getElementById('appConfirmOk');
+    ok.textContent = form.dataset.confirmOk || 'Yes';
+
+    var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    var confirmed = false;
+
+    ok.onclick = function () {
+        confirmed = true;
+        modal.hide();
+    };
+
+    modalEl.addEventListener('shown.bs.modal', function onShown() {
+        modalEl.removeEventListener('shown.bs.modal', onShown);
+        ok.focus();
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+        modalEl.removeEventListener('hidden.bs.modal', onHidden);
+
+        // A popup it was shown over is still open: keep the page behind it still.
+        if (document.querySelector('.modal.show')) {
+            document.body.classList.add('modal-open');
+        }
+
+        if (confirmed) {
+            proceed();
+        } else if (returnFocusTo && typeof returnFocusTo.focus === 'function') {
+            returnFocusTo.focus();
+        }
+    });
+
+    modal.show();
+}
+
 // Wires up the page. Runs once it has loaded, and again (as
 // window.rfqmsRebind) each time live.js swaps a fresh page body in, since the
 // new elements have none of it — so whatever is tied to the page's chrome or
@@ -29,12 +80,33 @@ function rfqmsBoot() {
         backdrop.addEventListener('click', closeSidebar);
     }
 
-    // Confirm before destructive actions (delete forms).
+    // Confirm before a form[data-confirm] goes — in the app's own popup
+    // (layouts/_confirm_modal), not the browser's. The first submit is held
+    // while it's asked; Yes sends the form again, as it was sent (the same
+    // button), and that one goes. Each form is bound once, however often the
+    // page is swapped.
     document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+        if (form.__rfqmsConfirmBound) return;
+        form.__rfqmsConfirmBound = true;
+
         form.addEventListener('submit', function (e) {
-            if (!window.confirm(form.dataset.confirm || 'Are you sure?')) {
-                e.preventDefault();
+            if (form.__rfqmsConfirmed) {
+                form.__rfqmsConfirmed = false;
+                return;
             }
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            var submitter = e.submitter || null;
+
+            askToConfirm(form, function () {
+                form.__rfqmsConfirmed = true;
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit(submitter);
+                } else {
+                    form.submit();
+                }
+            }, submitter);
         });
     });
 
@@ -2283,7 +2355,6 @@ function rfqmsBoot() {
             var form = document.getElementById('rejectRfqForm');
             if (!form) return;
 
-            var isPart = !!button.dataset.part;
             var asReturn = button.dataset.asReturn === '1';
             form.action = button.dataset.action;
             form.querySelector('[name="reject_rfq_id"]').value = button.dataset.rfqId || '';
@@ -2299,8 +2370,6 @@ function rfqmsBoot() {
             submit.textContent = asReturn ? 'Return' : 'Send back';
             submit.classList.toggle('btn-primary', asReturn);
             submit.classList.toggle('btn-danger', !asReturn);
-            form.dataset.confirm = (asReturn ? 'Return this ' : 'Send this ') + (isPart ? 'part' : 'RFQ')
-                + (asReturn ? '' : ' back') + '? Any approval already given for it is undone.';
         });
     });
 

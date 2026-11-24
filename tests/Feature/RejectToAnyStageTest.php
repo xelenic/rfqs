@@ -507,6 +507,11 @@ it('opens GM Assistant\'s popup on Sourcing, and sends it straight to the part\'
         expect($options[1])->toBe(['sourcing', 'operations', 'senior_ops_review', 'head_of_bd_review']);
     }
 
+    // Asked in the app's own confirm, not the browser's: "Confirm Return", the question, and Yes.
+    test()->actingAs($gmAssistant)->get($list)->assertOk()
+        ->assertSee('data-confirm-title="Confirm Return" data-confirm="Are you sure you want to return this back?" data-confirm-ok="Yes"', false)
+        ->assertSee('id="appConfirmModal"', false);
+
     test()->actingAs($gmAssistant)->from($list)->patch(route('admin.rfqs.reject-gm-assistant', $rfq), ['part' => 1, 'target_stage' => 'sourcing', 'reason' => 'Wrong supplier'])
         ->assertRedirect($list)
         ->assertSessionHas('status', 'Sent RFQ7701 back to Sourcing.');

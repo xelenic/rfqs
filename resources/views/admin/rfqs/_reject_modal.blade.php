@@ -26,7 +26,7 @@
 <div class="modal fade" id="rejectRfqModal" tabindex="-1" aria-labelledby="rejectRfqModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" id="rejectRfqForm" action="#" enctype="multipart/form-data" data-confirm="Send this {{ old('part') ? 'part' : 'RFQ' }} back? Any approval already given for it is undone.">
+            <form method="POST" id="rejectRfqForm" action="#" enctype="multipart/form-data" data-confirm-title="Confirm Return" data-confirm="Are you sure you want to return this back?" data-confirm-ok="Yes">
                 @csrf
                 @method('PATCH')
                 {{-- Not part of the request the route needs — just carried
