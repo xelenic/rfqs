@@ -151,6 +151,36 @@ it('searches within the dates, on the Closed list as well', function () {
         ->not->toContain('Roof repair');
 });
 
+it('finds closed RFQs and parts by their quotation number, on the Closed list and All RFQs', function () {
+    listFilterRfq('Lobby lights', 1, ['status' => 'Completed', 'stage' => 'closed', 'bd_reference_code' => 'QT-2026-0451']);
+    listFilterRfq('Roof repair', 1, ['status' => 'Completed', 'stage' => 'closed', 'bd_reference_code' => 'QT-2026-0999']);
+    listFilterRfq('Split pumps', 1)->assignees()->attach(userWithRole('Sourcing')->id, ['part_number' => 1, 'bd_reference_code' => 'QT-2026-0452']);
+
+    foreach ([['status' => 'Completed'], []] as $query) {
+        $html = test()->actingAs(userWithRole('Admin'))
+            ->get(route('admin.rfqs.index', $query + ['search' => 'QT-2026-045']))
+            ->assertOk()
+            ->getContent();
+
+        expect($html)->toContain('Lobby lights')->not->toContain('Roof repair');
+
+        if ($query === []) {
+            expect($html)->toContain('Split pumps');
+        }
+    }
+});
+
+it('doesn\'t find RFQs by quotation number for Sourcing alone, who isn\'t shown it', function () {
+    $sourcing = userWithRole('Sourcing');
+    listFilterRfq('Lobby lights', 1, ['status' => 'Completed', 'stage' => 'closed', 'bd_reference_code' => 'QT-2026-0451'])
+        ->assignees()->attach($sourcing->id, ['part_number' => 1, 'bd_reference_code' => 'QT-2026-0451']);
+
+    test()->actingAs($sourcing)
+        ->get(route('admin.rfqs.index', ['status' => 'Completed', 'search' => 'QT-2026-0451']))
+        ->assertOk()
+        ->assertDontSee('Lobby lights');
+});
+
 it('narrows both of Data Entry\'s tabs, and what they count', function () {
     $sourcing = userWithRole('Sourcing');
     $dataEntry = userWithRole('Data Entry');

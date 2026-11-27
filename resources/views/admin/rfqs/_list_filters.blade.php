@@ -54,7 +54,7 @@
     @endif
 
     <div class="list-filter-search">
-        <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search WC number, RFQ number, subject..." aria-label="Search RFQs">
+        <input type="search" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search WC number, RFQ number, subject{{ auth()->user()->seesOnlySourcingAndDataEntryTimeline() ? '' : ', quotation number' }}..." aria-label="Search RFQs">
         <button class="btn btn-sm btn-outline-secondary" type="submit" aria-label="Search"><i class="bi bi-search"></i></button>
     </div>
 

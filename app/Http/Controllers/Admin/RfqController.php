@@ -357,12 +357,20 @@ class RfqController extends Controller implements HasMiddleware
         $allRfqsCreator = $allRfqsCreatorLabel !== null ? (string) $request->query('creator') : null;
         $finishedLateIds = $allRfqsStatus === 'exceeded' ? Rfq::idsWithAStepFinishedLate() : [];
 
-        $applySearch = function ($query) use ($search, $listRange, $listPriority) {
-            $query->when($search, function ($query, $search) {
-                $query->where(function ($q) use ($search) {
+        // The search also finds a closed RFQ or part by its quotation number
+        // (bd_reference_code), except for Sourcing and Data Entry alone, who
+        // aren't shown quotation numbers.
+        $searchesQuotation = ! $user->seesOnlySourcingAndDataEntryTimeline();
+
+        $applySearch = function ($query) use ($search, $listRange, $listPriority, $searchesQuotation) {
+            $query->when($search, function ($query, $search) use ($searchesQuotation) {
+                $query->where(function ($q) use ($search, $searchesQuotation) {
                     $q->where('wc_number', 'like', "%{$search}%")
                         ->orWhere('rfq_number', 'like', "%{$search}%")
-                        ->orWhere('subject', 'like', "%{$search}%");
+                        ->orWhere('subject', 'like', "%{$search}%")
+                        ->when($searchesQuotation, fn ($q) => $q
+                            ->orWhere('rfqs.bd_reference_code', 'like', "%{$search}%")
+                            ->orWhereHas('assignees', fn ($parts) => $parts->where('rfq_user.bd_reference_code', 'like', "%{$search}%")));
                 });
             })
                 ->when($listRange, fn ($query, array $range) => $this->applyCreatedRange($query, $range))
