@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WorkingSchedule;
 use App\RfqDataEraser;
+use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -72,6 +73,8 @@ class SettingsController extends Controller
             'gmAssistantIdleAlert' => Setting::gmAssistantIdleAlert(),
             'wcFormatRequired' => Setting::wcFormatRequired(),
             'rfqNumberStart' => Setting::rfqNumberStart(),
+            'kpiSettledRate' => Setting::kpiSettledRate(),
+            'holidays' => Setting::holidays(),
             'nextRfqNumber' => Rfq::nextRfqNumber(),
             'lastRfqSequence' => Rfq::lastRfqSequence(),
             'rfqDataCounts' => $user->can('rfqs.clear-data') ? RfqDataEraser::counts() : [],
@@ -645,6 +648,69 @@ class SettingsController extends Controller
         return $this->backToTab('rfq-numbers', $next === Rfq::formatRfqNumber($start)
             ? "New RFQs start from {$next}."
             : 'Saved — but '.Rfq::formatRfqNumber(Rfq::lastRfqSequence())." is already taken, so the next RFQ will be {$next}.");
+    }
+
+    /**
+     * Settings → Monthly KPI: the RFQs a day expected of a Sourcing member
+     * past their first 60 working days (Setting::kpiSettledRate()) — and of
+     * anyone whose join date isn't given — on the Sourcing KPI report.
+     */
+    public function updateKpi(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the KPI targets.');
+
+        [$fewest, $most] = Setting::KPI_SETTLED_RATE_RANGE;
+
+        $validated = $request->validateWithBag('kpi', [
+            'settled_rate' => ['required', 'integer', "between:{$fewest},{$most}"],
+        ], [
+            'settled_rate.required' => 'Give how many RFQs a day.',
+            'settled_rate.integer' => 'Give a whole number of RFQs.',
+            'settled_rate.between' => "Give a number from {$fewest} to {$most}.",
+        ]);
+
+        Setting::putKpiSettledRate((int) $validated['settled_rate']);
+
+        return $this->backToTab('kpi', 'Saved — from their 61st working day, '.trans_choice('1 RFQ a day is|:count RFQs a day are', (int) $validated['settled_rate'], ['count' => $validated['settled_rate']]).' expected.');
+    }
+
+    /**
+     * Adds a company holiday (Setting::holidays()) — or renames one already
+     * there. The Sourcing KPI report doesn't count it as a working day.
+     */
+    public function storeHoliday(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the holidays.');
+
+        $validated = $request->validateWithBag('holidays', [
+            'day' => ['required', 'date_format:Y-m-d'],
+            'name' => ['nullable', 'string', 'max:80'],
+        ], [
+            'day.required' => 'Pick the day.',
+            'day.date_format' => 'Pick the day from the calendar.',
+        ]);
+
+        $holidays = Setting::holidays();
+        $holidays[$validated['day']] = trim((string) ($validated['name'] ?? ''));
+        Setting::putHolidays($holidays);
+
+        return $this->backToTab('kpi', CarbonImmutable::parse($validated['day'])->format('M d, Y').' is a holiday now.');
+    }
+
+    /**
+     * Takes a day off the company holidays.
+     */
+    public function destroyHoliday(Request $request, string $day): RedirectResponse
+    {
+        abort_unless($request->user()->can('settings.manage'), 403, 'Your role can\'t change the holidays.');
+
+        $holidays = Setting::holidays();
+        abort_unless(array_key_exists($day, $holidays), 404);
+
+        unset($holidays[$day]);
+        Setting::putHolidays($holidays);
+
+        return $this->backToTab('kpi', CarbonImmutable::parse($day)->format('M d, Y').' isn\'t a holiday any more.');
     }
 
     /**

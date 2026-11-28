@@ -101,6 +101,7 @@
                                                         data-id="{{ $user->id }}"
                                                         data-name="{{ $user->name }}"
                                                         data-email="{{ $user->email }}"
+                                                        data-joined-on="{{ $user->joined_on?->toDateString() }}"
                                                         data-roles="{{ $user->roles->pluck('name')->join(',') }}"
                             data-categories="{{ $user->jobCategories->pluck('id')->join(',') }}">
                                                     <i class="bi bi-pencil"></i> Edit

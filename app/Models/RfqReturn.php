@@ -29,6 +29,7 @@ class RfqReturn extends Model
         'whole',
         'from_stage',
         'target_stage',
+        'is_return',
         'returned_by',
         'part_before',
         'rfq_before',
@@ -44,6 +45,7 @@ class RfqReturn extends Model
         return [
             'part_number' => 'integer',
             'whole' => 'boolean',
+            'is_return' => 'boolean',
             'part_before' => 'array',
             'rfq_before' => 'array',
             'forwarded_at' => 'datetime',

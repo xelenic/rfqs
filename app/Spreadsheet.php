@@ -8,11 +8,13 @@ use ZipArchive;
 
 /**
  * Reads the rows of a spreadsheet someone uploads — an Excel workbook
- * (.xlsx, its first sheet) or a CSV — and writes a plain one-sheet .xlsx to
+ * (.xlsx, its first sheet) or a CSV — and writes a one-sheet .xlsx to
  * download, with PHP's own zip and XML (an .xlsx is a zip of XML parts), so
  * the app needs no spreadsheet package. Values are read as Excel shows them
  * as text: no formulas worked out, no number formats or dates applied — what
- * a list of names needs. Used by JobCategoryImport.
+ * a list of names needs. Used by JobCategoryImport. What's written can hold
+ * numbers, live formulas and working-time durations as well as text (since
+ * 2026-11-28, for the Sourcing KPI report).
  */
 final class Spreadsheet
 {
@@ -52,15 +54,22 @@ final class Spreadsheet
     }
 
     /**
-     * A one-sheet .xlsx named $sheetName holding $rows (each a list of cell
-     * texts), the first row in bold, written to a temporary file whose path
-     * is returned — for the caller to send and delete. $widths are the
-     * columns' widths, in characters.
+     * A one-sheet .xlsx named $sheetName holding $rows, the rows at
+     * $boldRows (0 the first) in bold and wrapped, written to a temporary file
+     * whose path is returned — for the caller to send and delete. $widths
+     * are the columns' widths, in characters.
      *
-     * @param  array<int, array<int, string|null>>  $rows
+     * A cell is text (a string; null as empty text), a number (an int or
+     * float), or an array: ['formula' => 'IF(B3=0,0,ROUND(D3/B3*100,2))'] — a live
+     * formula, without its "=", with 'value' the result shown until Excel
+     * works it out again (it does on opening) — or ['seconds' => 5400], a
+     * duration shown as hours and minutes ([h]:mm, "1:30").
+     *
+     * @param  array<int, array<int, string|int|float|array{formula?: string, value?: int|float|null, seconds?: int|null}|null>>  $rows
      * @param  array<int, int>  $widths
+     * @param  array<int, int>  $boldRows
      */
-    public static function xlsx(array $rows, string $sheetName, array $widths = []): string
+    public static function xlsx(array $rows, string $sheetName, array $widths = [], array $boldRows = [0]): string
     {
         $path = tempnam(sys_get_temp_dir(), 'xlsx');
         $zip = new ZipArchive;
@@ -70,14 +79,30 @@ final class Spreadsheet
         }
 
         $sheetData = '';
+        $hasFormulas = false;
 
         foreach (array_values($rows) as $index => $cells) {
             $number = $index + 1;
+            $bold = in_array($index, $boldRows, true);
             $sheetData .= '<row r="'.$number.'">';
 
-            foreach (array_values($cells) as $column => $text) {
-                $sheetData .= '<c r="'.self::columnLetters($column).$number.'" t="inlineStr"'.($index === 0 ? ' s="1"' : '').'>'
-                    .'<is><t xml:space="preserve">'.self::xmlText((string) $text).'</t></is></c>';
+            foreach (array_values($cells) as $column => $cell) {
+                $reference = self::columnLetters($column).$number;
+
+                if (is_int($cell) || is_float($cell)) {
+                    $sheetData .= '<c r="'.$reference.'"'.($bold ? ' s="1"' : '').'><v>'.self::number($cell).'</v></c>';
+                } elseif (is_array($cell) && array_key_exists('seconds', $cell)) {
+                    $sheetData .= $cell['seconds'] === null
+                        ? ($bold ? '<c r="'.$reference.'" s="1"/>' : '')
+                        : '<c r="'.$reference.'" s="'.($bold ? 3 : 2).'"><v>'.self::number($cell['seconds'] / 86400).'</v></c>';
+                } elseif (is_array($cell) && isset($cell['formula'])) {
+                    $hasFormulas = true;
+                    $sheetData .= '<c r="'.$reference.'"'.($bold ? ' s="1"' : '').'><f>'.self::xmlText(ltrim($cell['formula'], '='))
+                        .'</f>'.(isset($cell['value']) ? '<v>'.self::number($cell['value']).'</v>' : '').'</c>';
+                } else {
+                    $sheetData .= '<c r="'.$reference.'" t="inlineStr"'.($bold ? ' s="1"' : '').'>'
+                        .'<is><t xml:space="preserve">'.self::xmlText((string) $cell).'</t></is></c>';
+                }
             }
 
             $sheetData .= '</row>';
@@ -106,6 +131,8 @@ final class Spreadsheet
         $zip->addFromString('xl/workbook.xml', $declaration
             .'<workbook xmlns="'.self::MAIN_NAMESPACE.'" xmlns:r="'.self::RELATIONSHIPS_NAMESPACE.'">'
             .'<sheets><sheet name="'.self::xmlText(mb_substr($sheetName, 0, 31)).'" sheetId="1" r:id="rId1"/></sheets>'
+            // Formulas are worked out afresh whenever it's opened.
+            .($hasFormulas ? '<calcPr fullCalcOnLoad="1"/>' : '')
             .'</workbook>');
         $zip->addFromString('xl/_rels/workbook.xml.rels', $declaration
             .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -114,11 +141,16 @@ final class Spreadsheet
             .'</Relationships>');
         $zip->addFromString('xl/styles.xml', $declaration
             .'<styleSheet xmlns="'.self::MAIN_NAMESPACE.'">'
+            .'<numFmts count="1"><numFmt numFmtId="164" formatCode="[h]:mm"/></numFmts>'
             .'<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
             .'<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
             .'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
             .'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            .'<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>'
+            // Plain; bold and wrapped; a duration; a bold duration.
+            .'<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+            .'<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>'
+            .'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+            .'<xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs>'
             .'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
             .'</styleSheet>');
         $zip->addFromString('xl/worksheets/sheet1.xml', $declaration
@@ -347,6 +379,14 @@ final class Spreadsheet
         }
 
         return $letters;
+    }
+
+    /**
+     * $value as a cell's number — never in exponent form, as far as it goes.
+     */
+    private static function number(int|float $value): string
+    {
+        return is_int($value) ? (string) $value : rtrim(rtrim(number_format($value, 10, '.', ''), '0'), '.');
     }
 
     /**

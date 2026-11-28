@@ -2945,7 +2945,7 @@ class Rfq extends Model
         // of it part by part (returnSourcingPart()).
         $tell = $targetStage === 'sourcing' ? collect() : $this->peopleAtStage($targetStage);
 
-        $this->recordReturn($fromStage, $targetStage, $rejectedBy);
+        $this->recordReturn($fromStage, $targetStage, $rejectedBy, isReturn: $asReturn);
 
         $columns = array_fill_keys(self::markerColumnsFrom($targetStage), null);
 
@@ -3034,7 +3034,7 @@ class Rfq extends Model
         $tell = $targetStage === 'sourcing' ? collect() : $this->peopleAtStage($targetStage, $part);
 
         if ($this->assigneeForPart($part)) {
-            $this->recordReturn($fromStage, $targetStage, $rejectedBy, $part);
+            $this->recordReturn($fromStage, $targetStage, $rejectedBy, $part, $asReturn);
         }
 
         if (in_array($targetStage, ['business_development', 'operations'], true)) {
@@ -3166,9 +3166,10 @@ class Rfq extends Model
      * Saves what's about to be sent back from $fromStage to $targetStage —
      * $part, or every part not yet closed — as it is now, with the RFQ's own
      * workflow columns: one RfqReturn per part, a whole-RFQ reject's sharing
-     * a batch. What forwardBack() restores.
+     * a batch, each saying whether it was a Return rather than a Reject
+     * ($isReturn, RETURNABLE_STAGES). What forwardBack() restores.
      */
-    private function recordReturn(string $fromStage, string $targetStage, User $returnedBy, ?int $part = null): void
+    private function recordReturn(string $fromStage, string $targetStage, User $returnedBy, ?int $part = null, bool $isReturn = false): void
     {
         $rfqBefore = (array) DB::table('rfqs')->where('id', $this->id)->first(self::RETURN_RFQ_COLUMNS);
         $batch = (string) Str::uuid();
@@ -3185,6 +3186,7 @@ class Rfq extends Model
                 'whole' => $part === null,
                 'from_stage' => $fromStage,
                 'target_stage' => $targetStage,
+                'is_return' => $isReturn,
                 'returned_by' => $returnedBy->id,
                 'part_before' => collect((array) $row)->except(['id', 'rfq_id', 'user_id', 'part_number'])->all(),
                 'rfq_before' => $rfqBefore,

@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
 use Spatie\Permission\Contracts\Role as RoleContract;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'joined_on', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -157,6 +157,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'preferences' => 'array',
             'deactivated_at' => 'datetime',
+            'joined_on' => 'immutable_date',
         ];
     }
 

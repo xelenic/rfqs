@@ -56,6 +56,7 @@
             auth()->user()->canViewTimeSpentReport() ? ['Time Spent', 'bi-stopwatch', route('admin.reports.time-spent')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Sourcing Daily', 'bi-calendar-day', route('admin.reports.sourcing-daily')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Sourcing Monthly', 'bi-calendar3', route('admin.reports.sourcing-monthly')] : null,
+            auth()->user()->canViewPerformanceReports() ? ['Sourcing KPI', 'bi-speedometer2', route('admin.reports.sourcing-kpi')] : null,
             auth()->user()->canViewPerformanceReports() ? ['Data Entry Daily', 'bi-keyboard', route('admin.reports.data-entry-daily')] : null,
             auth()->user()->canViewPerformanceReports() ? ['RFQ Tracking Sheet', 'bi-table', route('admin.reports.rfq-tracking')] : null,
             $canSeePeople ? ['Users', 'bi-people', route('admin.users.index')] : null,

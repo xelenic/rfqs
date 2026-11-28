@@ -8,11 +8,13 @@ use App\Models\Setting;
 use App\Models\SourcingDayFigure;
 use App\Models\User;
 use App\PerformanceReports;
+use App\Spreadsheet;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * The performance reports, for Admin, Senior Operations and HR Executive
@@ -22,9 +24,11 @@ use Illuminate\View\View;
  * spent), Sourcing's monthly evaluation (RFQs received, quotations
  * completed, the average time to complete one, items) and the RFQ tracking
  * sheet, and the Sourcing Summary (one row a person, as the business's sheet
- * has it). The person reports take one person, several or everyone, and a day
- * range or a month; each has its totals at the bottom and sorts by name,
- * date, RFQ count or item count. The figures come from App\PerformanceReports.
+ * has it), and — since 2026-11-28 — Sourcing's monthly KPI report, which
+ * downloads as an Excel workbook with live formulas. The person reports take
+ * one person, several or everyone, and a day range or a month; each has its
+ * totals at the bottom and sorts by name, date, RFQ count or item count. The
+ * figures come from App\PerformanceReports.
  */
 class PerformanceReportController extends Controller
 {
@@ -47,6 +51,31 @@ class PerformanceReportController extends Controller
      * @var array<string, string>
      */
     public const TRACKING_FINALIZED = ['all' => 'Finalized or not', 'not_finalized' => 'Not finalized yet', 'finalized' => 'Finalized'];
+
+    /**
+     * The Sourcing KPI report's columns, after the person's name, as the
+     * business's sheet has them: each one's letter code (row 1 of the
+     * workbook; none for some) and heading (row 2). Their figures are
+     * App\PerformanceReports::sourcingKpi()'s, by key.
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const KPI_COLUMNS = [
+        'days' => ['a', 'Number of working days for the month'],
+        'expected' => ['b', 'Expected RFQ to be completed'],
+        'received' => ['c', 'Total RFQ received'],
+        'completed' => ['d', 'Total quotations completed'],
+        'rateOfExpected' => ['e', 'RFQ Completed Rate (Based on b) %'],
+        'rateOfReceived' => ['f', 'RFQ Completed Rate (Based on c) %'],
+        'average' => ['', 'Average RFQ completion Time'],
+        'items' => ['', 'Total No of Items for Month'],
+        'rejected' => ['', 'Number of rejected RFQs'],
+        'overdue' => ['', 'Number of overdue RFQs'],
+        'callsPerDay' => ['g', 'Average of successful calls made per day'],
+        'won' => ['h', 'Total winning quotations'],
+        'winRate' => ['i', 'Quotation Winning Rate %'],
+        'unattendedCalls' => ['k', 'Unattended calls from suppliers'],
+    ];
 
     /**
      * Sourcing's daily (and weekly) report — the Procurement Daily Report.
@@ -158,10 +187,7 @@ class PerformanceReportController extends Controller
         $this->authorizeReports($request);
 
         $everyone = PerformanceReports::people('Sourcing');
-        $thisMonth = CarbonImmutable::now(Setting::timezone())->format('Y-m');
-        $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) $request->query('month')) && $request->query('month') <= $thisMonth
-            ? $request->query('month')
-            : $thisMonth;
+        [$month, $thisMonth] = $this->month($request);
         $people = $this->chosen($request, $everyone);
         [$sort, $descending] = $this->sorting($request, ['name' => 'Name', 'rfqs' => 'RFQ count', 'items' => 'Item count'], 'name');
         $report = (new PerformanceReports)->sourcingMonthly($people, $month);
@@ -176,6 +202,103 @@ class PerformanceReportController extends Controller
             'sort' => $sort,
             'descending' => $descending,
         ]);
+    }
+
+    /**
+     * Sourcing's monthly KPI report (App\PerformanceReports::sourcingKpi()):
+     * one row a person for the month picked — this month's so far — with the
+     * total, as the business's sheet has it (KPI_COLUMNS).
+     */
+    public function sourcingKpi(Request $request): View
+    {
+        $this->authorizeReports($request);
+
+        $everyone = PerformanceReports::people('Sourcing');
+        [$month, $thisMonth] = $this->month($request);
+        $people = $this->chosen($request, $everyone);
+
+        return view('admin.reports.performance.sourcing_kpi', [
+            // A deactivated account with nothing in the month shows only when picked.
+            'report' => (new PerformanceReports)->sourcingKpi($people, $month, keepDeactivated: $people->count() < $everyone->count()),
+            'everyone' => $everyone,
+            'chosen' => $people->pluck('id')->all(),
+            'month' => $month,
+            'monthLabel' => CarbonImmutable::parse("{$month}-01")->format('F Y'),
+            'thisMonth' => $thisMonth,
+        ]);
+    }
+
+    /**
+     * The Sourcing KPI report as an Excel workbook: the letter codes in row
+     * 1, the headings in row 2, a row a person, and the total — the
+     * completed and winning rates (Cols E, F and M) as live formulas,
+     * guarded against dividing by 0, and the total's counts as sums.
+     */
+    public function sourcingKpiExport(Request $request): BinaryFileResponse
+    {
+        $this->authorizeReports($request);
+
+        $everyone = PerformanceReports::people('Sourcing');
+        [$month] = $this->month($request);
+        $people = $this->chosen($request, $everyone);
+        $report = (new PerformanceReports)->sourcingKpi($people, $month, keepDeactivated: $people->count() < $everyone->count());
+
+        return response()->download(
+            Spreadsheet::xlsx($this->kpiSheet($report), "Sourcing KPI {$month}", [28, ...array_fill(0, count(self::KPI_COLUMNS), 16)], boldRows: [0, 1, $report['rows']->count() + 2]),
+            "sourcing-kpi-{$month}.xlsx",
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        )->deleteFileAfterSend();
+    }
+
+    /**
+     * The Sourcing KPI workbook's rows (sourcingKpiExport()): codes, headings,
+     * a row a person from row 3, and the total.
+     *
+     * @param  array{rows: Collection<int, array<string, mixed>>, total: array<string, mixed>}  $report
+     * @return array<int, array<int, mixed>>
+     */
+    private function kpiSheet(array $report): array
+    {
+        $letters = collect(array_keys(self::KPI_COLUMNS))->mapWithKeys(fn (string $key, int $index) => [$key => chr(ord('B') + $index)]);
+        $first = 3;
+        $last = $first + $report['rows']->count() - 1;
+
+        // A rate as Excel works it out: $of as a percentage of $whole, 0 when there's nothing to divide by.
+        $rate = fn (string $of, string $whole, int $row, float $value) => [
+            'formula' => "IF({$letters[$whole]}{$row}=0,0,ROUND({$letters[$of]}{$row}/{$letters[$whole]}{$row}*100,2))",
+            'value' => $value,
+        ];
+
+        $cells = function (array $figures, int $row, ?string $name) use ($letters, $rate, $first, $last): array {
+            $sum = fn (string $key) => $name === null && $last >= $first
+                ? ['formula' => "SUM({$letters[$key]}{$first}:{$letters[$key]}{$last})", 'value' => $figures[$key]]
+                : $figures[$key];
+
+            return [
+                $name ?? 'Total',
+                $sum('days'),
+                $sum('expected'),
+                $sum('received'),
+                $sum('completed'),
+                $rate('completed', 'expected', $row, $figures['rateOfExpected']),
+                $rate('completed', 'received', $row, $figures['rateOfReceived']),
+                ['seconds' => $figures['average']],
+                $sum('items'),
+                $sum('rejected'),
+                $sum('overdue'),
+                $figures['callsPerDay'],
+                $sum('won'),
+                $rate('won', 'completed', $row, $figures['winRate']),
+                $sum('unattendedCalls'),
+            ];
+        };
+
+        return [
+            ['', ...array_column(self::KPI_COLUMNS, 0)],
+            ['Employee', ...array_column(self::KPI_COLUMNS, 1)],
+            ...$report['rows']->values()->map(fn (array $row, int $index) => $cells($row, $first + $index, $row['user']->name))->all(),
+            $cells($report['total'], $last + 1, null),
+        ];
     }
 
     /**
@@ -284,6 +407,20 @@ class PerformanceReportController extends Controller
         $earliest = CarbonImmutable::parse($to)->subDays(PerformanceReports::MAX_DAYS - 1)->toDateString();
 
         return $from < $earliest ? [$earliest, $to, true] : [$from, $to, false];
+    }
+
+    /**
+     * The month a monthly report covers ("Y-m"), as asked — this month by
+     * default, and never a later one — with this month.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function month(Request $request): array
+    {
+        $thisMonth = CarbonImmutable::now(Setting::timezone())->format('Y-m');
+        $asked = (string) $request->query('month');
+
+        return [preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $asked) && $asked <= $thisMonth ? $asked : $thisMonth, $thisMonth];
     }
 
     /**

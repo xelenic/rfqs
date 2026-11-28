@@ -63,6 +63,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::patch('settings/data-entry-per-item-people', [SettingsController::class, 'updateDataEntryPerItemPeople'])->name('settings.data-entry-per-item-people');
     Route::patch('settings/gm-assistant-per-item-people', [SettingsController::class, 'updateGmAssistantPerItemPeople'])->name('settings.gm-assistant-per-item-people');
     Route::patch('settings/rfq-numbers', [SettingsController::class, 'updateRfqNumbers'])->name('settings.rfq-numbers');
+    Route::patch('settings/kpi', [SettingsController::class, 'updateKpi'])->name('settings.kpi');
+    Route::post('settings/holidays', [SettingsController::class, 'storeHoliday'])->name('settings.holidays.store');
+    Route::delete('settings/holidays/{day}', [SettingsController::class, 'destroyHoliday'])->where('day', '\d{4}-\d{2}-\d{2}')->name('settings.holidays.destroy');
     Route::delete('settings/rfq-data', [SettingsController::class, 'clearRfqData'])->middleware('throttle:5,1')->name('settings.rfq-data.clear');
     Route::patch('settings/idle-alert', [SettingsController::class, 'updateIdleAlert'])->name('settings.idle-alert');
     Route::patch('settings/gm-assistant-idle-alert', [SettingsController::class, 'updateGmAssistantIdleAlert'])->name('settings.gm-assistant-idle-alert');
@@ -87,6 +90,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureAccountIsActiv
     Route::delete('sourcing-calls/{day}', [SourcingDayFigureController::class, 'destroyOwnCalls'])->where('day', '\d{4}-\d{2}-\d{2}')->name('sourcing-calls.destroy');
     Route::get('reports/data-entry-daily', [PerformanceReportController::class, 'dataEntryDaily'])->name('reports.data-entry-daily');
     Route::get('reports/sourcing-monthly', [PerformanceReportController::class, 'sourcingMonthly'])->name('reports.sourcing-monthly');
+    Route::get('reports/sourcing-kpi', [PerformanceReportController::class, 'sourcingKpi'])->name('reports.sourcing-kpi');
+    Route::get('reports/sourcing-kpi/export', [PerformanceReportController::class, 'sourcingKpiExport'])->name('reports.sourcing-kpi.export');
     Route::get('reports/rfq-tracking', [PerformanceReportController::class, 'rfqTracking'])->name('reports.rfq-tracking');
 
     Route::get('attendance', [AttendanceController::class, 'index'])->name('attendance.index');

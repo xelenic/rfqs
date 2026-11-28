@@ -28,6 +28,18 @@
         @enderror
     </div>
 
+    {{-- The day they joined the company — what the Sourcing KPI report
+         counts their tenure from (not when this account was made). --}}
+    <div class="col-md-6">
+        <label for="{{ $idPrefix }}-joined_on" class="form-label">Joined on <span class="text-muted-soft fw-normal">(optional)</span></label>
+        <input type="date" name="joined_on" id="{{ $idPrefix }}-joined_on" class="form-control @error('joined_on', $idPrefix) is-invalid @enderror"
+               value="{{ $showOld ? old('joined_on') : '' }}">
+        @error('joined_on', $idPrefix)
+            <div class="invalid-feedback">{{ $message }}</div>
+        @enderror
+        <div class="form-text">The day they started with the company. The Sourcing KPI report counts their daily RFQ target from it.</div>
+    </div>
+
     @if ($mode === 'edit' && ! auth()->user()->can('users.set-password'))
         {{-- Only with users.set-password is someone's password set; anyone
              else sends a link (the envelope on the list). --}}

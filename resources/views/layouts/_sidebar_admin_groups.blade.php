@@ -134,6 +134,7 @@
                     ['label' => 'Daily Report', 'icon' => 'bi-calendar-day', 'route' => 'admin.reports.sourcing-daily', 'activeOn' => 'admin.reports.sourcing-daily', 'count' => null, 'hint' => '', 'can' => $seesReports],
                     ['label' => 'Summary Report', 'icon' => 'bi-clipboard-data', 'route' => 'admin.reports.sourcing-summary', 'activeOn' => 'admin.reports.sourcing-summary*', 'count' => null, 'hint' => '', 'can' => $seesReports],
                     ['label' => 'Monthly Report', 'icon' => 'bi-calendar3', 'route' => 'admin.reports.sourcing-monthly', 'activeOn' => 'admin.reports.sourcing-monthly', 'count' => null, 'hint' => '', 'can' => $seesReports],
+                    ['label' => 'KPI Report', 'icon' => 'bi-speedometer2', 'route' => 'admin.reports.sourcing-kpi', 'activeOn' => 'admin.reports.sourcing-kpi*', 'count' => null, 'hint' => '', 'can' => $seesReports],
                 ],
             ],
             [

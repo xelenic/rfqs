@@ -164,6 +164,29 @@ class Setting extends Model
     public const RFQ_NUMBER_START_RANGE = [1, 99999999];
 
     /**
+     * The RFQs a Sourcing member is expected to complete on a working day,
+     * by how many working days they've been with the company that day
+     * (App\PerformanceReports::sourcingKpi(), Col B): up to and including
+     * each key's working day, its value — 0 on days 1–2, 1 on days 3–5, 2 on
+     * days 6–60 — and after the last, kpiSettledRate(), set on Settings →
+     * Monthly KPI. The business's own tiers (2026-11-28).
+     *
+     * @var array<int, int>
+     */
+    public const KPI_DAILY_RFQS = [2 => 0, 5 => 1, 60 => 2];
+
+    /**
+     * The RFQs a day expected of someone past KPI_DAILY_RFQS' last tier, until
+     * an Admin sets it (kpiSettledRate()), and the fewest and most it can be.
+     */
+    public const DEFAULT_KPI_SETTLED_RATE = 3;
+
+    /**
+     * @var array{0: int, 1: int}
+     */
+    public const KPI_SETTLED_RATE_RANGE = [0, 20];
+
+    /**
      * Whether Data Entry's target is worked out per item — so many working
      * seconds an item, times the part's items (Rfq::dataEntryItemsFor()) —
      * rather than by priority (DEFAULT_DATA_ENTRY_TARGETS), until an Admin
@@ -1004,6 +1027,74 @@ class Setting extends Model
     public static function putRfqNumberStart(int $start): void
     {
         static::put('rfq_number_start', (string) $start);
+    }
+
+    /**
+     * The RFQs a day expected of a Sourcing member past their first
+     * working days (KPI_DAILY_RFQS) — and of anyone whose join date isn't
+     * given — on the Sourcing KPI report. Settings → Monthly KPI.
+     */
+    public static function kpiSettledRate(): int
+    {
+        $saved = static::get('kpi_settled_rate');
+        [$fewest, $most] = self::KPI_SETTLED_RATE_RANGE;
+
+        return is_numeric($saved) ? max($fewest, min($most, (int) $saved)) : self::DEFAULT_KPI_SETTLED_RATE;
+    }
+
+    /**
+     * Saves kpiSettledRate().
+     */
+    public static function putKpiSettledRate(int $rate): void
+    {
+        static::put('kpi_settled_rate', (string) $rate);
+    }
+
+    /**
+     * The RFQs expected of someone on a working day that's their
+     * $workingDay'th with the company (1 their first): KPI_DAILY_RFQS' tier,
+     * or kpiSettledRate() after them.
+     */
+    public static function kpiDailyRfqs(int $workingDay): int
+    {
+        foreach (self::KPI_DAILY_RFQS as $upTo => $rfqs) {
+            if ($workingDay <= $upTo) {
+                return $rfqs;
+            }
+        }
+
+        return static::kpiSettledRate();
+    }
+
+    /**
+     * The company's holidays, Settings → Monthly KPI: "Y-m-d" => what it is
+     * (maybe ''), in date order. Since 2026-11-28 they're not working days on
+     * the Sourcing KPI report (Cols A and B) — nowhere else yet: countdowns
+     * and working time still go by the working hours alone.
+     *
+     * @return array<string, string>
+     */
+    public static function holidays(): array
+    {
+        $saved = json_decode((string) static::get('holidays'), true);
+
+        return collect(is_array($saved) ? $saved : [])
+            ->filter(fn (mixed $name, mixed $day) => is_string($day) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $day) === 1)
+            ->map(fn (mixed $name) => is_string($name) ? $name : '')
+            ->sortKeys()
+            ->all();
+    }
+
+    /**
+     * Saves the company's holidays — see holidays() for their shape.
+     *
+     * @param  array<string, string>  $holidays
+     */
+    public static function putHolidays(array $holidays): void
+    {
+        ksort($holidays);
+
+        static::put('holidays', $holidays === [] ? null : json_encode($holidays));
     }
 
     /**

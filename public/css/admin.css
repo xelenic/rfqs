@@ -7808,3 +7808,24 @@ tr.is-deactivated > td:not(:last-child) {
 .app-confirm .modal-body {
   font-size: 0.925rem;
 }
+
+/* The Sourcing KPI report (reports/performance/sourcing_kpi): the sheet's
+   letter codes above its headings, small and muted. */
+.report-kpi-table .report-kpi-codes th {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--rfq-text-muted);
+  border-bottom-width: 0;
+  padding-bottom: 0;
+}
+
+.report-kpi-table thead tr:last-child th {
+  min-width: 7.5rem;
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+.report-kpi-table thead tr:last-child th:first-child {
+  min-width: 10rem;
+}
+

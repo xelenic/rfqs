@@ -432,6 +432,7 @@ class UserController extends Controller implements HasMiddleware
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'joined_on' => ['nullable', 'date_format:Y-m-d'],
             'sign_in' => ['nullable', Rule::in($setsPasswords ? ['email_link', 'password'] : ['email_link'])],
             'password' => ['exclude_unless:sign_in,password', 'required', 'string', 'min:8', 'confirmed'],
             'roles' => ['array'],
@@ -454,6 +455,7 @@ class UserController extends Controller implements HasMiddleware
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
+            'joined_on' => $validated['joined_on'] ?? null,
             // Without one set here nobody knows it — they set their own from the email.
             'password' => Hash::make($setsPassword ? $validated['password'] : Str::random(64)),
         ]);
@@ -580,6 +582,7 @@ class UserController extends Controller implements HasMiddleware
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'joined_on' => ['nullable', 'date_format:Y-m-d'],
             'password' => $request->user()->can('users.set-password') ? ['nullable', 'string', 'min:8', 'confirmed'] : ['prohibited'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoles($request->user())->pluck('name'))],
@@ -599,6 +602,11 @@ class UserController extends Controller implements HasMiddleware
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
+
+        // The day they joined (Sourcing KPI report), when the form sent it.
+        if (array_key_exists('joined_on', $validated)) {
+            $user->joined_on = $validated['joined_on'];
+        }
 
         if (! empty($validated['password'])) {
             $user->password = Hash::make($validated['password']);

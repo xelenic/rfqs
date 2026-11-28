@@ -8,6 +8,7 @@
         'admin.reports.sourcing-summary' => ['Sourcing · Summary', 'bi-clipboard-data'],
         'admin.reports.data-entry-daily' => ['Data Entry · Daily', 'bi-keyboard'],
         'admin.reports.sourcing-monthly' => ['Sourcing · Monthly', 'bi-calendar3'],
+        'admin.reports.sourcing-kpi' => ['Sourcing · KPI', 'bi-speedometer2'],
         'admin.reports.rfq-tracking' => ['RFQ Tracking Sheet', 'bi-table'],
     ];
 @endphp

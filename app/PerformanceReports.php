@@ -2,6 +2,7 @@
 
 namespace App;
 
+use App\Models\Attendance;
 use App\Models\RfqStep;
 use App\Models\Role;
 use App\Models\Setting;
@@ -452,6 +453,240 @@ class PerformanceReports
                 'items' => $this->itemsOf($received, $items),
             ],
         ];
+    }
+
+    /**
+     * Sourcing's monthly KPI report for $month ("Y-m") — the business's
+     * Monthly Employee RFQ Performance & KPI sheet (2026-11-28): for each of
+     * $people,
+     *
+     * - days (Col A): their working days in the month — days of their own
+     *   working week (Setting::weekOn()) that aren't company holidays
+     *   (Setting::holidays()), from the day they joined (users.joined_on),
+     *   up to today in the month we're in, and before they were deactivated;
+     * - expected (B): the RFQs expected of them over those days, day by day
+     *   by how many working days they'd been with the company on each
+     *   (Setting::kpiDailyRfqs()) — at the full rate when their join date
+     *   isn't given (joinedOn null);
+     * - received, completed, average and items (C, D, G, H): as
+     *   sourcingMonthly() has them;
+     * - rateOfExpected and rateOfReceived (E, F): completed as a percentage
+     *   of expected, and of received — 0 where there's nothing to divide by;
+     * - rejected (I): the RFQs a reviewer rejected back to them at Sourcing
+     *   in the month (rfq_returns: a Reject, not a Return for changes);
+     * - overdue (J): the RFQs whose Sourcing time went over its target
+     *   (overdueRfqs());
+     * - callsPerDay (K): their successful supplier calls in the month
+     *   (SourcingDayFigure) a working day;
+     * - won and winRate (L, M): the RFQs they finalized that the General
+     *   Manager approved in the month — what counts as won, as the business
+     *   chose on 2026-11-28 — and as a percentage of completed;
+     * - unattendedCalls (N): the unattended calls from suppliers they logged.
+     *
+     * Someone deactivated, or not with the company yet, with nothing in the
+     * month is left out, unless $keepDeactivated. The total adds up the rows,
+     * its rates worked out from its sums. Percentages are to two places.
+     *
+     * @param  Collection<int, User>  $people
+     * @return array{rows: Collection<int, array<string, mixed>>, total: array<string, mixed>, lastDay: string}
+     */
+    public function sourcingKpi(Collection $people, string $month, bool $keepDeactivated = false): array
+    {
+        $zone = Setting::timezone();
+        $start = CarbonImmutable::parse("{$month}-01", $zone)->startOfMonth();
+        $end = $start->endOfMonth();
+        $lastDay = min($end->toDateString(), Setting::today());
+        [$from, $until] = [$start->setTimezone(config('app.timezone')), $end->setTimezone(config('app.timezone'))];
+        $ids = $people->pluck('id')->all();
+
+        $monthly = $this->sourcingMonthly($people, $month)['rows']->keyBy(fn (array $row) => $row['user']->id);
+        $holidays = Setting::holidays();
+
+        $calls = SourcingDayFigure::query()
+            ->whereIn('user_id', $ids)
+            ->whereBetween('day', [$start->toDateString(), $end->toDateString()])
+            ->groupBy('user_id')
+            ->selectRaw('user_id, sum(successful_calls) as successful_calls, sum(unattended_calls) as unattended_calls')
+            ->get()
+            ->keyBy('user_id');
+
+        $rejected = DB::table('rfq_returns')
+            ->whereIn('user_id', $ids)
+            ->where('target_stage', 'sourcing')
+            ->where('is_return', false)
+            ->whereBetween('created_at', [$from, $until])
+            ->get(['user_id', 'rfq_id'])
+            ->groupBy('user_id')
+            ->map(fn (Collection $returns) => $returns->pluck('rfq_id')->unique()->count());
+
+        $won = DB::table('rfq_user')
+            ->whereBetween('gm_approved_at', [$from, $until])
+            ->whereNotNull('finalized_at')
+            ->where(fn (Builder $query) => $query->whereIn('finalized_by', $ids)->orWhere(fn (Builder $holder) => $holder->whereNull('finalized_by')->whereIn('user_id', $ids)))
+            ->get(['rfq_id', 'user_id', 'finalized_by'])
+            ->groupBy(fn (object $part) => (int) ($part->finalized_by ?? $part->user_id))
+            ->map(fn (Collection $parts) => $parts->pluck('rfq_id')->unique()->count());
+
+        $overdue = $this->overdueRfqs($ids, $start, $end);
+        $percent = fn (int $part, int $whole) => $whole === 0 ? 0.0 : round($part / $whole * 100, 2);
+
+        $rows = $people->map(function (User $person) use ($monthly, $holidays, $start, $lastDay, $calls, $rejected, $won, $overdue, $percent): array {
+            ['days' => $days, 'expected' => $expected] = $this->kpiDays($person, $start->toDateString(), $lastDay, $holidays);
+            $figures = $monthly->get($person->id);
+            $successful = (int) ($calls->get($person->id)?->successful_calls ?? 0);
+            $completed = (int) $figures['completed'];
+            $wins = (int) ($won[$person->id] ?? 0);
+
+            return [
+                'user' => $person,
+                'joinedOn' => $person->joined_on?->toDateString(),
+                'days' => $days,
+                'expected' => $expected,
+                'received' => (int) $figures['received'],
+                'completed' => $completed,
+                'rateOfExpected' => $percent($completed, $expected),
+                'rateOfReceived' => $percent($completed, (int) $figures['received']),
+                'average' => $figures['average'],
+                'durations' => $figures['durations'],
+                'items' => (int) $figures['items'],
+                'rejected' => (int) ($rejected[$person->id] ?? 0),
+                'overdue' => (int) ($overdue[$person->id] ?? 0),
+                'successfulCalls' => $successful,
+                'callsPerDay' => $days === 0 ? 0.0 : round($successful / $days, 2),
+                'won' => $wins,
+                'winRate' => $percent($wins, $completed),
+                'unattendedCalls' => (int) ($calls->get($person->id)?->unattended_calls ?? 0),
+            ];
+        })
+            // Deactivated, or not joined yet, with nothing in the month: left out.
+            ->reject(fn (array $row) => ! $keepDeactivated
+                && ($row['user']->isDeactivated() || ($row['joinedOn'] !== null && $row['joinedOn'] > $lastDay))
+                && $row['days'] === 0
+                && collect(['received', 'completed', 'rejected', 'overdue', 'won', 'successfulCalls', 'unattendedCalls'])->every(fn (string $key) => $row[$key] === 0))
+            ->values();
+
+        $sum = fn (string $key) => (int) $rows->sum($key);
+        $durations = $rows->flatMap(fn (array $row) => $row['durations']);
+
+        return [
+            'rows' => $rows,
+            'total' => [
+                'days' => $sum('days'),
+                'expected' => $sum('expected'),
+                'received' => $sum('received'),
+                'completed' => $sum('completed'),
+                'rateOfExpected' => $percent($sum('completed'), $sum('expected')),
+                'rateOfReceived' => $percent($sum('completed'), $sum('received')),
+                'average' => $durations->isEmpty() ? null : (int) round($durations->avg()),
+                'items' => $sum('items'),
+                'rejected' => $sum('rejected'),
+                'overdue' => $sum('overdue'),
+                'successfulCalls' => $sum('successfulCalls'),
+                'callsPerDay' => $sum('days') === 0 ? 0.0 : round($sum('successfulCalls') / $sum('days'), 2),
+                'won' => $sum('won'),
+                'winRate' => $percent($sum('won'), $sum('completed')),
+                'unattendedCalls' => $sum('unattendedCalls'),
+            ],
+            'lastDay' => $lastDay,
+        ];
+    }
+
+    /**
+     * $person's working days from $monthStart to $lastDay ("Y-m-d") — on or
+     * after the day they joined, before they were deactivated — and the RFQs
+     * expected of them over those days (sourcingKpi(), Cols A and B). Each
+     * day's target goes by how many working days they'd been with the company
+     * by then, counted from the day they joined (so a tier can change in the
+     * month); with no join date, every day's is the full rate.
+     *
+     * @param  array<string, string>  $holidays  Setting::holidays()
+     * @return array{days: int, expected: int}
+     */
+    private function kpiDays(User $person, string $monthStart, string $lastDay, array $holidays): array
+    {
+        $isWorkingDay = function (CarbonImmutable $day) use ($person, $holidays): bool {
+            $date = $day->toDateString();
+
+            return ! array_key_exists($date, $holidays)
+                && (bool) (Setting::weekOn($date, $person->id)[strtolower($day->format('l'))]['working'] ?? false);
+        };
+
+        $joined = $person->joined_on?->toDateString();
+        $from = max($monthStart, $joined ?? $monthStart);
+        $until = $person->deactivated_at !== null
+            ? min($lastDay, $person->deactivated_at->toImmutable()->setTimezone(Setting::timezone())->subDay()->toDateString())
+            : $lastDay;
+
+        // Their working days with the company before the month — only as many
+        // as it takes to be past the last tier.
+        $tenure = 0;
+        $pastTiers = array_key_last(Setting::KPI_DAILY_RFQS);
+
+        if ($joined !== null) {
+            for ($day = CarbonImmutable::parse($joined); $day->toDateString() < $from && $tenure <= $pastTiers; $day = $day->addDay()) {
+                $tenure += $isWorkingDay($day) ? 1 : 0;
+            }
+        }
+
+        $days = 0;
+        $expected = 0;
+
+        for ($day = CarbonImmutable::parse($from); $day->toDateString() <= $until; $day = $day->addDay()) {
+            if (! $isWorkingDay($day)) {
+                continue;
+            }
+
+            $days++;
+            $expected += $joined === null ? Setting::kpiSettledRate() : Setting::kpiDailyRfqs(++$tenure);
+        }
+
+        return ['days' => $days, 'expected' => $expected];
+    }
+
+    /**
+     * How many RFQs each of $ids let go over Sourcing's target in the month
+     * from $start to $end (sourcingKpi(), Col J): a part of theirs whose
+     * Sourcing time (every round they had it, Rfq::sourcingTimeOf()) is more
+     * than its target (Rfq::sourcingTargetSeconds()), counted in the month
+     * their Sourcing work on it last finished — or, while it's still with
+     * them, in the month we're in. A part put on hold or cancelled, and not
+     * picked up again, isn't counted. Keyed by person; an RFQ once each.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, int>
+     */
+    private function overdueRfqs(array $ids, CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        $now = CarbonImmutable::now();
+        $isThisMonth = $now->between($start, $end);
+
+        $parts = RfqStep::query()
+            ->where('step', 'sourcing')
+            ->whereIn('assignee_id', $ids)
+            ->with('rfq:id,priority_level')
+            ->orderBy('started_at')
+            ->get()
+            ->groupBy(fn (RfqStep $stretch) => "{$stretch->rfq_id}|{$stretch->part_number}|{$stretch->assignee_id}")
+            ->filter(function (Collection $stretches) use ($isThisMonth, $start, $end): bool {
+                $last = $stretches->last();
+
+                return $last->ended_at === null
+                    ? $isThisMonth
+                    : $last->ended_by_role && $last->ended_at->between($start, $end);
+            });
+
+        if ($parts->isEmpty()) {
+            return [];
+        }
+
+        $book = Attendance::book($parts->flatten()->pluck('worked_by')->unique()->values());
+
+        return $parts
+            ->filter(fn (Collection $stretches) => $stretches->first()->rfq !== null
+                && $stretches->sum(fn (RfqStep $stretch) => $stretch->secondsExcludingAbsence($book, $now)) > $stretches->first()->rfq->sourcingTargetSeconds())
+            ->groupBy(fn (Collection $stretches) => (int) $stretches->first()->assignee_id, preserveKeys: false)
+            ->map(fn (Collection $theirs) => $theirs->map(fn (Collection $stretches) => $stretches->first()->rfq_id)->unique()->count())
+            ->all();
     }
 
     /**

@@ -74,7 +74,8 @@
                 </div>
                 <div class="user-profile-details">
                     <span><i class="bi bi-envelope"></i> <a href="mailto:{{ $user->email }}">{{ $user->email }}</a></span>
-                    <span><i class="bi bi-calendar3"></i> Joined {{ $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</span>
+                    {{-- The day they joined the company, given on the Users form; else when their account was made. --}}
+                    <span><i class="bi bi-calendar3"></i> Joined {{ $user->joined_on?->format('M d, Y') ?? $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</span>
                     {{-- Their time off this year, at a glance — the rest on the Attendance tab. --}}
                     @if ($timeOff)
                         <a href="{{ route('admin.users.show', ['user' => $user, 'tab' => 'attendance']) }}" class="text-reset" data-time-off-summary>
@@ -161,6 +162,7 @@
                             data-id="{{ $user->id }}"
                             data-name="{{ $user->name }}"
                             data-email="{{ $user->email }}"
+                            data-joined-on="{{ $user->joined_on?->toDateString() }}"
                             data-roles="{{ $user->roles->pluck('name')->join(',') }}"
                             data-categories="{{ $user->jobCategories->pluck('id')->join(',') }}">
                         <i class="bi bi-pencil"></i> Edit
@@ -251,7 +253,14 @@
                             </dd>
                         @endif
                         <dt>Joined</dt>
-                        <dd>{{ $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</dd>
+                        <dd>
+                            @if ($user->joined_on)
+                                {{ $user->joined_on->format('M d, Y') }}
+                            @else
+                                <span class="text-muted-soft">Not given</span>
+                                <div class="small text-muted-soft">Account made {{ $user->created_at->copy()->setTimezone($timezone)->format('M d, Y') }}</div>
+                            @endif
+                        </dd>
                         <dt>Last step taken</dt>
                         <dd>
                             @if ($activity->isNotEmpty())

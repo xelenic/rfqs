@@ -397,6 +397,7 @@ function rfqmsBoot() {
             form.querySelector('[name="user_id"]').value = button.dataset.id || '';
             form.querySelector('#edit-name').value = button.dataset.name || '';
             form.querySelector('#edit-email').value = button.dataset.email || '';
+            form.querySelector('#edit-joined_on').value = button.dataset.joinedOn || '';
             // Only an Admin's form has a password (see users/_form.blade.php).
             form.querySelectorAll('#edit-password, #edit-password_confirmation').forEach(function (field) { field.value = ''; });
 

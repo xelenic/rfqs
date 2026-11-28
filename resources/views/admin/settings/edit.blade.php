@@ -27,7 +27,8 @@
     $attendanceSince (Setting::attendanceSince()), $halfDayOff
     (Setting::halfDayOff()), $roleHours (each role with its current
     WorkingSchedule, or null), $peopleHours (each person with their own),
-    $messageRules (Setting::messageRoles()) and $allRoles (every role, with
+    $messageRules (Setting::messageRoles()), $kpiSettledRate
+    (Setting::kpiSettledRate()), $holidays (Setting::holidays()) and $allRoles (every role, with
     settings.manage).
 --}}
 @extends('layouts.app')
@@ -60,6 +61,7 @@
             'idle-alert' => ['label' => 'Idle Alert', 'icon' => 'bi-bell', 'bag' => ['idle_alert', 'gm_assistant_idle_alert']],
             'extra-hours' => ['label' => 'Extra Hours', 'icon' => 'bi-moon-stars', 'bag' => 'extra_hours'],
             'messaging' => ['label' => 'Messaging', 'icon' => 'bi-chat-dots', 'bag' => 'message_roles'],
+            'kpi' => ['label' => 'Monthly KPI', 'icon' => 'bi-speedometer2', 'bag' => ['kpi', 'holidays']],
         ] : [];
         $managedTabs = $settingsTabs
             + ($managesWorkingHours ? ['role-hours' => $roleHoursTab] : [])
@@ -1070,6 +1072,118 @@
                 </div>
             </div>
 
+
+            <div class="tab-pane fade {{ $activeTab === 'kpi' ? 'show active' : '' }}" id="settings-pane-kpi" role="tabpanel" aria-labelledby="settings-tab-kpi" tabindex="0">
+                {{-- The Sourcing KPI report's daily RFQ target past the first
+                     tiers (Setting::kpiSettledRate()), and the company's
+                     holidays (Setting::holidays()), which it doesn't count as
+                     working days. --}}
+                @php
+                    $kpiFailed = $errors->getBag('kpi')->any();
+                    $holidaysFailed = $errors->getBag('holidays')->any();
+                    $tierFrom = 1;
+                @endphp
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Daily RFQ target
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('admin.settings.kpi') }}" novalidate>
+                            @csrf
+                            @method('PATCH')
+
+                            <p class="text-muted-soft small">How many RFQs a Sourcing member is expected to complete each working day on the Sourcing KPI report (its Expected RFQ to be completed), by how many working days they've been with the company that day — from the day they joined, as given on their user page. Someone whose join date isn't given is expected the most.</p>
+
+                            <table class="table table-sm mb-3" style="max-width: 420px;">
+                                <thead>
+                                    <tr><th>Working day with the company</th><th class="text-end">RFQs a day</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (\App\Models\Setting::KPI_DAILY_RFQS as $upTo => $rfqs)
+                                        <tr><td>{{ $tierFrom }}–{{ $upTo }}</td><td class="text-end">{{ $rfqs }}</td></tr>
+                                        @php $tierFrom = $upTo + 1; @endphp
+                                    @endforeach
+                                    <tr>
+                                        <td class="align-middle"><label for="kpi-settled-rate" class="mb-0">{{ $tierFrom }} on</label></td>
+                                        <td class="text-end" style="width: 120px;">
+                                            <input type="number" name="settled_rate" id="kpi-settled-rate" min="{{ \App\Models\Setting::KPI_SETTLED_RATE_RANGE[0] }}" max="{{ \App\Models\Setting::KPI_SETTLED_RATE_RANGE[1] }}" step="1"
+                                                   class="form-control form-control-sm text-end @error('settled_rate', 'kpi') is-invalid @enderror"
+                                                   value="{{ $kpiFailed ? old('settled_rate') : $kpiSettledRate }}" required>
+                                            @error('settled_rate', 'kpi')
+                                                <div class="invalid-feedback text-start">{{ $message }}</div>
+                                            @enderror
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save target</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        Company holidays
+                        <span class="badge badge-soft-primary">Admin</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted-soft small">Days the company is closed. The Sourcing KPI report doesn't count them as working days, nor expect any RFQs on them. Countdowns and time spent still go by the working hours alone.</p>
+
+                        <form method="POST" action="{{ route('admin.settings.holidays.store') }}" class="d-flex flex-wrap align-items-start gap-2 mb-3" novalidate>
+                            @csrf
+                            <div>
+                                <label for="holiday-day" class="form-label small mb-1">Day</label>
+                                <input type="date" name="day" id="holiday-day" class="form-control form-control-sm @error('day', 'holidays') is-invalid @enderror"
+                                       value="{{ $holidaysFailed ? old('day') : '' }}" required>
+                                @error('day', 'holidays')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="flex-grow-1" style="min-width: 200px; max-width: 320px;">
+                                <label for="holiday-name" class="form-label small mb-1">What it is <span class="text-muted-soft">(optional)</span></label>
+                                <input type="text" name="name" id="holiday-name" maxlength="80" class="form-control form-control-sm @error('name', 'holidays') is-invalid @enderror"
+                                       value="{{ $holidaysFailed ? old('name') : '' }}" placeholder="Christmas Day">
+                                @error('name', 'holidays')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="align-self-end">
+                                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg"></i> Add holiday</button>
+                            </div>
+                        </form>
+
+                        @if ($holidays === [])
+                            <p class="text-muted-soft small mb-0">No holidays yet.</p>
+                        @else
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr><th>Day</th><th>What it is</th><th></th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($holidays as $day => $name)
+                                            <tr>
+                                                <td class="text-nowrap">{{ \Carbon\CarbonImmutable::parse($day)->format('D, M d, Y') }}</td>
+                                                <td>{{ $name !== '' ? $name : '—' }}</td>
+                                                <td class="text-end">
+                                                    <form method="POST" action="{{ route('admin.settings.holidays.destroy', $day) }}" class="d-inline"
+                                                          data-confirm="Take {{ \Carbon\CarbonImmutable::parse($day)->format('M d, Y') }} off the holidays? The KPI report counts it as a working day again.">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Remove {{ $day }}"><i class="bi bi-x-lg"></i></button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
         @endif
 
         @if ($clearsRfqData)
